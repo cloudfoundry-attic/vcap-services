@@ -1,0 +1,12 @@
+1. merge "services/base" and "services/common" directories
+
+2. refactor services/foo/bin/foo_node
+
+3. clean up Gemfiles and requires to eliminate redundant/unneeed items
+
+4. refactor VCAP::Services::Foo::Node::ProvisionedService
+
+5. VCAP::Services::AsynchronousServiceGateway unit tests
+
+6. refactor VCAP::Services::AsynchronousServiceGateway and
+   VCAP::Services::SynchronousServiceGateway

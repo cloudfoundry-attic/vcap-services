@@ -1,0 +1,33 @@
+requirepass <%= password %>
+port <%= port %>
+maxmemory <%= memory %>mb
+vm-swap-file <%= swap_file %>
+vm-max-memory <%= vm_max_memory %>mb
+vm-pages <%= vm_pages %>
+dir <%= data_dir %>
+logfile <%= log_file %>
+
+
+daemonize no
+timeout 300
+loglevel notice
+databases 16
+# FIXME: Add the limit back?
+maxclients 0
+appendonly no
+vm-enabled yes
+vm-page-size 32
+glueoutputbuf yes
+hash-max-zipmap-entries 64
+hash-max-zipmap-value 512
+activerehashing yes
+
+rename-command CONFIG ""
+rename-command MONITOR ""
+rename-command SAVE ""
+rename-command BGSAVE ""
+rename-command SHUTDOWN ""
+rename-command BGREWRITEAOF ""
+rename-command SLAVEOF ""
+rename-command DEBUG ""
+rename-command SYNC ""

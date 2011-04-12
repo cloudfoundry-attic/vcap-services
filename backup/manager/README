@@ -1,0 +1,19 @@
+The backup manager manages backups.  Currently, its only job is
+rotation: it inspects the backup directory to prune old backups.
+
+The backup manager can be run in two modes:
+
+ - it can do its work once and then exit [the default]; or
+
+ - it can spawn a daemon process that periodically wakes up and does
+   its work
+
+The backup manager is configured by config/backup_manager.yaml.
+
+The main entry point is
+"core/services/backup/manager/bin/backup_manager".  Here's how to run
+it:
+  Usage: backup_manager [options]
+      -c, --config [ARG]               Configuration File
+      -d, --[no-]daemon                Run as a daemon
+      -h, --help                       Help
