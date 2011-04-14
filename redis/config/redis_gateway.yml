@@ -9,6 +9,5 @@ service:
 host: localhost
 token: "0xdeadbeef"
 log_level: DEBUG
-redis_mbus: nats://localhost:4222
-service_mbus: nats://localhost:4222
+mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/redis_service.pid

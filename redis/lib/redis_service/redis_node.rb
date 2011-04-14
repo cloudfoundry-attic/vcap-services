@@ -3,18 +3,27 @@ require "erb"
 require "fileutils"
 require "logger"
 require "pp"
-require "set"
 
 require "datamapper"
-require "nats/client"
 require "uuidtools"
 
-require 'vcap/common'
-require 'vcap/component'
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
+require 'base/node'
 
-module VCAP; module Services; module Redis; end; end; end
+module VCAP
+  module Services
+    module Redis
+      class Node < VCAP::Services::Base::Node
+      end
+    end
+  end
+end
+
+require 'redis_service/common'
 
 class VCAP::Services::Redis::Node
+
+  include VCAP::Services::Redis::Common
 
   class ProvisionedService
     include DataMapper::Resource
@@ -25,204 +34,195 @@ class VCAP::Services::Redis::Node
     property :pid,        Integer
     property :memory,     Integer
 
-    def listening?
-      begin
-        TCPSocket.open('localhost', port).close
-        return true
-      rescue => e
-        return false
-      end
-    end
-
     def running?
       VCAP.process_running? pid
-    end
-
-    def kill(sig=9)
-      Process.kill(sig, pid) if running?
     end
   end
 
   def initialize(options)
-    @logger = options[:logger]
-    @logger.info("Starting Redis-Service-Node..")
+    super(options)
+
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
-    @redis_path = options[:redis_path]
-
-    @local_ip = VCAP.local_ip(options[:ip_route])
+    @redis_server_path = options[:redis_server_path]
+    @redis_client_path = options[:redis_client_path]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
     @max_swap = options[:max_swap]
-    @node_id = options[:node_id]
-
     @config_template = ERB.new(File.read(options[:config_template]))
-
-    DataMapper.setup(:default, options[:local_db])
-    DataMapper::auto_upgrade!
-
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
+    @local_db = options[:local_db]
+    @nfs_dir = options[:nfs_dir]
+    @options = options
+    @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
+  end
 
-    ProvisionedService.all.each do |provisioned_service|
-      @free_ports.delete(provisioned_service.port)
-      if provisioned_service.listening?
-        @logger.info("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
-        @available_memory -= (provisioned_service.memory || @max_memory)
+  def start
+    raise "Could not setup local db" unless start_db
+    start_services
+  end
+
+  def start_db
+    DataMapper.setup(:default, @local_db)
+    DataMapper::auto_upgrade!
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def start_services
+    ProvisionedService.all.each do |service|
+      @free_ports.delete(service.port)
+      if service.running?
+        @logger.info("Service #{service.name} already running with pid #{service.pid}")
+        @available_memory -= (service.memory || @max_memory)
         next
       end
       begin
-        pid = start_instance(provisioned_service)
-        provisioned_service.pid = pid
-        unless provisioned_service.save
-          provisioned_service.kill
-          raise "Couldn't save pid (#{pid})"
-        end
+        pid = start_instance(service)
+        service.pid = pid
+        save_service(service)
       rescue => e
-        @logger.warn("Error starting service #{provisioned_service.name}: #{e}")
+        @logger.warn("Error starting service #{service.name}: #{e}")
       end
     end
-
-    @nats = NATS.connect(:uri => options[:mbus]) {on_connect}
-
-    VCAP::Component.register(:nats => @nats,
-                             :type => 'Redis-Service-Node',
-                             :host => @local_ip,
-                             :config => options)
   end
 
-  def shutdown
-    @logger.info("Shutting down..")
-    @nats.close
-    @logger.info("Shutting down instances..")
-    ProvisionedService.all.each { |provisioned_service| provisioned_service.kill(:SIGTERM) }
+  def announcement
+    a = {
+      :available_memory => @available_memory
+    }
   end
 
-  def on_connect
-    @logger.debug("Connected to mbus..")
-    @nats.subscribe("RaaS.provision.#{@node_id}") {|msg, reply| on_provision(msg, reply)}
-    @nats.subscribe("RaaS.unprovision.#{@node_id}") {|msg, reply| on_unprovision(msg, reply)}
-    @nats.subscribe("RaaS.unprovision") {|msg, reply| on_unprovision(msg, reply)}
-    @nats.subscribe("RaaS.discover") {|_, reply| send_node_announcement(reply)}
-    send_node_announcement
-    EM.add_periodic_timer(30) {send_node_announcement}
-  end
-
-  def on_provision(msg, reply)
-    @logger.debug("Provision request: #{msg} from #{reply}")
-    provision_message = Yajl::Parser.parse(msg)
-
+  def provision(plan)
     port = @free_ports.first
     @free_ports.delete(port)
 
-    provisioned_service          = ProvisionedService.new
-    provisioned_service.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
-    provisioned_service.port     = port
-    provisioned_service.plan     = provision_message["plan"]
-    provisioned_service.password = UUIDTools::UUID.random_create.to_s
-    provisioned_service.memory   = @max_memory
-    provisioned_service.pid      = start_instance(provisioned_service)
+    service          = ProvisionedService.new
+    service.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
+    service.port     = port
+    service.plan     = plan
+    service.password = UUIDTools::UUID.random_create.to_s
+    service.memory   = @max_memory
+    service.pid      = start_instance(service)
 
-    unless provisioned_service.save
-      provisioned_service.kill
-      raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
-    end
+    save_service(service)
 
     response = {
-      "node_id" => @node_id,
       "hostname" => @local_ip,
-      "port" => provisioned_service.port,
-      "password" => provisioned_service.password,
-      "name" => provisioned_service.name
+      "port" => service.port,
+      "password" => service.password,
+      "name" => service.name
     }
-    @nats.publish(reply, Yajl::Encoder.encode(response))
   rescue => e
     @logger.warn(e)
+    nil
   end
 
-  def on_unprovision(msg, reply)
-    @logger.debug("Unprovision request: #{msg}.")
-    unprovision_message = Yajl::Parser.parse(msg)
+  def unprovision(service_id, handles = {})
+    service = get_service(service_id)
 
-    provisioned_service = ProvisionedService.get(unprovision_message["name"])
-    raise "Could not find service: #{unprovision_message["name"]}" if provisioned_service.nil?
+    @logger.debug("Killing #{service.name} started with pid #{service.pid}")
+    stop_instance(service) if service.running?
+    @available_memory += service.memory
+    destroy_service(service)
+    @free_ports.add(service.port)
 
-    @logger.debug("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
+    @logger.debug("Successfully fulfilled unprovision request: #{service_id}.")
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
 
-    Process.kill(9, provisioned_service.pid) if provisioned_service.running?
+  def bind(service_id, binding_options = :all)
+    service = get_service(service_id)
+    handler = {
+      "hostname" => @local_ip,
+      "port" => service.port,
+      "password" => service.password
+    }
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
 
-    dir = File.join(@base_dir, provisioned_service.name)
+  def unbind(handler)
+    true
+  end
 
-    pid = fork
-    if pid
-      Process.detach(pid)
-    else
-      $0 = "Unprovisioning redis service: #{provisioned_service.name}"
-      close_fds
-      FileUtils.rm_rf(dir)
-      exit
+  def save_service(service)
+    unless service.save
+      stop_instance(service)
+      raise "Could not save entry: #{service.errors.pretty_inspect}"
     end
-
-    @available_memory += provisioned_service.memory
-
-    raise "Could not delete service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
-    @logger.debug("Successfully fulfilled unprovision request: #{msg}.")
-  rescue => e
-    @logger.warn(e)
   end
 
-  def send_node_announcement(reply = nil)
-    @logger.debug("Sending announcement for #{reply || "everyone"}")
-    response = {
-      :id => @node_id,
-      :available_memory => @available_memory
-    }
-    @nats.publish(reply || "RaaS.announce", Yajl::Encoder.encode(response))
+  def destroy_service(service)
+    raise "Could not delete service: #{service.errors.pretty_inspect}" unless service.destroy
   end
 
-  def start_instance(provisioned_service)
-    @logger.debug("Starting: #{provisioned_service.pretty_inspect} on port #{provisioned_service.port}")
+  def get_service(name)
+    service = ProvisionedService.get(name)
+    raise "Could not find service: #{name}" if service.nil?
+    service
+  end
 
+  def start_instance(service, db_file = nil)
+    @logger.debug("Starting: #{service.pretty_inspect} on port #{service.port}")
+
+    # FIXME: it need call mememory_for_service() to get the memory according to the plan in the further.
     memory = @max_memory
 
     pid = fork
     if pid
-      @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
+      @logger.debug("Service #{service.name} started with pid #{pid}")
       @available_memory -= memory
       # In parent, detch the child.
       Process.detach(pid)
       pid
     else
-      $0 = "Starting Redis service: #{provisioned_service.name}"
+      $0 = "Starting Redis service: #{service.name}"
       close_fds
 
-      port = provisioned_service.port
-      password = provisioned_service.password
-      dir = File.join(@base_dir, provisioned_service.name)
+      port = service.port
+      password = service.password
+      dir = File.join(@base_dir, service.name)
       data_dir = File.join(dir, "data")
       log_file = File.join(dir, "log")
       swap_file = File.join(dir, "redis.swap")
       vm_max_memory = (memory * 0.7).round
       vm_pages = (@max_swap * 1024 * 1024 / 32).round # swap in bytes / size of page (32 bytes)
 
-      config = @config_template.result(binding)
+      config = @config_template.result(Kernel.binding)
       config_path = File.join(dir, "redis.conf")
 
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
+      if db_file
+        FileUtils.cp(db_file, data_dir)
+      end
       FileUtils.rm_f(log_file)
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
-      exec("#{@redis_path} #{config_path}")
+      exec("#{@redis_server_path} #{config_path}")
     end
   end
 
-  def memory_for_service(provisioned_service)
-    case provisioned_service.plan
+  def stop_instance(service)
+    %x[#{@redis_client_path} -p #{service.port} -a #{service.password} shutdown]
+    dir = File.join(@base_dir, service.name)
+    FileUtils.rm_rf(dir)
+  end
+
+  def memory_for_service(service)
+    case service.plan
       when :free then 16
       else
-        raise "Invalid plan: #{provisioned_service.plan}"
+        raise "Invalid plan: #{service.plan}"
     end
   end
 

@@ -29,12 +29,30 @@ describe VCAP::Services::Rabbit::Node do
       :local_db => "sqlite3:/tmp/rabbit_node.db",
       :mbus => "nats://localhost:4222"
     }
+
+    # Start NATS server
+    @uri = URI.parse(@options[:mbus])
+    @pid_file = "/tmp/nats-rabbit-test.pid"
+    if !NATS.server_running?(@uri)
+      %x[ruby -S bundle exec nats-server -p #{@uri.port} -P #{@pid_file} -d 2> /dev/null]
+    end
+    sleep 1
+
 		EM.run do
 			@node = VCAP::Services::Rabbit::Node.new(@options)
 			EM.add_timer(0.1) {
 				EM.stop
 			}
 		end
+  end
+
+  after :all do
+    # Stop NATS server
+    if File.exists?(@pid_file)
+      pid = File.read(@pid_file).chomp.to_i
+      %x[kill -9 #{pid}]
+      %x[rm -f #{@pid_file}]
+    end
   end
 
   before :each do
