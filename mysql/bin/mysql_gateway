@@ -3,88 +3,24 @@
 #
 # Copyright (c) 2009-2011 VMware, Inc.
 
-ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path('../../Gemfile', __FILE__)
 
-require 'rubygems'
-require 'bundler/setup'
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/gateway'
 
-$LOAD_PATH.unshift(File.expand_path("../../../", __FILE__))
-$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
-require 'optparse'
-require 'logger'
-require 'net/http'
-require 'thin'
-require 'yaml'
-
-require 'common/asynchronous_service_gateway'
-require 'common/util'
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 require 'mysql_service/provisioner'
-require 'vcap/common'
 
-config_file = File.expand_path("../../config/mysql_gateway.yml", __FILE__)
+class VCAP::Services::Mysql::Gateway < VCAP::Services::Base::Gateway
 
-OptionParser.new do |opts|
-  opts.banner = "Usage: mysql_gateway [options]"
-
-  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
-    config_file = opt
+  def provisioner_class
+    VCAP::Services::Mysql::Provisioner
   end
 
-  opts.on("-h", "--help", "Help") do
-    puts opts
-    exit
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'mysql_gateway.yml')
   end
-end.parse!
 
-begin
-  config = parse_gateway_config(config_file)
-rescue => e
-  puts "Error reading config file: #{e}"
-  exit
 end
 
-logger = Logger.new(config[:log_file] || STDOUT, "daily")
-logger.level = case (config[:log_level] || "INFO")
-  when "DEBUG" then Logger::DEBUG
-  when "INFO" then Logger::INFO
-  when "WARN" then Logger::WARN
-  when "ERROR" then Logger::ERROR
-  when "FATAL" then Logger::FATAL
-  else Logger::UNKNOWN
-end
-config[:logger] = logger
-
-if config[:pid]
-  pf = VCAP::PidFile.new(config[:pid])
-  pf.unlink_at_exit
-end
-
-config[:host] = VCAP.local_ip(config[:host])
-config[:port] ||= VCAP.grab_ephemeral_port
-config[:service][:label] = "#{config[:service][:name]}-#{config[:service][:version]}"
-config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
-
-# Go!
-EM.run do
-  sp = VCAP::Services::Mysql::Provisioner.new(
-    :logger   => logger,
-    :version  => config[:service][:version],
-    :local_ip => config[:host],
-    :service_mbus => config[:service_mbus],
-    :mysql_mbus   => config[:mysql_mbus],
-    :node_timeout => config[:node_timeout]
-  ).start()
-
-  sg = VCAP::Services::AsynchronousServiceGateway.new(
-    :service => config[:service],
-    :token   => config[:token],
-    :logger  => logger,
-    :provisioner => sp,
-    :cloud_controller_uri => config[:cloud_controller_uri] || default_cloud_controller_uri
-  )
-
-  Thin::Server.start(config[:host], config[:port], sg)
-end
-
-
+VCAP::Services::Mysql::Gateway.new.start

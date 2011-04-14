@@ -3,22 +3,26 @@ require "erb"
 require "fileutils"
 require "logger"
 require "pp"
-#require "set"
 
 require "datamapper"
-require "nats/client"
 require "uuidtools"
 require "mysql"
 
-require 'vcap/common'
-require 'vcap/component'
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
+require 'base/node'
 
-$:.unshift(File.dirname(__FILE__))
+module VCAP
+  module Services
+    module Mysql
+      class Node < VCAP::Services::Base::Node
+      end
+    end
+  end
+end
 
+require "mysql_service/common"
 require "mysql_service/util"
 require "mysql_service/storage_quota"
-
-module VCAP; module Services; module Mysql; end; end; end
 
 class VCAP::Services::Mysql::Node
 
@@ -27,6 +31,7 @@ class VCAP::Services::Mysql::Node
   STORAGE_QUOTA_INTERVAL = 1
 
   include VCAP::Services::Mysql::Util
+  include VCAP::Services::Mysql::Common
 
   class ProvisionedService
     include DataMapper::Resource
@@ -38,21 +43,19 @@ class VCAP::Services::Mysql::Node
   end
 
   def initialize(options)
-    @logger = options[:logger]
-    @logger.info("Starting Mysql-Service-Node..")
+    super(options)
 
-    @local_ip = VCAP.local_ip(options[:ip_route])
-
-    @node_id = options[:node_id]
     @mysql_config = options[:mysql]
 
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
+    @max_long_tx = options[:max_long_tx]
 
     @connection = mysql_connect
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
     EM.add_periodic_timer(LONG_QUERY_INTERVAL) {kill_long_queries}
+    EM.add_periodic_timer(@max_long_tx/2) {kill_long_transaction}
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
 
     @base_dir = options[:base_dir]
@@ -68,15 +71,13 @@ class VCAP::Services::Mysql::Node
       @available_storage -= storage_for_service(provisioned_service)
     end
 
-    @pids = {}
+  end
 
-    @nats = NATS.connect(:uri => options[:mbus]) {on_connect}
-
-    VCAP::Component.register(:nats => @nats,
-                            :type => 'Mysql-Service-Node',
-                            :host => @local_ip,
-                            :config => options)
-
+  def announcement
+    a = {
+      :available_storage => @available_storage
+    }
+    a
   end
 
   def check_db_consistency()
@@ -137,79 +138,105 @@ class VCAP::Services::Mysql::Node
     @logger.info("MySQL error: [#{e.errno}] #{e.error}")
   end
 
-  def shutdown
-    @logger.info("Shutting down..")
-    @nats.close
+  def kill_long_transaction
+    # FIXME need a better transaction query solution other than parse status text
+    result = @connection.query("SHOW INNODB STATUS")
+    innodb_status = nil
+    result.each do |i|
+      innodb_status = i[-1]
+    end
+    lines = innodb_status.split(/\n/).map{|line| line.strip}
+    i = 0
+    while i<= lines.size
+      if lines[i] =~ /---TRANSACTION.*ACTIVE (\d*) sec/ && $1.to_i >= @max_long_tx
+        active_time = $1
+        i += 1
+        # Quit if the line starts with item delimiter ---
+        while (lines[i] =~ /^---/) == nil
+          if lines[i] =~ /MySQL thread id (\d*).* (\w*)$/
+            @connection.query("KILL QUERY #{$1}")
+            @logger.info"Kill long transaction: user:#{$2} thread: #{$1} active_time:#{active_time}"
+          end
+          i +=1
+        end
+      else
+        i += 1
+      end
+    end
+  rescue => e
+    @logger.error("Error during kill long tx: #{e}")
   end
 
-  def on_connect
-    @logger.debug("Connected to mbus..")
-    @nats.subscribe("MyaaS.provision.#{@node_id}") {|msg, reply| on_provision(msg, reply)}
-    @nats.subscribe("MyaaS.unprovision.#{@node_id}") {|msg, reply| on_unprovision(msg, reply)}
-    @nats.subscribe("MyaaS.unprovision") {|msg, reply| on_unprovision(msg, reply)}
-    @nats.subscribe("MyaaS.discover") {|_, reply| send_node_announcement(reply)}
-    send_node_announcement
-    EM.add_periodic_timer(30) {send_node_announcement}
-  end
-
-  def on_provision(msg, reply)
-    @logger.debug("Provision request: #{msg} from #{reply}")
-    provision_message = Yajl::Parser.parse(msg)
-
+  def provision(plan)
     provisioned_service = ProvisionedService.new
     provisioned_service.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
     provisioned_service.user = 'u' + generate_credential
     provisioned_service.password = 'p' + generate_credential
-    provisioned_service.plan = provision_message["plan"]
+    provisioned_service.plan = plan
 
     create_database(provisioned_service)
 
     if not provisioned_service.save then
-      delete_database(provisioned_service)
       raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
     end
-
-    response = {
-      "node_id" => @node_id,
-      "hostname" => @local_ip,
-      "port" => @mysql_config['port'],
-      "password" => provisioned_service.password,
-      "name" => provisioned_service.name,
-      "user" => provisioned_service.user
-    }
-    @nats.publish(reply, Yajl::Encoder.encode(response))
-    @logger.debug("Successfully provisioned database for request #{msg}: #{response.inspect}")
+    response = gen_credential(provisioned_service.name, provisioned_service.user, provisioned_service.password)
+    return response
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Error during provision #{e}")
+    delete_database(provisioned_service)
+    return nil
   end
 
-  def on_unprovision(msg, reply)
-    @logger.debug("Unprovision request: #{msg}.")
-    unprovision_message = Yajl::Parser.parse(msg)
-
-    provisioned_service = ProvisionedService.get(unprovision_message["name"])
-    raise "Could not find service: #{unprovision_message["name"]}" if provisioned_service.nil?
-
+  def unprovision(name, credentials)
+    @logger.debug("Unprovision database:#{name}, bindings: #{credentials.inspect}")
+    provisioned_service = ProvisionedService.get(name)
+    raise "Could not find service: #{name}" if provisioned_service.nil?
     delete_database(provisioned_service)
-
     # TODO: validate that database files are not lingering
-    # TODO: kill active sessions before removing database
+    # TODO: validate remain accounts for unprovisioned database
     storage = storage_for_service(provisioned_service)
     @available_storage += storage
-
+    # Delete all bindings
+    credentials.each{ |credential| unbind(credential)} if credentials
     raise "Could not delete service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
-    @logger.debug("Successfully fulfilled unprovision request: #{msg}.")
+    @logger.debug("Successfully fulfilled unprovision request: #{name}")
   rescue => e
     @logger.warn(e)
   end
 
-  def send_node_announcement(reply = nil)
-    @logger.debug("Sending announcement for #{reply || "everyone"}")
-    response = {
-      :id => @node_id,
-      :available_storage => @available_storage
-    }
-    @nats.publish(reply || "MyaaS.announce", Yajl::Encoder.encode(response))
+  def bind(name, bind_opts)
+    @logger.debug("Bind service for db:#{name}, bind_opts = #{bind_opts}")
+    binding = nil
+    begin
+      service = ProvisionedService.get(name)
+      raise "Could not find service: #{name}" if service.nil?
+      # create new credential for binding
+      binding = Hash.new
+      binding[:user] = 'u' + generate_credential
+      binding[:password ]= 'p' + generate_credential
+      binding[:bind_opts] = bind_opts
+      create_database_user(name, binding[:user], binding[:password])
+      response = gen_credential(name, binding[:user], binding[:password])
+      @logger.debug("Bind response: #{response.inspect}")
+      return response
+    rescue => e
+      @logger.error("Can't bind service for db:#{name} with options: #{bind_opts}: #{e}")
+      delete_database_user(binding[:user]) if binding
+      nil
+    end
+  end
+
+  def unbind(credential)
+    @logger.debug("Unbind service: #{credential.inspect}")
+    name, user, bind_opts = %w(name user bind_opts).map{|k| credential[k]}
+    service = ProvisionedService.get(name)
+    raise "Can't find service: #{name}" unless service
+    #TODO validate the existence of credential, in case we delete a normal user according to malformed credential
+    delete_database_user(user)
+    true
+  rescue => e
+   @logger.error("Can't unbind service for db:#{name}, user: #{user}, with options: #{bind_opts}: #{e}")
+   nil
   end
 
   def create_database(provisioned_service)
@@ -218,16 +245,20 @@ class VCAP::Services::Mysql::Node
       start = Time.now
       @logger.debug("Creating: #{provisioned_service.pretty_inspect}")
       @connection.query("CREATE DATABASE #{name}")
-      @logger.info("Creating credentials: #{user}/#{password}")
-      @connection.query("GRANT ALL ON #{name}.* to #{user}@'%' IDENTIFIED BY '#{password}'")
-      @connection.query("GRANT ALL ON #{name}.* to #{user}@'localhost' IDENTIFIED BY '#{password}'")
-      @connection.query("FLUSH PRIVILEGES")
+      create_database_user(name, user, password)
       storage = storage_for_service(provisioned_service)
       @available_storage -= storage
       @logger.debug("Done creating #{provisioned_service.pretty_inspect}. Took #{Time.now - start}.")
-    rescue => e
+    rescue Mysql::Error => e
       @logger.warn("Could not create database: [#{e.errno}] #{e.error}")
     end
+  end
+
+  def create_database_user(name, user, password)
+      @logger.info("Creating credentials: #{user}/#{password} for database #{name}")
+      @connection.query("GRANT ALL ON #{name}.* to #{user}@'%' IDENTIFIED BY '#{password}'")
+      @connection.query("GRANT ALL ON #{name}.* to #{user}@'localhost' IDENTIFIED BY '#{password}'")
+      @connection.query("FLUSH PRIVILEGES")
   end
 
   def delete_database(provisioned_service)
@@ -235,11 +266,35 @@ class VCAP::Services::Mysql::Node
     begin
       @logger.info("Deleting database: #{name}")
       @connection.query("DROP DATABASE #{name}")
-      @connection.query("DROP USER #{user}")
-      @connection.query("DROP USER #{user}@'localhost'")
+      delete_database_user(user)
     rescue Mysql::Error => e
       @logger.fatal("Could not delete database: [#{e.errno}] #{e.error}")
     end
   end
 
+  def delete_database_user(user)
+    @logger.info("Delete user #{user}")
+    process_list = @connection.list_processes
+    process_list.each do |proc|
+      thread_id, user_, _, db, command, time, _, info = proc
+      if user_ == user then
+        @connection.query("KILL #{thread_id}")
+        @logger.info("Kill session: user:#{user} db:#{db}")
+      end
+    end
+    @connection.query("DROP USER #{user}")
+    @connection.query("DROP USER #{user}@'localhost'")
+  rescue Mysql::Error => e
+    @logger.fatal("Could not delete user: [#{e.errno}] #{e.error}")
+  end
+
+  def gen_credential(name, user, passwd)
+    response = {
+      "name" => name,
+      "hostname" => @local_ip,
+      "port" => @mysql_config['port'],
+      "user" => user,
+      "password" => passwd,
+    }
+  end
 end
