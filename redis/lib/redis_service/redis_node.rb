@@ -213,7 +213,7 @@ class VCAP::Services::Redis::Node
   end
 
   def stop_instance(service)
-    %x[#{@redis_client_path} -p #{service.port} -a #{service.password} shutdown]
+    raise ArgumentError unless %x[#{@redis_client_path} -p #{service.port} -a #{service.password} shutdown] == ""
     dir = File.join(@base_dir, service.name)
     FileUtils.rm_rf(dir)
   end
