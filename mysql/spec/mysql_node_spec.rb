@@ -95,15 +95,10 @@ describe "Mysql server node" do
     end
   end
 
-  it "should kill long query" do
-    pending "TODO: figure out how to write a slow query in test..."
-    EM.run do
-      EM.stop
-    end
-  end
-
   it "should kill long transaction" do
     EM.run do
+      # reduce max_long_tx to accelerate test
+      @opts[:max_long_tx]=2
       @node = VCAP::Services::Mysql::Node.new(@opts)
       conn = connect_to_mysql(@db)
       # prepare a transaction and not commit
