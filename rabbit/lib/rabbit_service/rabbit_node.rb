@@ -51,8 +51,12 @@ class VCAP::Services::Rabbit::Node
 
 	def start
     @logger.info("Starting rabbit service node...")
-	  start_db
+    start_db
     start_server
+    true
+  rescue
+    @logger.warn(e)
+    nil
   end
 
 	def start_db
@@ -78,7 +82,7 @@ class VCAP::Services::Rabbit::Node
 
 		@available_memory -= service.memory
 
-		save_provisioned_service(service)
+		save_service(service)
 
     add_vhost(service.vhost)
     add_user(service.admin_username, service.admin_password)
@@ -93,20 +97,28 @@ class VCAP::Services::Rabbit::Node
 			"pass" => service.admin_password
     }
   rescue => e
-		@available_memory += service.memory
     @logger.warn(e)
+    # Rollback
+      begin
+        @available_memory += service.memory
+        delete_user(service.admin_username)
+        delete_vhost(service.vhost)
+        destroy_service
+      rescue => e
+        # Ignore the exception here
+      end
 		nil
   end
 
   def unprovision(service_id, handles = {})
-    service = get_provisioned_service(service_id)
+    service = get_service(service_id)
 		# Delete all bindings in this service
 		handles.each do |handle|
 		  unbind(handle)
 		end
     delete_user(service.admin_username)
     delete_vhost(service.vhost)
-		destroy_provisioned_service(service)
+		destroy_service(service)
     @available_memory += service.memory
 		true
   rescue => e
@@ -116,7 +128,7 @@ class VCAP::Services::Rabbit::Node
 
   def bind(service_id, binding_options = :all)
 	  handle = {}
-		service = get_provisioned_service(service_id)
+		service = get_service(service_id)
 		handle["hostname"] = @local_ip
     handle["port"] = @rabbit_port
 		handle["user"] = "u" + generate_credential
@@ -139,38 +151,38 @@ class VCAP::Services::Rabbit::Node
 		nil
   end
 
-	def save_provisioned_service(provisioned_service)
-		raise "Could not save service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.save
+	def save_service(service)
+		raise IOError, "Could not save service: #{service.errors.pretty_inspect}" unless service.save
 	end
 
-	def destroy_provisioned_service(provisioned_service)
-    raise "Could not delete service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
+	def destroy_service(service)
+    raise IOError, "Could not delete service: #{service.errors.pretty_inspect}" unless service.destroy
 	end
 
-	def get_provisioned_service(service_id)
-    provisioned_service = ProvisionedService.get(service_id)
-		raise "Could not find service: #{service_id}" if provisioned_service.nil?
-		provisioned_service
+	def get_service(service_id)
+    service = ProvisionedService.get(service_id)
+		raise IOError, "Could not find service: #{service_id}" if service.nil?
+		service
 	end
 
   def start_server
-    %x[#{@rabbit_server} -detached]
+    raise "Cannot start rabbitmq server" unless %x[#{@rabbit_server} -detached] == "Activating RabbitMQ plugins ...\n0 plugins activated:\n\n"
   end
 
   def add_vhost(vhost)
-    %x[#{@rabbit_ctl} add_vhost #{vhost}]
+    raise "Add vhost failed" unless %x[#{@rabbit_ctl} add_vhost #{vhost}].split(/\n/)[-1] == "...done."
   end
 
   def delete_vhost(vhost)
-    %x[#{@rabbit_ctl} delete_vhost #{vhost}]
+    raise "Delete vhost failed" unless %x[#{@rabbit_ctl} delete_vhost #{vhost}] == "...done."
   end
 
   def add_user(username, password)
-    %x[#{@rabbit_ctl} add_user #{username} #{password}]
+    raise "Add user failed" unless %x[#{@rabbit_ctl} add_user #{username} #{password}] == "...done."
   end
 
   def delete_user(username)
-    %x[#{@rabbit_ctl} delete_user #{username}]
+    raise "Delete user failed" unless %x[#{@rabbit_ctl} delete_user #{username}] == "...done."
   end
 
 	def get_permissions(binding_options)
@@ -178,7 +190,7 @@ class VCAP::Services::Rabbit::Node
 	end
 
   def set_permissions(vhost, username, permissions)
-    %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions}]
+    raise "Set permissions failed" unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions}] == "...done."
   end
 
   def generate_credential(length = 12)

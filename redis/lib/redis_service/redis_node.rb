@@ -59,17 +59,17 @@ class VCAP::Services::Redis::Node
   end
 
   def start
-    raise "Could not setup local db" unless start_db
+    start_db
     start_services
+    true
+  rescue
+    @logger.warn(e)
+    nil
   end
 
   def start_db
     DataMapper.setup(:default, @local_db)
     DataMapper::auto_upgrade!
-    true
-  rescue => e
-    @logger.warn(e)
-    nil
   end
 
   def start_services
