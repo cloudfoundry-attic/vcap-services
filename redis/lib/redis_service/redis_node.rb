@@ -156,17 +156,17 @@ class VCAP::Services::Redis::Node
   def save_service(service)
     unless service.save
       stop_instance(service)
-      raise "Could not save entry: #{service.errors.pretty_inspect}"
+      raise IOError, "Could not save entry: #{service.errors.pretty_inspect}"
     end
   end
 
   def destroy_service(service)
-    raise "Could not delete service: #{service.errors.pretty_inspect}" unless service.destroy
+    raise IOError, "Could not delete service: #{service.errors.pretty_inspect}" unless service.destroy
   end
 
   def get_service(name)
     service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if service.nil?
+    raise IOError, "Could not find service: #{name}" if service.nil?
     service
   end
 
@@ -222,7 +222,7 @@ class VCAP::Services::Redis::Node
     case service.plan
       when :free then 16
       else
-        raise "Invalid plan: #{service.plan}"
+        raise ArgumentError, "Invalid plan: #{service.plan}"
     end
   end
 
