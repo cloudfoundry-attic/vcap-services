@@ -75,14 +75,22 @@ describe "Mysql server node" do
     end
   end
 
-  it "should not be possible to access one database with another one's credentials " do
+  it "should not be possible to access one database using null or wrong credential" do
     EM.run do
       plan = "free"
       db2= @node.provision(plan)
       @test_dbs[db2] = []
-      db1 = @db.clone
-      db1["name"] = db2["name"]
-      lambda {connect_to_mysql(db1)}.should raise_error
+      fake_creds = []
+      3.times {fake_creds << @db.clone}
+      # try to login other's db
+      fake_creds[0]["name"] = db2["name"]
+      # try to login using null credential
+      fake_creds[1]["password"] = nil
+      # try to login using root account
+      fake_creds[2]["user"] = "root"
+      fake_creds.each do |creds|
+        lambda {connect_to_mysql(creds)}.should raise_error
+      end
       EM.stop
     end
   end
