@@ -26,8 +26,10 @@ describe VCAP::Services::MongoDB::Node do
       @original_memory = @node.available_memory
 
       @resp = @node.provision("free")
-      sleep 1
-      EM.stop
+
+      EM.add_timer(1) do
+        EM.stop
+      end
     end
   end
 
