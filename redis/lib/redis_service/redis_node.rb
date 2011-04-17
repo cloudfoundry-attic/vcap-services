@@ -19,6 +19,13 @@ module VCAP
   end
 end
 
+# TODO: these error codes will be defined in base class
+REDIS_SAVE_SERVICE_ERROR = 32001
+REDIS_DESTORY_SERVICE_ERROR = 32002
+REDIS_FIND_SERVICE_ERROR = 32003
+REDIS_STOP_SERVICE_ERROR = 32004
+REDIS_INVALID_PLAN = 32005
+
 require 'redis_service/common'
 
 class VCAP::Services::Redis::Node
@@ -37,6 +44,16 @@ class VCAP::Services::Redis::Node
     def running?
       VCAP.process_running? pid
     end
+  end
+
+  class RedisError < RuntimeError
+    attr_reader :code, :description
+
+    def initialize(code, description)
+      super(description)
+      @code = code
+      @description = description
+    end  
   end
 
   def initialize(options)
@@ -60,11 +77,7 @@ class VCAP::Services::Redis::Node
 
   def start
     start_db
-    start_services
-    true
-  rescue
-    @logger.warn(e)
-    nil
+    start_provisioned_services
   end
 
   def start_db
@@ -72,7 +85,7 @@ class VCAP::Services::Redis::Node
     DataMapper::auto_upgrade!
   end
 
-  def start_services
+  def start_provisioned_services
     ProvisionedService.all.each do |service|
       @free_ports.delete(service.port)
       if service.running?
@@ -110,15 +123,16 @@ class VCAP::Services::Redis::Node
 
     save_service(service)
 
-    response = {
+    credentials = {
       "hostname" => @local_ip,
       "port" => service.port,
       "password" => service.password,
       "name" => service.name
     }
+    [true, credentials]
   rescue => e
     @logger.warn(e)
-    nil
+    [false, {:code => e.code, :description => e.description}]
   end
 
   def unprovision(service_id, handles = {})
@@ -131,42 +145,43 @@ class VCAP::Services::Redis::Node
     @free_ports.add(service.port)
 
     @logger.debug("Successfully fulfilled unprovision request: #{service_id}.")
-    true
+    [true, {}]
   rescue => e
     @logger.warn(e)
-    nil
+    [false, {:code => e.code, :description => e.description}]
   end
 
   def bind(service_id, binding_options = :all)
     service = get_service(service_id)
-    handler = {
+    credentials = {
       "hostname" => @local_ip,
       "port" => service.port,
       "password" => service.password
     }
+    [true, credentials]
   rescue => e
     @logger.warn(e)
-    nil
+    [false, {:code => e.code, :description => e.description}]
   end
 
-  def unbind(handler)
-    true
+  def unbind(credentials)
+    [true, {}]
   end
 
   def save_service(service)
     unless service.save
       stop_instance(service)
-      raise IOError, "Could not save entry: #{service.errors.pretty_inspect}"
+      raise RedisError.new(REDIS_SAVE_SERVICE_ERROR, "Could not save service: #{service.pretty_inspect}")
     end
   end
 
   def destroy_service(service)
-    raise IOError, "Could not delete service: #{service.errors.pretty_inspect}" unless service.destroy
+    raise RedisError.new(REDIS_DESTORY_SERVICE_ERROR, "Could not destroy service: #{service.pretty_inspect}") unless service.destroy
   end
 
   def get_service(name)
     service = ProvisionedService.get(name)
-    raise IOError, "Could not find service: #{name}" if service.nil?
+    raise RedisError.new(REDIS_FIND_SERVICE_ERROR, "Could not find service: #{name}") if service.nil?
     service
   end
 
@@ -213,7 +228,7 @@ class VCAP::Services::Redis::Node
   end
 
   def stop_instance(service)
-    raise ArgumentError unless %x[#{@redis_client_path} -p #{service.port} -a #{service.password} shutdown] == ""
+    raise RedisError.new(REDIS_STOP_SERVICE_ERROR, "Could not stop service: #{service.pretty_inspect}") unless %x[#{@redis_client_path} -p #{service.port} -a #{service.password} shutdown] == ""
     dir = File.join(@base_dir, service.name)
     FileUtils.rm_rf(dir)
   end
@@ -222,7 +237,7 @@ class VCAP::Services::Redis::Node
     case service.plan
       when :free then 16
       else
-        raise ArgumentError, "Invalid plan: #{service.plan}"
+        raise RedisError.new(REDIS_INVALID_PLAN, "Invalid plan: #{service.plan}")
     end
   end
 

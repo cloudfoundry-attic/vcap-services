@@ -109,7 +109,11 @@ describe VCAP::Services::Redis::Node do
     it "should fail when set local db with non-existed file argument" do
       @node.local_db = "sqlite3:/non_existed/non-existed.db"
       @node.logger.level = Logger::ERROR
-      @node.start_db.should be_nil
+      begin
+        @node.start_db
+      rescue => e
+        e.should be
+      end
       @node.logger.level = Logger::DEBUG
       @node.local_db = @options[:local_db]
     end
@@ -119,7 +123,7 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
-  describe 'Node.start_services' do
+  describe 'Node.start_provisioned_services' do
     it "should check whether provisioned service is running or not" do
       EM.run do
         @service.pid = @node.start_instance(@service)
@@ -139,7 +143,7 @@ describe VCAP::Services::Redis::Node do
         @service.pid = @node.start_instance(@service)
         @service.save
         EM.add_timer(1) {
-          @node.start_services
+          @node.start_provisioned_services
           service = VCAP::Services::Redis::Node::ProvisionedService.get(@service.name)
           service.pid.should == @service.pid
           @node.stop_instance(@service)
@@ -155,7 +159,7 @@ describe VCAP::Services::Redis::Node do
         @service.save
         @node.stop_instance(@service)
         EM.add_timer(1) {
-          @node.start_services
+          @node.start_provisioned_services
           service = VCAP::Services::Redis::Node::ProvisionedService.get(@service.name)
           service.pid.should_not == @service.pid
           @node.stop_instance(@service)
@@ -179,28 +183,28 @@ describe VCAP::Services::Redis::Node do
   describe "Node.provision" do
     before :all do
       @old_memory = @node.available_memory
-      @response = @node.provision(:free)
+      @credentials = @node.provision(:free)[1]
       sleep 1
     end
 
     after :all do
-      @node.unprovision(@response["name"])
+      @node.unprovision(@credentials["name"])
     end
 
     it "should access the service instance using the credentials returned by sucessful provision" do
-      %x[#{@options[:redis_client_path]} -p #{@response["port"]} -a #{@response["password"]} get test].should == "\n"
+      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a #{@credentials["password"]} get test].should == "\n"
     end
 
     it "should not allow null credentials to access the service instance" do
-      %x[#{@options[:redis_client_path]} -p #{@response["port"]} get test].should == "ERR operation not permitted\n"
+      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} get test].should == "ERR operation not permitted\n"
     end
 
     it "should not allow wrong credentials to access the service instance" do
-      %x[#{@options[:redis_client_path]} -p #{@response["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
+      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
     end
 
     it "should delete the provisioned service port in free port list when finish a provision" do
-      @node.free_ports.include?(@response["port"]).should == false
+      @node.free_ports.include?(@credentials["port"]).should == false
     end
 
     it "should decrease available memory when finish a provision" do
@@ -208,27 +212,27 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should send provision messsage when finish a provision" do
-      @response["hostname"].should be
-      @response["port"].should be
-      @response["password"].should be
-      @response["name"].should be
+      @credentials["hostname"].should be
+      @credentials["port"].should be
+      @credentials["password"].should be
+      @credentials["name"].should be
     end
   end
 
   describe "Node.unprovision" do
     before :all do
-      @response = @node.provision(:free)
+      @credentials = @node.provision(:free)[1]
       @old_memory = @node.available_memory
       sleep 1
-      @node.unprovision(@response["name"])
+      @node.unprovision(@credentials["name"])
     end
 
     it "should not access the service instance when doing unprovision" do
-      %x[#{@options[:redis_client_path]} -p #{@response["port"]} -a #{@response["password"]} get test].should_not == "\n"
+      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a #{@credentials["password"]} get test].should_not == "\n"
     end
 
     it "should add the provisioned service port in free port list when finish an unprovision" do
-      @node.free_ports.include?(@response["port"]).should == true
+      @node.free_ports.include?(@credentials["port"]).should == true
     end
 
     it "should increase available memory when finish an unprovision" do
@@ -237,7 +241,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should raise error when unprovision an non-existed name" do
       @node.logger.level = Logger::ERROR
-      @node.unprovision("non-existed").should be_nil
+      @node.unprovision("non-existed")[0].should == false
       @node.logger.level = Logger::DEBUG
     end
   end
@@ -249,7 +253,7 @@ describe VCAP::Services::Redis::Node do
       begin
         @node.save_service(@service)
       rescue => e
-        e.class.should == IOError
+        e.class.should == VCAP::Services::Redis::Node::RedisError
       end
     end
   end
@@ -259,7 +263,7 @@ describe VCAP::Services::Redis::Node do
       begin
         @node.destroy_service(@service)
       rescue => e
-        e.class.should == IOError
+        e.class.should == VCAP::Services::Redis::Node::RedisError
         @node.destroy_service(@service)
       end
     end
@@ -270,52 +274,52 @@ describe VCAP::Services::Redis::Node do
       begin
         @node.get_service("non-existed")
       rescue => e
-        e.class.should == IOError
+        e.class.should == VCAP::Services::Redis::Node::RedisError
       end
     end
   end
 
   describe "Node.bind" do
     before :all do
-      @response = @node.provision(:free)
+      @service_credentials = @node.provision(:free)[1]
       sleep 1
-      @handle = @node.bind(@response["name"])
+      @binding_credentials = @node.bind(@service_credentials["name"])[1]
       sleep 1
     end
 
     after :all do
-      @node.unbind(@handle)
+      @node.unbind(@binding_credentials)
       sleep 1
-      @node.unprovision(@response["name"])
+      @node.unprovision(@service_credentials["name"])
     end
 
     it "should access redis server use the returned credential" do
-      %x[#{@options[:redis_client_path]} -p #{@handle["port"]} -a #{@handle["password"]} get test].should == "\n"
+      %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} -a #{@binding_credentials["password"]} get test].should == "\n"
     end
 
     it "should not allow null credentials to access the service instance" do
-      %x[#{@options[:redis_client_path]} -p #{@handle["port"]} get test].should == "ERR operation not permitted\n"
+      %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} get test].should == "ERR operation not permitted\n"
     end
 
     it "should not allow wrong credentials to access the service instance" do
-      %x[#{@options[:redis_client_path]} -p #{@handle["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
+      %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
     end
 
     it "should send binding messsage when finish a binding" do
-      @handle["hostname"].should be
-      @handle["port"].should be
-      @handle["password"].should be
+      @binding_credentials["hostname"].should be
+      @binding_credentials["port"].should be
+      @binding_credentials["password"].should be
     end
   end
 
   describe "Node.unbind" do
     it "should return true when finish an unbinding" do
-      @response = @node.provision(:free)
+      @service_credentials = @node.provision(:free)[1]
       sleep 1
-      @handle = @node.bind(@response["name"])
+      @binding_credentials = @node.bind(@service_credentials["name"])[1]
       sleep 1
-      @node.unbind(@handle).should == true
-      @node.unprovision(@response["name"])
+      @node.unbind(@binding_credentials)[0].should == true
+      @node.unprovision(@service_credentials["name"])
     end
   end
 
@@ -332,7 +336,7 @@ describe VCAP::Services::Redis::Node do
       begin
         @node.memory_for_service(service)
       rescue => e
-        e.class.should == ArgumentError
+        e.class.should == VCAP::Services::Redis::Node::RedisError
       end
     end
   end
