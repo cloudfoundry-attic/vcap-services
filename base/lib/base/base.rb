@@ -53,9 +53,9 @@ class VCAP::Services::Base::Base
     @node_nats.close
   end
 
-  # Subclasses VCAP::Services::Base::{Node,Provisioner} must the
-  # following methods. (But note that actual service implementations
-  # should NOT need to touch these!)
+  # Subclasses VCAP::Services::Base::{Node,Provisioner} implement the
+  # following methods. (Note that actual service Provisioner or Node
+  # implementations should NOT need to touch these!)
   abstract :on_connect_node
   abstract :flavor # "Provisioner" or "Node"
   abstract :varz_details
