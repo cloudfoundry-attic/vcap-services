@@ -272,13 +272,26 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  # subclasses must implement the following methods
+  def varz_details()
+    # Service Provisioner subclasses may want to override this method
+    # to provide service specific data beyond the following
+    varz = {
+      :nodes => @nodes,
+      :prov_svcs => @prov_scvs
+    }
+    return varz
+  end
 
-  # node_score(node) -> number.  provisioners are expected to
-  # provision on the "best" node (lowest load, most free capacity,
-  # etc). this method should return a number; higher scores represent
-  # "better" nodes; negative/zero scores mean that a node should be
-  # ignored
+  # Service Provisioner subclasses must implement the following
+  # methods
+
+  # node_score(node) -> number.  this base class provisions on the
+  # "best" node (lowest load, most free capacity, etc). this method
+  # should return a number; higher scores represent "better" nodes;
+  # negative/zero scores mean that a node should be ignored
   abstract :node_score
+
+  # service_name() --> string
+  # (inhereted from VCAP::Services::Base::Base)
 
 end
