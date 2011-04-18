@@ -1,6 +1,7 @@
 require File.dirname(__FILE__) + '/spec_helper'
 
 require 'redis_service/redis_node'
+require 'redis_service/redis_error'
 
 module VCAP
   module Services
@@ -183,7 +184,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.provision" do
     before :all do
       @old_memory = @node.available_memory
-      @credentials = @node.provision(:free)[1]
+      @credentials = @node.provision(:free)
       sleep 1
     end
 
@@ -221,7 +222,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.unprovision" do
     before :all do
-      @credentials = @node.provision(:free)[1]
+      @credentials = @node.provision(:free)
       @old_memory = @node.available_memory
       sleep 1
       @node.unprovision(@credentials["name"])
@@ -240,9 +241,11 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should raise error when unprovision an non-existed name" do
-      @node.logger.level = Logger::ERROR
-      @node.unprovision("non-existed")[0].should == false
-      @node.logger.level = Logger::DEBUG
+      begin
+        @node.unprovision("non-existed")
+      rescue => e
+        e.class.should == VCAP::Services::Redis::RedisError
+      end
     end
   end
 
@@ -253,7 +256,7 @@ describe VCAP::Services::Redis::Node do
       begin
         @node.save_service(@service)
       rescue => e
-        e.class.should == VCAP::Services::Redis::Node::RedisError
+        e.class.should == VCAP::Services::Redis::RedisError
       end
     end
   end
@@ -263,7 +266,7 @@ describe VCAP::Services::Redis::Node do
       begin
         @node.destroy_service(@service)
       rescue => e
-        e.class.should == VCAP::Services::Redis::Node::RedisError
+        e.class.should == VCAP::Services::Redis::RedisError
         @node.destroy_service(@service)
       end
     end
@@ -274,16 +277,16 @@ describe VCAP::Services::Redis::Node do
       begin
         @node.get_service("non-existed")
       rescue => e
-        e.class.should == VCAP::Services::Redis::Node::RedisError
+        e.class.should == VCAP::Services::Redis::RedisError
       end
     end
   end
 
   describe "Node.bind" do
     before :all do
-      @service_credentials = @node.provision(:free)[1]
+      @service_credentials = @node.provision(:free)
       sleep 1
-      @binding_credentials = @node.bind(@service_credentials["name"])[1]
+      @binding_credentials = @node.bind(@service_credentials["name"])
       sleep 1
     end
 
@@ -314,11 +317,11 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.unbind" do
     it "should return true when finish an unbinding" do
-      @service_credentials = @node.provision(:free)[1]
+      @service_credentials = @node.provision(:free)
       sleep 1
-      @binding_credentials = @node.bind(@service_credentials["name"])[1]
+      @binding_credentials = @node.bind(@service_credentials["name"])
       sleep 1
-      @node.unbind(@binding_credentials)[0].should == true
+      @node.unbind(@binding_credentials).should == {}
       @node.unprovision(@service_credentials["name"])
     end
   end
@@ -330,13 +333,13 @@ describe VCAP::Services::Redis::Node do
       @node.memory_for_service(service).should == 16
     end
 
-    it "should raise ArgumentError when give wrong plan name" do
+    it "should raise error when give wrong plan name" do
       service = VCAP::Services::Redis::Node::ProvisionedService.new
       service.plan = :non_existed_plan
       begin
         @node.memory_for_service(service)
       rescue => e
-        e.class.should == VCAP::Services::Redis::Node::RedisError
+        e.class.should == VCAP::Services::Redis::RedisError
       end
     end
   end
