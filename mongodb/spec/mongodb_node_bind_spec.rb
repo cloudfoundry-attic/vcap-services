@@ -26,12 +26,13 @@ describe VCAP::Services::MongoDB::Node do
 
       @node = Node.new(@opts)
       @resp = @node.provision("free")
-      sleep 1
 
-      @bind_resp = @node.bind(@resp['name'], 'rw')
-      sleep 1
-
-      EM.stop
+      EM.add_timer(1) do
+        @bind_resp = @node.bind(@resp['name'], 'rw')
+        EM.add_timer(1) do
+          EM.stop
+        end
+      end
     end
   end
 
@@ -96,8 +97,9 @@ describe VCAP::Services::MongoDB::Node do
     EM.run do
       resp  = @node.unbind(@bind_resp)
       resp.should be_true
-      sleep 1
-      EM.stop
+      EM.add_timer(1) do
+        EM.stop
+      end
     end
   end
 
