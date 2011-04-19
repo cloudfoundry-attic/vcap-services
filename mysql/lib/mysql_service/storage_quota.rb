@@ -8,12 +8,14 @@ class VCAP::Services::Mysql::Node
   DATA_LENGTH_FIELD = 6
 
   def db_size(db)
-    table_status = @connection.query('show table status from ' + db)
-    sum = 0
-    table_status.each do |x|
-      sum += x[DATA_LENGTH_FIELD].to_i
-    end
-    sum
+    # calculate both index and table size
+    dbs = @connection.query("SELECT sum( data_length + index_length) 'size'
+                              FROM information_schema.TABLES
+                              WHERE table_schema = '#{db}'
+                              GROUP BY table_schema ;")
+    res = 0
+    dbs.each {|i| res+=i[0].to_i}
+    res
   end
 
   def kill_user_sessions(target_user, target_db)

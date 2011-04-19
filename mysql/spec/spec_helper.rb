@@ -14,7 +14,7 @@ include VCAP::Services::Mysql::Util
 
 def getLogger()
   logger = Logger.new( STDOUT)
-  logger.level = Logger::DEBUG
+  logger.level = Logger::ERROR
   return logger
 end
 
