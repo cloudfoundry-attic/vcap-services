@@ -13,6 +13,9 @@ require 'thread'
 require 'json_message'
 require 'services/api'
 
+$:.unshift(File.expand_path("../../base/lib", __FILE__))
+require 'base/service_error'
+
 module VCAP
   module Services
   end
@@ -23,10 +26,10 @@ end
 #
 # TODO(mjp): This needs to handle unknown routes
 class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
+
+  include VCAP::Services::Base::Error
+
   REQ_OPTS            = %w(service token provisioner cloud_controller_uri).map {|o| o.to_sym}
-  SERVICE_UNAVAILABLE = [503, {'Content-Type' => Rack::Mime.mime_type('.json')}, '{}']
-  NOT_FOUND           = [404, {'Content-Type' => Rack::Mime.mime_type('.json')}, '{}']
-  UNAUTHORIZED        = [401, {'Content-Type' => Rack::Mime.mime_type('.json')}, '{}']
 
   # Allow our exception handlers to take over
   set :raise_errors, Proc.new {false}
@@ -85,14 +88,21 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Validate the incoming request
   before do
-    abort_request('headers' => 'Invalid Content-Type') unless request.media_type == Rack::Mime.mime_type('.json')
-    halt(*UNAUTHORIZED) unless auth_token && (auth_token == @token)
+    unless request.media_type == Rack::Mime.mime_type('.json')
+      error_msg = ServiceError.new(ServiceError::INVALID_CONTENT).to_hash
+      abort_request(error_msg)
+    end
+    unless auth_token && (auth_token == @token)
+      error_msg = ServiceError.new(ServiceError::NOT_AUTHORIZED).to_hash
+      abort_request(error_msg)
+    end
     content_type :json
   end
 
   # Handle errors that result from malformed requests
   error [JsonMessage::ValidationError, JsonMessage::ParseError] do
-    abort_request(request.env['sinatra.error'].to_s)
+    error_msg = ServiceError.new(ServiceError::MALFORMATTED_REQ).to_hash
+    abort_request(error_msg)
   end
 
   #################### Handlers ####################
@@ -101,19 +111,19 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   #
   post '/gateway/v1/configurations' do
     req = VCAP::Services::Api::ProvisionRequest.decode(request_body)
-
     @logger.debug("Provision request for label=#{req.label} plan=#{req.plan}")
 
     name, version = VCAP::Services::Api::Util.parse_label(req.label)
     unless (name == @service[:name]) && (version == @service[:version])
-      abort_request('Unknown label')
+      error_msg = ServiceError.new(ServiceError::UNKNOWN_LABEL).to_hash
+      abort_request(error_msg)
     end
 
-    @provisioner.provision_service(version, req.plan) do |svc|
-      if svc
-        async_reply(VCAP::Services::Api::ProvisionResponse.new(svc).encode)
+    @provisioner.provision_service(version, req.plan) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::ProvisionResponse.new(msg['response']).encode)
       else
-        async_reply_raw(*SERVICE_UNAVAILABLE)
+        async_reply_error(msg['response'])
       end
     end
     async_mode
@@ -124,11 +134,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   delete '/gateway/v1/configurations/:service_id' do
     @logger.debug("Unprovision request for service_id=#{params['service_id']}")
 
-    @provisioner.unprovision_service(params['service_id']) do |success|
-      if success
+    @provisioner.unprovision_service(params['service_id']) do |msg|
+      if msg['success']
         async_reply
       else
-        async_abort_request('Unknown service')
+        async_reply_error(msg['response'])
       end
     end
     async_mode
@@ -142,11 +152,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     req = VCAP::Services::Api::GatewayBindRequest.decode(request_body)
     @logger.debug("Binding options: #{req.binding_options.inspect}")
 
-    @provisioner.bind_instance(req.service_id, req.binding_options) do |handle|
-      if handle
-        async_reply(VCAP::Services::Api::GatewayBindResponse.new(handle).encode)
+    @provisioner.bind_instance(req.service_id, req.binding_options) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::GatewayBindResponse.new(msg['response']).encode)
       else
-        async_reply_raw(*NOT_FOUND)
+        async_reply_error(msg['response'])
       end
     end
     async_mode
@@ -159,11 +169,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
     req = VCAP::Services::Api::GatewayUnbindRequest.decode(request_body)
 
-    @provisioner.unbind_instance(req.service_id, req.handle_id, req.binding_options) do |success|
-      if success
+    @provisioner.unbind_instance(req.service_id, req.handle_id, req.binding_options) do |msg|
+      if msg['success']
         async_reply
       else
-        async_reply_raw(*NOT_FOUND)
+        async_reply_error(msg['response'])
       end
     end
     async_mode
@@ -176,9 +186,9 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     # Aborts the request with the supplied errs
     #
     # +errs+  Hash of section => err
-    def abort_request(errs)
-      err_body = {'errors' => errs}.to_json()
-      halt(410, {'Content-Type' => Rack::Mime.mime_type('.json')}, err_body)
+    def abort_request(error_msg)
+      err_body = error_msg['msg'].to_json()
+      halt(error_msg['status'], {'Content-Type' => Rack::Mime.mime_type('.json')}, err_body)
     end
 
     def auth_token
@@ -199,8 +209,17 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
     def async_mode(timeout=10)
       request.env['__async_timer'] = EM.add_timer(timeout) do
-        request.env['async.callback'].call(SERVICE_UNAVAILABLE)
-      end
+        @logger.warn("Service Unavailable")
+        error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
+        err_body = error_msg['msg'].to_json()
+        request.env['async.callback'].call(
+          [
+            error_msg['status'],
+            {'Content-Type' => Rack::Mime.mime_type('.json')},
+            err_body
+          ]
+        )
+      end unless request.env['done'] ||= false
       throw :async
     end
 
@@ -208,14 +227,16 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       async_reply_raw(200, {'Content-Type' => Rack::Mime.mime_type('.json')}, resp)
     end
 
-    def async_abort_request(errs)
-      err_body = {'errors' => errs}.to_json()
-      async_reply_raw(410, {'Content-Type' => Rack::Mime.mime_type('.json')}, err_body)
-    end
-
     def async_reply_raw(status, headers, body)
+      @logger.debug("Reply status:#{status}, headers:#{headers}, body:#{body}")
+      request.env['done'] = true
       EM.cancel_timer(request.env['__async_timer']) if request.env['__async_timer']
       request.env['async.callback'].call([status, headers, body])
+    end
+
+    def async_reply_error(error_msg)
+      err_body = error_msg['msg'].to_json()
+      async_reply_raw(error_msg['status'], {'Content-Type' => Rack::Mime.mime_type('.json')}, err_body)
     end
   end
 
