@@ -64,6 +64,18 @@ describe VCAP::Services::MongoDB::Node do
     end
   end
 
+  it "should return error when unprovisioning a non-existed instance" do
+    EM.run do
+      e = nil
+      begin
+        @node.unprovision('no existed', [])
+      rescue => e
+      end
+      e.should_not be_nil
+      EM.stop
+    end
+  end
+
   # unprovision here
   it "should be able to unprovision an existing instance" do
     EM.run do
