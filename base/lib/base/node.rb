@@ -46,9 +46,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     response = provision(plan)
     response["node_id"] = @node_id
     @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
-    @node_nats.publish(reply, Yajl::Encoder.encode(response))
+    @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(e))
   end
 
   def on_unprovision(msg, reply)
@@ -56,9 +57,11 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     unprovision_message = Yajl::Parser.parse(msg)
     name     = unprovision_message["name"]
     bindings = unprovision_message["bindings"]
-    unprovision(name, bindings)
+    response = unprovision(name, bindings)
+    @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(e))
   end
 
   def on_bind(msg, reply)
@@ -67,17 +70,20 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     name      = bind_message["name"]
     bind_opts = bind_message["bind_opts"]
     response = bind(name, bind_opts)
-    @node_nats.publish(reply, Yajl::Encoder.encode(response))
+    @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(e))
   end
 
   def on_unbind(msg, reply)
     @logger.debug("#{service_description}: Unbind request: #{msg} from #{reply}")
     unbind_message = Yajl::Parser.parse(msg)
     response = unbind(unbind_message)
+    @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(e))
   end
 
   def on_discover(reply)

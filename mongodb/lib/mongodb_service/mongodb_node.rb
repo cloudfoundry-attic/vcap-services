@@ -156,7 +156,6 @@ class VCAP::Services::MongoDB::Node
     end
 
     response = {
-      # "node_id" => @node_id,   removed by nick
       "hostname" => @local_ip,
       "port" => provisioned_service.port,
       "password" => provisioned_service.password,
@@ -165,16 +164,15 @@ class VCAP::Services::MongoDB::Node
     }
     @logger.debug("response: #{response}")
     return response
-  rescue => e
-    @logger.warn(e)
   end
 
   def unprovision(name, bindings)
     provisioned_service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if provisioned_service.nil?
+    raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     cleanup_service(provisioned_service)
     @logger.debug("Successfully fulfilled unprovision request: #{name}.")
+    true
   end
 
   def cleanup_service(provisioned_service)
@@ -226,9 +224,6 @@ class VCAP::Services::MongoDB::Node
 
     @logger.debug("response: #{response}")
     response
-  rescue => e
-    @logger.warn(e)
-    nil
   end
 
   def unbind(credentials)
@@ -236,7 +231,7 @@ class VCAP::Services::MongoDB::Node
 
     name = credentials['name']
     provisioned_service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if provisioned_service.nil?
+    raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     # FIXME  Current implementation: Delete self
     #        Here I presume the user to be deleted is RW user
@@ -249,9 +244,7 @@ class VCAP::Services::MongoDB::Node
       })
 
     @logger.debug("Successfully unbind #{credentials}")
-  rescue => e
-    @logger.warn(e)
-    nil
+    true
   end
 
   def start_instance(provisioned_service)
@@ -350,11 +343,9 @@ class VCAP::Services::MongoDB::Node
         end
       rescue => e
         @logger.warn("add user #{options[:username]} failed! #{e}")
+        raise e
       end
     end
-  rescue => e
-    @logger.warn(e)
-    raise e
   end
 
   def mongodb_add_user(options)
