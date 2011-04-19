@@ -6,6 +6,7 @@ require 'nats/client'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'abstract'
+require 'service_error'
 
 module VCAP
   module Services
@@ -17,6 +18,8 @@ module VCAP
 end
 
 class VCAP::Services::Base::Base
+
+  include VCAP::Services::Base::Error
 
   def initialize(options)
     @logger = options[:logger]
