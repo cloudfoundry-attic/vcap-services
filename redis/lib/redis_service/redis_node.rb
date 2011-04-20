@@ -104,9 +104,20 @@ class VCAP::Services::Redis::Node
     service.plan     = plan
     service.password = UUIDTools::UUID.random_create.to_s
     service.memory   = @max_memory
-    service.pid      = start_instance(service)
-
-    save_service(service)
+    begin
+      service.pid = start_instance(service)
+      save_service(service)
+    rescue => e1
+      begin
+        @free_ports.add(service.port)
+        @available_memory += service.memory
+        stop_instance(service)
+        destroy_service(service)
+      rescue => e2
+        # Ignore the rollback exception
+      end
+      raise e1
+    end
 
     credentials = {
       "hostname" => @local_ip,
@@ -164,11 +175,11 @@ class VCAP::Services::Redis::Node
 
     # FIXME: it need call mememory_for_service() to get the memory according to the plan in the further.
     memory = @max_memory
+    @available_memory -= memory
 
     pid = fork
     if pid
       @logger.debug("Service #{service.name} started with pid #{pid}")
-      @available_memory -= memory
       # In parent, detch the child.
       Process.detach(pid)
       pid
