@@ -1,4 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
+$:.unshift(File.dirname(__FILE__))
 require 'spec_helper'
 require 'mysql_service/node'
 require 'mysql_service/mysql_error'
