@@ -199,8 +199,12 @@ class VCAP::Services::Mysql::Node
     # TODO: validate that database files are not lingering
     storage = storage_for_service(provisioned_service)
     @available_storage += storage
-    # Delete all bindings
-    credentials.each{ |credential| unbind(credential)} if credentials
+    # Delete all bindings, ignore not_found error since we are unprovision
+    begin
+      credentials.each{ |credential| unbind(credential)} if credentials
+    rescue =>e
+      # ignore
+    end
     if not provisioned_service.destroy
       @logger.error("Could not delete service: #{provisioned_service.errors.pretty_inspect}")
       raise MysqlError.new(MysqError::MYSQL_LOCAL_DB_ERROR)
@@ -290,7 +294,7 @@ class VCAP::Services::Mysql::Node
     @connection.query("DROP USER #{user}")
     @connection.query("DROP USER #{user}@'localhost'")
   rescue Mysql::Error => e
-    @logger.fatal("Could not delete user: [#{e.errno}] #{e.error}")
+    @logger.fatal("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
   end
 
   def gen_credential(name, user, passwd)
