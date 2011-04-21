@@ -54,14 +54,14 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   before :each do
-    @service = VCAP::Services::Rabbit::Node::ProvisionedService.new
-    @service.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
-    @service.plan = :free
-    @service.plan_option = ""
-    @service.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
-    @service.admin_username = "au" + @node.generate_credential
-    @service.admin_password = "ap" + @node.generate_credential
-    @service.memory = @options[:memory]
+    @instance = VCAP::Services::Rabbit::Node::ProvisionedInstance.new
+    @instance.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
+    @instance.plan = :free
+    @instance.plan_option = ""
+    @instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
+    @instance.admin_username = "au" + @node.generate_credential
+    @instance.admin_password = "ap" + @node.generate_credential
+    @instance.memory = @options[:memory]
 	end
 
   describe "Node.initialize" do
@@ -101,8 +101,10 @@ describe VCAP::Services::Rabbit::Node do
     it "should setup local db with right arguments" do
       @node.start_db.should be
     end
+  end
 
-		it "should start rabbit server with correct options" do
+  describe "Node.start_server" do
+		it "should start rabbit server correctly" do
       @node.start_server.should be
 		end
   end
@@ -128,7 +130,7 @@ describe VCAP::Services::Rabbit::Node do
       @node.unprovision(@credentials["name"])
     end
 
-    it "should access the service instance using the credentials returned by sucessful provision" do
+    it "should access the instance instance using the credentials returned by sucessful provision" do
 		  EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],
@@ -141,7 +143,7 @@ describe VCAP::Services::Rabbit::Node do
       end
 		end
 
-    it "should not allow null credentials to access the service instance" do
+    it "should not allow null credentials to access the instance instance" do
 		  EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],) do |conn|
@@ -152,7 +154,7 @@ describe VCAP::Services::Rabbit::Node do
       end
     end
 
-    it "should not allow wrong credentials to access the service instance" do
+    it "should not allow wrong credentials to access the instance instance" do
 		  EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],
@@ -187,7 +189,7 @@ describe VCAP::Services::Rabbit::Node do
       sleep 1
     end
 
-    it "should not access the service instance when doing unprovision" do
+    it "should not access the instance instance when doing unprovision" do
 		  EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],
@@ -215,16 +217,16 @@ describe VCAP::Services::Rabbit::Node do
 
 	describe "Node.bind" do
     before :all do
-      @service_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free)
       sleep 1
-      @binding_credentials = @node.bind(@service_credentials["name"])
+      @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
     end
 
     after :all do
       @node.unbind(@binding_credentials)
       sleep 1
-      @node.unprovision(@service_credentials["name"])
+      @node.unprovision(@instance_credentials["name"])
     end
 
     it "should access redis server use the returned credential" do
@@ -240,7 +242,7 @@ describe VCAP::Services::Rabbit::Node do
 			end
     end
 
-    it "should not allow null credentials to access the service instance" do
+    it "should not allow null credentials to access the instance instance" do
 		  EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],) do |conn|
@@ -251,7 +253,7 @@ describe VCAP::Services::Rabbit::Node do
       end
     end
 
-    it "should not allow wrong credentials to access the service instance" do
+    it "should not allow wrong credentials to access the instance instance" do
 		  EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],
@@ -274,13 +276,13 @@ describe VCAP::Services::Rabbit::Node do
 
 	describe "Node.unbind" do
     before :all do
-      @service_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free)
       sleep 1
-      @binding_credentials = @node.bind(@service_credentials["name"])
+      @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
       @response = @node.unbind(@binding_credentials)
       sleep 1
-      @node.unprovision(@service_credentials["name"])
+      @node.unprovision(@instance_credentials["name"])
     end
 
     it "should not access redis server after unbinding" do
@@ -301,32 +303,32 @@ describe VCAP::Services::Rabbit::Node do
     end
 	end
 
-  describe "Node.save_service" do
-    it "shuold raise error when save service instance failed" do
-      @service.persisted_state=DataMapper::Resource::State::Immutable
+  describe "Node.save_instance" do
+    it "shuold raise error when save instance instance failed" do
+      @instance.persisted_state=DataMapper::Resource::State::Immutable
       begin
-        @node.save_service(@service)
+        @node.save_instance(@instance)
       rescue => e
         e.class.should == VCAP::Services::Rabbit::RabbitError
       end
     end
   end
 
-  describe "Node.destory_service" do
-    it "shuold raise error when destroy service instance failed" do
+  describe "Node.destory_instance" do
+    it "shuold raise error when destroy instance instance failed" do
       begin
-        service = VCAP::Services::Rabbit::Node::ProvisionedService.new
-        @node.destroy_service(service)
+        instance = VCAP::Services::Rabbit::Node::ProvisionedInstance.new
+        @node.destroy_instance(instance)
       rescue => e
         e.class.should == VCAP::Services::Rabbit::RabbitError
       end
     end
   end
 
-  describe "Node.get_service" do
-    it "shuold raise error when get service instance failed" do
+  describe "Node.get_instance" do
+    it "shuold raise error when get instance instance failed" do
       begin
-        @node.get_service("non-existed")
+        @node.get_instance("non-existed")
       rescue => e
         e.class.should == VCAP::Services::Rabbit::RabbitError
       end

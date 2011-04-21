@@ -25,7 +25,7 @@ class VCAP::Services::Rabbit::Node
 	include VCAP::Services::Rabbit::Common
   include VCAP::Services::Rabbit
 
-  class ProvisionedService
+  class ProvisionedInstance
     include DataMapper::Resource
     property :name,            String,      :key => true
     property :vhost,           String,      :required => true
@@ -52,7 +52,7 @@ class VCAP::Services::Rabbit::Node
 	end
 
 	def start
-    @logger.info("Starting rabbit service node...")
+    @logger.info("Starting rabbit instance node...")
     start_db
     start_server
   end
@@ -69,65 +69,65 @@ class VCAP::Services::Rabbit::Node
 	end
 
   def provision(plan)
-    service = ProvisionedService.new
-    service.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
-    service.plan = plan
-    service.plan_option = ""
-    service.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
-    service.admin_username = "au" + generate_credential
-    service.admin_password = "ap" + generate_credential
-    service.memory   = @max_memory
+    instance = ProvisionedInstance.new
+    instance.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
+    instance.plan = plan
+    instance.plan_option = ""
+    instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
+    instance.admin_username = "au" + generate_credential
+    instance.admin_password = "ap" + generate_credential
+    instance.memory   = @max_memory
 
-		@available_memory -= service.memory
+		@available_memory -= instance.memory
 
-		save_service(service)
+		save_instance(instance)
 
-    add_vhost(service.vhost)
-    add_user(service.admin_username, service.admin_password)
-    set_permissions(service.vhost, service.admin_username, '".*" ".*" ".*"')
+    add_vhost(instance.vhost)
+    add_user(instance.admin_username, instance.admin_password)
+    set_permissions(instance.vhost, instance.admin_username, '".*" ".*" ".*"')
 
     credentials = {
-			"name" => service.name,
+			"name" => instance.name,
 			"hostname" => @local_ip,
       "port"  => @rabbit_port,
-			"vhost" => service.vhost,
-			"user" => service.admin_username,
-			"pass" => service.admin_password
+			"vhost" => instance.vhost,
+			"user" => instance.admin_username,
+			"pass" => instance.admin_password
     }
   rescue => e
     # Rollback
       begin
-        @available_memory += service.memory
-        destroy_service(service)
-        delete_vhost(service.vhost)
-        delete_user(service.admin_username)
+        @available_memory += instance.memory
+        destroy_instance(instance)
+        delete_vhost(instance.vhost)
+        delete_user(instance.admin_username)
       rescue => e
         # Ignore the exception here
       end
     raise e
   end
 
-  def unprovision(service_id, credentials_list = [])
-    service = get_service(service_id)
-		# Delete all bindings in this service
+  def unprovision(instance_id, credentials_list = [])
+    instance = get_instance(instance_id)
+		# Delete all bindings in this instance
 		credentials_list.each do |credentials|
 		  unbind(credentials)
 		end
-    delete_user(service.admin_username)
-    delete_vhost(service.vhost)
-		destroy_service(service)
-    @available_memory += service.memory
+    delete_user(instance.admin_username)
+    delete_vhost(instance.vhost)
+		destroy_instance(instance)
+    @available_memory += instance.memory
     {}
   end
 
-  def bind(service_id, binding_options = :all)
+  def bind(instance_id, binding_options = :all)
 	  credentials = {}
-		service = get_service(service_id)
+		instance = get_instance(instance_id)
 		credentials["hostname"] = @local_ip
     credentials["port"] = @rabbit_port
 		credentials["user"] = "u" + generate_credential
 		credentials["pass"] = "p" + generate_credential
-		credentials["vhost"] = service.vhost
+		credentials["vhost"] = instance.vhost
 		add_user(credentials["user"], credentials["pass"])
 		set_permissions(credentials["vhost"], credentials["user"], get_permissions(binding_options))
 
@@ -147,18 +147,18 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
-	def save_service(service)
-		raise RabbitError.new(RabbitError::RABBIT_SAVE_SERVICE_FAILED, service.pretty_inspect) unless service.save
+	def save_instance(instance)
+		raise RabbitError.new(RabbitError::RABBIT_SAVE_SERVICE_FAILED, instance.pretty_inspect) unless instance.save
 	end
 
-	def destroy_service(service)
-		raise RabbitError.new(RabbitError::RABBIT_DESTORY_SERVICE_FAILED, service.pretty_inspect) unless service.destroy
+	def destroy_instance(instance)
+		raise RabbitError.new(RabbitError::RABBIT_DESTORY_SERVICE_FAILED, instance.pretty_inspect) unless instance.destroy
 	end
 
-	def get_service(service_id)
-    service = ProvisionedService.get(service_id)
-		raise RabbitError.new(RabbitError::RABBIT_FIND_SERVICE_FAILED, service_id) if service.nil?
-		service
+	def get_instance(instance_id)
+    instance = ProvisionedInstance.get(instance_id)
+		raise RabbitError.new(RabbitError::RABBIT_FIND_SERVICE_FAILED, instance_id) if instance.nil?
+		instance
 	end
 
   def start_server
@@ -166,9 +166,10 @@ class VCAP::Services::Rabbit::Node
     sleep 1
     # If the guest user is existed, then delete it for security
     begin
+      users = list_users
       users.each do |user|
         if user == "guest"
-          delete_user("guest")
+          delete_user(user)
           break
         end
       end
@@ -202,7 +203,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def list_users
-    data = %x[#{@rabbit_ctl} add_user #{username} #{password}]
+    data = %x[#{@rabbit_ctl} list_users]
     lines = data.split(/\n/)
     raise RabbitError.new(RabbitError::RABBIT_LIST_USER_FAILED) unless lines[-1] == "...done."
     users = []

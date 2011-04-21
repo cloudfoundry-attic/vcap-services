@@ -51,12 +51,12 @@ describe VCAP::Services::Redis::Node do
   end
 
   before :each do
-    @service          = VCAP::Services::Redis::Node::ProvisionedService.new
-    @service.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
-    @service.port     = 11111
-    @service.plan     = :free
-    @service.password = UUIDTools::UUID.random_create.to_s
-    @service.memory   = @options[:max_memory]
+    @instance          = VCAP::Services::Redis::Node::ProvisionedInstance.new
+    @instance.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
+    @instance.port     = 11111
+    @instance.plan     = :free
+    @instance.password = UUIDTools::UUID.random_create.to_s
+    @instance.memory   = @options[:max_memory]
   end
 
   after :all do
@@ -124,47 +124,47 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
-  describe 'Node.start_provisioned_services' do
-    it "should check whether provisioned service is running or not" do
+  describe 'Node.start_provisioned_instances' do
+    it "should check whether provisioned instance is running or not" do
       EM.run do
-        @service.pid = @node.start_instance(@service)
+        @instance.pid = @node.start_instance(@instance)
         EM.add_timer(1) {
-          @service.running?.should == true
-          @node.stop_instance(@service)
+          @instance.running?.should == true
+          @node.stop_instance(@instance)
         }
         EM.add_timer(2) {
-          @service.running?.should == false
+          @instance.running?.should == false
           EM.stop
         }
       end
     end
 
-    it "should not start a new instance if the service is already started when start all provisioned services" do
+    it "should not start a new instance if the instance is already started when start all provisioned instances" do
       EM.run do
-        @service.pid = @node.start_instance(@service)
-        @service.save
+        @instance.pid = @node.start_instance(@instance)
+        @instance.save
         EM.add_timer(1) {
-          @node.start_provisioned_services
-          service = VCAP::Services::Redis::Node::ProvisionedService.get(@service.name)
-          service.pid.should == @service.pid
-          @node.stop_instance(@service)
-          @service.destroy
+          @node.start_provisioned_instances
+          instance = VCAP::Services::Redis::Node::ProvisionedInstance.get(@instance.name)
+          instance.pid.should == @instance.pid
+          @node.stop_instance(@instance)
+          @instance.destroy
         }
         EM.add_timer(2) {EM.stop}
       end
     end
 
-    it "should start a new instance if the service is not started when start all provisioned services" do
+    it "should start a new instance if the instance is not started when start all provisioned instances" do
       EM.run do
-        @service.pid = @node.start_instance(@service)
-        @service.save
-        @node.stop_instance(@service)
+        @instance.pid = @node.start_instance(@instance)
+        @instance.save
+        @node.stop_instance(@instance)
         EM.add_timer(1) {
-          @node.start_provisioned_services
-          service = VCAP::Services::Redis::Node::ProvisionedService.get(@service.name)
-          service.pid.should_not == @service.pid
-          @node.stop_instance(@service)
-          @service.destroy
+          @node.start_provisioned_instances
+          instance = VCAP::Services::Redis::Node::ProvisionedInstance.get(@instance.name)
+          instance.pid.should_not == @instance.pid
+          @node.stop_instance(@instance)
+          @instance.destroy
         }
         EM.add_timer(2) {EM.stop}
       end
@@ -192,19 +192,19 @@ describe VCAP::Services::Redis::Node do
       @node.unprovision(@credentials["name"])
     end
 
-    it "should access the service instance using the credentials returned by sucessful provision" do
+    it "should access the instance instance using the credentials returned by sucessful provision" do
       %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a #{@credentials["password"]} get test].should == "\n"
     end
 
-    it "should not allow null credentials to access the service instance" do
+    it "should not allow null credentials to access the instance instance" do
       %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} get test].should == "ERR operation not permitted\n"
     end
 
-    it "should not allow wrong credentials to access the service instance" do
+    it "should not allow wrong credentials to access the instance instance" do
       %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
     end
 
-    it "should delete the provisioned service port in free port list when finish a provision" do
+    it "should delete the provisioned instance port in free port list when finish a provision" do
       @node.free_ports.include?(@credentials["port"]).should == false
     end
 
@@ -228,11 +228,11 @@ describe VCAP::Services::Redis::Node do
       @node.unprovision(@credentials["name"])
     end
 
-    it "should not access the service instance when doing unprovision" do
+    it "should not access the instance instance when doing unprovision" do
       %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a #{@credentials["password"]} get test].should_not == "\n"
     end
 
-    it "should add the provisioned service port in free port list when finish an unprovision" do
+    it "should add the provisioned instance port in free port list when finish an unprovision" do
       @node.free_ports.include?(@credentials["port"]).should == true
     end
 
@@ -249,33 +249,33 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
-  describe "Node.save_service" do
-    it "shuold raise error when save service instance failed" do
-      @service.pid = 100
-      @service.persisted_state=DataMapper::Resource::State::Immutable
+  describe "Node.save_instance" do
+    it "shuold raise error when save instance instance failed" do
+      @instance.pid = 100
+      @instance.persisted_state = DataMapper::Resource::State::Immutable
       begin
-        @node.save_service(@service)
+        @node.save_instance(@instance)
       rescue => e
         e.class.should == VCAP::Services::Redis::RedisError
       end
     end
   end
 
-  describe "Node.destory_service" do
-    it "shuold raise error when destroy service instance failed" do
+  describe "Node.destory_instance" do
+    it "shuold raise error when destroy instance instance failed" do
       begin
-        service = VCAP::Services::Redis::Node::ProvisionedService.new
-        @node.destroy_service(service)
+        instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
+        @node.destroy_instance(instance)
       rescue => e
         e.class.should == VCAP::Services::Redis::RedisError
       end
     end
   end
 
-  describe "Node.get_service" do
-    it "shuold raise error when get service instance failed" do
+  describe "Node.get_instance" do
+    it "shuold raise error when get instance instance failed" do
       begin
-        @node.get_service("non-existed")
+        @node.get_instance("non-existed")
       rescue => e
         e.class.should == VCAP::Services::Redis::RedisError
       end
@@ -284,27 +284,27 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.bind" do
     before :all do
-      @service_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free)
       sleep 1
-      @binding_credentials = @node.bind(@service_credentials["name"])
+      @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
     end
 
     after :all do
       @node.unbind(@binding_credentials)
       sleep 1
-      @node.unprovision(@service_credentials["name"])
+      @node.unprovision(@instance_credentials["name"])
     end
 
     it "should access redis server use the returned credential" do
       %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} -a #{@binding_credentials["password"]} get test].should == "\n"
     end
 
-    it "should not allow null credentials to access the service instance" do
+    it "should not allow null credentials to access the instance instance" do
       %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} get test].should == "ERR operation not permitted\n"
     end
 
-    it "should not allow wrong credentials to access the service instance" do
+    it "should not allow wrong credentials to access the instance instance" do
       %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
     end
 
@@ -317,27 +317,27 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.unbind" do
     it "should return true when finish an unbinding" do
-      @service_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free)
       sleep 1
-      @binding_credentials = @node.bind(@service_credentials["name"])
+      @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
       @node.unbind(@binding_credentials).should == {}
-      @node.unprovision(@service_credentials["name"])
+      @node.unprovision(@instance_credentials["name"])
     end
   end
 
-  describe "Node.memory_for_service" do
+  describe "Node.memory_for_instance" do
     it "should return memory size by the plan" do
-      service = VCAP::Services::Redis::Node::ProvisionedService.new
-      service.plan = :free
-      @node.memory_for_service(service).should == 16
+      instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
+      instance.plan = :free
+      @node.memory_for_instance(instance).should == 16
     end
 
     it "should raise error when give wrong plan name" do
-      service = VCAP::Services::Redis::Node::ProvisionedService.new
-      service.plan = :non_existed_plan
+      instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
+      instance.plan = :non_existed_plan
       begin
-        @node.memory_for_service(service)
+        @node.memory_for_instance(instance)
       rescue => e
         e.class.should == VCAP::Services::Redis::RedisError
       end

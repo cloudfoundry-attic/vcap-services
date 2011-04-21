@@ -27,7 +27,7 @@ class VCAP::Services::Redis::Node
   include VCAP::Services::Redis::Common
   include VCAP::Services::Redis
 
-  class ProvisionedService
+  class ProvisionedInstance
     include DataMapper::Resource
     property :name,       String,   :key => true
     property :port,       Integer,  :unique => true
@@ -62,7 +62,7 @@ class VCAP::Services::Redis::Node
 
   def start
     start_db
-    start_provisioned_services
+    start_provisioned_instances
   end
 
   def start_db
@@ -70,20 +70,20 @@ class VCAP::Services::Redis::Node
     DataMapper::auto_upgrade!
   end
 
-  def start_provisioned_services
-    ProvisionedService.all.each do |service|
-      @free_ports.delete(service.port)
-      if service.running?
-        @logger.info("Service #{service.name} already running with pid #{service.pid}")
-        @available_memory -= (service.memory || @max_memory)
+  def start_provisioned_instances
+    ProvisionedInstance.all.each do |instance|
+      @free_ports.delete(instance.port)
+      if instance.running?
+        @logger.info("Service #{instance.name} already running with pid #{instance.pid}")
+        @available_memory -= (instance.memory || @max_memory)
         next
       end
       begin
-        pid = start_instance(service)
-        service.pid = pid
-        save_service(service)
+        pid = start_instance(instance)
+        instance.pid = pid
+        save_instance(instance)
       rescue => e
-        @logger.warn("Error starting service #{service.name}: #{e}")
+        @logger.warn("Error starting instance #{instance.name}: #{e}")
       end
     end
   end
@@ -98,21 +98,21 @@ class VCAP::Services::Redis::Node
     port = @free_ports.first
     @free_ports.delete(port)
 
-    service          = ProvisionedService.new
-    service.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
-    service.port     = port
-    service.plan     = plan
-    service.password = UUIDTools::UUID.random_create.to_s
-    service.memory   = @max_memory
+    instance          = ProvisionedInstance.new
+    instance.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
+    instance.port     = port
+    instance.plan     = plan
+    instance.password = UUIDTools::UUID.random_create.to_s
+    instance.memory   = @max_memory
     begin
-      service.pid = start_instance(service)
-      save_service(service)
+      instance.pid = start_instance(instance)
+      save_instance(instance)
     rescue => e1
       begin
-        @free_ports.add(service.port)
-        @available_memory += service.memory
-        stop_instance(service)
-        destroy_service(service)
+        @free_ports.add(instance.port)
+        @available_memory += instance.memory
+        stop_instance(instance)
+        destroy_instance(instance)
       rescue => e2
         # Ignore the rollback exception
       end
@@ -121,31 +121,31 @@ class VCAP::Services::Redis::Node
 
     credentials = {
       "hostname" => @local_ip,
-      "port" => service.port,
-      "password" => service.password,
-      "name" => service.name
+      "port" => instance.port,
+      "password" => instance.password,
+      "name" => instance.name
     }
   end
 
-  def unprovision(service_id, credentials_list = [])
-    service = get_service(service_id)
+  def unprovision(instance_id, credentials_list = [])
+    instance = get_instance(instance_id)
 
-    @logger.debug("Killing #{service.name} started with pid #{service.pid}")
-    stop_instance(service) if service.running?
-    @available_memory += service.memory
-    destroy_service(service)
-    @free_ports.add(service.port)
+    @logger.debug("Killing #{instance.name} started with pid #{instance.pid}")
+    stop_instance(instance) if instance.running?
+    @available_memory += instance.memory
+    destroy_instance(instance)
+    @free_ports.add(instance.port)
 
-    @logger.debug("Successfully fulfilled unprovision request: #{service_id}.")
+    @logger.debug("Successfully fulfilled unprovision request: #{instance_id}.")
     {}
   end
 
-  def bind(service_id, binding_options = :all)
-    service = get_service(service_id)
+  def bind(instance_id, binding_options = :all)
+    instance = get_instance(instance_id)
     credentials = {
       "hostname" => @local_ip,
-      "port" => service.port,
-      "password" => service.password
+      "port" => instance.port,
+      "password" => instance.password
     }
   end
 
@@ -153,43 +153,43 @@ class VCAP::Services::Redis::Node
     {}
   end
 
-  def save_service(service)
-    unless service.save
-      stop_instance(service)
-      raise RedisError.new(RedisError::REDIS_SAVE_SERVICE_FAILED, service.pretty_inspect)
+  def save_instance(instance)
+    unless instance.save
+      stop_instance(instance)
+      raise RedisError.new(RedisError::REDIS_SAVE_SERVICE_FAILED, instance.pretty_inspect)
     end
   end
 
-  def destroy_service(service)
-    raise RedisError.new(RedisError::REDIS_DESTORY_SERVICE_FAILED, service.pretty_inspect) unless service.destroy
+  def destroy_instance(instance)
+    raise RedisError.new(RedisError::REDIS_DESTORY_SERVICE_FAILED, instance.pretty_inspect) unless instance.destroy
   end
 
-  def get_service(name)
-    service = ProvisionedService.get(name)
-    raise RedisError.new(RedisError::REDIS_FIND_SERVICE_FAILED, name) if service.nil?
-    service
+  def get_instance(name)
+    instance = ProvisionedInstance.get(name)
+    raise RedisError.new(RedisError::REDIS_FIND_SERVICE_FAILED, name) if instance.nil?
+    instance
   end
 
-  def start_instance(service, db_file = nil)
-    @logger.debug("Starting: #{service.pretty_inspect} on port #{service.port}")
+  def start_instance(instance, db_file = nil)
+    @logger.debug("Starting: #{instance.pretty_inspect} on port #{instance.port}")
 
-    # FIXME: it need call mememory_for_service() to get the memory according to the plan in the further.
+    # FIXME: it need call mememory_for_instance() to get the memory according to the plan in the further.
     memory = @max_memory
     @available_memory -= memory
 
     pid = fork
     if pid
-      @logger.debug("Service #{service.name} started with pid #{pid}")
+      @logger.debug("Service #{instance.name} started with pid #{pid}")
       # In parent, detch the child.
       Process.detach(pid)
       pid
     else
-      $0 = "Starting Redis service: #{service.name}"
+      $0 = "Starting Redis instance: #{instance.name}"
       close_fds
 
-      port = service.port
-      password = service.password
-      dir = File.join(@base_dir, service.name)
+      port = instance.port
+      password = instance.password
+      dir = File.join(@base_dir, instance.name)
       data_dir = File.join(dir, "data")
       log_file = File.join(dir, "log")
       swap_file = File.join(dir, "redis.swap")
@@ -212,20 +212,20 @@ class VCAP::Services::Redis::Node
     end
   rescue => e
     @logger.warn(e)
-    raise RedisError.new(RedisError::REDIS_START_SERVICE_FAILED, service.pretty_inspect)
+    raise RedisError.new(RedisError::REDIS_START_SERVICE_FAILED, instance.pretty_inspect)
   end
 
-  def stop_instance(service)
-    raise RedisError.new(RedisError::REDIS_STOP_SERVICE_FAILED, service.pretty_inspect) unless %x[#{@redis_client_path} -p #{service.port} -a #{service.password} shutdown] == ""
-    dir = File.join(@base_dir, service.name)
+  def stop_instance(instance)
+    raise RedisError.new(RedisError::REDIS_STOP_SERVICE_FAILED, instance.pretty_inspect) unless %x[#{@redis_client_path} -p #{instance.port} -a #{instance.password} shutdown] == ""
+    dir = File.join(@base_dir, instance.name)
     FileUtils.rm_rf(dir)
   end
 
-  def memory_for_service(service)
-    case service.plan
+  def memory_for_instance(instance)
+    case instance.plan
       when :free then 16
       else
-        raise RedisError.new(RedisError::REDIS_INVALID_PLAN, service.plan)
+        raise RedisError.new(RedisError::REDIS_INVALID_PLAN, instance.plan)
     end
   end
 
