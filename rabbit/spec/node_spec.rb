@@ -7,8 +7,8 @@ module VCAP
   module Services
     module Rabbit
       class Node
-         attr_reader :rabbit_ctl, :rabbit_server, :local_ip, :available_memory, :max_memory, :local_db, :mbus
-				 attr_accessor :logger
+         attr_reader :rabbit_ctl, :rabbit_server, :local_ip, :available_memory, :max_memory, :mbus
+				 attr_accessor :logger, :local_db
       end
     end
   end
@@ -40,9 +40,7 @@ describe VCAP::Services::Rabbit::Node do
 
 		EM.run do
 			@node = VCAP::Services::Rabbit::Node.new(@options)
-			EM.add_timer(0.1) {
-				EM.stop
-			}
+			EM.add_timer(0.1) {EM.stop}
 		end
   end
 
@@ -56,14 +54,14 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   before :each do
-    @provisioned_service = VCAP::Services::Rabbit::Node::ProvisionedService.new
-    @provisioned_service.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
-    @provisioned_service.plan = :free
-    @provisioned_service.plan_option = ""
-    @provisioned_service.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
-    @provisioned_service.admin_username = "au" + @node.generate_credential
-    @provisioned_service.admin_password = "ap" + @node.generate_credential
-    @provisioned_service.memory = @options[:memory]
+    @service = VCAP::Services::Rabbit::Node::ProvisionedService.new
+    @service.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
+    @service.plan = :free
+    @service.plan_option = ""
+    @service.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
+    @service.admin_username = "au" + @node.generate_credential
+    @service.admin_password = "ap" + @node.generate_credential
+    @service.memory = @options[:memory]
 	end
 
   describe "Node.initialize" do
@@ -87,24 +85,27 @@ describe VCAP::Services::Rabbit::Node do
 		end
 	end
 
-  describe "Node.start" do
-		it "should start db with correct options" do
-		  @node.start_db.should be
-		end
+  describe "Node.start_db" do
+    it "should fail when set local db with non-existed file argument" do
+      @node.local_db = "sqlite3:/non_existed/non-existed.db"
+      @node.logger.level = Logger::ERROR
+      begin
+        @node.start_db
+      rescue => e
+        e.should be
+      end
+      @node.logger.level = Logger::DEBUG
+      @node.local_db = @options[:local_db]
+    end
+
+    it "should setup local db with right arguments" do
+      @node.start_db.should be
+    end
 
 		it "should start rabbit server with correct options" do
-			EM.run do
-				@node.start_server.should be
-				EM.add_timer(1) {
-					EM.stop
-				}
-			end
+      @node.start_server.should be
 		end
-
-		it "should start successfully" do
-		  @node.start.should be
-		end
-	end
+  end
 
   describe 'Node.announcement' do
     it "should send node announcement" do
@@ -117,213 +118,219 @@ describe VCAP::Services::Rabbit::Node do
   end
 
 	describe "Node.provision" do
-	  it "should create a new vhost with an administrator in rabbit server" do
+    before :all do
+      @old_memory = @node.available_memory
+      @credentials = @node.provision(:free)
+      sleep 1
+    end
+
+    after :all do
+      @node.unprovision(@credentials["name"])
+    end
+
+    it "should access the service instance using the credentials returned by sucessful provision" do
 		  EM.run do
-				response = @node.provision(:free)
-				EM.add_timer(1) {
-					AMQP.start(:host => response["hostname"],
-										 :vhost => response["vhost"],
-										 :user => response["user"],
-										 :pass => response["pass"]) do |conn|
-						conn.connected?.should == true
-					end
-					AMQP.stop
-				}
-				EM.add_timer(2) {
-					@node.unprovision(response["name"])
-					EM.stop
-				}
-			end
+        AMQP.start(:host => @credentials["hostname"],
+                   :vhost => @credentials["vhost"],
+                   :user => @credentials["user"],
+                   :pass => @credentials["pass"]) do |conn|
+          conn.connected?.should == true
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
 		end
 
+    it "should not allow null credentials to access the service instance" do
+		  EM.run do
+        AMQP.start(:host => @credentials["hostname"],
+                   :vhost => @credentials["vhost"],) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
+    end
+
+    it "should not allow wrong credentials to access the service instance" do
+		  EM.run do
+        AMQP.start(:host => @credentials["hostname"],
+                   :vhost => @credentials["vhost"],
+                   :user => @credentials["user"],
+                   :pass => "wrong_pass") do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
+    end
+
     it "should decrease available memory when finish a provision" do
-			EM.run do
-				old_memory = @node.available_memory
-				response = @node.provision(:free)
-				EM.add_timer(1) {
-					(old_memory - @node.available_memory).should == @node.max_memory
-					@node.unprovision(response["name"])
-					EM.stop
-				}
-			end
+      (@old_memory - @node.available_memory).should == @node.max_memory
     end
 
 		it "should send provision messsage when finish a provision" do
-			EM.run do
-				response = @node.provision(:free)
-				EM.add_timer(1) {
-					response["name"].should be
-					response["hostname"].should be
-					response["vhost"].should be
-					response["user"].should be
-					response["pass"].should be
-					@node.unprovision(response["name"])
-					EM.stop
-				}
-			end
+      @credentials["name"].should be
+      @credentials["hostname"].should be
+      @credentials["vhost"].should be
+      @credentials["user"].should be
+      @credentials["pass"].should be
 		end
 	end
 
 	describe "Node.unprovision" do
-	  it "should delete the vhost and the administrator in rabbit server" do
+    before :all do
+      @credentials = @node.provision(:free)
+      sleep 1
+      @old_memory = @node.available_memory
+      @node.unprovision(@credentials["name"])
+      sleep 1
+    end
+
+    it "should not access the service instance when doing unprovision" do
 		  EM.run do
-				response = @node.provision(:free)
-				EM.add_timer(1) {
-					@node.unprovision(response["name"])
-				}
-				EM.add_timer(2) {
-					AMQP.start(:host => response["hostname"],
-										 :vhost => response["vhost"],
-										 :user => response["user"],
-										 :pass => response["pass"]) do |conn|
-						conn.connected?.should == false
-					end
-					AMQP.stop
-					EM.stop
-				}
+        AMQP.start(:host => @credentials["hostname"],
+                   :vhost => @credentials["vhost"],
+                   :user => @credentials["user"],
+                   :pass => @credentials["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
 			end
 		end
 
     it "should decrease available memory when finish a provision" do
-			EM.run do
-				response = @node.provision(:free)
-				old_memory = 0
-				EM.add_timer(1) {
-					old_memory = @node.available_memory
-					@node.unprovision(response["name"])
-				}
-				EM.add_timer(2) {
-					(@node.available_memory - old_memory).should == @node.max_memory
-					EM.stop
-				}
-			end
+      (@node.available_memory - @old_memory).should == @node.max_memory
     end
 
     it "should raise error when unprovision an non-existed name" do
-      @node.logger.level = Logger::ERROR
-			@node.unprovision("non-existed")
-      @node.logger.level = Logger::DEBUG
+      begin
+        @node.unprovision("non-existed")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
     end
 	end
 
 	describe "Node.bind" do
-		before :all do
-		  EM.run do
-				@response = @node.provision(:free)
-				EM.add_timer(1) {
-					EM.stop
-				}
-			end
-		end
+    before :all do
+      @service_credentials = @node.provision(:free)
+      sleep 1
+      @binding_credentials = @node.bind(@service_credentials["name"])
+      sleep 1
+    end
 
-		after :all do
-			@node.unprovision(@response["name"])
-		end
+    after :all do
+      @node.unbind(@binding_credentials)
+      sleep 1
+      @node.unprovision(@service_credentials["name"])
+    end
 
-	  it "should create a new user with specified permission in rabbit server" do
+    it "should access redis server use the returned credential" do
 		  EM.run do
-				handle = @node.bind(@response["name"])
-				EM.add_timer(1) {
-					AMQP.start(:host => handle["hostname"],
-										 :vhost => handle["vhost"],
-										 :user => handle["user"],
-										 :pass => handle["pass"]) do |conn|
-						conn.connected?.should == true
-					end
-					AMQP.stop
-				}
-				EM.add_timer(2) {
-					@node.unbind(handle)
-					EM.stop
-				}
+        AMQP.start(:host => @binding_credentials["hostname"],
+                   :vhost => @binding_credentials["vhost"],
+                   :user => @binding_credentials["user"],
+                   :pass => @binding_credentials["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
 			end
-		end
+    end
+
+    it "should not allow null credentials to access the service instance" do
+		  EM.run do
+        AMQP.start(:host => @binding_credentials["hostname"],
+                   :vhost => @binding_credentials["vhost"],) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
+    end
+
+    it "should not allow wrong credentials to access the service instance" do
+		  EM.run do
+        AMQP.start(:host => @binding_credentials["hostname"],
+                   :vhost => @binding_credentials["vhost"],
+                   :user => @binding_credentials["user"],
+                   :pass => "wrong_pass") do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
+    end
 
 		it "should send binding messsage when finish a binding" do
-		  EM.run do
-				handle = @node.bind(@response["name"])
-				EM.add_timer(1) {
-					handle["hostname"].should be
-					handle["vhost"].should be
-					handle["user"].should be
-					handle["pass"].should be
-					@node.unbind(handle)
-					EM.stop
-				}
-			end
+      @binding_credentials["hostname"].should be
+      @binding_credentials["vhost"].should be
+      @binding_credentials["user"].should be
+      @binding_credentials["pass"].should be
 		end
 	end
 
 	describe "Node.unbind" do
-		before :all do
-		  EM.run do
-				@response = @node.provision(:free)
-				EM.add_timer(1) {
-					EM.stop
-				}
-			end
-		end
+    before :all do
+      @service_credentials = @node.provision(:free)
+      sleep 1
+      @binding_credentials = @node.bind(@service_credentials["name"])
+      sleep 1
+      @response = @node.unbind(@binding_credentials)
+      sleep 1
+      @node.unprovision(@service_credentials["name"])
+    end
 
-		after :all do
-			@node.unprovision(@response["name"])
-		end
-
-	  it "should delete user with specified permission in rabbit server" do
+    it "should not access redis server after unbinding" do
 		  EM.run do
-				handle = @node.bind(@response["name"])
-				EM.add_timer(1) {
-					@node.unbind(handle)
-				}
-				EM.add_timer(2) {
-					AMQP.start(:host => handle["hostname"],
-										 :vhost => handle["vhost"],
-										 :user => handle["user"],
-										 :pass => handle["pass"]) do |conn|
-						conn.connected?.should == false
-					end
-					AMQP.stop
-					EM.stop
-				}
+        AMQP.start(:host => @binding_credentials["hostname"],
+                   :vhost => @binding_credentials["vhost"],
+                   :user => @binding_credentials["user"],
+                   :pass => @binding_credentials["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
 			end
-		end
+    end
 
-		it "should send binding messsage when finish a binding" do
-		  EM.run do
-				handle = @node.bind(@response["name"])
-				EM.add_timer(1) {
-					@node.unbind(handle).should be
-					EM.stop
-				}
-			end
-		end
+    it "should return empty when unbinding successfully" do
+      @response.should == {}
+    end
 	end
 
-	describe "Node.rabbitmqctl" do
-	  it "should add and delete vhost in rabbit server" do
-		  @node.add_vhost("test_vhost")
-		  @node.delete_vhost("test_vhost")
-		end
+  describe "Node.save_service" do
+    it "shuold raise error when save service instance failed" do
+      @service.persisted_state=DataMapper::Resource::State::Immutable
+      begin
+        @node.save_service(@service)
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+  end
 
-	  it "should add and delete user in rabbit server" do
-		  @node.add_user("test_user", "test_password")
-		  @node.delete_user("test_user")
-		end
+  describe "Node.destory_service" do
+    it "shuold raise error when destroy service instance failed" do
+      begin
+        service = VCAP::Services::Rabbit::Node::ProvisionedService.new
+        @node.destroy_service(service)
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+  end
 
-	  it "should set user permissions in rabbit server" do
-		  @node.get_permissions(:all).should == '".*" ".*" ".*"'
-		end
+  describe "Node.get_service" do
+    it "shuold raise error when get service instance failed" do
+      begin
+        @node.get_service("non-existed")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+  end
 
-	  it "should set user permissions in rabbit server" do
-		  @node.add_vhost("test_vhost")
-		  @node.add_user("test_user", "test_password")
-			@node.set_permissions('test_vhost', 'test_user', '".*" ".*" ".*"')
-		  @node.delete_user("test_user")
-		  @node.delete_vhost("test_vhost")
-		end
-
-	  it "should add and delete vhost in rabbit server" do
-		  @node.add_vhost("test_vhost")
-		  @node.delete_vhost("test_vhost")
-		end
-	end
 end
