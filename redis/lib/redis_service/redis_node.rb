@@ -127,7 +127,7 @@ class VCAP::Services::Redis::Node
     }
   end
 
-  def unprovision(service_id, handles = {})
+  def unprovision(service_id, credentials_list = [])
     service = get_service(service_id)
 
     @logger.debug("Killing #{service.name} started with pid #{service.pid}")

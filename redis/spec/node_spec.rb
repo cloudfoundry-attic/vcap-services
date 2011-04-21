@@ -264,10 +264,10 @@ describe VCAP::Services::Redis::Node do
   describe "Node.destory_service" do
     it "shuold raise error when destroy service instance failed" do
       begin
-        @node.destroy_service(@service)
+        service = VCAP::Services::Redis::Node::ProvisionedService.new
+        @node.destroy_service(service)
       rescue => e
         e.class.should == VCAP::Services::Redis::RedisError
-        @node.destroy_service(@service)
       end
     end
   end
