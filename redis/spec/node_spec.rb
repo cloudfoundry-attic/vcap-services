@@ -347,6 +347,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.varz_details" do
     it "should report varz details" do
       @credentials = @node.provision(:free)
+      sleep 1
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
       varz[:max_instances_num].should == @options[:available_memory] / @options[:max_memory]

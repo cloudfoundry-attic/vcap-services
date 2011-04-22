@@ -301,6 +301,9 @@ class VCAP::Services::Redis::Node
       varz[:provisioned_instances_num] += 1
     end
     varz
+  rescue
+    logger.warn(e)
+    {}
   end
 
 end

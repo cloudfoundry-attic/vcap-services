@@ -205,7 +205,7 @@ class VCAP::Services::Rabbit::Node
   def list_users
     data = %x[#{@rabbit_ctl} list_users]
     lines = data.split(/\n/)
-    raise RabbitError.new(RabbitError::RABBIT_LIST_USER_FAILED) unless lines[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED) unless lines[-1] == "...done."
     users = []
     lines.each do |line|
       items = line.split(/\t/)
@@ -216,7 +216,78 @@ class VCAP::Services::Rabbit::Node
     users
   end
 
+  def list_queues(vhost)
+    data = %x[#{@rabbit_ctl} list_queues -p #{vhost}]
+    lines = data.split(/\n/)
+    raise RabbitError.new(RabbitError::RABBIT_LIST_QUEUES_FAILED) unless lines[-1] == "...done."
+    queues = []
+    lines.each do |line|
+      items = line.split(/\t/)
+      if items.size > 1
+        queues.push(items[0])
+      end
+    end
+    queues
+  end
+
+  def list_exchanges(vhost)
+    data = %x[#{@rabbit_ctl} list_exchanges -p #{vhost}]
+    lines = data.split(/\n/)
+    raise RabbitError.new(RabbitError::RABBIT_LIST_EXCHANGES_FAILED) unless lines[-1] == "...done."
+    exchanges = []
+    lines.each do |line|
+      items = line.split(/\t/)
+      if items.size > 1
+        exchanges.push(items[0])
+      end
+    end
+    exchanges
+  end
+
+  def list_bindings(vhost)
+    data = %x[#{@rabbit_ctl} list_bindings -p #{vhost}]
+    lines = data.split(/\n/)
+    raise RabbitError.new(RabbitError::RABBIT_LIST_BINDINGS_FAILED) unless lines[-1] == "...done."
+    bindings = []
+    lines.each do |line|
+      items = line.split(/\t/)
+      if items.size > 1
+        bindings.push(items[0])
+      end
+    end
+    bindings
+  end
+
   def generate_credential(length = 12)
     Array.new(length) {VALID_CREDENTIAL_CHARACTERS[rand(VALID_CREDENTIAL_CHARACTERS.length)]}.join
   end
+
+  def get_varz(instance)
+    varz = {}
+    varz[:name] = instance.name
+    varz[:plan] = instance.plan
+    varz[:vhost] = instance.vhost
+    varz[:admin_username] = instance.admin_username
+    varz[:usage] = {}
+    varz[:usage][:queues_num] = list_queues(instance.vhost)
+    varz[:usage][:exchanges_num] = list_exchanges(instance.vhost)
+    varz[:usage][:bindings_num] = list_bindings(instance.vhost)
+    varz
+  end
+
+  def varz_details
+    varz = {}
+    varz[:provisioned_instances] = []
+    varz[:provisioned_instances_num] = 0
+    varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    ProvisionedInstance.all.each do |instance|
+      varz[:provisioned_instances] << get_varz(instance)
+      varz[:provisioned_instances_num] += 1
+    end
+    varz
+  rescue => e
+    logger.warn(e)
+    {}
+  end
+
 end

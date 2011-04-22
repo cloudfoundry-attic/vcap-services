@@ -21,6 +21,9 @@ module VCAP
         RABBIT_GET_PERMISSION_FAILED  = [31311, HTTP_INTERNAL, "Could not get user %s permission"]
         RABBIT_SET_PERMISSION_FAILED  = [31312, HTTP_INTERNAL, "Could not set user %s permission to %s"]
         RABBIT_LIST_USERS_FAILED      = [31313, HTTP_INTERNAL, "Could not list users"]
+        RABBIT_LIST_QUEUES_FAILED     = [31313, HTTP_INTERNAL, "Could not list queues"]
+        RABBIT_LIST_EXCHANGES_FAILED  = [31313, HTTP_INTERNAL, "Could not list exchanges"]
+        RABBIT_LIST_BINDINGS_FAILED   = [31313, HTTP_INTERNAL, "Could not list bindings"]
       end
     end
   end
