@@ -76,7 +76,7 @@ options = {
 }
 
 def shutdown(redis_node)
-  redis_node.shutdown
+  redis_node.stop
   EM.stop
 end
 

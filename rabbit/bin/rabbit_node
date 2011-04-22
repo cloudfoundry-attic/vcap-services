@@ -71,7 +71,7 @@ options = {
 }
 
 def shutdown(rabbit_node)
-  rabbit_node.shutdown
+  rabbit_node.stop
   EM.stop
 end
 

@@ -60,6 +60,11 @@ class VCAP::Services::Rabbit::Node
     end
   end
 
+	def stop
+    @logger.info("Stopping rabbit instance node...")
+    stop_server
+  end
+
 	def start_db
     DataMapper.setup(:default, @local_db)
     DataMapper::auto_upgrade!
@@ -179,6 +184,10 @@ class VCAP::Services::Rabbit::Node
     rescue => e
     end
     true
+  end
+
+  def stop_server
+    raise RabbitError.new(RabbitError::RABBIT_STOP_SERVER_FAILED) unless %x[#{@rabbit_ctl} stop].split(/\n/)[-1] == "...done."
   end
 
   def add_vhost(vhost)

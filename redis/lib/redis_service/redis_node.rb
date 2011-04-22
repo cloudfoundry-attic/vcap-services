@@ -65,6 +65,12 @@ class VCAP::Services::Redis::Node
     start_provisioned_instances
   end
 
+  def stop
+    ProvisionedInstance.all.each do |instance|
+      stop_redis_server(instance)
+    end
+  end
+
   def start_db
     DataMapper.setup(:default, @local_db)
     DataMapper::auto_upgrade!
@@ -215,8 +221,12 @@ class VCAP::Services::Redis::Node
     raise RedisError.new(RedisError::REDIS_START_SERVICE_FAILED, instance.pretty_inspect)
   end
 
-  def stop_instance(instance)
+  def stop_redis_server(instance)
     raise RedisError.new(RedisError::REDIS_STOP_SERVICE_FAILED, instance.pretty_inspect) unless %x[#{@redis_client_path} -p #{instance.port} -a #{instance.password} shutdown] == ""
+  end
+
+  def stop_instance(instance)
+    stop_redis_server(instance)
     dir = File.join(@base_dir, instance.name)
     FileUtils.rm_rf(dir)
   end
