@@ -343,4 +343,17 @@ describe VCAP::Services::Redis::Node do
       end
     end
   end
+
+  describe "Node.varz_details" do
+    it "should report varz details" do
+      @credentials = @node.provision(:free)
+      varz = @node.varz_details
+      varz[:provisioned_instances_num].should == 1
+      varz[:max_instances_num].should == @options[:available_memory] / @options[:max_memory]
+      varz[:provisioned_instances][0][:name].should == @credentials["name"]
+      varz[:provisioned_instances][0][:port].should == @credentials["port"]
+      varz[:provisioned_instances][0][:plan].should == :free
+      @node.unprovision(@credentials["name"])
+    end
+  end
 end

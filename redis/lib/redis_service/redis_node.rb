@@ -263,4 +263,44 @@ class VCAP::Services::Redis::Node
     max
   end
 
+  def get_info(instance)
+    data = %x[#{@redis_client_path} -p #{instance.port} -a #{instance.password} info].split(/\r\n/)
+    raise RedisError.new(RedisError::REDIS_GET_SERVICE_INFO_FAILED, instance.pretty_inspect) unless data.size > 1
+    service_info = {}
+    data.each do |item|
+      pair = item.split(/:/)
+      service_info[pair[0].to_sym] = pair[1]
+    end
+    service_info
+  end
+
+  def get_varz(instance)
+    info = get_info(instance)
+    varz = {}
+    varz[:name] = instance.name
+    varz[:port] = instance.port
+    varz[:plan] = instance.plan
+    varz[:usage] = {}
+    varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
+    varz[:usage][:used_memory] = info[:used_memory].to_f / (1024.0 * 1024.0)
+    varz[:usage][:max_virtual_memory] = info[:vm_conf_max_memory].to_f / 1024.0
+    varz[:usage][:used_virtual_memory] = info[:vm_stats_used_pages].to_f * info[:vm_conf_page_size].to_f / (1024.0 * 1024.0)
+    varz[:usage][:connected_clients_num] = info[:connected_clients].to_i
+    varz[:usage][:last_save_time] = info[:last_save_time].to_i
+    varz[:usage][:bgsave_in_progress] = (info[:bgsave_in_progress] == "0" ? false : true)
+    varz
+  end
+
+  def varz_details
+    varz = {}
+    varz[:provisioned_instances] = []
+    varz[:provisioned_instances_num] = 0
+    varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    ProvisionedInstance.all.each do |instance|
+      varz[:provisioned_instances] << get_varz(instance)
+      varz[:provisioned_instances_num] += 1
+    end
+    varz
+  end
+
 end
