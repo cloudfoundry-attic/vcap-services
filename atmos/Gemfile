@@ -1,0 +1,21 @@
+source :rubygems
+
+gem "eventmachine"
+gem "em-http-request"
+gem "ruby-hmac"
+gem "uuidtools"
+gem "datamapper", ">= 0.10.2"
+gem "do_sqlite3"
+gem "dm-sqlite-adapter"
+gem "sinatra"
+gem "thin"
+gem "xml-simple"
+
+gem 'vcap_common', :path => '../../common'
+
+group :test do
+  gem "rake"
+  gem "rspec"
+  gem "rcov"
+  gem "ci_reporter"
+end
