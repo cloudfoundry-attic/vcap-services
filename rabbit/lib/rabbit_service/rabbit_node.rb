@@ -55,6 +55,9 @@ class VCAP::Services::Rabbit::Node
     @logger.info("Starting rabbit instance node...")
     start_db
     start_server
+    ProvisionedInstance.all.each do |instance|
+      @available_memory -= (instance.memory || @max_memory)
+    end
   end
 
 	def start_db
