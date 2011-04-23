@@ -3,6 +3,7 @@ PATH
   specs:
     vcap_common (0.99)
       eventmachine (~> 0.12.10)
+      logging (>= 1.5.0)
       nats
       thin
       yajl-ruby
@@ -71,6 +72,9 @@ GEM
     fastercsv (1.5.4)
     json (1.4.6)
     json_pure (1.5.1)
+    little-plugger (1.1.2)
+    logging (1.5.0)
+      little-plugger (>= 1.1.2)
     nats (0.4.8)
       daemons (>= 1.1.0)
       eventmachine (>= 0.12.10)
