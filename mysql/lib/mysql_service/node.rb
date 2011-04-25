@@ -283,13 +283,18 @@ class VCAP::Services::Mysql::Node
 
   def delete_database_user(user)
     @logger.info("Delete user #{user}")
-    process_list = @connection.list_processes
-    process_list.each do |proc|
-      thread_id, user_, _, db, command, time, _, info = proc
-      if user_ == user then
-        @connection.query("KILL #{thread_id}")
-        @logger.info("Kill session: user:#{user} db:#{db}")
+    begin
+      process_list = @connection.list_processes
+      process_list.each do |proc|
+        thread_id, user_, _, db, command, time, _, info = proc
+        if user_ == user then
+          @connection.query("KILL #{thread_id}")
+          @logger.info("Kill session: user:#{user} db:#{db}")
+        end
       end
+    rescue Mysql::Error => e1
+      # kill session failed error, only log it.
+      @logger.error("Could not kill user session.:[#{e1.errno}] #{e1.error}")
     end
     @connection.query("DROP USER #{user}")
     @connection.query("DROP USER #{user}@'localhost'")
