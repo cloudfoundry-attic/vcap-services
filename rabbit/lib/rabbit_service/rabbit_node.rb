@@ -269,9 +269,9 @@ class VCAP::Services::Rabbit::Node
     varz[:vhost] = instance.vhost
     varz[:admin_username] = instance.admin_username
     varz[:usage] = {}
-    varz[:usage][:queues_num] = list_queues(instance.vhost)
-    varz[:usage][:exchanges_num] = list_exchanges(instance.vhost)
-    varz[:usage][:bindings_num] = list_bindings(instance.vhost)
+    varz[:usage][:queues_num] = list_queues(instance.vhost).size
+    varz[:usage][:exchanges_num] = list_exchanges(instance.vhost).size
+    varz[:usage][:bindings_num] = list_bindings(instance.vhost).size
     varz
   end
 
