@@ -46,13 +46,12 @@ class VCAP::Services::Rabbit::Node
 		@local_db = options[:local_db]
     @binding_options = ["configure", "write", "read"]
 		@options = options
-
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
 	end
 
 	def start
-    @logger.info("Starting rabbit instance node...")
+    @logger.info("Starting rabbit node...")
     start_db
     start_server
     ProvisionedInstance.all.each do |instance|
@@ -60,8 +59,8 @@ class VCAP::Services::Rabbit::Node
     end
   end
 
-	def stop
-    @logger.info("Stopping rabbit instance node...")
+	def shutdown
+    super if defined?(shutdown)
     stop_server
   end
 

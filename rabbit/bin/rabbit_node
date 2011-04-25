@@ -8,7 +8,6 @@ require "rubygems"
 require "bundler/setup"
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
 require "rabbit_service/rabbit_node"
 
 config_file = File.expand_path("../../config/rabbit_node.yml", __FILE__)
@@ -71,7 +70,7 @@ options = {
 }
 
 def shutdown(rabbit_node)
-  rabbit_node.stop
+  rabbit_node.shutdown
   EM.stop
 end
 

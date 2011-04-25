@@ -56,16 +56,18 @@ class VCAP::Services::Redis::Node
     options[:port_range].each {|port| @free_ports << port}
     @local_db = options[:local_db]
     @nfs_dir = options[:nfs_dir]
-    @options = options
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
+    @options = options
   end
 
   def start
+    @logger.info("Starting redis node...")
     start_db
     start_provisioned_instances
   end
 
-  def stop
+  def shutdown
+    super if defined?(shutdown)
     ProvisionedInstance.all.each do |instance|
       stop_redis_server(instance)
     end
@@ -135,18 +137,15 @@ class VCAP::Services::Redis::Node
 
   def unprovision(instance_id, credentials_list = [])
     instance = get_instance(instance_id)
-
-    @logger.debug("Killing #{instance.name} started with pid #{instance.pid}")
     stop_instance(instance) if instance.running?
     @available_memory += instance.memory
     destroy_instance(instance)
     @free_ports.add(instance.port)
-
-    @logger.debug("Successfully fulfilled unprovision request: #{instance_id}.")
     {}
   end
 
   def bind(instance_id, binding_options = :all)
+    # FIXME: Redis has no user level security, just return provisioned credentials.
     instance = get_instance(instance_id)
     credentials = {
       "hostname" => @local_ip,
@@ -156,14 +155,12 @@ class VCAP::Services::Redis::Node
   end
 
   def unbind(credentials)
+    # FIXME: Redis has no user level security, so has no operation for unbinding.
     {}
   end
 
   def save_instance(instance)
-    unless instance.save
-      stop_instance(instance)
-      raise RedisError.new(RedisError::REDIS_SAVE_SERVICE_FAILED, instance.pretty_inspect)
-    end
+    raise RedisError.new(RedisError::REDIS_SAVE_SERVICE_FAILED, instance.pretty_inspect) unless instance.save
   end
 
   def destroy_instance(instance)

@@ -40,6 +40,7 @@ describe VCAP::Services::Redis::Node do
     @uri = URI.parse(@options[:mbus])
     @pid_file = "/tmp/nats-redis-test.pid"
     if !NATS.server_running?(@uri)
+      puts "ruby -S bundle exec nats-server -p #{@uri.port} -P #{@pid_file}"
       %x[ruby -S bundle exec nats-server -p #{@uri.port} -P #{@pid_file} -d 2> /dev/null]
     end
     sleep 1
@@ -109,13 +110,11 @@ describe VCAP::Services::Redis::Node do
   describe "Node.start_db" do
     it "should fail when set local db with non-existed file argument" do
       @node.local_db = "sqlite3:/non_existed/non-existed.db"
-      @node.logger.level = Logger::ERROR
       begin
         @node.start_db
       rescue => e
         e.should be
       end
-      @node.logger.level = Logger::DEBUG
       @node.local_db = @options[:local_db]
     end
 
@@ -357,4 +356,5 @@ describe VCAP::Services::Redis::Node do
       @node.unprovision(@credentials["name"])
     end
   end
+
 end
