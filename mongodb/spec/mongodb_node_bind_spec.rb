@@ -149,7 +149,7 @@ describe VCAP::Services::MongoDB::Node do
 
       e = nil
       begin
-        conn = Mongo::Connection.new('localhost', @resp[:port]).db('local')
+        conn = Mongo::Connection.new('localhost', @resp['port']).db('db')
       rescue => e
       end
       e.should_not be_nil
