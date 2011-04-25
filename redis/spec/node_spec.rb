@@ -1,13 +1,13 @@
+require "redis"
 require File.dirname(__FILE__) + '/spec_helper'
-
-require 'redis_service/redis_node'
-require 'redis_service/redis_error'
+require "redis_service/redis_node"
+require "redis_service/redis_error"
 
 module VCAP
   module Services
     module Redis
       class Node
-         attr_reader :base_dir, :redis_server_path, :redis_client_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports
+         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports
          attr_accessor :logger, :local_db
       end
     end
@@ -23,7 +23,6 @@ describe VCAP::Services::Redis::Node do
       :logger => @logger,
       :base_dir => "/var/vcap/services/redis/instances",
       :redis_server_path => "redis-server",
-      :redis_client_path => "redis-cli",
       :local_ip => "127.0.0.1",
       :available_memory => 4096,
       :max_memory => 16,
@@ -76,10 +75,6 @@ describe VCAP::Services::Redis::Node do
 
     it "should set up a redis server path" do
       @node.redis_server_path.should be @options[:redis_server_path]
-    end
-
-    it "should set up a redis client path" do
-      @node.redis_client_path.should be @options[:redis_client_path]
     end
 
     it "should set up a local IP" do
@@ -192,15 +187,26 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should access the instance instance using the credentials returned by sucessful provision" do
-      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a #{@credentials["password"]} get test].should == "\n"
+      redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+      redis.get("test_key").should be_nil
     end
 
     it "should not allow null credentials to access the instance instance" do
-      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} get test].should == "ERR operation not permitted\n"
+      redis = Redis.new({:port => @credentials["port"]})
+      begin
+        redis.get("test_key")
+      rescue => e
+        e.class.should == RuntimeError
+      end
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
+      redis = Redis.new({:port => @credentials["port"], :password => "wrong_password"})
+      begin
+        redis.get("test_key")
+      rescue => e
+        e.class.should == RuntimeError
+      end
     end
 
     it "should delete the provisioned instance port in free port list when finish a provision" do
@@ -228,7 +234,12 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should not access the instance instance when doing unprovision" do
-      %x[#{@options[:redis_client_path]} -p #{@credentials["port"]} -a #{@credentials["password"]} get test].should_not == "\n"
+      redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+      begin
+        redis.get("test_key")
+      rescue => e
+        e.class.should == Errno::ECONNREFUSED
+      end
     end
 
     it "should add the provisioned instance port in free port list when finish an unprovision" do
@@ -296,15 +307,26 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should access redis server use the returned credential" do
-      %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} -a #{@binding_credentials["password"]} get test].should == "\n"
+      redis = Redis.new({:port => @binding_credentials["port"], :password => @binding_credentials["password"]})
+      redis.get("test_key").should be_nil
     end
 
     it "should not allow null credentials to access the instance instance" do
-      %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} get test].should == "ERR operation not permitted\n"
+      redis = Redis.new({:port => @binding_credentials["port"]})
+      begin
+        redis.get("test_key")
+      rescue => e
+        e.class.should == RuntimeError
+      end
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-      %x[#{@options[:redis_client_path]} -p #{@binding_credentials["port"]} -a wrong_password get test].should == "ERR operation not permitted\n"
+      redis = Redis.new({:port => @binding_credentials["port"], :password => "wrong_password"})
+      begin
+        redis.get("test_key")
+      rescue => e
+        e.class.should == RuntimeError
+      end
     end
 
     it "should send binding messsage when finish a binding" do

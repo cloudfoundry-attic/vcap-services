@@ -47,7 +47,6 @@ class VCAP::Services::Redis::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @redis_server_path = options[:redis_server_path]
-    @redis_client_path = options[:redis_client_path]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
     @max_swap = options[:max_swap]
@@ -219,7 +218,13 @@ class VCAP::Services::Redis::Node
   end
 
   def stop_redis_server(instance)
-    raise RedisError.new(RedisError::REDIS_STOP_SERVICE_FAILED, instance.pretty_inspect) unless %x[#{@redis_client_path} -p #{instance.port} -a #{instance.password} shutdown] == ""
+    redis = Redis.new({:port => instance.port, :password => instance.password})
+    begin
+      redis.shutdown
+    rescue => e
+      # FIXME: it will raise exception even if shutdown successfully,
+      # should be a redis ruby binding bug. Here just ignore it.
+    end
   end
 
   def stop_instance(instance)
@@ -271,14 +276,10 @@ class VCAP::Services::Redis::Node
   end
 
   def get_info(instance)
-    data = %x[#{@redis_client_path} -p #{instance.port} -a #{instance.password} info].split(/\r\n/)
-    raise RedisError.new(RedisError::REDIS_GET_SERVICE_INFO_FAILED, instance.pretty_inspect) unless data.size > 1
-    service_info = {}
-    data.each do |item|
-      pair = item.split(/:/)
-      service_info[pair[0].to_sym] = pair[1]
-    end
-    service_info
+    redis = Redis.new({:port => instance.port, :password => instance.password})
+    redis.info
+  rescue => e
+    raise RedisError.new(RedisError::REDIS_GET_SERVICE_INFO_FAILED, instance.pretty_inspect)
   end
 
   def get_varz(instance)
