@@ -290,12 +290,12 @@ class VCAP::Services::Redis::Node
     varz[:plan] = instance.plan
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
-    varz[:usage][:used_memory] = info[:used_memory].to_f / (1024.0 * 1024.0)
-    varz[:usage][:max_virtual_memory] = info[:vm_conf_max_memory].to_f / 1024.0
-    varz[:usage][:used_virtual_memory] = info[:vm_stats_used_pages].to_f * info[:vm_conf_page_size].to_f / (1024.0 * 1024.0)
-    varz[:usage][:connected_clients_num] = info[:connected_clients].to_i
-    varz[:usage][:last_save_time] = info[:last_save_time].to_i
-    varz[:usage][:bgsave_in_progress] = (info[:bgsave_in_progress] == "0" ? false : true)
+    varz[:usage][:used_memory] = info["used_memory"].to_f / (1024.0 * 1024.0)
+    varz[:usage][:max_virtual_memory] = info["vm_conf_max_memory"].to_f / 1024.0
+    varz[:usage][:used_virtual_memory] = info["vm_stats_used_pages"].to_f * info["vm_conf_page_size"].to_f / (1024.0 * 1024.0)
+    varz[:usage][:connected_clients_num] = info["connected_clients"].to_i
+    varz[:usage][:last_save_time] = info["last_save_time"].to_i
+    varz[:usage][:bgsave_in_progress] = (info["bgsave_in_progress"] == "0" ? false : true)
     varz
   end
 
