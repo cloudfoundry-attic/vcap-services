@@ -91,6 +91,14 @@ class VCAP::Services::Redis::Node
         save_instance(instance)
       rescue => e
         @logger.warn("Error starting instance #{instance.name}: #{e}")
+        begin
+          @free_ports.add(instance.port)
+          @available_memory += instance.memory
+          stop_instance(instance)
+          destroy_instance(instance)
+        rescue => e2
+          # Ignore the rollback exception
+        end
       end
     end
   end
