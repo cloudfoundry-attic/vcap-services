@@ -72,34 +72,6 @@ class VCAP::Services::Redis::Node
     end
   end
 
-  def start_db
-    DataMapper.setup(:default, @local_db)
-    DataMapper::auto_upgrade!
-  end
-
-  def start_provisioned_instances
-    ProvisionedInstance.all.each do |instance|
-      @free_ports.delete(instance.port)
-      if instance.running?
-        @logger.info("Service #{instance.name} already running with pid #{instance.pid}")
-        @available_memory -= (instance.memory || @max_memory)
-        next
-      end
-      begin
-        pid = start_instance(instance)
-        instance.pid = pid
-        save_instance(instance)
-      rescue => e
-        @logger.warn("Error starting instance #{instance.name}: #{e}")
-        begin
-          cleanup_instance(instance)
-        rescue => e2
-          # Ignore the rollback exception
-        end
-      end
-    end
-  end
-
   def announcement
     a = {
       :available_memory => @available_memory
@@ -155,6 +127,49 @@ class VCAP::Services::Redis::Node
   def unbind(credentials)
     # FIXME: Redis has no user level security, so has no operation for unbinding.
     {}
+  end
+
+  def varz_details
+    varz = {}
+    varz[:provisioned_instances] = []
+    varz[:provisioned_instances_num] = 0
+    varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    ProvisionedInstance.all.each do |instance|
+      varz[:provisioned_instances] << get_varz(instance)
+      varz[:provisioned_instances_num] += 1
+    end
+    varz
+  rescue
+    @logger.warn("Error get varz details: #{e}")
+    {}
+  end
+
+  def start_db
+    DataMapper.setup(:default, @local_db)
+    DataMapper::auto_upgrade!
+  end
+
+  def start_provisioned_instances
+    ProvisionedInstance.all.each do |instance|
+      @free_ports.delete(instance.port)
+      if instance.running?
+        @logger.info("Service #{instance.name} already running with pid #{instance.pid}")
+        @available_memory -= (instance.memory || @max_memory)
+        next
+      end
+      begin
+        pid = start_instance(instance)
+        instance.pid = pid
+        save_instance(instance)
+      rescue => e
+        @logger.warn("Error starting instance #{instance.name}: #{e}")
+        begin
+          cleanup_instance(instance)
+        rescue => e2
+          # Ignore the rollback exception
+        end
+      end
+    end
   end
 
   def save_instance(instance)
@@ -215,16 +230,6 @@ class VCAP::Services::Redis::Node
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.pretty_inspect)
   end
 
-  def stop_redis_server(instance)
-    redis = Redis.new({:port => instance.port, :password => instance.password})
-    begin
-      redis.shutdown
-    rescue => e
-      # FIXME: it will raise exception even if shutdown successfully,
-      # should be a redis ruby binding bug. Here just ignore it.
-    end
-  end
-
   def stop_instance(instance)
     stop_redis_server(instance)
     dir = File.join(@base_dir, instance.name)
@@ -253,6 +258,16 @@ class VCAP::Services::Redis::Node
       when :free then 16
       else
         raise RedisError.new(RedisError::REDIS_INVALID_PLAN, instance.plan)
+    end
+  end
+
+  def stop_redis_server(instance)
+    redis = Redis.new({:port => instance.port, :password => instance.password})
+    begin
+      redis.shutdown
+    rescue => e
+      # FIXME: it will raise exception even if shutdown successfully,
+      # should be a redis ruby binding bug. Here just ignore it.
     end
   end
 
@@ -312,21 +327,6 @@ class VCAP::Services::Redis::Node
     varz[:usage][:last_save_time] = info["last_save_time"].to_i
     varz[:usage][:bgsave_in_progress] = (info["bgsave_in_progress"] == "0" ? false : true)
     varz
-  end
-
-  def varz_details
-    varz = {}
-    varz[:provisioned_instances] = []
-    varz[:provisioned_instances_num] = 0
-    varz[:max_instances_num] = @options[:available_memory] / @max_memory
-    ProvisionedInstance.all.each do |instance|
-      varz[:provisioned_instances] << get_varz(instance)
-      varz[:provisioned_instances_num] += 1
-    end
-    varz
-  rescue
-    @logger.warn("Error get varz details: #{e}")
-    {}
   end
 
 end

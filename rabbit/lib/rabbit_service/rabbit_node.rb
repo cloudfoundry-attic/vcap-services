@@ -64,11 +64,6 @@ class VCAP::Services::Rabbit::Node
     stop_server
   end
 
-	def start_db
-    DataMapper.setup(:default, @local_db)
-    DataMapper::auto_upgrade!
-	end
-
 	def announcement
 		a = {
 			:available_memory => @available_memory
@@ -143,6 +138,26 @@ class VCAP::Services::Rabbit::Node
     delete_user(credentials["user"])
     {}
   end
+
+  def varz_details
+    varz = {}
+    varz[:provisioned_instances] = []
+    varz[:provisioned_instances_num] = 0
+    varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    ProvisionedInstance.all.each do |instance|
+      varz[:provisioned_instances] << get_varz(instance)
+      varz[:provisioned_instances_num] += 1
+    end
+    varz
+  rescue => e
+    logger.warn(e)
+    {}
+  end
+
+	def start_db
+    DataMapper.setup(:default, @local_db)
+    DataMapper::auto_upgrade!
+	end
 
 	def save_instance(instance)
 		raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
@@ -303,21 +318,6 @@ class VCAP::Services::Rabbit::Node
     varz[:usage][:exchanges_num] = list_exchanges(instance.vhost).size
     varz[:usage][:bindings_num] = list_bindings(instance.vhost).size
     varz
-  end
-
-  def varz_details
-    varz = {}
-    varz[:provisioned_instances] = []
-    varz[:provisioned_instances_num] = 0
-    varz[:max_instances_num] = @options[:available_memory] / @max_memory
-    ProvisionedInstance.all.each do |instance|
-      varz[:provisioned_instances] << get_varz(instance)
-      varz[:provisioned_instances_num] += 1
-    end
-    varz
-  rescue => e
-    logger.warn(e)
-    {}
   end
 
 end
