@@ -189,8 +189,6 @@ class VCAP::Services::MongoDB::Node
     @free_ports << provisioned_service.port
 
     true
-  rescue => e
-    @logger.warn(e)
   end
 
   def bind(name, bind_opts)
