@@ -244,7 +244,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def set_permissions(vhost, username, permissions)
-    raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSION_FAILEDi, username, permissions) unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions}].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSION_FAILED, username, permissions) unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions}].split(/\n/)[-1] == "...done."
   end
 
   def list_users
