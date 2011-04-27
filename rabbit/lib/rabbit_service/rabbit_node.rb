@@ -22,7 +22,7 @@ VALID_CREDENTIAL_CHARACTERS = ("A".."Z").to_a + ("a".."z").to_a + ("0".."9").to_
 
 class VCAP::Services::Rabbit::Node
 
-	include VCAP::Services::Rabbit::Common
+  include VCAP::Services::Rabbit::Common
   include VCAP::Services::Rabbit
 
   class ProvisionedInstance
@@ -37,20 +37,20 @@ class VCAP::Services::Rabbit::Node
   end
 
   def initialize(options)
-	  super(options)
+    super(options)
     @rabbit_port = options[:rabbit_port] || 5672
     @rabbit_ctl = options[:rabbit_ctl]
     @rabbit_server = options[:rabbit_server]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
-		@local_db = options[:local_db]
+    @local_db = options[:local_db]
     @binding_options = ["configure", "write", "read"]
-		@options = options
+    @options = options
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
-	end
+  end
 
-	def start
+  def start
     @logger.info("Starting rabbit node...")
     start_db
     start_server
@@ -59,16 +59,16 @@ class VCAP::Services::Rabbit::Node
     end
   end
 
-	def shutdown
+  def shutdown
     super if defined?(shutdown)
     stop_server
   end
 
-	def announcement
-		a = {
-			:available_memory => @available_memory
-		}
-	end
+  def announcement
+    a = {
+      :available_memory => @available_memory
+    }
+  end
 
   def provision(plan)
     instance = ProvisionedInstance.new
@@ -80,21 +80,21 @@ class VCAP::Services::Rabbit::Node
     instance.admin_password = "ap" + generate_credential
     instance.memory   = @max_memory
 
-		@available_memory -= instance.memory
+    @available_memory -= instance.memory
 
-		save_instance(instance)
+    save_instance(instance)
 
     add_vhost(instance.vhost)
     add_user(instance.admin_username, instance.admin_password)
     set_permissions(instance.vhost, instance.admin_username, '".*" ".*" ".*"')
 
     credentials = {
-			"name" => instance.name,
-			"hostname" => @local_ip,
+      "name" => instance.name,
+      "hostname" => @local_ip,
       "port"  => @rabbit_port,
-			"vhost" => instance.vhost,
-			"user" => instance.admin_username,
-			"pass" => instance.admin_password
+      "vhost" => instance.vhost,
+      "user" => instance.admin_username,
+      "pass" => instance.admin_password
     }
   rescue => e
     # Rollback
@@ -113,17 +113,17 @@ class VCAP::Services::Rabbit::Node
   end
 
   def bind(instance_id, binding_options = :all)
-	  credentials = {}
-		instance = get_instance(instance_id)
-		credentials["hostname"] = @local_ip
+    credentials = {}
+    instance = get_instance(instance_id)
+    credentials["hostname"] = @local_ip
     credentials["port"] = @rabbit_port
-		credentials["user"] = "u" + generate_credential
-		credentials["pass"] = "p" + generate_credential
-		credentials["vhost"] = instance.vhost
-		add_user(credentials["user"], credentials["pass"])
-		set_permissions(credentials["vhost"], credentials["user"], get_permissions(binding_options))
+    credentials["user"] = "u" + generate_credential
+    credentials["pass"] = "p" + generate_credential
+    credentials["vhost"] = instance.vhost
+    add_user(credentials["user"], credentials["pass"])
+    set_permissions(credentials["vhost"], credentials["user"], get_permissions(binding_options))
 
-		credentials
+    credentials
   rescue => e
     # Rollback
       begin
@@ -154,29 +154,29 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
-	def start_db
+  def start_db
     DataMapper.setup(:default, @local_db)
     DataMapper::auto_upgrade!
-	end
+  end
 
-	def save_instance(instance)
-		raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
-	end
+  def save_instance(instance)
+    raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
+  end
 
-	def destroy_instance(instance)
-		raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.pretty_inspect) unless instance.destroy
-	end
+  def destroy_instance(instance)
+    raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.pretty_inspect) unless instance.destroy
+  end
 
-	def get_instance(instance_id)
+  def get_instance(instance_id)
     instance = ProvisionedInstance.get(instance_id)
-		raise RabbitError.new(RabbitError::RABBIT_FIND_INSTANCE_FAILED, instance_id) if instance.nil?
-		instance
-	end
+    raise RabbitError.new(RabbitError::RABBIT_FIND_INSTANCE_FAILED, instance_id) if instance.nil?
+    instance
+  end
 
   def cleanup_instance(instance, credentials_list = [])
     err_msg = []
     @available_memory += instance.memory
-		# Delete all bindings in this instance
+    # Delete all bindings in this instance
     begin
       credentials_list.each do |credentials|
         unbind(credentials)
@@ -239,9 +239,9 @@ class VCAP::Services::Rabbit::Node
     raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username) unless %x[#{@rabbit_ctl} delete_user #{username}].split(/\n/)[-1] == "...done."
   end
 
-	def get_permissions(binding_options)
-	  '".*" ".*" ".*"'
-	end
+  def get_permissions(binding_options)
+    '".*" ".*" ".*"'
+  end
 
   def set_permissions(vhost, username, permissions)
     raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSION_FAILEDi, username, permissions) unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions}].split(/\n/)[-1] == "...done."

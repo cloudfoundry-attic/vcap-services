@@ -8,7 +8,7 @@ module VCAP
     module Rabbit
       class Node
          attr_reader :rabbit_ctl, :rabbit_server, :local_ip, :available_memory, :max_memory, :mbus
-				 attr_accessor :logger, :local_db
+         attr_accessor :logger, :local_db
       end
     end
   end
@@ -38,10 +38,10 @@ describe VCAP::Services::Rabbit::Node do
     end
     sleep 1
 
-		EM.run do
-			@node = VCAP::Services::Rabbit::Node.new(@options)
-			EM.add_timer(0.1) {EM.stop}
-		end
+    EM.run do
+      @node = VCAP::Services::Rabbit::Node.new(@options)
+      EM.add_timer(0.1) {EM.stop}
+    end
   end
 
   after :all do
@@ -62,7 +62,7 @@ describe VCAP::Services::Rabbit::Node do
     @instance.admin_username = "au" + @node.generate_credential
     @instance.admin_password = "ap" + @node.generate_credential
     @instance.memory = @options[:memory]
-	end
+  end
 
   describe "Node.initialize" do
     it "should set up a rabbit controler path" do
@@ -82,8 +82,8 @@ describe VCAP::Services::Rabbit::Node do
     end
     it "should setup a local database path" do
       @node.local_db.should be @options[:local_db]
-		end
-	end
+    end
+  end
 
   describe "Node.start_db" do
     it "should fail when set local db with non-existed file argument" do
@@ -104,22 +104,22 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   describe "Node.start_server" do
-		it "should start rabbit server correctly" do
+    it "should start rabbit server correctly" do
       @node.start_server.should be
-		end
+    end
   end
 
   describe 'Node.announcement' do
     it "should send node announcement" do
-			@node.announcement.should be
+      @node.announcement.should be
     end
 
-		it "should send available_memory in announce message" do
-			@node.announcement[:available_memory].should == @node.available_memory
-		end
+    it "should send available_memory in announce message" do
+      @node.announcement[:available_memory].should == @node.available_memory
+    end
   end
 
-	describe "Node.provision" do
+  describe "Node.provision" do
     before :all do
       @old_memory = @node.available_memory
       @credentials = @node.provision(:free)
@@ -131,7 +131,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should access the instance instance using the credentials returned by sucessful provision" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],
                    :user => @credentials["user"],
@@ -141,10 +141,10 @@ describe VCAP::Services::Rabbit::Node do
         AMQP.stop
         EM.add_timer(1) {EM.stop}
       end
-		end
+    end
 
     it "should not allow null credentials to access the instance instance" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],) do |conn|
           conn.connected?.should == false
@@ -155,7 +155,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],
                    :user => @credentials["user"],
@@ -171,16 +171,16 @@ describe VCAP::Services::Rabbit::Node do
       (@old_memory - @node.available_memory).should == @node.max_memory
     end
 
-		it "should send provision messsage when finish a provision" do
+    it "should send provision messsage when finish a provision" do
       @credentials["name"].should be
       @credentials["hostname"].should be
       @credentials["vhost"].should be
       @credentials["user"].should be
       @credentials["pass"].should be
-		end
-	end
+    end
+  end
 
-	describe "Node.unprovision" do
+  describe "Node.unprovision" do
     before :all do
       @credentials = @node.provision(:free)
       sleep 1
@@ -190,7 +190,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not access the instance instance when doing unprovision" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @credentials["hostname"],
                    :vhost => @credentials["vhost"],
                    :user => @credentials["user"],
@@ -199,8 +199,8 @@ describe VCAP::Services::Rabbit::Node do
         end
         AMQP.stop
         EM.add_timer(1) {EM.stop}
-			end
-		end
+      end
+    end
 
     it "should decrease available memory when finish a provision" do
       (@node.available_memory - @old_memory).should == @node.max_memory
@@ -213,9 +213,9 @@ describe VCAP::Services::Rabbit::Node do
         e.class.should == VCAP::Services::Rabbit::RabbitError
       end
     end
-	end
+  end
 
-	describe "Node.bind" do
+  describe "Node.bind" do
     before :all do
       @instance_credentials = @node.provision(:free)
       sleep 1
@@ -230,7 +230,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should access redis server use the returned credential" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],
                    :user => @binding_credentials["user"],
@@ -239,11 +239,11 @@ describe VCAP::Services::Rabbit::Node do
         end
         AMQP.stop
         EM.add_timer(1) {EM.stop}
-			end
+      end
     end
 
     it "should not allow null credentials to access the instance instance" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],) do |conn|
           conn.connected?.should == false
@@ -254,7 +254,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],
                    :user => @binding_credentials["user"],
@@ -266,15 +266,15 @@ describe VCAP::Services::Rabbit::Node do
       end
     end
 
-		it "should send binding messsage when finish a binding" do
+    it "should send binding messsage when finish a binding" do
       @binding_credentials["hostname"].should be
       @binding_credentials["vhost"].should be
       @binding_credentials["user"].should be
       @binding_credentials["pass"].should be
-		end
-	end
+    end
+  end
 
-	describe "Node.unbind" do
+  describe "Node.unbind" do
     before :all do
       @instance_credentials = @node.provision(:free)
       sleep 1
@@ -286,7 +286,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not access redis server after unbinding" do
-		  EM.run do
+      EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],
                    :user => @binding_credentials["user"],
@@ -295,13 +295,13 @@ describe VCAP::Services::Rabbit::Node do
         end
         AMQP.stop
         EM.add_timer(1) {EM.stop}
-			end
+      end
     end
 
     it "should return empty when unbinding successfully" do
       @response.should == {}
     end
-	end
+  end
 
   describe "Node.save_instance" do
     it "shuold raise error when save instance instance failed" do
