@@ -104,10 +104,7 @@ class VCAP::Services::Rabbit::Node
   rescue => e
     # Rollback
       begin
-        @available_memory += instance.memory
-        destroy_instance(instance)
-        delete_vhost(instance.vhost)
-        delete_user(instance.admin_username)
+        cleanup_instance(instance)
       rescue => e
         # Ignore the exception here
       end
@@ -116,14 +113,7 @@ class VCAP::Services::Rabbit::Node
 
   def unprovision(instance_id, credentials_list = [])
     instance = get_instance(instance_id)
-		# Delete all bindings in this instance
-		credentials_list.each do |credentials|
-		  unbind(credentials)
-		end
-    delete_user(instance.admin_username)
-    delete_vhost(instance.vhost)
-		destroy_instance(instance)
-    @available_memory += instance.memory
+    cleanup_instance(instance, credentials_list)
     {}
   end
 
@@ -155,18 +145,47 @@ class VCAP::Services::Rabbit::Node
   end
 
 	def save_instance(instance)
-		raise RabbitError.new(RabbitError::RABBIT_SAVE_SERVICE_FAILED, instance.pretty_inspect) unless instance.save
+		raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
 	end
 
 	def destroy_instance(instance)
-		raise RabbitError.new(RabbitError::RABBIT_DESTORY_SERVICE_FAILED, instance.pretty_inspect) unless instance.destroy
+		raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.pretty_inspect) unless instance.destroy
 	end
 
 	def get_instance(instance_id)
     instance = ProvisionedInstance.get(instance_id)
-		raise RabbitError.new(RabbitError::RABBIT_FIND_SERVICE_FAILED, instance_id) if instance.nil?
+		raise RabbitError.new(RabbitError::RABBIT_FIND_INSTANCE_FAILED, instance_id) if instance.nil?
 		instance
 	end
+
+  def cleanup_instance(instance, credentials_list = [])
+    err_msg = []
+    @available_memory += instance.memory
+		# Delete all bindings in this instance
+    begin
+      credentials_list.each do |credentials|
+        unbind(credentials)
+      end
+    rescue => e
+      err_msg << e.message
+    end
+    begin
+      delete_vhost(instance.vhost)
+    rescue => e
+      err_msg << e.message
+    end
+    begin
+      delete_user(instance.admin_username)
+    rescue => e
+      err_msg << e.message
+    end
+    begin
+      destroy_instance(instance)
+    rescue => e
+      err_msg << e.message
+    end
+    raise RabbitError.new(RabbitError::RABBIT_CLEANUP_INSTANCE_FAILED, err_msg.inspect) if err_msg.size > 0
+  end
 
   def start_server
     raise RabbitError.new(RabbitError::RABBIT_START_SERVER_FAILED) unless %x[#{@rabbit_server} -detached] == "Activating RabbitMQ plugins ...\n0 plugins activated:\n\n"

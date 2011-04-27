@@ -92,10 +92,7 @@ class VCAP::Services::Redis::Node
       rescue => e
         @logger.warn("Error starting instance #{instance.name}: #{e}")
         begin
-          @free_ports.add(instance.port)
-          @available_memory += instance.memory
-          stop_instance(instance)
-          destroy_instance(instance)
+          cleanup_instance(instance)
         rescue => e2
           # Ignore the rollback exception
         end
@@ -124,10 +121,7 @@ class VCAP::Services::Redis::Node
       save_instance(instance)
     rescue => e1
       begin
-        @free_ports.add(instance.port)
-        @available_memory += instance.memory
-        stop_instance(instance)
-        destroy_instance(instance)
+        cleanup_instance(instance)
       rescue => e2
         # Ignore the rollback exception
       end
@@ -144,10 +138,7 @@ class VCAP::Services::Redis::Node
 
   def unprovision(instance_id, credentials_list = [])
     instance = get_instance(instance_id)
-    stop_instance(instance) if instance.running?
-    @available_memory += instance.memory
-    destroy_instance(instance)
-    @free_ports.add(instance.port)
+    cleanup_instance(instance)
     {}
   end
 
@@ -167,16 +158,16 @@ class VCAP::Services::Redis::Node
   end
 
   def save_instance(instance)
-    raise RedisError.new(RedisError::REDIS_SAVE_SERVICE_FAILED, instance.pretty_inspect) unless instance.save
+    raise RedisError.new(RedisError::REDIS_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
   end
 
   def destroy_instance(instance)
-    raise RedisError.new(RedisError::REDIS_DESTORY_SERVICE_FAILED, instance.pretty_inspect) unless instance.destroy
+    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.pretty_inspect) unless instance.destroy
   end
 
   def get_instance(name)
     instance = ProvisionedInstance.get(name)
-    raise RedisError.new(RedisError::REDIS_FIND_SERVICE_FAILED, name) if instance.nil?
+    raise RedisError.new(RedisError::REDIS_FIND_INSTANCE_FAILED, name) if instance.nil?
     instance
   end
 
@@ -221,8 +212,7 @@ class VCAP::Services::Redis::Node
       exec("#{@redis_server_path} #{config_path}")
     end
   rescue => e
-    @logger.warn(e)
-    raise RedisError.new(RedisError::REDIS_START_SERVICE_FAILED, instance.pretty_inspect)
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.pretty_inspect)
   end
 
   def stop_redis_server(instance)
@@ -239,6 +229,23 @@ class VCAP::Services::Redis::Node
     stop_redis_server(instance)
     dir = File.join(@base_dir, instance.name)
     FileUtils.rm_rf(dir)
+  end
+
+  def cleanup_instance(instance)
+    err_msg = []
+    begin
+      stop_instance(instance) if instance.running?
+    rescue => e
+      err_msg << e.message
+    end
+    @available_memory += instance.memory
+    @free_ports.add(instance.port)
+    begin
+      destroy_instance(instance)
+    rescue => e
+      err_msg << e.message
+    end
+    raise RedisError.new(RedisError::REDIS_CLEANUP_INSTANCE_FAILED, err_msg.inspect) if err_msg.size > 0
   end
 
   def memory_for_instance(instance)
@@ -287,7 +294,7 @@ class VCAP::Services::Redis::Node
     redis = Redis.new({:port => instance.port, :password => instance.password})
     redis.info
   rescue => e
-    raise RedisError.new(RedisError::REDIS_GET_SERVICE_INFO_FAILED, instance.pretty_inspect)
+    raise RedisError.new(RedisError::REDIS_GET_INSTANCE_INFO_FAILED, instance.pretty_inspect)
   end
 
   def get_varz(instance)
@@ -318,7 +325,7 @@ class VCAP::Services::Redis::Node
     end
     varz
   rescue
-    logger.warn(e)
+    @logger.warn("Error get varz details: #{e}")
     {}
   end
 
