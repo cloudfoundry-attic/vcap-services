@@ -240,7 +240,7 @@ class VCAP::Services::Rabbit::Node
     lines.each do |line|
       items = line.split(/\t/)
       if items.size > 1
-        users.push(items[0])
+        users << items[0]
       end
     end
     users
@@ -254,7 +254,7 @@ class VCAP::Services::Rabbit::Node
     lines.each do |line|
       items = line.split(/\t/)
       if items.size > 1
-        queues.push(items[0])
+        queues << items[0]
       end
     end
     queues
@@ -268,7 +268,7 @@ class VCAP::Services::Rabbit::Node
     lines.each do |line|
       items = line.split(/\t/)
       if items.size > 1
-        exchanges.push(items[0])
+        exchanges << items[0]
       end
     end
     exchanges
@@ -282,7 +282,7 @@ class VCAP::Services::Rabbit::Node
     lines.each do |line|
       items = line.split(/\t/)
       if items.size > 1
-        bindings.push(items[0])
+        bindings.push << items[0]
       end
     end
     bindings
