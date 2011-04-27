@@ -1,11 +1,12 @@
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-$:.unshift File.join(File.dirname(__FILE__), 'lib')
 $LOAD_PATH.unshift(File.expand_path("../../../base/lib", __FILE__))
 
 require "spec_helper"
 require "atmos_service/atmos_provisioner"
 require "atmos_service/atmos_helper"
 require "uuidtools"
+
+require "atmos_rest_client"
 
 include VCAP::Services::Atmos
 
@@ -41,10 +42,10 @@ describe VCAP::Services::Atmos::Provisioner do
       subtenant_id = @atmos_helper.createSubtenant(@subtenant_name_p)
       subtenant_id.should_not be_nil
     end
-   
+
     it "should successfully create token under a subtenant" do
       shared_secret = @atmos_helper.createUser(@token, @subtenant_name_p)
-      puts "token: " + @token + ", shared_secret: " + shared_secret 
+      puts "token: " + @token + ", shared_secret: " + shared_secret
       shared_secret.should_not be_nil
     end
 
@@ -60,28 +61,28 @@ describe VCAP::Services::Atmos::Provisioner do
       shared_secret = @atmos_helper.createUser(@token, @subtenant_name_p1)
       puts "token: " + @token + ", shared_secret: " + shared_secret
       shared_secret.should_not be_nil
-
       host = @raw_conf[:atmos][:host]
-      puts "createobject, host: " + host
-      remote_file_name = "etchosts"
-      local_file_name = "/etc/hosts"
-      local_temp_file_name = "/tmp/etchosts"
 
-      ret = atmos_create_object(host, subtenant_id, @token, shared_secret, remote_file_name, local_file_name)
-      puts "---atmos createobject: " + ret
+      opts = {
+        :url => "http://" + host + ":443",
+        :sid => subtenant_id,
+        :uid => @token,
+        :key => shared_secret,
+      }
+      client = AtmosClient.new(opts)
+      obj = UUIDTools::UUID.random_create.to_s
+      res = client.createObj(obj)
+      id = res['location']
+      puts "object: " + obj + " created at: #{id}"
+      res = client.getObj(id)
+      puts "response of reading object: #{res.body}"
+      obj_same = obj == res.body
+      obj_same.should == true
 
-      ret = atmos_read_object(host, subtenant_id, @token, shared_secret, remote_file_name, local_temp_file_name)  
-      puts "---atmos readobject: " + ret
-
-      diff = `diff #{local_file_name} #{local_temp_file_name}`
-      puts "diff: " + diff
-      file_same = diff == ""
-      file_same.should == true
-      
-      # cleanup, important for later test
-      `rm -f #{local_temp_file_name}`
+      res = client.deleteObj(id)
+      puts "response of deleting file: #{res}"
     end
- 
+
     after :all do
       @atmos_helper.deleteSubtenant(@subtenant_name_p)
       @atmos_helper.deleteSubtenant(@subtenant_name_p1)
@@ -108,24 +109,30 @@ describe VCAP::Services::Atmos::Provisioner do
       shared_secret2.should_not be_nil
 
       host = @raw_conf[:atmos][:host]
-      remote_file_name = "etchosts"
-      local_file_name = "/etc/hosts"
-      local_temp_file_name = "/tmp/etchosts"
 
-      ret = atmos_create_object(host, subtenant_id1, @token, shared_secret2, remote_file_name, local_file_name)
-      puts "---atmos createobject: " + ret
+      opts = {
+        :url => "http://" + host + ":443",
+        :sid => subtenant_id1,
+        :uid => @token,
+        :key => shared_secret2,
+      }
+      client = AtmosClient.new(opts)
+      res = client.createObj("obj")
+      puts res.to_s
+      same_class = res == Net::HTTPForbidden || res['location'] == nil
+      same_class.should == true
 
-      ret = atmos_read_object(host, subtenant_id1, @token, shared_secret2, remote_file_name, local_temp_file_name)
-      puts "---atmos readobject: " + ret
-
-      if File.exist?("#{local_temp_file_name}") then
-        diff = `diff #{local_file_name} #{local_temp_file_name}`
-        puts "diff: " + diff
-        file_diff = diff != ""
-        file_diff.should == true
-        # cleanup, important for later test
-        `rm -f #{local_temp_file_name}`
-      end
+      opts = {
+        :url => "http://" + host + ":443",
+        :sid => subtenant_id2,
+        :uid => @token,
+        :key => shared_secret1,
+      }
+      client = AtmosClient.new(opts)
+      res = client.createObj("obj")
+      puts res.to_s
+      same_class = res == Net::HTTPForbidden || res['location'] == nil
+      same_class.should == true
     end
 
     after :all do
@@ -138,35 +145,24 @@ describe VCAP::Services::Atmos::Provisioner do
     before :all do
       @raw_conf = get_raw_config()
       @subtenant_name = UUIDTools::UUID.random_create.to_s
-      @token = UUIDTools::UUID.random_create.to_s
     end
 
     it "should prevent null credential from login" do
       subtenant_id = @atmos_helper.createSubtenant(@subtenant_name)
       subtenant_id.should_not be_nil
-
-      shared_secret = @atmos_helper.createUser(@token, @subtenant_name)
-      shared_secret.should_not be_nil
-
       host = @raw_conf[:atmos][:host]
-      remote_file_name = "etchosts"
-      local_file_name = "/etc/hosts"
-      local_temp_file_name = "/tmp/etchosts"
 
-      ret = atmos_create_object(host, subtenant_id, @token, "", remote_file_name, local_file_name)
-      puts "---atmos createobject: " + ret
-
-      ret = atmos_read_object(host, subtenant_id, @token, "", remote_file_name, local_temp_file_name)
-      puts "---atmos readobject: " + ret
-
-      if File.exist?("#{local_temp_file_name}") then
-        diff = `diff #{local_file_name} #{local_temp_file_name}`
-        puts "diff: " + diff
-        file_diff = diff != ""
-        file_diff.should == true
-        # cleanup, important for later test
-        `rm -f #{local_temp_file_name}`
-      end
+      opts = {
+        :url => "http://" + host + ":443",
+        :sid => subtenant_id,
+        :uid => "",
+        :key => "",
+      }
+      client = AtmosClient.new(opts)
+      res = client.createObj("obj")
+      puts res.to_s
+      same_class = res == Net::HTTPForbidden || res['location'] == nil
+      same_class.should == true
     end
 
     after :all do

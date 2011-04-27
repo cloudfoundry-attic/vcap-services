@@ -1,5 +1,4 @@
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-$:.unshift File.join(File.dirname(__FILE__), 'lib')
 $LOAD_PATH.unshift(File.expand_path("../../../", __FILE__))
 
 require "rubygems"
@@ -7,7 +6,7 @@ require "rspec"
 
 HTTP_PORT = 9865
 
-def symbolize_keys(hash) 
+def symbolize_keys(hash)
   if hash.is_a? Hash
     new_hash = {}
     hash.each do |k, v|
@@ -35,25 +34,25 @@ def parse_property(hash, key, type, options = {})
   end
 end
 
-def get_provisioner_config() 
+def get_provisioner_config()
   config_file = File.join(File.dirname(__FILE__), "../config/atmos_gateway.yml")
   config = YAML.load_file(config_file)
   config = symbolize_keys(config)
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    # Following options are for Provisioner 
+    # Following options are for Provisioner
     :version => config[:service][:version],
-    :local_ip => 'localhost', 
+    :local_ip => 'localhost',
     # Following options are for AsynchronousServiceGateway
     :service => config[:service],
     :token => config[:token],
     :cloud_controller => config[:cloud_controller],
-    # Following options are for Thin 
+    # Following options are for Thin
     :host => 'localhost',
     :port => HTTP_PORT
   }
   options[:logger].level = Logger::FATAL
-  options 
+  options
 end
 
 def start_server(opts)
@@ -68,22 +67,4 @@ def get_raw_config()
   config_file = File.join(File.dirname(__FILE__), "../config/atmos_gateway.yml")
   config = YAML.load_file(config_file)
   config = symbolize_keys(config)
-end
-
-def atmos_create_object(host, subtenant_id, token, shared_secret, remote_file_name, local_file_name)
-  cmd = "lib/rest_cli.rb -f createobject -p #{subtenant_id}/#{token} -k #{shared_secret} -c #{remote_file_name} -u #{local_file_name} -s #{host}"
-  puts "cmd: " + cmd
-
-  ret = `#{cmd}`
-  puts "cmd return: " + ret
-  ret
-end
-
-def atmos_read_object(host, subtenant_id, token, shared_secret, remote_file_name, local_file_name)
-  cmd = "lib/rest_cli.rb -f readobject -p #{subtenant_id}/#{token} -k #{shared_secret} -c #{remote_file_name} -r #{local_file_name} -s #{host}"
-  puts "cmd: " + cmd
-
-  ret = `#{cmd}`
-  puts "cmd return: " + ret
-  ret
 end
