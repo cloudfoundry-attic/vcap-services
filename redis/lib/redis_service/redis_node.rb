@@ -66,7 +66,7 @@ class VCAP::Services::Redis::Node
   end
 
   def shutdown
-    super if defined?(shutdown)
+    super if defined?(super)
     ProvisionedInstance.all.each do |instance|
       stop_redis_server(instance)
     end
