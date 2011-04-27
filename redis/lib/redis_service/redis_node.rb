@@ -228,7 +228,7 @@ class VCAP::Services::Redis::Node
   def stop_instance(instance)
     stop_redis_server(instance)
     dir = File.join(@base_dir, instance.name)
-    FileUtils.rm_rf(dir)
+    EM.defer {FileUtils.rm_rf(dir)}
   end
 
   def cleanup_instance(instance)
