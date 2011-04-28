@@ -143,7 +143,7 @@ class VCAP::Services::Mysql::Node
 
   def kill_long_transaction
     # FIXME need a better transaction query solution other than parse status text
-    result = @connection.query("SHOW INNODB STATUS")
+    result = @connection.query("SHOW ENGINE INNODB STATUS")
     innodb_status = nil
     result.each do |i|
       innodb_status = i[-1]
