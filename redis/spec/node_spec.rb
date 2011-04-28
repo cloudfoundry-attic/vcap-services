@@ -379,4 +379,13 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
+  describe "Node.shutdown" do
+    it "should return true when shutdown finished" do
+      EM.run do
+        @node.shutdown.should be
+        EM.add_timer(0.1) {EM.stop}
+      end
+    end
+  end
+
 end

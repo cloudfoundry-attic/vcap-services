@@ -57,11 +57,13 @@ class VCAP::Services::Rabbit::Node
     ProvisionedInstance.all.each do |instance|
       @available_memory -= (instance.memory || @max_memory)
     end
+    true
   end
 
   def shutdown
     super if defined?(super)
     stop_server
+    true
   end
 
   def announcement

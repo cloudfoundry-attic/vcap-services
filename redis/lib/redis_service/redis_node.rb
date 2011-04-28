@@ -63,6 +63,7 @@ class VCAP::Services::Redis::Node
     @logger.info("Starting redis node...")
     start_db
     start_provisioned_instances
+    true
   end
 
   def shutdown
@@ -70,6 +71,7 @@ class VCAP::Services::Redis::Node
     ProvisionedInstance.all.each do |instance|
       stop_redis_server(instance)
     end
+    true
   end
 
   def announcement

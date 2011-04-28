@@ -350,4 +350,15 @@ describe VCAP::Services::Rabbit::Node do
     end
   end
 
+  describe "Node.shutdown" do
+    it "should return true when shutdown finished" do
+      EM.run do
+        @node.shutdown.should be
+        sleep 1
+        %x[#{@options[:rabbit_ctl]} status].split(/\n/)[-1].should_not == "...done."
+        EM.add_timer(0.1) {EM.stop}
+      end
+    end
+  end
+
 end
