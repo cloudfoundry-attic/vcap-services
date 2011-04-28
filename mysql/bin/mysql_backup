@@ -16,6 +16,8 @@ require 'mysql'
 require 'eventmachine'
 
 class MysqlBackup
+  SYSTEM_DB = %w(mysql information_schema)
+
   def self.setlogger(logger)
     @@logger = logger
   end
@@ -23,11 +25,18 @@ class MysqlBackup
   def self.backup_database(opts, &blk)
     backup_cmd, compress_cmd, name, ts=
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
-    # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
-    # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-    full_path = File.join(opts[:backup_path], opts[:service_name],
-                          name[0,2], name[2,2], name[4,2], name,
-                         ts.to_i.to_s)
+    if SYSTEM_DB.index(name)
+      # for system database, dir structure looks like \backups\<service-name>\
+      # <db-name>\<seconds_since_epoc>\<service specific data>
+      full_path = File.join(opts[:backup_path], opts[:service_name], name,
+                            ts.to_i.to_s)
+    else
+      # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
+      # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+      full_path = File.join(opts[:backup_path], opts[:service_name],
+                            name[0,2], name[2,2], name[4,2], name,
+                            ts.to_i.to_s)
+    end
     opts.merge!({:full_path => full_path})
     # options substitution
     backup_cmd = opts.keys.inject(backup_cmd){|cmd, key|
@@ -56,7 +65,7 @@ class MysqlBackup
   end
 
   def self.cleanup(path)
-    # don't use aync popen to make sure clean up actually finished.
+    # don't use async popen to make sure clean up actually finished.
     %x[ /bin/rm -rf #{path}]
   end
 end
@@ -104,6 +113,21 @@ end
 
 config_file = File.expand_path("../../config/mysql_backup.yml", __FILE__)
 node_config_file = File.expand_path("../../config/mysql_node.yml", __FILE__)
+
+# Read config file from command line
+OptionParser.new do |opts|
+  opts.banner = "Usage: mysq_node [options]"
+  opts.on("-c", "--config [ARG]", "Node configuration File") do |opt|
+    node_config_file = opt
+  end
+  opts.on("-b", "--backup [BACKUP]", "Backup configuration file") do |backup|
+    config_file = backup
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
 
 begin
   config = YAML.load_file(config_file)
