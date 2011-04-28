@@ -73,15 +73,20 @@ class VCAP::Services::Base::Gateway
     config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
     cloud_controller_uri = config[:cloud_controller_uri] || default_cloud_controller_uri
 
+    params = {
+      :logger   => logger,
+      :version  => config[:service][:version],
+      :local_ip => config[:host],
+      :mbus => config[:mbus],
+      :node_timeout => config[:node_timeout] || 2
+    }
+    if config.has_key?(:aux)
+      params[:aux] = config[:aux]
+    end
+
     # Go!
     EM.run do
-      sp = provisioner_class.new(
-             :logger   => logger,
-             :version  => config[:service][:version],
-             :local_ip => config[:host],
-             :mbus => config[:mbus],
-             :node_timeout => config[:node_timeout] || 2
-           )
+      sp = provisioner_class.new(params)
       sg = VCAP::Services::AsynchronousServiceGateway.new(
              :service => config[:service],
              :token   => config[:token],

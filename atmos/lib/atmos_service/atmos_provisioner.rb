@@ -15,17 +15,13 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
 
   def initialize(options)
     super(options)
+    @aux = options[:aux]
+    @logger.debug "aux: " + @aux.to_s
 
-    atmos_conf_file = File.expand_path("../../../config/atmos_gateway.yml", __FILE__)
-    begin
-      @atmos_conf = YAML.load_file(atmos_conf_file)
-    rescue => e
-      @logger.warn "Could not load configuration file: #{e}"
-      raise e
-    end
-    @host = @atmos_conf["atmos"]["host"]
+    @host = @aux[:atmos_host]
+    @port = @aux[:atmos_port]
 
-    @atmos_helper = VCAP::Services::Atmos::Helper.new(@logger)
+    @atmos_helper = VCAP::Services::Atmos::Helper.new(@aux, @logger)
   end
 
   def provision_service(version, plan, &blk)
@@ -40,7 +36,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     svc = {
       :data => {:subtenant_name => st_name, :subtenant_id => st_id, :host => @host},
       :service_id => st_name,
-      :credentials => {:host => @host, :token => token, :shared_secret => shared_secret, :subtenant_id => st_id}
+      :credentials => {:host => @host, :port => @port, :token => token, :shared_secret => shared_secret, :subtenant_id => st_id}
     }
     @logger.debug("Service provisioned: #{svc.pretty_inspect}")
     @prov_svcs[svc[:service_id]] = svc
@@ -85,7 +81,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       res = {
         :service_id => token,
         :configuration => svc[:data],
-        :credentials => {:host => @host, :token => token, :shared_secret => shared_secret, :subtenant_id => svc[:data][:subtenant_id]}
+        :credentials => {:host => @host, :port => @port, :token => token, :shared_secret => shared_secret, :subtenant_id => svc[:data][:subtenant_id]}
       }
       @logger.debug("binded: #{res.pretty_inspect}")
       @prov_svcs[res[:service_id]] = res

@@ -15,13 +15,14 @@ describe VCAP::Services::Atmos::Provisioner do
   before :all do
     puts "let's start :)"
     logger = Logger.new(STDOUT, "daily")
-    @atmos_helper = Helper.new(logger)
+
+    @config = get_provisioner_config
+    puts @config
+    @atmos_helper = Helper.new(@config[:aux], logger)
   end
 
   it "should successfully new VCAP::Services::Atmos::Provisioner instance" do
     EM.run do
-      @config = get_provisioner_config
-      puts @config
       @sg = Provisioner.new(@config)
       puts @sg
       @sg.should_not be_nil
@@ -31,8 +32,6 @@ describe VCAP::Services::Atmos::Provisioner do
 
   describe "provision_bind_unbind" do
     before :all do
-      @raw_conf = get_raw_config()
-      puts @raw_conf
       @subtenant_name_p = UUIDTools::UUID.random_create.to_s
       @subtenant_name_p1 = UUIDTools::UUID.random_create.to_s
       @token = UUIDTools::UUID.random_create.to_s
@@ -61,10 +60,11 @@ describe VCAP::Services::Atmos::Provisioner do
       shared_secret = @atmos_helper.createUser(@token, @subtenant_name_p1)
       puts "token: " + @token + ", shared_secret: " + shared_secret
       shared_secret.should_not be_nil
-      host = @raw_conf[:atmos][:host]
+      host = @config[:aux][:atmos_host]
+      port = @config[:aux][:atmos_port]
 
       opts = {
-        :url => "http://" + host + ":443",
+        :url => "http://" + host + ":" + port,
         :sid => subtenant_id,
         :uid => @token,
         :key => shared_secret,
@@ -91,7 +91,6 @@ describe VCAP::Services::Atmos::Provisioner do
 
   describe "multi-tenancy" do
     before :all do
-      @raw_conf = get_raw_config()
       @subtenant_name1 = UUIDTools::UUID.random_create.to_s
       @subtenant_name2 = UUIDTools::UUID.random_create.to_s
       @token = UUIDTools::UUID.random_create.to_s
@@ -108,10 +107,11 @@ describe VCAP::Services::Atmos::Provisioner do
       shared_secret1.should_not be_nil
       shared_secret2.should_not be_nil
 
-      host = @raw_conf[:atmos][:host]
+      host = @config[:aux][:atmos_host]
+      port = @config[:aux][:atmos_port]
 
       opts = {
-        :url => "http://" + host + ":443",
+        :url => "http://" + host + ":" + port,
         :sid => subtenant_id1,
         :uid => @token,
         :key => shared_secret2,
@@ -123,7 +123,7 @@ describe VCAP::Services::Atmos::Provisioner do
       same_class.should == true
 
       opts = {
-        :url => "http://" + host + ":443",
+        :url => "http://" + host + ":" + port,
         :sid => subtenant_id2,
         :uid => @token,
         :key => shared_secret1,
@@ -143,17 +143,17 @@ describe VCAP::Services::Atmos::Provisioner do
 
   describe "null credential" do
     before :all do
-      @raw_conf = get_raw_config()
       @subtenant_name = UUIDTools::UUID.random_create.to_s
     end
 
     it "should prevent null credential from login" do
       subtenant_id = @atmos_helper.createSubtenant(@subtenant_name)
       subtenant_id.should_not be_nil
-      host = @raw_conf[:atmos][:host]
+      host = @config[:aux][:atmos_host]
+      port = @config[:aux][:atmos_port]
 
       opts = {
-        :url => "http://" + host + ":443",
+        :url => "http://" + host + ":" + port,
         :sid => subtenant_id,
         :uid => "",
         :key => "",

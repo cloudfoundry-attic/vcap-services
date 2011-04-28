@@ -49,7 +49,8 @@ def get_provisioner_config()
     :cloud_controller => config[:cloud_controller],
     # Following options are for Thin
     :host => 'localhost',
-    :port => HTTP_PORT
+    :port => HTTP_PORT,
+    :aux => config[:aux]
   }
   options[:logger].level = Logger::FATAL
   options

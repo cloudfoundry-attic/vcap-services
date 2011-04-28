@@ -3,21 +3,14 @@ require 'net/http'
 
 class VCAP::Services::Atmos::Helper 
 
-  def initialize(logger)
+  def initialize(aux, logger)
     @logger = logger
 
-    atmos_conf_file = File.expand_path("../../../config/atmos_gateway.yml", __FILE__)
-    begin
-      @atmos_conf = YAML.load_file(atmos_conf_file)
-    rescue => e
-      @logger.warn "Could not load configuration file: #{e}"
-      raise e
-    end
-
-    @host = @atmos_conf["atmos"]["host"]
-    @tenant = @atmos_conf["atmos"]["tenant"]
-    @tenantadmin = @atmos_conf["atmos"]["tenantadmin"]
-    @tenantpasswd = @atmos_conf["atmos"]["tenantpasswd"]
+    @host = aux[:atmos_host]
+    @tenant = aux[:atmos_tenant]
+    @tenantadmin = aux[:atmos_tenantadmin]
+    @tenantpasswd = aux[:atmos_tenantpasswd]
+    @port = aux[:atmos_port]
   end
 
 
@@ -39,7 +32,7 @@ class VCAP::Services::Atmos::Helper
     @logger.debug uri
     @logger.debug req
 
-    http = Net::HTTP.new(uri.host, 443)
+    http = Net::HTTP.new(uri.host, @port.to_i)
     http.use_ssl = true
     http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 
@@ -70,7 +63,7 @@ class VCAP::Services::Atmos::Helper
 
     @logger.debug "delete subtenant #{name}"
 
-    http = Net::HTTP.new(uri.host, 443)
+    http = Net::HTTP.new(uri.host, @port.to_i)
     http.use_ssl = true
     http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 
@@ -100,7 +93,7 @@ class VCAP::Services::Atmos::Helper
     @logger.debug "create user #{username} under subtenant #{subtenantname} in tenant #{@tenant}"
     @logger.debug uri
 
-    http = Net::HTTP.new(uri.host, 443)
+    http = Net::HTTP.new(uri.host, @port.to_i)
     http.use_ssl = true
     http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 
@@ -133,7 +126,7 @@ class VCAP::Services::Atmos::Helper
     @logger.debug "delete user #{username} under subtenant #{subtenantname} in tenant #{@tenant}"
     @logger.debug uri
 
-    http = Net::HTTP.new(uri.host, 443)
+    http = Net::HTTP.new(uri.host, @port.to_i)
     http.use_ssl = true
     http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 
