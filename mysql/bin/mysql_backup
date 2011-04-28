@@ -112,16 +112,12 @@ module Counter
 end
 
 config_file = File.expand_path("../../config/mysql_backup.yml", __FILE__)
-node_config_file = File.expand_path("../../config/mysql_node.yml", __FILE__)
 
 # Read config file from command line
 OptionParser.new do |opts|
-  opts.banner = "Usage: mysq_node [options]"
+  opts.banner = "Usage: mysql_backup [options]"
   opts.on("-c", "--config [ARG]", "Node configuration File") do |opt|
-    node_config_file = opt
-  end
-  opts.on("-b", "--backup [BACKUP]", "Backup configuration file") do |backup|
-    config_file = backup
+    config_file = opt
   end
   opts.on("-h", "--help", "Help") do
     puts opts
@@ -131,8 +127,6 @@ end.parse!
 
 begin
   config = YAML.load_file(config_file)
-  node_config = YAML.load_file(node_config_file)
-  config.merge! node_config
 rescue => e
   abort "Can't load config file #{e}"
 end
