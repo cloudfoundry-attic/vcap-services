@@ -192,20 +192,22 @@ describe "Mysql server node" do
   end
 
   it "should kill long transaction" do
-    EM.run do
-      # reduce max_long_tx to accelerate test
-      @opts[:max_long_tx]=2
-      @node = VCAP::Services::Mysql::Node.new(@opts)
-      conn = connect_to_mysql(@db)
-      # prepare a transaction and not commit
-      conn.query("create table a(id int) engine=innodb")
-      conn.query("insert into a value(10)")
-      conn.query("begin")
-      conn.query("select * from a for update")
-      EM.add_timer(@opts[:max_long_tx]*2) {
-        expect {conn.query("select * from a for update")}.should raise_error
-        EM.stop
-      }
+    if @opts[:max_long_tx] > 0
+      EM.run do
+        # reduce max_long_tx to accelerate test
+        @opts[:max_long_tx]=2
+        @node = VCAP::Services::Mysql::Node.new(@opts)
+        conn = connect_to_mysql(@db)
+        # prepare a transaction and not commit
+        conn.query("create table a(id int) engine=innodb")
+        conn.query("insert into a value(10)")
+        conn.query("begin")
+        conn.query("select * from a for update")
+        EM.add_timer(@opts[:max_long_tx]*2) {
+          expect {conn.query("select * from a for update")}.should raise_error
+          EM.stop
+        }
+      end
     end
   end
 
