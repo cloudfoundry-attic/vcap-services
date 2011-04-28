@@ -141,7 +141,7 @@ class VCAP::Services::Redis::Node
       varz[:provisioned_instances_num] += 1
     end
     varz
-  rescue
+  rescue => e
     @logger.warn("Error get varz details: #{e}")
     {}
   end
