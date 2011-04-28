@@ -9,6 +9,7 @@ require 'base/base'
 require 'barrier'
 
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
+  MASKED_PASSWORD = '********'
 
   def initialize(options)
     super(options)
@@ -272,13 +273,39 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  # subclasses must implement the following methods
+  def varz_details()
+    # Service Provisioner subclasses may want to override this method
+    # to provide service specific data beyond the following
 
-  # node_score(node) -> number.  provisioners are expected to
-  # provision on the "best" node (lowest load, most free capacity,
-  # etc). this method should return a number; higher scores represent
-  # "better" nodes; negative/zero scores mean that a node should be
-  # ignored
+    # Mask password from varz details
+    svcs = @prov_svcs.dup
+    svcs.each do |k,v|
+      # FIXME workaround for handles with 1 outer format, 2 inner format.
+      configuration = (v[:configuration].nil?) ? v[:data] : v[:configuration]
+      configuration['pass'] &&= MASKED_PASSWORD
+      configuration['password'] &&= MASKED_PASSWORD
+
+      v[:credentials]['pass'] &&= MASKED_PASSWORD
+      v[:credentials]['password'] &&= MASKED_PASSWORD
+    end
+
+    varz = {
+      :nodes => @nodes,
+      :prov_svcs => svcs
+    }
+    return varz
+  end
+
+  # Service Provisioner subclasses must implement the following
+  # methods
+
+  # node_score(node) -> number.  this base class provisions on the
+  # "best" node (lowest load, most free capacity, etc). this method
+  # should return a number; higher scores represent "better" nodes;
+  # negative/zero scores mean that a node should be ignored
   abstract :node_score
+
+  # service_name() --> string
+  # (inhereted from VCAP::Services::Base::Base)
 
 end

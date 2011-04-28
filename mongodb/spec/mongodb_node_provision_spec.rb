@@ -64,6 +64,32 @@ describe VCAP::Services::MongoDB::Node do
     end
   end
 
+  it "should return varz" do
+    EM.run do
+      stats = @node.varz_details
+      stats.should_not be_nil
+      stats[:running_services].length.should > 0
+      stats[:running_services][0]['name'].should_not be_nil
+      stats[:running_services][0]['db'].should_not be_nil
+      stats[:disk].should_not be_nil
+      stats[:services_max_memory].should > 0
+      stats[:services_used_memory].should > 0
+      EM.stop
+    end
+  end
+
+  it "should return error when unprovisioning a non-existed instance" do
+    EM.run do
+      e = nil
+      begin
+        @node.unprovision('no existed', [])
+      rescue => e
+      end
+      e.should_not be_nil
+      EM.stop
+    end
+  end
+
   # unprovision here
   it "should be able to unprovision an existing instance" do
     EM.run do

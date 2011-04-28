@@ -70,10 +70,19 @@ class VCAP::Services::Mysql::Node
     check_db_consistency()
 
     @available_storage = options[:available_storage] * 1024 * 1024
+    @node_capacity = @available_storage
     ProvisionedService.all.each do |provisioned_service|
       @available_storage -= storage_for_service(provisioned_service)
     end
 
+    @queries_served=0
+    @qps_last_updated=0
+    # initialize qps counter
+    get_qps
+    @long_queries_killed=0
+    @long_tx_killed=0
+    @provision_served=0
+    @binding_served=0
   end
 
   def announcement
@@ -135,6 +144,7 @@ class VCAP::Services::Mysql::Node
       if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
         @connection.query("KILL QUERY " + thread_id)
         @logger.info("Killed long query: user:#{user} db:#{db} time:#{time} info:#{info}")
+        @long_queries_killed += 1
       end
     end
   rescue Mysql::Error => e
@@ -159,6 +169,7 @@ class VCAP::Services::Mysql::Node
           if lines[i] =~ /MySQL thread id (\d*).* (\w*)$/
             @connection.query("KILL QUERY #{$1}")
             @logger.info"Kill long transaction: user:#{$2} thread: #{$1} active_time:#{active_time}"
+            @long_tx_killed +=1
           end
           i +=1
         end
@@ -184,6 +195,7 @@ class VCAP::Services::Mysql::Node
       raise MysqlError.new(MysqlError::MYSQL_LOCAL_DB_ERROR)
     end
     response = gen_credential(provisioned_service.name, provisioned_service.user, provisioned_service.password)
+    @provision_served += 1
     return response
   rescue => e
     delete_database(provisioned_service)
@@ -227,6 +239,7 @@ class VCAP::Services::Mysql::Node
       create_database_user(name, binding[:user], binding[:password])
       response = gen_credential(name, binding[:user], binding[:password])
       @logger.debug("Bind response: #{response.inspect}")
+      @binding_served += 1
       return response
     rescue => e
       delete_database_user(binding[:user]) if binding
@@ -300,6 +313,80 @@ class VCAP::Services::Mysql::Node
     @connection.query("DROP USER #{user}@'localhost'")
   rescue Mysql::Error => e
     @logger.fatal("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
+  end
+
+  def varz_details()
+    @logger.debug("Generate varz.")
+    varz = {}
+    # how many queries served since startup
+    varz[:queries_since_startup] = get_queries_status
+    # queries per second
+    varz[:queries_per_second] = get_qps
+    # disk usage per instance
+    status = get_instance_status
+    varz[:database_status] = status
+    # node capacity
+    varz[:node_storage_capacity] = @node_capacity
+    varz[:node_storage_used] = @node_capacity - @available_storage
+    # how many long queries and long txs are killed.
+    varz[:long_queries_killed] = @long_queries_killed
+    varz[:long_transactions_killed] = @long_tx_killed
+    # how many provision/binding operations since startup.
+    varz[:provision_served] = @provision_served
+    varz[:binding_served] = @binding_served
+    @logger.debug("Varz update: #{varz.inspect}")
+    varz
+  rescue => e
+    @logger.error("Error during generate varz:"+e)
+    {}
+  end
+
+  def get_queries_status()
+    @logger.debug("Get mysql query status.")
+    result = @connection.query("SHOW STATUS WHERE Variable_name ='QUERIES'")
+    return 0 if result.num_rows == 0
+    return result.fetch_row[1].to_i
+  end
+
+  def get_qps()
+    @logger.debug("Calculate queries per seconds.")
+    queries = get_queries_status
+    ts = Time.now.to_i
+    delta_t = (ts - @qps_last_updated).to_f
+    qps = (queries - @queries_served)/delta_t
+    @queries_served = queries
+    @qps_last_updated = ts
+    qps
+  end
+
+  def get_instance_status()
+    @logger.debug("Get database instance status.")
+    all_dbs =[]
+    result = @connection.query('show databases')
+    result.each {|db| all_dbs << db[0]}
+    system_dbs = ['mysql', 'information_schema']
+    sizes = @connection.query(
+      'SELECT table_schema "name",
+       sum( data_length + index_length ) "size"
+       FROM information_schema.TABLES
+       GROUP BY table_schema')
+    result = []
+    db_with_tables = []
+    sizes.each do |i|
+      db= {}
+      name, size = i
+      next if system_dbs.include?(name)
+      db_with_tables << name
+      db[:name] = name
+      db[:size] = size.to_i
+      db[:max_size] = @max_db_size
+      result << db
+    end
+    # handle empty db without table
+    (all_dbs - db_with_tables - system_dbs ).each do |db|
+      result << {:name => db, :size => 0, :max_size => @max_db_size}
+    end
+    result
   end
 
   def gen_credential(name, user, passwd)

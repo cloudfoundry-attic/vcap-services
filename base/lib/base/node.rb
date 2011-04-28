@@ -99,7 +99,14 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.warn(e)
   end
 
-  # subclasses must implement the following methods
+  def varz_details()
+    # Service Node subclasses may want to override this method to
+    # provide service specific data beyond what is returned by their
+    # "announcement" method.
+    return announcement
+  end
+
+  # Service Node subclasses must implement the following methods
 
   # provision(plan) --> {name, host, port, user, password}
   abstract :provision
@@ -115,5 +122,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   # announcement() --> { any service-specific announcement details }
   abstract :announcement
+
+  # service_name() --> string
+  # (inhereted from VCAP::Services::Base::Base)
 
 end

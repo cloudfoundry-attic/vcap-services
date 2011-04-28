@@ -69,6 +69,7 @@ class VCAP::Services::MongoDB::Node
     FileUtils.mkdir_p(@base_dir)
     @mongod_path = options[:mongod_path]
 
+    @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
 
@@ -247,6 +248,43 @@ class VCAP::Services::MongoDB::Node
     true
   end
 
+  def varz_details
+    # Do disk summary
+    du_hash = {}
+    du_all_out = `cd #{@base_dir}; du -sk * 2> /dev/null`
+    du_entries = du_all_out.split("\n")
+    du_entries.each do |du_entry|
+      size, dir = du_entry.split("\t")
+      size = size.to_i * 1024 # Convert to bytes
+      du_hash[dir] = size
+    end
+
+    # Get mongodb db.stats and db.serverStatus
+    stats = []
+    ProvisionedService.all.each do |provisioned_service|
+      overall_stats = mongodb_overall_stats({
+        :port      => provisioned_service.port,
+        :admin     => provisioned_service.admin,
+        :adminpass => provisioned_service.adminpass
+      }) || {}
+      db_stats = mongodb_db_stats({
+        :port      => provisioned_service.port,
+        :admin     => provisioned_service.admin,
+        :adminpass => provisioned_service.adminpass,
+        :db        => provisioned_service.db
+      })
+      overall_stats['db'] = db_stats
+      overall_stats['name'] = provisioned_service.name
+      stats << overall_stats
+    end
+    {
+      :running_services     => stats,
+      :disk                 => du_hash,
+      :services_max_memory  => @total_memory,
+      :services_used_memory => @total_memory - @available_memory
+    }
+  end
+
   def start_instance(provisioned_service)
     @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
 
@@ -364,4 +402,24 @@ class VCAP::Services::MongoDB::Node
     @logger.debug("user #{options[:username]} removed")
   end
 
+  def mongodb_overall_stats(options)
+    db = Mongo::Connection.new('127.0.0.1', options[:port]).db('admin')
+    auth = db.authenticate(options[:admin], options[:adminpass])
+    # The following command is not documented in mongo's official doc.
+    # But it works like calling db.serverStatus from client. And 10gen support has
+    # confirmed it's safe to call it in such way.
+    db.command({:serverStatus => 1})
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def mongodb_db_stats(options)
+    db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+    auth = db.authenticate(options[:admin], options[:adminpass])
+    db.stats()
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
 end

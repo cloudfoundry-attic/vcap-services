@@ -48,6 +48,15 @@ describe VCAP::Services::MongoDB::Node do
     is_port_open?('127.0.0.1', @resp['port']).should be_true
   end
 
+  it "should return error when tring to bind on non-existed instance" do
+    e = nil
+    begin
+      @node.bind('non-existed', 'rw')
+    rescue => e
+    end
+    e.should_not be_nil
+  end
+
   it "should allow authorized user to access the instance" do
     EM.run do
       conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])
@@ -89,6 +98,19 @@ describe VCAP::Services::MongoDB::Node do
       end
       e.should_not be_nil
       EM.stop
+    end
+  end
+
+  it "should return error when trying to unbind a non-existed service" do
+    EM.run do
+      begin
+        resp  = @node.unbind('not existed')
+      rescue => e
+      end
+      e.should be_true
+      EM.add_timer(1) do
+        EM.stop
+      end
     end
   end
 
