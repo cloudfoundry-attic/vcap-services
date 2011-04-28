@@ -16,7 +16,7 @@ include VCAP::Services::Mysql::Util
 config_file = File.expand_path("../../config/mysql_node.yml", __FILE__)
 
 OptionParser.new do |opts|
-  opts.banner = "Usage: mysql_node [options]"
+  opts.banner = "Usage: mysq_node [options]"
   opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
     config_file = opt
   end
@@ -49,12 +49,12 @@ options = {
   :available_storage => parse_property(config, "available_storage", Integer),
   :max_db_size => parse_property(config, "max_db_size", Integer),
   :max_long_query => parse_property(config, "max_long_query", Integer),
+  :max_long_tx => parse_property(config, "max_long_tx", Integer),
   :node_id => parse_property(config, "node_id", String),
   :mbus => parse_property(config, "mbus", String),
   :local_db => parse_property(config, "local_db", String),
   :mysql => parse_property(config, "mysql", Hash),
-  :ip_route => parse_property(config, "ip_route", String, :optional => true),
-  :socket => parse_property(config, "socket", String, :optional => true)
+  :ip_route => parse_property(config, "ip_route", String, :optional => true)
 }
 
 def shutdown(node)
