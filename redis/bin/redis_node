@@ -61,7 +61,6 @@ options = {
   :logger => logger,
   :base_dir => parse_property(config, "base_dir", String),
   :redis_server_path => parse_property(config, "redis_server_path", String),
-  :redis_client_path => parse_property(config, "redis_client_path", String),
   :ip_route => parse_property(config, "ip_route", String, :optional => true),
   :available_memory => parse_property(config, "available_memory", Integer),
   :node_id => parse_property(config, "node_id", String),
