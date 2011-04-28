@@ -5,7 +5,6 @@ $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 require 'rubygems'
 require 'rspec'
 
-require '../../base/spec/spec_helper'
 require "mysql_service/util"
 require 'mysql_service/provisioner'
 require 'mysql_service/node'
@@ -14,7 +13,7 @@ include VCAP::Services::Mysql::Util
 
 def getLogger()
   logger = Logger.new( STDOUT)
-  logger.level = Logger::DEBUG
+  logger.level = Logger::ERROR
   return logger
 end
 

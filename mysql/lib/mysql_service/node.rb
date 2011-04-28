@@ -10,6 +10,7 @@ require "mysql"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require 'base/service_error'
 
 module VCAP
   module Services
@@ -23,6 +24,7 @@ end
 require "mysql_service/common"
 require "mysql_service/util"
 require "mysql_service/storage_quota"
+require "mysql_service/mysql_error"
 
 class VCAP::Services::Mysql::Node
 
@@ -32,6 +34,7 @@ class VCAP::Services::Mysql::Node
 
   include VCAP::Services::Mysql::Util
   include VCAP::Services::Mysql::Common
+  include VCAP::Services::Mysql
 
   class ProvisionedService
     include DataMapper::Resource
@@ -96,7 +99,7 @@ class VCAP::Services::Mysql::Node
     case provisioned_service.plan
     when :free then @max_db_size
     else
-      raise "Invalid plan: #{provisioned_service.plan}"
+      raise MysqlError.new(MysqlError::MYSQL_INVALID_PLAN, provisioned_service.plan)
     end
   end
 
@@ -164,7 +167,7 @@ class VCAP::Services::Mysql::Node
       end
     end
   rescue => e
-    @logger.error("Error during kill long tx: #{e}")
+    @logger.error("Error during kill long tx: #{e}. Innodb status:#{result}")
   end
 
   def provision(plan)
@@ -176,32 +179,38 @@ class VCAP::Services::Mysql::Node
 
     create_database(provisioned_service)
 
-    if not provisioned_service.save then
-      raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
+    if not provisioned_service.save
+      @logger.error("Could not save entry: #{provisioned_service.errors.pretty_inspect}")
+      raise MysqlError.new(MysqlError::MYSQL_LOCAL_DB_ERROR)
     end
     response = gen_credential(provisioned_service.name, provisioned_service.user, provisioned_service.password)
     return response
   rescue => e
-    @logger.warn("Error during provision #{e}")
     delete_database(provisioned_service)
-    return nil
+    raise e
   end
 
   def unprovision(name, credentials)
+    return if name.nil?
     @logger.debug("Unprovision database:#{name}, bindings: #{credentials.inspect}")
     provisioned_service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if provisioned_service.nil?
+    raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) if provisioned_service.nil?
     delete_database(provisioned_service)
     # TODO: validate that database files are not lingering
-    # TODO: validate remain accounts for unprovisioned database
     storage = storage_for_service(provisioned_service)
     @available_storage += storage
-    # Delete all bindings
-    credentials.each{ |credential| unbind(credential)} if credentials
-    raise "Could not delete service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
+    # Delete all bindings, ignore not_found error since we are unprovision
+    begin
+      credentials.each{ |credential| unbind(credential)} if credentials
+    rescue =>e
+      # ignore
+    end
+    if not provisioned_service.destroy
+      @logger.error("Could not delete service: #{provisioned_service.errors.pretty_inspect}")
+      raise MysqlError.new(MysqError::MYSQL_LOCAL_DB_ERROR)
+    end
     @logger.debug("Successfully fulfilled unprovision request: #{name}")
-  rescue => e
-    @logger.warn(e)
+    true
   end
 
   def bind(name, bind_opts)
@@ -209,7 +218,7 @@ class VCAP::Services::Mysql::Node
     binding = nil
     begin
       service = ProvisionedService.get(name)
-      raise "Could not find service: #{name}" if service.nil?
+      raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
       # create new credential for binding
       binding = Hash.new
       binding[:user] = 'u' + generate_credential
@@ -220,23 +229,22 @@ class VCAP::Services::Mysql::Node
       @logger.debug("Bind response: #{response.inspect}")
       return response
     rescue => e
-      @logger.error("Can't bind service for db:#{name} with options: #{bind_opts}: #{e}")
       delete_database_user(binding[:user]) if binding
-      nil
+      raise e
     end
   end
 
   def unbind(credential)
+    return if credential.nil?
     @logger.debug("Unbind service: #{credential.inspect}")
-    name, user, bind_opts = %w(name user bind_opts).map{|k| credential[k]}
+    name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
     service = ProvisionedService.get(name)
-    raise "Can't find service: #{name}" unless service
-    #TODO validate the existence of credential, in case we delete a normal user according to malformed credential
+    raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
+    # validate the existence of credential, in case we delete a normal account because of a malformed credential
+    res = @connection.query("SELECT * from mysql.user WHERE user='#{user}' AND password=PASSWORD('#{passwd}')")
+    raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.num_rows()<=0
     delete_database_user(user)
     true
-  rescue => e
-   @logger.error("Can't unbind service for db:#{name}, user: #{user}, with options: #{bind_opts}: #{e}")
-   nil
   end
 
   def create_database(provisioned_service)
@@ -247,6 +255,7 @@ class VCAP::Services::Mysql::Node
       @connection.query("CREATE DATABASE #{name}")
       create_database_user(name, user, password)
       storage = storage_for_service(provisioned_service)
+      raise MysqlError.new(MysqlError::MYSQL_DISK_FULL) if @available_storage < storage
       @available_storage -= storage
       @logger.debug("Done creating #{provisioned_service.pretty_inspect}. Took #{Time.now - start}.")
     rescue Mysql::Error => e
@@ -274,18 +283,23 @@ class VCAP::Services::Mysql::Node
 
   def delete_database_user(user)
     @logger.info("Delete user #{user}")
-    process_list = @connection.list_processes
-    process_list.each do |proc|
-      thread_id, user_, _, db, command, time, _, info = proc
-      if user_ == user then
-        @connection.query("KILL #{thread_id}")
-        @logger.info("Kill session: user:#{user} db:#{db}")
+    begin
+      process_list = @connection.list_processes
+      process_list.each do |proc|
+        thread_id, user_, _, db, command, time, _, info = proc
+        if user_ == user then
+          @connection.query("KILL #{thread_id}")
+          @logger.info("Kill session: user:#{user} db:#{db}")
+        end
       end
+    rescue Mysql::Error => e1
+      # kill session failed error, only log it.
+      @logger.error("Could not kill user session.:[#{e1.errno}] #{e1.error}")
     end
     @connection.query("DROP USER #{user}")
     @connection.query("DROP USER #{user}@'localhost'")
   rescue Mysql::Error => e
-    @logger.fatal("Could not delete user: [#{e.errno}] #{e.error}")
+    @logger.fatal("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
   end
 
   def gen_credential(name, user, passwd)

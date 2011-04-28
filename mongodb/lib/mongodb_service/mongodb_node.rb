@@ -141,14 +141,14 @@ class VCAP::Services::MongoDB::Node
         :username  => provisioned_service.admin,
         :password  => provisioned_service.adminpass,
         :db        => provisioned_service.db,
-        :times     => 10
+        :timeout   => 10
       })
       mongodb_add_admin({
         :port      => provisioned_service.port,
         :username  => provisioned_service.admin,
         :password  => provisioned_service.adminpass,
         :db        => 'admin',
-        :times     => 3
+        :timeout   => 3
       })
     rescue => e
       cleanup_service(provisioned_service)
@@ -156,7 +156,6 @@ class VCAP::Services::MongoDB::Node
     end
 
     response = {
-      # "node_id" => @node_id,   removed by nick
       "hostname" => @local_ip,
       "port" => provisioned_service.port,
       "password" => provisioned_service.password,
@@ -165,16 +164,15 @@ class VCAP::Services::MongoDB::Node
     }
     @logger.debug("response: #{response}")
     return response
-  rescue => e
-    @logger.warn(e)
   end
 
   def unprovision(name, bindings)
     provisioned_service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if provisioned_service.nil?
+    raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     cleanup_service(provisioned_service)
     @logger.debug("Successfully fulfilled unprovision request: #{name}.")
+    true
   end
 
   def cleanup_service(provisioned_service)
@@ -226,9 +224,6 @@ class VCAP::Services::MongoDB::Node
 
     @logger.debug("response: #{response}")
     response
-  rescue => e
-    @logger.warn(e)
-    nil
   end
 
   def unbind(credentials)
@@ -236,7 +231,7 @@ class VCAP::Services::MongoDB::Node
 
     name = credentials['name']
     provisioned_service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if provisioned_service.nil?
+    raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     # FIXME  Current implementation: Delete self
     #        Here I presume the user to be deleted is RW user
@@ -249,9 +244,7 @@ class VCAP::Services::MongoDB::Node
       })
 
     @logger.debug("Successfully unbind #{credentials}")
-  rescue => e
-    @logger.warn(e)
-    nil
+    true
   end
 
   def start_instance(provisioned_service)
@@ -333,24 +326,26 @@ class VCAP::Services::MongoDB::Node
 
   def mongodb_add_admin(options)
     @logger.info("add admin user: req #{options}")
-    times = options[:times] || 1
 
-    for i in 1..times
-      begin
-        db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
-        db.add_user(options[:username], options[:password])
-        @logger.debug("user added")
-        return true
-      rescue => e
-        @logger.warn( e.to_s + " failed #{i} times")
-        sleep 1
-      end
+    timeout = EM.add_timer(options[:timeout]) do
+      EM.cancel_timer(timer)
+      raise "Could not add admin in #{options[:port]}"
     end
 
-    raise "Could not add admin in #{options[:port]}"
-  rescue => e
-    @logger.warn(e)
-    raise e
+    timer = EM.add_periodic_timer(0.50) do
+      begin
+        db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+        user = db.add_user(options[:username], options[:password])
+        unless user.nil?
+          @logger.debug("user added")
+          EM.cancel_timer(timer)
+          EM.cancel_timer(timeout)
+        end
+      rescue => e
+        @logger.warn("add user #{options[:username]} failed! #{e}")
+        raise e
+      end
+    end
   end
 
   def mongodb_add_user(options)

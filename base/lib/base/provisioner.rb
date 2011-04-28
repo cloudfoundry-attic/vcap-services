@@ -44,7 +44,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       }
     end
 
-    @logger.debug("handles updated prov_svcs: #{@prov_svcs}")
+    @logger.debug("[#{service_description}] Handles updated prov_svcs: #{@prov_svcs}")
     # TODO: Handle removing existing handles if we decide to periodically sync with the CC
   end
 
@@ -78,28 +78,51 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def unprovision_service(instance_id, &blk)
+    @logger.debug("[#{service_description}] Unprovision service #{instance_id}")
     begin
-      success = true
       svc = @prov_svcs[instance_id]
+      raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
+
       node_id = svc[:data]["node_id"]
+      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
+
       bindings = find_all_bindings(instance_id)
       @logger.debug("[#{service_description}] Unprovisioning instance #{instance_id} from #{node_id}")
       request = {
         'name'     => instance_id,
         'bindings' => bindings
       }
-      @logger.debug("[#{service_description}] Sending reqeust #{request}")
-      @node_nats.publish("#{service_name}.unprovision.#{node_id}", Yajl::Encoder.encode(request))
 
-      @prov_svcs.delete(instance_id)
-      bindings.each do |b|
-        @prov_svcs.delete(b[:service_id])
-      end
+      @logger.debug("[#{service_description}] Sending reqeust #{request}")
+      subscription = nil
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
+      subscription =
+        @node_nats.request(
+          "#{service_name}.unprovision.#{node_id}",
+          Yajl::Encoder.encode(request)
+       ) do |msg|
+          # Delete local entries
+          @prov_svcs.delete(instance_id)
+          bindings.each do |b|
+            @prov_svcs.delete(b[:service_id])
+          end
+
+          EM.cancel_timer(timer)
+          @node_nats.unsubscribe(subscription)
+          opts = Yajl::Parser.parse(msg)
+          blk.call(opts)
+        end
     rescue => e
-      @logger.warn(e)
-      success = nil
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
     end
-    blk.call(success)
   end
 
   def provision_service(version, plan, &blk)
@@ -115,6 +138,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     subscription = @node_nats.request("#{service_name}.discover", &barrier.callback)
   rescue => e
     @logger.warn(e)
+    blk.call(internal_fail)
   end
 
   def provision_node(version, plan, node_msgs, blk)
@@ -126,7 +150,10 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       @logger.debug("[#{service_description}] Provisioning on #{best_node}")
       request = {"plan" => plan}
       subscription = nil
-      timer = EM.add_timer(@node_timeout) {@node_nats.unsubscribe(subscription)}
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
       subscription =
         @node_nats.request(
           "#{service_name}.provision.#{best_node}",
@@ -135,30 +162,32 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
           opts = Yajl::Parser.parse(msg)
-          svc = {:data => opts, :service_id => opts['name'], :credentials => opts}
-          @logger.debug("Provisioned #{svc.pretty_inspect}")
-          @prov_svcs[svc[:service_id]] = svc
-          blk.call(svc)
+          if opts['success']
+            opts = opts['response']
+            svc = {:data => opts, :service_id => opts['name'], :credentials => opts}
+            @logger.debug("Provisioned #{svc.pretty_inspect}")
+            @prov_svcs[svc[:service_id]] = svc
+            blk.call(success(svc))
+          else
+            blk.call(opts)
+          end
         end
     else
-      @logger.warn("#{service_description}: Could not find a node to provision")
+      # No resources
+      @logger.warn("[#{service_description}] Could not find a node to provision")
+      blk.call(internal_fail)
     end
   end
 
   def bind_instance(instance_id, binding_options, &blk)
-    @logger.debug("Attempting to bind to service #{instance_id}")
-
-    if instance_id.nil?
-      @logger.warn("#{instance_id} not found!")
-    end
+    @logger.debug("[#{service_description}] Attempting to bind to service #{instance_id}")
 
     begin
       svc = @prov_svcs[instance_id]
-      raise "#{instance_id} not found!" if svc.nil?
+      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
 
-      @logger.debug("svc[data]: #{svc[:data]}")
       node_id = svc[:data]["node_id"]
-      raise "node_id not found for #{instance_id}!" if node_id.nil?
+      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] bind instance #{instance_id} from #{node_id}")
       #FIXME options = {} currently, should parse it in future.
@@ -167,7 +196,10 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         'bind_opts' => binding_options
       }
       subscription = nil
-      timer = EM.add_timer(2) {@node_nats.unsubscribe(subscription)}
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
       subscription =
         @node_nats.request( "#{service_name}.bind.#{node_id}",
           Yajl::Encoder.encode(request)
@@ -175,45 +207,69 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
           opts = Yajl::Parser.parse(msg)
-          res = {
-            :service_id => UUIDTools::UUID.random_create.to_s,
-            :configuration => svc[:data],
-            :credentials => opts
-          }
-
-          @logger.debug("Binded: #{res.pretty_inspect}")
-          @prov_svcs[res[:service_id]] = res
-          blk.call(res)
+          if(opts['success'])
+            opts = opts['response']
+            res = {
+              :service_id => UUIDTools::UUID.random_create.to_s,
+              :configuration => svc[:data],
+              :credentials => opts
+            }
+            @logger.debug("[#{service_description}] Binded: #{res.pretty_inspect}")
+            @prov_svcs[res[:service_id]] = res
+            blk.call(success(res))
+          else
+            blk.call(opts)
+          end
         end
     rescue => e
-      @logger.warn(e)
-      blk.call(nil)
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
     end
   end
 
   def unbind_instance(instance_id, handle_id, binding_options, &blk)
+    @logger.debug("[#{service_description}] Attempting to unbind to service #{instance_id}")
     begin
-      success = true
-      raise "instance_id cannot be nil" if instance_id.nil?
-
       svc = @prov_svcs[handle_id]
-      raise "#{handle_id} not found!" if svc.nil?
+      raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
 
       # FIXME workaround for handles with 1 outer format, 2 inner format.
       configuration = (svc[:configuration].nil?) ? svc[:data] : svc[:configuration]
-      @logger.debug("svc[configuration]: #{configuration}")
+      @logger.debug("[#{service_description}] svc[configuration]: #{configuration}")
       node_id = configuration["node_id"]
-      raise "node_id not found for #{handle_id}!" if node_id.nil?
+      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] Unbind instance #{handle_id} from #{node_id}")
       request = svc[:credentials]
       @node_nats.publish("#{service_name}.unbind.#{node_id}", Yajl::Encoder.encode(request))
-      @prov_svcs.delete(handle_id)
+
+      subscription = nil
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
+      subscription =
+        @node_nats.request( "#{service_name}.unbind.#{node_id}",
+          Yajl::Encoder.encode(request)
+       ) do |msg|
+          EM.cancel_timer(timer)
+          @node_nats.unsubscribe(subscription)
+          opts = Yajl::Parser.parse(msg)
+          @prov_svcs.delete(handle_id)
+          blk.call(opts)
+        end
     rescue => e
-      @logger.warn(e)
-      success = nil
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
     end
-    blk.call(success)
   end
 
   # subclasses must implement the following methods
