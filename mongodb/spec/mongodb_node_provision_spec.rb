@@ -78,6 +78,18 @@ describe VCAP::Services::MongoDB::Node do
     end
   end
 
+  it "should allow authorized user to access the instance" do
+    EM.run do
+      conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])
+      auth = conn.authenticate(@resp['username'], @resp['password'])
+      auth.should be_true
+      coll = conn.collection('mongo_unit_test')
+      coll.insert({'a' => 1})
+      coll.count().should == 1
+      EM.stop
+    end
+  end
+
   it "should return error when unprovisioning a non-existed instance" do
     EM.run do
       e = nil

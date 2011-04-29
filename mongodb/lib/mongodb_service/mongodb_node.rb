@@ -137,20 +137,24 @@ class VCAP::Services::MongoDB::Node
     end
 
     begin
+      username = UUIDTools::UUID.random_create.to_s
+      password = UUIDTools::UUID.random_create.to_s
+
       mongodb_add_admin({
         :port      => provisioned_service.port,
-        :username  => provisioned_service.admin,
-        :password  => provisioned_service.adminpass,
+        :username  => [provisioned_service.admin, username],
+        :password  => [provisioned_service.adminpass, password],
         :db        => provisioned_service.db,
         :timeout   => 10
       })
       mongodb_add_admin({
         :port      => provisioned_service.port,
-        :username  => provisioned_service.admin,
-        :password  => provisioned_service.adminpass,
+        :username  => [provisioned_service.admin],
+        :password  => [provisioned_service.adminpass],
         :db        => 'admin',
         :timeout   => 3
       })
+
     rescue => e
       cleanup_service(provisioned_service)
       raise e.to_s + ": Could not save admin user."
@@ -159,9 +163,10 @@ class VCAP::Services::MongoDB::Node
     response = {
       "hostname" => @local_ip,
       "port" => provisioned_service.port,
-      "password" => provisioned_service.password,
       "name" => provisioned_service.name,
       "db" => provisioned_service.db,
+      "username" => username,
+      "password" => password
     }
     @logger.debug("response: #{response}")
     return response
@@ -373,12 +378,13 @@ class VCAP::Services::MongoDB::Node
     timer = EM.add_periodic_timer(0.50) do
       begin
         db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
-        user = db.add_user(options[:username], options[:password])
-        unless user.nil?
-          @logger.debug("user added")
-          EM.cancel_timer(timer)
-          EM.cancel_timer(timeout)
+        options[:username].each_index do |i|
+          user = db.add_user(options[:username][i], options[:password][i])
+          raise "user not added" if user.nil?
+          @logger.debug("user #{options[:username][i]} added in db #{options[:db]}")
         end
+        EM.cancel_timer(timer)
+        EM.cancel_timer(timeout)
       rescue => e
         @logger.warn("add user #{options[:username]} failed! #{e}")
         raise e
