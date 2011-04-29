@@ -185,8 +185,11 @@ class ProvisionerTests
         @nats.subscribe("#{service_name}.provision.#{node_id}") { |_, reply|
           @got_provision_request = true
           response = {
-            'name' => UUIDTools::UUID.random_create.to_s,
-            'node_id' => node_id
+            'success' => true,
+            'response' => {
+              'name' => UUIDTools::UUID.random_create.to_s,
+              'node_id' => node_id
+            }
           }
           @nats.publish(reply, response.to_json)
         }
