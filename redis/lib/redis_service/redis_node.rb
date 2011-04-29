@@ -37,6 +37,15 @@ class VCAP::Services::Redis::Node
     property :pid,        Integer
     property :memory,     Integer
 
+    def listening?
+      begin
+        TCPSocket.open('localhost', port).close
+        return true
+      rescue => e
+        return false
+      end
+    end
+
     def running?
       VCAP.process_running? pid
     end
@@ -155,8 +164,8 @@ class VCAP::Services::Redis::Node
   def start_provisioned_instances
     ProvisionedInstance.all.each do |instance|
       @free_ports.delete(instance.port)
-      if instance.running?
-        @logger.info("Service #{instance.name} already running with pid #{instance.pid}")
+      if instance.listening?
+        @logger.info("Service #{instance.name} already running on port #{instance.port}")
         @available_memory -= (instance.memory || @max_memory)
         next
       end
