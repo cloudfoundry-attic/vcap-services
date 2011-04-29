@@ -1,14 +1,13 @@
-# Copyright (c) 2009-2011 VMware, Inc.
 require File.dirname(__FILE__) + '/spec_helper'
 
-require 'rabbit_service/rabbit_provisioner'
+require 'redis_service/redis_provisioner'
 
-describe VCAP::Services::Rabbit::Provisioner do
+describe VCAP::Services::Redis::Provisioner do
   before :all do
     logger = Logger.new(STDOUT, "daily")
     logger.level = Logger::DEBUG
     EM.run do
-      @provisioner = VCAP::Services::Rabbit::Provisioner.new({:logger => logger})
+      @provisioner = VCAP::Services::Redis::Provisioner.new({:logger => logger})
       EM.add_timer(1) {EM.stop}
     end
   end

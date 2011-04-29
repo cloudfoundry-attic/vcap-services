@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
@@ -7,7 +8,6 @@ require "rubygems"
 require "bundler/setup"
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
 require "redis_service/redis_node"
 
 redis_conf_template = File.expand_path("../../resources/redis.conf.erb", __FILE__)
@@ -60,7 +60,7 @@ end
 options = {
   :logger => logger,
   :base_dir => parse_property(config, "base_dir", String),
-  :redis_path => parse_property(config, "redis_path", String),
+  :redis_server_path => parse_property(config, "redis_server_path", String),
   :ip_route => parse_property(config, "ip_route", String, :optional => true),
   :available_memory => parse_property(config, "available_memory", Integer),
   :node_id => parse_property(config, "node_id", String),
@@ -70,6 +70,7 @@ options = {
   :port_range => parse_property(config, "port_range", Range),
   :max_memory => parse_property(config, "max_memory", Integer),
   :max_swap => parse_property(config, "max_swap", Integer),
+  :nfs_dir => parse_property(config, "nfs_dir", String)
 }
 
 def shutdown(redis_node)
@@ -87,11 +88,17 @@ begin
   FileUtils.mkdir_p(File.dirname(pid_file))
 rescue => e
   logger.fatal "Can't create pid directory, exiting: #{e}"
+  exit
 end
 File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
 
 EM.run do
   redis_node = VCAP::Services::Redis::Node.new(options)
+  begin
+    redis_node.start
+  rescue => e
+    logger.fatal "Can't start node, exiting: #{e}"
+  end
   trap("INT") {shutdown(redis_node)}
   trap("TERM") {shutdown(redis_node)}
 end

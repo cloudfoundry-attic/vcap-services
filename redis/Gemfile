@@ -10,6 +10,7 @@ gem "dm-sqlite-adapter"
 gem "do_sqlite3"
 gem "sinatra"
 gem "thin"
+gem "redis"
 
 gem 'vcap_common', :path => '../../common'
 
