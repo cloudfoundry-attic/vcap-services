@@ -195,8 +195,6 @@ class VCAP::Services::MongoDB::Node
     @free_ports << provisioned_service.port
 
     true
-  rescue => e
-    @logger.warn(e)
   end
 
   def bind(name, bind_opts)
@@ -372,7 +370,7 @@ class VCAP::Services::MongoDB::Node
 
     timeout = EM.add_timer(options[:timeout]) do
       EM.cancel_timer(timer)
-      raise "Could not add admin in #{options[:port]}"
+      @logger.warn("Could not add admin in #{options[:port]}")
     end
 
     timer = EM.add_periodic_timer(0.50) do
@@ -387,7 +385,6 @@ class VCAP::Services::MongoDB::Node
         EM.cancel_timer(timeout)
       rescue => e
         @logger.warn("add user #{options[:username]} failed! #{e}")
-        raise e
       end
     end
   end
