@@ -1,3 +1,4 @@
+# Copyright (c) 2009-2011 VMware, Inc.
 require File.dirname(__FILE__) + '/spec_helper'
 
 require 'redis_service/redis_provisioner'
