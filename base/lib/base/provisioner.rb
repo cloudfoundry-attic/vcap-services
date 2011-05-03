@@ -246,7 +246,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
       @logger.debug("[#{service_description}] Unbind instance #{handle_id} from #{node_id}")
       request = svc[:credentials]
-      @node_nats.publish("#{service_name}.unbind.#{node_id}", Yajl::Encoder.encode(request))
 
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
