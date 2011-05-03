@@ -18,6 +18,7 @@ describe VCAP::Services::Rabbit::Node do
   before :all do
     @logger = Logger.new(STDOUT, "daily")
     @logger.level = Logger::DEBUG
+    @local_db_file = "/tmp/rabbit_node_" + Time.now.to_i.to_s + ".db"
     @options = {
       :logger => @logger,
       :rabbit_ctl => "rabbitmqctl",
@@ -26,7 +27,7 @@ describe VCAP::Services::Rabbit::Node do
       :available_memory => 4096,
       :max_memory => 16,
       :node_id => "rabbit-node-1",
-      :local_db => "sqlite3:/tmp/rabbit_node.db",
+      :local_db => "sqlite3:" + @local_db_file,
       :mbus => "nats://localhost:4222"
     }
 
@@ -51,6 +52,7 @@ describe VCAP::Services::Rabbit::Node do
       %x[kill -9 #{pid}]
       %x[rm -f #{@pid_file}]
     end
+    %x[rm -f #{@local_db_file}]
   end
 
   before :each do
