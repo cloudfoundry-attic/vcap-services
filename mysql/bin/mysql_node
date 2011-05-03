@@ -54,7 +54,8 @@ options = {
   :mbus => parse_property(config, "mbus", String),
   :local_db => parse_property(config, "local_db", String),
   :mysql => parse_property(config, "mysql", Hash),
-  :ip_route => parse_property(config, "ip_route", String, :optional => true)
+  :ip_route => parse_property(config, "ip_route", String, :optional => true),
+  :socket => parse_property(config, "socket", String, :optional => true)
 }
 
 def shutdown(node)
