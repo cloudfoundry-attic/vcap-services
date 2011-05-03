@@ -42,6 +42,12 @@ logger.info "config: " + config.to_s
 
 # \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
 
+# make sure the backup base dir is mounted
+if %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
+  logger.error config["backup_base_dir"] + " is not mounted, exit"
+  exit
+end
+
 # make sure backup dir on nfs storage exists
 nfs_base = config["backup_base_dir"] + "/backups/" + config["service_name"]
 if File.directory? nfs_base
