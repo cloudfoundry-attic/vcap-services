@@ -278,7 +278,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     # to provide service specific data beyond the following
 
     # Mask password from varz details
-    svcs = @prov_svcs.dup
+    svcs = @prov_svcs.deep_dup
     svcs.each do |k,v|
       # FIXME workaround for handles with 1 outer format, 2 inner format.
       configuration = (v[:configuration].nil?) ? v[:data] : v[:configuration]
