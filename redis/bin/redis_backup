@@ -5,11 +5,25 @@
 require 'yaml'
 require 'fileutils'
 require 'logger'
+require "rubygems"
+require "bundler/setup"
 
 puts "backup task start.."
 
-# load configuration file
 config_file = File.expand_path("../../config/redis_backup.yml", __FILE__)
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: redis_backup [options]"
+  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+    config_file = opt
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+# load configuration file
 begin
   config = YAML.load(File.open(config_file))
 rescue => e
@@ -27,6 +41,12 @@ logger.info "config: " + config.to_s
 # Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
 
 # \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+
+# make sure the backup base dir is mounted
+if %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
+  logger.error config["backup_base_dir"] + " is not mounted, exit"
+  exit
+end
 
 # make sure backup dir on nfs storage exists
 nfs_base = config["backup_base_dir"] + "/backups/" + config["service_name"]

@@ -1,5 +1,5 @@
 service_name: redis
-backup_base_dir: /mnt
+backup_base_dir: /mnt/appcloud
 service_base_dir: /var/vcap/services/redis/instances
-backup_log: /tmp/redis.backup.log
+backup_log: /tmp/redis_backup.log
 fail_mail: figof@mozy.com

@@ -20,6 +20,7 @@ describe VCAP::Services::Redis::Node do
   before :all do
     @logger = Logger.new(STDOUT, "daily")
     @logger.level = Logger::DEBUG
+    @local_db_file = "/tmp/redis_node_" + Time.now.to_i.to_s + ".db"
     @options = {
       :logger => @logger,
       :base_dir => "/var/vcap/services/redis/instances",
@@ -30,7 +31,7 @@ describe VCAP::Services::Redis::Node do
       :max_swap => 32,
       :node_id => "redis-node-1",
       :config_template => File.expand_path("../resources/redis.conf.erb", File.dirname(__FILE__)),
-      :local_db => "sqlite3:/tmp/redis_node.db",
+      :local_db => "sqlite3:" + @local_db_file,
       :port_range => Range.new(5000, 25000),
       :mbus => "nats://localhost:4222",
       :nfs_dir => "/tmp"
@@ -54,7 +55,7 @@ describe VCAP::Services::Redis::Node do
   before :each do
     @instance          = VCAP::Services::Redis::Node::ProvisionedInstance.new
     @instance.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
-    @instance.port     = 11111
+    @instance.port     = VCAP.grab_ephemeral_port
     @instance.plan     = :free
     @instance.password = UUIDTools::UUID.random_create.to_s
     @instance.memory   = @options[:max_memory]
@@ -67,6 +68,7 @@ describe VCAP::Services::Redis::Node do
       %x[kill -9 #{pid}]
       %x[rm -f #{@pid_file}]
     end
+    %x[rm -f #{@local_db_file}]
   end
 
   describe 'Node.initialize' do
@@ -116,6 +118,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should setup local db with right arguments" do
       @node.start_db.should be
+      puts VCAP.grab_ephemeral_port
     end
   end
 
