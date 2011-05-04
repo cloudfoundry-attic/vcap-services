@@ -38,8 +38,10 @@ class BaseTests
 
   class BaseTester < VCAP::Services::Base::Base
     attr_accessor :node_mbus_connected
+    attr_accessor :varz_invoked
     def initialize(options)
       @node_mbus_connected = false
+      @varz_invoked = false
       super(options)
     end
     def flavor
@@ -50,6 +52,10 @@ class BaseTests
     end
     def on_connect_node
       @node_mbus_connected = true
+    end
+    def varz_details
+      @varz_invoked = true
+      {}
     end
   end
 
@@ -71,6 +77,8 @@ class NodeTests
     attr_accessor :announcement_invoked
     attr_accessor :provision_invoked
     attr_accessor :unprovision_invoked
+    attr_accessor :bind_invoked
+    attr_accessor :unbind_invoked
     SERVICE_NAME = "Test"
     ID = "node-1"
     def initialize(options)
@@ -78,6 +86,8 @@ class NodeTests
       @announcement_invoked = false
       @provision_invoked = false
       @unprovision_invoked = false
+      @bind_invoked = false
+      @unbind_invoked = false
     end
     def service_name
       SERVICE_NAME
@@ -93,6 +103,12 @@ class NodeTests
     def unprovision(name, bindings)
       @unprovision_invoked = true
     end
+    def bind(name, bind_opts)
+      @bind_invoked = true
+    end
+    def unbind(credentials)
+      @unbind_invoked = true
+    end
   end
 
   class MockProvisioner
@@ -101,6 +117,9 @@ class NodeTests
     def initialize
       @got_announcement = false
       @got_provision_response = false
+      @got_unprovision_response = false
+      @got_bind_response = false
+      @got_unbind_response = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{NodeTester::SERVICE_NAME}.announce") {
           @got_announcement = true
@@ -114,7 +133,19 @@ class NodeTests
       }
     end
     def send_unprovision_request
-      @nats.publish("#{NodeTester::SERVICE_NAME}.unprovision.#{NodeTester::ID}", "{}")
+      @nats.request("#{NodeTester::SERVICE_NAME}.unprovision.#{NodeTester::ID}", "{}") {
+        @got_unprovision_response = true
+      }
+    end
+    def send_bind_request
+      @nats.request("#{NodeTester::SERVICE_NAME}.bind.#{NodeTester::ID}", "{}") {
+        @got_bind_response = true
+      }
+    end
+    def send_unbind_request
+      @nats.request("#{NodeTester::SERVICE_NAME}.unbind.#{NodeTester::ID}", "{}") {
+        @got_unbind_response = true
+      }
     end
   end
 
@@ -158,26 +189,54 @@ class ProvisionerTests
   class MockGateway
     attr_accessor :got_announcement
     attr_accessor :got_provision_response
+    attr_accessor :got_unprovision_response
+    attr_accessor :got_bind_response
+    attr_accessor :got_unbind_response
     def initialize(provisioner)
       @provisioner = provisioner
       @got_announcement = false
       @got_provision_response = false
+      @got_unprovision_response = false
+      @got_bind_response = false
+      @got_unbind_response = false
+      @instance_id = nil
+      @bind_id = nil
     end
     def send_provision_request
-      @provisioner.provision_service(nil, nil) { @got_provision_response = true }
+      @provisioner.provision_service(nil, nil) do |res|
+        @instance_id = res['response'][:service_id]
+        @got_provision_response = res['success']
+      end
     end
     def send_unprovision_request
-      @provisioner.unprovision_service(@provisioner.first_instance_id) { }
+      @provisioner.unprovision_service(@instance_id) do |res|
+        @got_unprovision_response = res['success']
+      end
+    end
+    def send_bind_request
+      @provisioner.bind_instance(@instance_id, nil) do |res|
+        @bind_id = res['response'][:service_id]
+        @got_bind_response = res['success']
+      end
+    end
+    def send_unbind_request
+      @provisioner.unbind_instance(@instance_id, @bind_id, nil) do |res|
+        @got_unbind_response = res['success']
+      end
     end
   end
 
   class MockNode
     attr_accessor :got_unprovision_request
     attr_accessor :got_provision_request
+    attr_accessor :got_unbind_request
+    attr_accessor :got_bind_request
     def initialize(id)
       @id = id
       @got_provision_request = false
       @got_unprovision_request = false
+      @got_bind_request = false
+      @got_unbind_request = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{service_name}.discover") { |_, reply|
           announce(reply)
@@ -195,6 +254,30 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.unprovision.#{node_id}") { |msg, reply|
           @got_unprovision_request = true
+          response = {
+            'success' => true,
+            'response' => {}
+          }
+          @nats.publish(reply, response.to_json)
+        }
+        @nats.subscribe("#{service_name}.bind.#{node_id}") { |msg, reply|
+          @got_bind_request = true
+          response = {
+            'success' => true,
+            'response' => {
+              'name' => UUIDTools::UUID.random_create.to_s,
+              'node_id' => node_id
+            }
+          }
+          @nats.publish(reply, response.to_json)
+        }
+        @nats.subscribe("#{service_name}.unbind.#{node_id}") { |msg, reply|
+          @got_unbind_request = true
+          response = {
+            'success' => true,
+            'response' => {}
+          }
+          @nats.publish(reply, response.to_json)
         }
         announce
       }

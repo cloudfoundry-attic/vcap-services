@@ -114,10 +114,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   # unprovision(name) --> void
   abstract :unprovision
 
-  # bind(name, app_id, bind_opts) --> {host, port, login, secret}
+  # bind(name, bind_opts) --> {host, port, login, secret}
   abstract :bind
 
-  # unbind(name, app_id)  --> void
+  # unbind(credentials)  --> void
   abstract :unbind
 
   # announcement() --> { any service-specific announcement details }

@@ -31,6 +31,17 @@ describe BaseTests do
     base.node_mbus_connected.should be_true
   end
 
+  it "should call varz" do
+    base = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { base = BaseTests.create_base }
+        Do.at(11) { EM.stop ; NATS.stop }
+      }
+    end
+    base.varz_invoked.should be_true
+  end
+
 end
 
 describe NodeTests do
@@ -49,7 +60,7 @@ describe NodeTests do
     provisioner.got_announcement.should be_true
   end
 
-  it "should anounce on request" do
+  it "should announce on request" do
     node = nil
     provisioner = nil
     EM.run do
@@ -63,6 +74,7 @@ describe NodeTests do
     node.announcement_invoked.should be_true
     provisioner.got_announcement.should be_true
   end
+
   it "should support provision" do
     node = nil
     provisioner = nil
@@ -95,6 +107,35 @@ describe NodeTests do
     node.unprovision_invoked.should be_true
   end
 
+  it "should support bind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        # start node then provisioner
+        Do.at(0) { node = NodeTests.create_node }
+        Do.at(1) { provisioner = NodeTests.create_provisioner }
+        Do.at(2) { provisioner.send_bind_request }
+        Do.at(3) { EM.stop ; NATS.stop }
+      }
+    end
+    node.bind_invoked.should be_true
+  end
+
+  it "should support unbind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        # start node then provisioner
+        Do.at(0) { node = NodeTests.create_node }
+        Do.at(1) { provisioner = NodeTests.create_provisioner }
+        Do.at(2) { provisioner.send_unbind_request }
+        Do.at(3) { EM.stop ; NATS.stop }
+      }
+    end
+    node.unbind_invoked.should be_true
+  end
 end
 
 describe ProvisionerTests do
@@ -215,4 +256,41 @@ describe ProvisionerTests do
     node.got_unprovision_request.should be_true
   end
 
+  it "should support bind" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) { EM.stop ; NATS.stop }
+      }
+    end
+    gateway.got_provision_response.should be_true
+    gateway.got_bind_response.should be_true
+  end
+
+  it "should support unbind" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) { gateway.send_unbind_request }
+        Do.at(6) { EM.stop ; NATS.stop }
+      }
+    end
+    gateway.got_provision_response.should be_true
+    gateway.got_bind_response.should be_true
+    gateway.got_unbind_response.should be_true
+  end
 end
