@@ -49,7 +49,7 @@ class VCAP::Services::Atmos::Helper
     return nil
   end
 
-  def deleteSubtenant( name )
+  def deleteSubtenant(name)
     uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants/#{name}")
 
     headers = { 'x-atmos-tenantadmin'         =>  @tenantadmin,

@@ -29,11 +29,16 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     st_name = UUIDTools::UUID.random_create.to_s
     st_id = @atmos_helper.createSubtenant(st_name)
 
+    if (st_id == nil)
+      raise "atmos create subtenant error"
+    end
+
     # should we create subtenant admin rather than uid here?
     token = UUIDTools::UUID.random_create.to_s
     shared_secret = @atmos_helper.createUser(token, st_name)
 
     if (shared_secret == nil)
+      @atmos_helper.deleteSubtenant(st_name)
       raise "atmos create user error"
     end
 
