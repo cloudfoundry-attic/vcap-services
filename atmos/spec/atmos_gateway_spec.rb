@@ -1,7 +1,7 @@
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 $LOAD_PATH.unshift(File.expand_path("../../../base/lib", __FILE__))
 
-require "spec_helper"
+require File.dirname(__FILE__) + '/spec_helper'
 require "atmos_service/atmos_provisioner"
 require "atmos_service/atmos_helper"
 require "uuidtools"
