@@ -10,7 +10,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
   include VCAP::Services::Atmos::Common
 
   def to_s
-    @logger.debug ("VCAP::Services::Atmos::Provisioner instance: #{@atmos_conf.pretty_inspect}")
+    @logger.debug ("VCAP::Services::Atmos::Provisioner instance: #{@aux.pretty_inspect}")
   end
 
   def initialize(options)
@@ -33,6 +33,10 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     token = UUIDTools::UUID.random_create.to_s
     shared_secret = @atmos_helper.createUser(token, st_name)
 
+    if (shared_secret == nil)
+      raise "atmos create user error"
+    end
+
     svc = {
       :data => {:subtenant_name => st_name, :subtenant_id => st_id, :host => @host},
       :service_id => st_name,
@@ -43,6 +47,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     blk.call(svc)
   rescue => e
     @logger.warn(e)
+    blk.call(nil)
   end
 
   def unprovision_service(instance_id, &blk)
@@ -68,7 +73,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     @logger.debug("try to bind service: #{instance_id}")
     if instance_id.nil?
       @logger.warn("#{instance_id} is null!")
-      blk.call(nik)
+      blk.call(nil)
     end
 
     begin
@@ -78,6 +83,11 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
 
       token = UUIDTools::UUID.random_create.to_s
       shared_secret = @atmos_helper.createUser(token, instance_id)
+
+      if (shared_secret == nil)
+        raise "atmos create user error"
+      end
+
       res = {
         :service_id => token,
         :configuration => svc[:data],

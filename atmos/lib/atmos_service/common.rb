@@ -2,7 +2,7 @@ module VCAP
   module Services
     module Atmos
       module Common
-        def service_name 
+        def service_name
           "AtmosaaS"
         end
       end

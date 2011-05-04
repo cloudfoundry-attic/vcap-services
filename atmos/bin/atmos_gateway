@@ -20,7 +20,7 @@ class VCAP::Services::Atmos::Gateway < VCAP::Services::Base::Gateway
   def default_config_file
     File.join(File.dirname(__FILE__), '..', 'config', 'atmos_gateway.yml')
   end
-  
+
 end
 
 VCAP::Services::Atmos::Gateway.new.start

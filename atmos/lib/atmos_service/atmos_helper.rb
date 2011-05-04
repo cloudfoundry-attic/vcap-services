@@ -1,7 +1,7 @@
 require 'xmlsimple'
 require 'net/http'
 
-class VCAP::Services::Atmos::Helper 
+class VCAP::Services::Atmos::Helper
 
   def initialize(aux, logger)
     @logger = logger
@@ -14,7 +14,7 @@ class VCAP::Services::Atmos::Helper
   end
 
 
-  def createSubtenant( name )
+  def createSubtenant(name)
     uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants")
 
     headers = { 'x-atmos-authsource'          =>  'local',
