@@ -124,16 +124,16 @@ require 'base/provisioner'
 
 class ProvisionerTests
 
-  def self.create_provisioner
-    ProvisionerTester.new(BaseTests::Options.default)
+  def self.create_provisioner(options = {})
+    ProvisionerTester.new(BaseTests::Options.default(options))
   end
 
   def self.create_gateway(provisioner)
     MockGateway.new(provisioner)
   end
 
-  def self.create_node(id)
-    MockNode.new(id)
+  def self.create_node(id, score = 1)
+    MockNode.new(id, score)
   end
 
   class ProvisionerTester < VCAP::Services::Base::Provisioner
@@ -174,8 +174,9 @@ class ProvisionerTests
   class MockNode
     attr_accessor :got_unprovision_request
     attr_accessor :got_provision_request
-    def initialize(id)
+    def initialize(id, score)
       @id = id
+      @score = score
       @got_provision_request = false
       @got_unprovision_request = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
@@ -203,7 +204,7 @@ class ProvisionerTests
       "node-#{@id}"
     end
     def announce(reply=nil)
-      a = { :id => node_id, :score => @id }
+      a = { :id => node_id, :score => @score }
       @nats.publish(reply||"#{service_name}.announce", a.to_json)
     end
   end

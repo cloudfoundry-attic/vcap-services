@@ -14,6 +14,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     super(options)
     @version   = options[:version]
     @node_timeout = options[:node_timeout] || 2
+    @allow_over_provisioning = options[:allow_over_provisioning]
     @nodes     = {}
     @prov_svcs = {}
     EM.add_periodic_timer(60) { process_nodes }
@@ -121,7 +122,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Provisioning node (version=#{version}, plan=#{plan}, nnodes=#{node_msgs.length})")
     nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
     best_node = nodes.max_by { |node| node_score(node) }
-    if best_node && node_score(best_node) > 0
+    if best_node && ( @allow_over_provisioning || node_score(best_node) > 0 )
       best_node = best_node["id"]
       @logger.debug("[#{service_description}] Provisioning on #{best_node}")
       request = {"plan" => plan}

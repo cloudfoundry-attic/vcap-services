@@ -188,8 +188,8 @@ describe ProvisionerTests do
       NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
         Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-        Do.at(2) { node1 = ProvisionerTests.create_node(1) }
-        Do.at(3) { node2 = ProvisionerTests.create_node(2) }
+        Do.at(2) { node1 = ProvisionerTests.create_node(1, 1) }
+        Do.at(3) { node2 = ProvisionerTests.create_node(2, 2) }
         Do.at(4) { gateway.send_provision_request }
         Do.at(5) { EM.stop ; NATS.stop }
       }
@@ -215,4 +215,35 @@ describe ProvisionerTests do
     node.got_unprovision_request.should be_true
   end
 
+  it "should allow over provisioning when it is configured so" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner({:allow_over_provisioning => true}) }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1, -1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { EM.stop ; NATS.stop }
+      }
+    end
+    node.got_provision_request.should be_true
+  end
+
+  it "should not allow over provisioning when it is not configured so" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner({:allow_over_provisioning => false}) }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1, -1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { EM.stop ; NATS.stop }
+      }
+    end
+    node.got_provision_request.should be_false
+  end
 end

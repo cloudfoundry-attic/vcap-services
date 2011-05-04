@@ -13,3 +13,4 @@ mysql_mbus: nats://localhost:4222
 service_mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/mysql_service.pid
 node_timeout: 2
+# allow_over_provisioning: false

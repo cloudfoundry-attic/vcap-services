@@ -12,3 +12,4 @@ log_level: DEBUG
 redis_mbus: nats://localhost:4222
 service_mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/redis_service.pid
+# allow_over_provisioning: false

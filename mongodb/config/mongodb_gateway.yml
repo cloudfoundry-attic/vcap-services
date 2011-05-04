@@ -11,3 +11,4 @@ token: "0xdeadbeef"
 mbus: nats://localhost:4222
 log_level: DEBUG
 pid: /var/vcap/sys/run/mongodb_service.pid
+# allow_over_provisioning: false
