@@ -227,6 +227,19 @@ describe VCAP::Services::Redis::Node do
       @credentials["password"].should be
       @credentials["name"].should be
     end
+
+    it "should provision from specified credentials" do
+      in_credentials = {}
+      in_credentials["name"] = "redis-#{UUIDTools::UUID.random_create.to_s}"
+      in_credentials["port"] = VCAP.grab_ephemeral_port
+      in_credentials["password"] = UUIDTools::UUID.random_create.to_s
+      out_credentials = @node.provision(:free, in_credentials)
+      sleep 1
+      out_credentials["name"].should == in_credentials["name"]
+      out_credentials["port"].should == in_credentials["port"]
+      out_credentials["password"].should == in_credentials["password"]
+      @node.unprovision(out_credentials["name"])
+    end
   end
 
   describe "Node.unprovision" do

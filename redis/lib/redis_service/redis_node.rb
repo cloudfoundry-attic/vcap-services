@@ -90,15 +90,21 @@ class VCAP::Services::Redis::Node
     }
   end
 
-  def provision(plan)
-    port = @free_ports.first
-    @free_ports.delete(port)
+  def provision(plan, credentials = nil)
+    instance = ProvisionedInstance.new
+    instance.plan = plan
+    if credentials
+      instance.name = credentials["name"]
+      instance.port = credentials["port"]
+      instance.password = credentials["password"]
+    else
+      port = @free_ports.first
+      @free_ports.delete(port)
+      instance.name = "redis-#{UUIDTools::UUID.random_create.to_s}"
+      instance.port = port
+      instance.password = UUIDTools::UUID.random_create.to_s
+    end
 
-    instance          = ProvisionedInstance.new
-    instance.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
-    instance.port     = port
-    instance.plan     = plan
-    instance.password = UUIDTools::UUID.random_create.to_s
     begin
       instance.memory = memory_for_instance(instance)
       @available_memory -= instance.memory
