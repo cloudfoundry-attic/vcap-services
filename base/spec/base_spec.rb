@@ -36,6 +36,7 @@ describe BaseTests do
     EM.run do
       NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
         Do.at(0) { base = BaseTests.create_base }
+        # varz is invoked 5 seconds after base is created
         Do.at(11) { EM.stop ; NATS.stop }
       }
     end
@@ -292,5 +293,37 @@ describe ProvisionerTests do
     gateway.got_provision_response.should be_true
     gateway.got_bind_response.should be_true
     gateway.got_unbind_response.should be_true
+  end
+
+  it "should support varz" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    prov_svcs_before = nil
+    prov_svcs_after = nil
+    varz_invoked_before = nil
+    varz_invoked_after = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) {
+          prov_svcs_before = Marshal.dump(provisioner.prov_svcs)
+          varz_invoked_before = provisioner.varz_invoked
+        }
+        # varz is invoked 5 seconds after provisioner is created
+        Do.at(11) {
+          prov_svcs_after = Marshal.dump(provisioner.prov_svcs)
+          varz_invoked_after = provisioner.varz_invoked
+        }
+        Do.at(12) { EM.stop ; NATS.stop }
+      }
+    end
+    varz_invoked_before.should be_false
+    varz_invoked_after.should be_true
+    prov_svcs_before.should == prov_svcs_after
   end
 end

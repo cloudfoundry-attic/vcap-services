@@ -168,8 +168,12 @@ class ProvisionerTests
   end
 
   class ProvisionerTester < VCAP::Services::Base::Provisioner
+    attr_accessor :prov_svcs
+    attr_accessor :varz_invoked
+    attr_accessor :prov_svcs
     def initialize(options)
       super(options)
+      @varz_invoked = false
     end
     SERVICE_NAME = "Test"
     def service_name
@@ -181,8 +185,9 @@ class ProvisionerTests
     def node_count
       return @nodes.length
     end
-    def first_instance_id
-      @prov_svcs.keys[0]
+    def varz_details
+      @varz_invoked = true
+      super
     end
   end
 
@@ -247,7 +252,9 @@ class ProvisionerTests
             'success' => true,
             'response' => {
               'name' => UUIDTools::UUID.random_create.to_s,
-              'node_id' => node_id
+              'node_id' => node_id,
+              'username' => UUIDTools::UUID.random_create.to_s,
+              'password' => UUIDTools::UUID.random_create.to_s,
             }
           }
           @nats.publish(reply, response.to_json)
@@ -266,7 +273,9 @@ class ProvisionerTests
             'success' => true,
             'response' => {
               'name' => UUIDTools::UUID.random_create.to_s,
-              'node_id' => node_id
+              'node_id' => node_id,
+              'username' => UUIDTools::UUID.random_create.to_s,
+              'password' => UUIDTools::UUID.random_create.to_s,
             }
           }
           @nats.publish(reply, response.to_json)
