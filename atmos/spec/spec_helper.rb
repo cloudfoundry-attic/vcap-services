@@ -34,6 +34,19 @@ def parse_property(hash, key, type, options = {})
   end
 end
 
+# Atmos configuration.  The atmos service we test against is a shared,
+# off-box instace, so we don't want to bake the credentials into the
+# config file.  To avoid having to update the config file manually
+# prior to testing, we load the atmos config from the environment.
+def check_provisioner_config
+  vars = ["VCAP_ATMOS_HOST", "VCAP_ATMOS_TENANT", "VCAP_ATMOS_TENANT_AMDIN", "VCAP_ATMOS_TENANT_PASSWD"]
+  vars.each do |e|
+    pending "Disabling atmos tests. Set the following environment variables to run them: #{vars.inspect}" unless ENV[e]
+    return false
+  end
+  true
+end
+
 def get_provisioner_config()
   config_file = File.join(File.dirname(__FILE__), "../config/atmos_gateway.yml")
   config = YAML.load_file(config_file)
@@ -50,8 +63,15 @@ def get_provisioner_config()
     # Following options are for Thin
     :host => 'localhost',
     :port => HTTP_PORT,
-    :aux => config[:aux]
+    :aux => {
+      :atmos_host => ENV['VCAP_ATMOS_HOST'],
+      :atmos_port => ENV['VCAP_ATMOS_PORT'] || "443",
+      :atmos_tenant => ENV['VCAP_ATMOS_TENANT'],
+      :atmos_tenantadmin => ENV['VCAP_ATMOS_TENANT_ADMIN'],
+      :atmos_tenantpasswd => ENV['VCAP_ATMOS_TENANT_PASSWD']
+    }
   }
+
   options[:logger].level = Logger::FATAL
   options
 end

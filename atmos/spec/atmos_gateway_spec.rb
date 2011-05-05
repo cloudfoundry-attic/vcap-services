@@ -13,9 +13,9 @@ include VCAP::Services::Atmos
 describe VCAP::Services::Atmos::Provisioner do
 
   before :all do
-    puts "let's start :)"
     logger = Logger.new(STDOUT, "daily")
 
+    @run_tests = check_provisioner_config
     @config = get_provisioner_config
     puts @config
     @atmos_helper = Helper.new(@config[:aux], logger)
@@ -84,8 +84,10 @@ describe VCAP::Services::Atmos::Provisioner do
     end
 
     after :all do
-      @atmos_helper.deleteSubtenant(@subtenant_name_p)
-      @atmos_helper.deleteSubtenant(@subtenant_name_p1)
+      if @run_tests
+        @atmos_helper.deleteSubtenant(@subtenant_name_p)
+        @atmos_helper.deleteSubtenant(@subtenant_name_p1)
+      end
     end
   end
 
@@ -136,8 +138,10 @@ describe VCAP::Services::Atmos::Provisioner do
     end
 
     after :all do
-      @atmos_helper.deleteSubtenant(@subtenant_name1)
-      @atmos_helper.deleteSubtenant(@subtenant_name2)
+      if @run_tests
+        @atmos_helper.deleteSubtenant(@subtenant_name1)
+        @atmos_helper.deleteSubtenant(@subtenant_name2)
+      end
     end
   end
 
@@ -166,7 +170,7 @@ describe VCAP::Services::Atmos::Provisioner do
     end
 
     after :all do
-      @atmos_helper.deleteSubtenant(@subtenant_name)
+      @atmos_helper.deleteSubtenant(@subtenant_name) if @run_tests
     end
   end
 
