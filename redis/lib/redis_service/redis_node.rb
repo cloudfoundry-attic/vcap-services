@@ -99,7 +99,12 @@ class VCAP::Services::Redis::Node
     instance.port     = port
     instance.plan     = plan
     instance.password = UUIDTools::UUID.random_create.to_s
-    instance.memory   = @max_memory
+    begin
+      instance.memory = memory_for_instance(instance)
+      @available_memory -= instance.memory
+    rescue => e
+      raise e
+    end
     begin
       instance.pid = start_instance(instance)
       save_instance(instance)
@@ -201,10 +206,6 @@ class VCAP::Services::Redis::Node
   def start_instance(instance, db_file = nil)
     @logger.debug("Starting: #{instance.pretty_inspect} on port #{instance.port}")
 
-    # FIXME: it need call mememory_for_instance() to get the memory according to the plan in the further.
-    memory = @max_memory
-    @available_memory -= memory
-
     pid = fork
     if pid
       @logger.debug("Service #{instance.name} started with pid #{pid}")
@@ -215,6 +216,7 @@ class VCAP::Services::Redis::Node
       $0 = "Starting Redis instance: #{instance.name}"
       close_fds
 
+      memory = instance.memory
       port = instance.port
       password = instance.password
       dir = File.join(@base_dir, instance.name)
