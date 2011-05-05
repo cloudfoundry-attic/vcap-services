@@ -93,13 +93,13 @@ class VCAP::Services::Redis::Node
   def provision(plan, credentials = nil)
     instance = ProvisionedInstance.new
     instance.plan = plan
+    port = @free_ports.first
+    @free_ports.delete(port)
     if credentials
       instance.name = credentials["name"]
       instance.port = credentials["port"]
       instance.password = credentials["password"]
     else
-      port = @free_ports.first
-      @free_ports.delete(port)
       instance.name = "redis-#{UUIDTools::UUID.random_create.to_s}"
       instance.port = port
       instance.password = UUIDTools::UUID.random_create.to_s
@@ -149,6 +149,15 @@ class VCAP::Services::Redis::Node
 
   def unbind(credentials)
     # FIXME: Redis has no user level security, so has no operation for unbinding.
+    {}
+  end
+
+  def restore_instance(name, backup_dir)
+    instance = get_instance(instance_id)
+    stop_instance(instance) if instance.running?
+    dump_file = File.join(instance_dir, "dump.rdb")
+    service.pid = start_instance(service, dump_file)
+    save_provisioned_service(service)
     {}
   end
 
