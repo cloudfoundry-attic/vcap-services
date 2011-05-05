@@ -19,7 +19,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
     @node_nats.subscribe("#{service_name}.provision.#{@node_id}") { |msg, reply|
-      on_provision(msg, reply)
+      EM.defer { on_provision(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.unprovision.#{@node_id}") { |msg, reply|
       on_unprovision(msg, reply)

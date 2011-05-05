@@ -16,6 +16,11 @@ module Do
     EM.add_timer(index*STEP_DELAY) { blk.call if blk }
   end
 
+  # Respect the real seconds while doing concurrent testing
+  def self.sec(index, &blk)
+    EM.add_timer(index) { blk.call if blk }
+  end
+
 end
 
 describe BaseTests do
@@ -35,9 +40,9 @@ describe BaseTests do
     base = nil
     EM.run do
       NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
-        Do.at(0) { base = BaseTests.create_base }
+        Do.sec(0) { base = BaseTests.create_base }
         # varz is invoked 5 seconds after base is created
-        Do.at(11) { EM.stop ; NATS.stop }
+        Do.sec(6) { EM.stop ; NATS.stop }
       }
     end
     base.varz_invoked.should be_true
@@ -76,20 +81,23 @@ describe NodeTests do
     provisioner.got_announcement.should be_true
   end
 
-  it "should support provision" do
+  it "should support concurrent provision" do
     node = nil
     provisioner = nil
     EM.run do
       NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
         # start node then provisioner
-        Do.at(0) { node = NodeTests.create_node }
-        Do.at(1) { provisioner = NodeTests.create_provisioner }
-        Do.at(2) { provisioner.send_provision_request }
-        Do.at(3) { EM.stop ; NATS.stop }
+        Do.sec(0) { node = NodeTests.create_node }
+        Do.sec(1) { provisioner = NodeTests.create_provisioner }
+        # Start 5 concurrent provision requests, each of which takes 5 seconds to finish
+        # Non-concurrent provision handler won't finish in 10 seconds
+        Do.sec(2) { 5.times { provisioner.send_provision_request } }
+        Do.sec(10) { EM.stop ; NATS.stop }
 
       }
     end
     node.provision_invoked.should be_true
+    node.provision_times.should == 5
     provisioner.got_provision_response.should be_true
   end
 

@@ -79,6 +79,7 @@ class NodeTests
     attr_accessor :unprovision_invoked
     attr_accessor :bind_invoked
     attr_accessor :unbind_invoked
+    attr_accessor :provision_times
     SERVICE_NAME = "Test"
     ID = "node-1"
     def initialize(options)
@@ -88,6 +89,8 @@ class NodeTests
       @unprovision_invoked = false
       @bind_invoked = false
       @unbind_invoked = false
+      @provision_times = 0
+      @mutex = Mutex.new
     end
     def service_name
       SERVICE_NAME
@@ -97,6 +100,8 @@ class NodeTests
       Hash.new
     end
     def provision(plan)
+      sleep 5 # Provision takes 5 seconds to finish
+      @mutex.synchronize { @provision_times += 1 }
       @provision_invoked = true
       Hash.new
     end
