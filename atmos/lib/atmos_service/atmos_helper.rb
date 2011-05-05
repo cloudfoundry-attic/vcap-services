@@ -28,9 +28,7 @@ class VCAP::Services::Atmos::Helper
     req["accept"] = '*/*'
     headers.keys.each {|f| req.add_field(f, headers[f])}
 
-    @logger.debug "create subtenant #{name}"
-    @logger.debug uri
-    @logger.debug req
+    @logger.debug "create subtenant #{name} uri: #{uri.inspect} req: #{req.inspect} hdrs: #{headers.inspect}"
 
     http = Net::HTTP.new(uri.host, @port.to_i)
     http.use_ssl = true
