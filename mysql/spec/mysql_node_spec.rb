@@ -261,6 +261,28 @@ describe "Mysql server node" do
     end
   end
 
+  it "should able to restore database from backup file" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      conn = connect_to_mysql(db)
+      conn.query("create table test(id INT)")
+      # backup current db
+      host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
+      tmp_file = "/tmp/#{db['name']}.sql.gz"
+      result = `/usr/bin/mysqldump -h #{host} -P #{port} -u #{user} --password=#{password} #{db['name']} | gzip > #{tmp_file}`
+      puts "Result of mysql backup: #{result}"
+      conn.query("drop table test")
+      res = conn.query("show tables")
+      res.num_rows().should == 0
+      @node.restore(db["name"], "/tmp/")
+      res = conn.query("show tables")
+      res.num_rows().should == 1
+      res.fetch_row[0].should == "test"
+      EM.stop
+    end
+  end
+
   it "should able to generate varz." do
     EM.run do
       varz = @node.varz_details
