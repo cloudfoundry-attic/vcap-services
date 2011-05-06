@@ -8,21 +8,42 @@ class VCAP::Services::Mysql::Node
   DATA_LENGTH_FIELD = 6
 
   def db_size(db)
-    table_status = @connection.query('show table status from ' + db)
-    sum = 0
-    table_status.each do |x|
-      sum += x[DATA_LENGTH_FIELD].to_i
+    # calculate both index and table size
+    dbs = @connection.query("SELECT sum( data_length + index_length) 'size'
+                              FROM information_schema.TABLES
+                              WHERE table_schema = '#{db}'
+                              GROUP BY table_schema ;")
+    res = 0
+    dbs.each {|i| res+=i[0].to_i}
+    res
+  end
+
+  def dbs_size()
+    result = @connection.query('show databases')
+    dbs =[]
+    result.each {|db| dbs << db[0]}
+    sizes = @connection.query(
+      'SELECT table_schema "name",
+       sum( data_length + index_length ) "size"
+       FROM information_schema.TABLES
+       GROUP BY table_schema')
+    result ={}
+    sizes.each do |i|
+      name, size = i
+      result[name] = size.to_i
     end
-    sum
+    # assume 0 size for db which has no tables
+    dbs.each {|db| result[db] = 0 unless result.has_key? db}
+    result
   end
 
   def kill_user_sessions(target_user, target_db)
-      process_list = @connection.list_processes
-      process_list.each do |proc|
-        thread_id, user, _, db = proc
-        if (user == target_user) and (db == target_db) then
-          @connection.query('KILL CONNECTION ' + thread_id)
-        end
+    process_list = @connection.list_processes
+    process_list.each do |proc|
+      thread_id, user, _, db = proc
+      if (user == target_user) and (db == target_db) then
+        @connection.query('KILL CONNECTION ' + thread_id)
+      end
       end
   end
 

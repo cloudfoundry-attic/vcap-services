@@ -12,6 +12,9 @@ daemonize no
 timeout 300
 loglevel notice
 databases 16
+save 900 1
+save 300 10
+save 60 10000
 # FIXME: Add the limit back?
 maxclients 0
 appendonly no
@@ -22,11 +25,11 @@ hash-max-zipmap-entries 64
 hash-max-zipmap-value 512
 activerehashing yes
 
-rename-command CONFIG ""
+#rename-command CONFIG ""
 rename-command MONITOR ""
 rename-command SAVE ""
 rename-command BGSAVE ""
-rename-command SHUTDOWN ""
+#rename-command SHUTDOWN ""
 rename-command BGREWRITEAOF ""
 rename-command SLAVEOF ""
 rename-command DEBUG ""

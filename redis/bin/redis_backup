@@ -1,0 +1,64 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+
+require 'yaml'
+require 'fileutils'
+require 'logger'
+
+puts "backup task start.."
+
+# load configuration file
+config_file = File.expand_path("../../config/redis_backup.yml", __FILE__)
+begin
+  config = YAML.load(File.open(config_file))
+rescue => e
+  puts "Could not read configuration file: #{e}"
+  exit
+end
+
+# setup logger
+log_file = config["backup_log"]
+logger = Logger.new(log_file, "weekly")
+logger.level = Logger::INFO
+
+logger.info "config: " + config.to_s
+
+# Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
+
+# \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+
+# make sure backup dir on nfs storage exists
+nfs_base = config["backup_base_dir"] + "/backups/" + config["service_name"]
+if File.directory? nfs_base
+  logger.info nfs_base + " exists"
+else
+  logger.info nfs_base + " does not exist, create it"
+  FileUtils.mkdir_p nfs_base
+end
+
+# backup
+inst_path = config["service_base_dir"]
+if File.directory? inst_path
+  dirnames = Dir.entries inst_path
+  dirnames.each do |dirname|
+    next if dirname.to_s.start_with? "." #skip . & ..
+    logger.info "instance: " + dirname
+    new_dirname = dirname[6, dirname.length]
+    new_dirname_nfs = nfs_base + "/" + new_dirname[0,2] + "/" + new_dirname[2,2] + "/" + new_dirname[4,2] + "/" + new_dirname + "/" + Time.new.to_i.to_s
+    logger.info "new dir: " + new_dirname_nfs
+    FileUtils.mkdir_p new_dirname_nfs
+    begin
+      FileUtils.cp inst_path + "/" + dirname + "/data/dump.rdb", new_dirname_nfs
+    rescue => e
+      logger.error "Could not copy dumpfile: #{e}"
+      next
+    end
+  end
+else
+  logger.error inst_path + " does not exists, exit"
+  exit
+end
+
+logger.info "backup task complete"
+puts "backup task complete"
