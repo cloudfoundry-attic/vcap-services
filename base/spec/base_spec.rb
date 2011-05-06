@@ -145,6 +145,21 @@ describe NodeTests do
     end
     node.unbind_invoked.should be_true
   end
+
+  it "should support restore" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        # start node then provisioner
+        Do.at(0) { node = NodeTests.create_node }
+        Do.at(1) { provisioner = NodeTests.create_provisioner }
+        Do.at(2) { provisioner.send_restore_request }
+        Do.at(7) { EM.stop ; NATS.stop }
+      }
+    end
+    node.restore_invoked.should be_true
+  end
 end
 
 describe ProvisionerTests do
@@ -301,6 +316,23 @@ describe ProvisionerTests do
     gateway.got_provision_response.should be_true
     gateway.got_bind_response.should be_true
     gateway.got_unbind_response.should be_true
+  end
+
+  it "should support restore" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_restore_request }
+        Do.at(5) { EM.stop ; NATS.stop }
+      }
+    end
+    gateway.got_restore_response.should be_true
   end
 
   it "should support varz" do

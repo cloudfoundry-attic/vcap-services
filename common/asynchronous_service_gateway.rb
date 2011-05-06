@@ -179,6 +179,24 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  # Restore an instance of the service
+  #
+  post '/service/internal/v1/restore' do
+    @logger.info("Restore service")
+
+    req = Yajl::Parser.parse(request_body)
+    # TODO add json format check
+
+    @provisioner.restore_instance(req['instance_id'], req['backup_file']) do |msg|
+      if msg['success']
+        async_reply
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
   #################### Helpers ####################
 
   helpers do

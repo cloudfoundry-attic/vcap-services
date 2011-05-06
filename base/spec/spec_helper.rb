@@ -79,6 +79,7 @@ class NodeTests
     attr_accessor :unprovision_invoked
     attr_accessor :bind_invoked
     attr_accessor :unbind_invoked
+    attr_accessor :restore_invoked
     attr_accessor :provision_times
     SERVICE_NAME = "Test"
     ID = "node-1"
@@ -89,6 +90,7 @@ class NodeTests
       @unprovision_invoked = false
       @bind_invoked = false
       @unbind_invoked = false
+      @restore_invoked = false
       @provision_times = 0
       @mutex = Mutex.new
     end
@@ -114,6 +116,9 @@ class NodeTests
     def unbind(credentials)
       @unbind_invoked = true
     end
+    def restore(isntance_id, backup_path)
+      @restore_invoked = true
+    end
   end
 
   class MockProvisioner
@@ -125,6 +130,7 @@ class NodeTests
       @got_unprovision_response = false
       @got_bind_response = false
       @got_unbind_response = false
+      @got_restore_response = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{NodeTester::SERVICE_NAME}.announce") {
           @got_announcement = true
@@ -150,6 +156,11 @@ class NodeTests
     def send_unbind_request
       @nats.request("#{NodeTester::SERVICE_NAME}.unbind.#{NodeTester::ID}", "{}") {
         @got_unbind_response = true
+      }
+    end
+    def send_restore_request
+      @nats.request("#{NodeTester::SERVICE_NAME}.restore.#{NodeTester::ID}", "{}") {
+        @got_restore_response = true
       }
     end
   end
@@ -202,6 +213,7 @@ class ProvisionerTests
     attr_accessor :got_unprovision_response
     attr_accessor :got_bind_response
     attr_accessor :got_unbind_response
+    attr_accessor :got_restore_response
     def initialize(provisioner)
       @provisioner = provisioner
       @got_announcement = false
@@ -209,6 +221,7 @@ class ProvisionerTests
       @got_unprovision_response = false
       @got_bind_response = false
       @got_unbind_response = false
+      @got_restore_response = false
       @instance_id = nil
       @bind_id = nil
     end
@@ -234,6 +247,11 @@ class ProvisionerTests
         @got_unbind_response = res['success']
       end
     end
+    def send_restore_request
+      @provisioner.restore_instance(@instance_id, nil) do |res|
+        @got_restore_response = res['success']
+      end
+    end
   end
 
   class MockNode
@@ -241,12 +259,14 @@ class ProvisionerTests
     attr_accessor :got_provision_request
     attr_accessor :got_unbind_request
     attr_accessor :got_bind_request
+    attr_accessor :got_restore_request
     def initialize(id)
       @id = id
       @got_provision_request = false
       @got_unprovision_request = false
       @got_bind_request = false
       @got_unbind_request = false
+      @got_restore_request = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{service_name}.discover") { |_, reply|
           announce(reply)
@@ -287,6 +307,14 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.unbind.#{node_id}") { |msg, reply|
           @got_unbind_request = true
+          response = {
+            'success' => true,
+            'response' => {}
+          }
+          @nats.publish(reply, response.to_json)
+        }
+        @nats.subscribe("#{service_name}.restore.#{node_id}") { |msg, reply|
+          @got_restore_request = true
           response = {
             'success' => true,
             'response' => {}

@@ -30,6 +30,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.unbind.#{@node_id}") { |msg, reply|
       on_unbind(msg, reply)
     }
+    @node_nats.subscribe("#{service_name}.restore.#{@node_id}") { |msg, reply|
+      EM.defer { on_restore(msg, reply) }
+    }
     @node_nats.subscribe("#{service_name}.discover") { |_, reply|
       on_discover(reply)
     }
@@ -80,6 +83,18 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Unbind request: #{msg} from #{reply}")
     unbind_message = Yajl::Parser.parse(msg)
     response = unbind(unbind_message)
+    @node_nats.publish(reply, encode_success(response))
+  rescue => e
+    @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(e))
+  end
+
+  def on_restore(msg, reply)
+    @logger.debug("#{service_description}: Restore request: #{msg} from #{reply}")
+    restore_message = Yajl::Parser.parse(msg)
+    instance_id = restore_message["instance_id"]
+    backup_file = restore_message["backup_file"]
+    response = restore(instance_id, backup_file)
     @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)

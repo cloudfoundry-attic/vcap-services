@@ -272,6 +272,46 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
+  def restore_instance(instance_id, backup_file, &blk)
+    @logger.debug("[#{service_description}] Attempting to restore to service #{instance_id}")
+
+    begin
+      svc = @prov_svcs[instance_id]
+      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
+
+      node_id = svc[:data]["node_id"]
+      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
+
+      @logger.debug("[#{service_description}] restore instance #{instance_id} from #{node_id}")
+      request = {
+        'instance_id' => instance_id,
+        'backup_file' => backup_file
+      }
+
+      subscription = nil
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
+      subscription =
+        @node_nats.request( "#{service_name}.restore.#{node_id}",
+          Yajl::Encoder.encode(request)
+       ) do |msg|
+          EM.cancel_timer(timer)
+          @node_nats.unsubscribe(subscription)
+          opts = Yajl::Parser.parse(msg)
+          blk.call(opts)
+        end
+    rescue => e
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
+    end
+  end
+
   def varz_details()
     # Service Provisioner subclasses may want to override this method
     # to provide service specific data beyond the following
