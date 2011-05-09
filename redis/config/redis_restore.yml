@@ -1,4 +1,4 @@
-gateway_uri: 127.0.0.1:37847
-instance_id: redis-d770e3ac-e1de-4f5b-813f-3dd76b33c3b7
-backup_dir: /mnt/appcloud/backups/redis/d7/70/e3/d770e3ac-e1de-4f5b-813f-3dd76b33c3b7/1304670778
+gateway_uri: 127.0.0.1:42461
+instance_id: redis-6478e1dc-da3b-4732-81c3-fe5ee51e201a
+backup_path: /mnt/appcloud/backups/redis/d7/70/e3/d770e3ac-e1de-4f5b-813f-3dd76b33c3b7/1304670778
 mode: restore

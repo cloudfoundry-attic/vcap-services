@@ -46,10 +46,10 @@ def send_request(config)
     },
     :body => {
       :instance_id => config["instance_id"],
-      :backup_dir => config["backup_dir"]
+      :backup_file => config["backup_path"]
     }.to_json
   }
-  http = EM::HttpRequest.new("#{http_uri(config["gateway_uri"])}/gateway/v1/internal/#{config["mode"]}").post(req)
+  http = EM::HttpRequest.new("#{http_uri(config["gateway_uri"])}/service/internal/v1/#{config["mode"]}").post(req)
 
   http.callback do
     if http.response_header.status == 200

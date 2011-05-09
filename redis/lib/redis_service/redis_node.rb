@@ -155,6 +155,7 @@ class VCAP::Services::Redis::Node
   def restore(instance_id, backup_dir)
     instance = get_instance(instance_id)
     stop_instance(instance) if instance.running?
+    sleep 1
     dump_file = File.join(backup_dir, "dump.rdb")
     instance.pid = start_instance(instance, dump_file)
     save_instance(instance)
@@ -256,6 +257,7 @@ class VCAP::Services::Redis::Node
       exec("#{@redis_server_path} #{config_path}")
     end
   rescue => e
+    puts e.backtrace
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.pretty_inspect)
   end
 
