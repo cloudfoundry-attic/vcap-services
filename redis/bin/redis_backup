@@ -56,7 +56,12 @@ if File.directory? nfs_base
   logger.info nfs_base + " exists"
 else
   logger.info nfs_base + " does not exist, create it"
-  FileUtils.mkdir_p nfs_base
+  begin
+    FileUtils.mkdir_p nfs_base
+  rescue => e
+    logger.error "Could not create dir on nfs!"
+    exit
+  end
 end
 
 # backup
