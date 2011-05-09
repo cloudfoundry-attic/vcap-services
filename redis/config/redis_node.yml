@@ -2,7 +2,6 @@
 local_db: sqlite3:/var/vcap/services/redis/redis_node.db
 mbus: nats://localhost:4222
 base_dir: /var/vcap/services/redis/instances
-nfs_dir: /mnt/nfs
 ip_route: 127.0.0.1
 log_level: DEBUG
 pid: /var/vcap/sys/run/redis_node.pid

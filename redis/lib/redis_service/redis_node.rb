@@ -64,7 +64,6 @@ class VCAP::Services::Redis::Node
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
     @local_db = options[:local_db]
-    @nfs_dir = options[:nfs_dir]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     @options = options
   end

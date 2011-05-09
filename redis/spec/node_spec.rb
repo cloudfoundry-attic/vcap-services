@@ -33,8 +33,7 @@ describe VCAP::Services::Redis::Node do
       :config_template => File.expand_path("../resources/redis.conf.erb", File.dirname(__FILE__)),
       :local_db => "sqlite3:" + @local_db_file,
       :port_range => Range.new(5000, 25000),
-      :mbus => "nats://localhost:4222",
-      :nfs_dir => "/tmp"
+      :mbus => "nats://localhost:4222"
     }
 
     # Start NATS server
