@@ -81,8 +81,15 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     end
 
     # Add any necessary handles we don't know about
-    @fetch_handle_timer = EM.add_periodic_timer(@handle_fetch_interval) { fetch_handles }
-    EM.next_tick { fetch_handles }
+    update_callback = Proc.new do |resp|
+      @provisioner.update_handles(resp.handles)
+      EM.cancel_timer(@fetch_handle_timer)
+    end
+    @fetch_handle_timer = EM.add_periodic_timer(@handle_fetch_interval) { fetch_handles(&update_callback) }
+    EM.next_tick { fetch_handles(&update_callback) }
+
+    # Register update handle callback
+    @provisioner.register_update_handle_callback{|handle, &blk| update_service_handle(handle, &blk)}
   end
 
 
@@ -187,7 +194,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     req = Yajl::Parser.parse(request_body)
     # TODO add json format check
 
-    @provisioner.restore_instance(req['instance_id'], req['backup_file']) do |msg|
+    @provisioner.restore_instance(req['instance_id'], req['backup_path']) do |msg|
       if msg['success']
         async_reply
       else
@@ -196,6 +203,25 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     end
     async_mode
   end
+
+  # Recovery an instance if node is crashed.
+  post '/service/internal/v1/recover' do
+    @logger.info("Recover service request.")
+    request = Yajl::Parser.parse(request_body)
+    instance_id = request['instance_id']
+    backup_path = request['backup_path']
+    fetch_handles do |resp|
+      # FIXME: Should parse version from handle when handle format bug is fixed.
+      @provisioner.recover(instance_id, backup_path, resp.handles, @service[:version]) do |msg|
+        if msg['success']
+          async_reply
+        else
+          async_reply_error(msg['response'])
+        end
+      end
+    end
+  end
+
 
   #################### Helpers ####################
 
@@ -223,6 +249,32 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       # This is pretty ghetto but Rack munges headers, so we need to munge them as well
       rack_hdr = "HTTP_" + header.upcase.gsub(/-/, '_')
       env[rack_hdr]
+    end
+
+    # Update a service handle using REST
+    def update_service_handle(handle, &cb)
+      @logger.debug("Update service handle: #{handle.inspect}")
+      if not handle
+        cb.call(false) if cb
+        return
+      end
+      id = handle["service_id"]
+      uri = @handles_uri + "/#{id}"
+      req = {
+        :head => @cc_req_hdrs,
+        :body => handle,
+      }
+      http = EM::HttpRequest.new(uri).post(req)
+      http.callback do
+        @logger.info("Successful update handle #{id}")
+        # Update local array in provisioner
+        @provisioner.update_handles([handle])
+        cb.call(true) if cb
+      end
+      http.errback do
+        @logger.error("Failed to update handle #{id}: #{http.error}")
+        cb.call(false) if cb
+      end
     end
 
     def async_mode(timeout=10)
@@ -314,8 +366,8 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     end
   end
 
-  # Fetches canonical state (handles) from the Cloud Controller on startup
-  def fetch_handles
+  # Fetches canonical state (handles) from the Cloud Controller
+  def fetch_handles(&cb)
     @logger.info("Fetching handles from cloud controller @ #{@handles_uri}")
 
     req = {
@@ -333,10 +385,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
           @logger.error("#{e}")
           next
         end
-
-        # XXX - We should really have handle classes...
-        @provisioner.update_handles(resp.handles)
-        EM.cancel_timer(@fetch_handle_timer)
+        cb.call(resp)
       else
         @logger.error("Failed fetching handles, status=#{http.response_header.status}")
       end
