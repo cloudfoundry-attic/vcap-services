@@ -1,5 +1,5 @@
 ---
-#cloud_controller: api.vcap.me
+# cloud_controller_uri: api.vcap.me
 service:
   name: rabbitmq
   version: "2.4"

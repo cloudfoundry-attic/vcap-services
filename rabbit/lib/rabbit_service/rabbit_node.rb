@@ -74,7 +74,7 @@ class VCAP::Services::Rabbit::Node
 
   def provision(plan)
     instance = ProvisionedInstance.new
-    instance.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
+    instance.name = "rabbitmq-#{UUIDTools::UUID.random_create.to_s}"
     instance.plan = plan
     instance.plan_option = ""
     instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
