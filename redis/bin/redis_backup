@@ -7,6 +7,7 @@ require 'fileutils'
 require 'logger'
 require "rubygems"
 require "bundler/setup"
+require 'optparse'
 
 puts "backup task start.."
 
@@ -36,6 +37,7 @@ log_file = config["backup_log"]
 logger = Logger.new(log_file, "weekly")
 logger.level = Logger::INFO
 
+logger.info "backup task start.."
 logger.info "config: " + config.to_s
 
 # Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
@@ -67,8 +69,8 @@ if File.directory? inst_path
     new_dirname = dirname[6, dirname.length]
     new_dirname_nfs = nfs_base + "/" + new_dirname[0,2] + "/" + new_dirname[2,2] + "/" + new_dirname[4,2] + "/" + new_dirname + "/" + Time.new.to_i.to_s
     logger.info "new dir: " + new_dirname_nfs
-    FileUtils.mkdir_p new_dirname_nfs
     begin
+      FileUtils.mkdir_p new_dirname_nfs
       FileUtils.cp inst_path + "/" + dirname + "/data/dump.rdb", new_dirname_nfs
     rescue => e
       logger.error "Could not copy dumpfile: #{e}"
