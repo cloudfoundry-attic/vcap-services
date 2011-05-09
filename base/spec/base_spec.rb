@@ -16,6 +16,11 @@ module Do
     EM.add_timer(index*STEP_DELAY) { blk.call if blk }
   end
 
+  # Respect the real seconds while doing concurrent testing
+  def self.sec(index, &blk)
+    EM.add_timer(index) { blk.call if blk }
+  end
+
 end
 
 describe BaseTests do
@@ -29,6 +34,18 @@ describe BaseTests do
       }
     end
     base.node_mbus_connected.should be_true
+  end
+
+  it "should call varz" do
+    base = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.sec(0) { base = BaseTests.create_base }
+        # varz is invoked 5 seconds after base is created
+        Do.sec(6) { EM.stop ; NATS.stop }
+      }
+    end
+    base.varz_invoked.should be_true
   end
 
 end
@@ -49,7 +66,7 @@ describe NodeTests do
     provisioner.got_announcement.should be_true
   end
 
-  it "should anounce on request" do
+  it "should announce on request" do
     node = nil
     provisioner = nil
     EM.run do
@@ -63,20 +80,24 @@ describe NodeTests do
     node.announcement_invoked.should be_true
     provisioner.got_announcement.should be_true
   end
-  it "should support provision" do
+
+  it "should support concurrent provision" do
     node = nil
     provisioner = nil
     EM.run do
       NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
         # start node then provisioner
-        Do.at(0) { node = NodeTests.create_node }
-        Do.at(1) { provisioner = NodeTests.create_provisioner }
-        Do.at(2) { provisioner.send_provision_request }
-        Do.at(3) { EM.stop ; NATS.stop }
+        Do.sec(0) { node = NodeTests.create_node }
+        Do.sec(1) { provisioner = NodeTests.create_provisioner }
+        # Start 5 concurrent provision requests, each of which takes 5 seconds to finish
+        # Non-concurrent provision handler won't finish in 10 seconds
+        Do.sec(2) { 5.times { provisioner.send_provision_request } }
+        Do.sec(10) { EM.stop ; NATS.stop }
 
       }
     end
     node.provision_invoked.should be_true
+    node.provision_times.should == 5
     provisioner.got_provision_response.should be_true
   end
 
@@ -95,6 +116,50 @@ describe NodeTests do
     node.unprovision_invoked.should be_true
   end
 
+  it "should support bind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        # start node then provisioner
+        Do.at(0) { node = NodeTests.create_node }
+        Do.at(1) { provisioner = NodeTests.create_provisioner }
+        Do.at(2) { provisioner.send_bind_request }
+        Do.at(3) { EM.stop ; NATS.stop }
+      }
+    end
+    node.bind_invoked.should be_true
+  end
+
+  it "should support unbind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        # start node then provisioner
+        Do.at(0) { node = NodeTests.create_node }
+        Do.at(1) { provisioner = NodeTests.create_provisioner }
+        Do.at(2) { provisioner.send_unbind_request }
+        Do.at(3) { EM.stop ; NATS.stop }
+      }
+    end
+    node.unbind_invoked.should be_true
+  end
+
+  it "should support restore" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        # start node then provisioner
+        Do.at(0) { node = NodeTests.create_node }
+        Do.at(1) { provisioner = NodeTests.create_provisioner }
+        Do.at(2) { provisioner.send_restore_request }
+        Do.at(7) { EM.stop ; NATS.stop }
+      }
+    end
+    node.restore_invoked.should be_true
+  end
 end
 
 describe ProvisionerTests do
@@ -215,4 +280,90 @@ describe ProvisionerTests do
     node.got_unprovision_request.should be_true
   end
 
+  it "should support bind" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) { EM.stop ; NATS.stop }
+      }
+    end
+    gateway.got_provision_response.should be_true
+    gateway.got_bind_response.should be_true
+  end
+
+  it "should support unbind" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) { gateway.send_unbind_request }
+        Do.at(6) { EM.stop ; NATS.stop }
+      }
+    end
+    gateway.got_provision_response.should be_true
+    gateway.got_bind_response.should be_true
+    gateway.got_unbind_response.should be_true
+  end
+
+  it "should support restore" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_restore_request }
+        Do.at(5) { EM.stop ; NATS.stop }
+      }
+    end
+    gateway.got_restore_response.should be_true
+  end
+
+  it "should support varz" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    prov_svcs_before = nil
+    prov_svcs_after = nil
+    varz_invoked_before = nil
+    varz_invoked_after = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) {
+          prov_svcs_before = Marshal.dump(provisioner.prov_svcs)
+          varz_invoked_before = provisioner.varz_invoked
+        }
+        # varz is invoked 5 seconds after provisioner is created
+        Do.at(11) {
+          prov_svcs_after = Marshal.dump(provisioner.prov_svcs)
+          varz_invoked_after = provisioner.varz_invoked
+        }
+        Do.at(12) { EM.stop ; NATS.stop }
+      }
+    end
+    varz_invoked_before.should be_false
+    varz_invoked_after.should be_true
+    prov_svcs_before.should == prov_svcs_after
+  end
 end

@@ -17,6 +17,12 @@ module VCAP
   end
 end
 
+class Object
+  def deep_dup
+    Marshal::load(Marshal.dump(self))
+  end
+end
+
 class VCAP::Services::Base::Base
 
   include VCAP::Services::Base::Error
