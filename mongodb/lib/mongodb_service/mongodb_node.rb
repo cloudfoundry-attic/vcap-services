@@ -251,6 +251,33 @@ class VCAP::Services::MongoDB::Node
     true
   end
 
+  def restore(instance_id, backup_file)
+    @logger.debug("Restore request: instance_id=#{instance_id}, backup_file=#{backup_file}")
+
+    provisioned_service = ProvisionedService.get(instance_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if provisioned_service.nil?
+
+    username = provisioned_service.admin
+    password = provisioned_service.adminpass
+    port     = provisioned_service.port
+    database = provisioned_service.db
+
+    # Drop original collections
+    db = Mongo::Connection.new('127.0.0.1', port).db(database)
+    db.authenticate(username, password)
+    db.collection_names.each do |name|
+      if name != 'system.users' && name != 'system.indexes'
+        db[name].drop
+      end
+    end
+
+    # Run mongorestore
+    command = "mongorestore -u #{username} -p#{password} --port #{port} #{backup_file}"
+    res = Kernel.system(command)
+    raise 'mongorestore failed' unless res
+    true
+  end
+
   def varz_details
     # Do disk summary
     du_hash = {}

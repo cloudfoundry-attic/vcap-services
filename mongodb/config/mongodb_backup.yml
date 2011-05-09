@@ -1,8 +1,5 @@
-service_name: mongodb 
+service_name: mongodb
 backup_base_dir: /mnt/nfs/servicebackup/
-# the following is for test purpose 
-local_db: sqlite3:/tmp/mongo/mongodb_node.db
+local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
 service_base_dir: /var/vcap/services/mongodb/instances/
-log_level: DEBUG 
-fail_mail: figof@mozy.com
-
+log_level: DEBUG

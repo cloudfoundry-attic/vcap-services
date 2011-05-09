@@ -84,10 +84,15 @@ provisioned_service.each do |service|
 
   path = get_dump_path(nfs_base, service.name)
 
+  # Run mongodump
   command = "mongodump -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
-  echo "Running: #{command}"
   res = Kernel.system(command)
-  echo "result: #{res}", !res
+  echo "#{command} result: #{res}", !res
+
+  # Delete system.user.bson
+  command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
+  res = Kernel.system(command)
+  echo "#{command} result: #{res}", !res
 end
 echo "Backup Done!"
-
+exit 0
