@@ -152,12 +152,12 @@ class VCAP::Services::Redis::Node
     {}
   end
 
-  def restore_instance(name, backup_dir)
+  def restore(instance_id, backup_dir)
     instance = get_instance(instance_id)
     stop_instance(instance) if instance.running?
-    dump_file = File.join(instance_dir, "dump.rdb")
-    service.pid = start_instance(service, dump_file)
-    save_provisioned_service(service)
+    dump_file = File.join(backup_dir, "dump.rdb")
+    instance.pid = start_instance(instance, dump_file)
+    save_instance(instance)
     {}
   end
 
