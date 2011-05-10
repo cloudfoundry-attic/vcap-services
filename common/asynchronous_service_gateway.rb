@@ -117,16 +117,16 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   # Provisions an instance of the service
   #
   post '/gateway/v1/configurations' do
-    req = VCAP::Services::Api::ProvisionRequest.decode(request_body)
-    @logger.debug("Provision request for label=#{req.label} plan=#{req.plan}")
+    req = Yajl::Parser.parse(request_body)
+    @logger.debug("Provision request for label=#{req['label']} plan=#{req['plan']}")
 
-    name, version = VCAP::Services::Api::Util.parse_label(req.label)
+    name, version = VCAP::Services::Api::Util.parse_label(req['label'])
     unless (name == @service[:name]) && (version == @service[:version])
       error_msg = ServiceError.new(ServiceError::UNKNOWN_LABEL).to_hash
       abort_request(error_msg)
     end
 
-    @provisioner.provision_service(version, req.plan) do |msg|
+    @provisioner.provision_service(req) do |msg|
       if msg['success']
         async_reply(VCAP::Services::Api::ProvisionResponse.new(msg['response']).encode)
       else
@@ -211,8 +211,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     instance_id = request['instance_id']
     backup_path = request['backup_path']
     fetch_handles do |resp|
-      # FIXME: Should parse version from handle when handle format bug is fixed.
-      @provisioner.recover(instance_id, backup_path, resp.handles, @service[:version]) do |msg|
+      @provisioner.recover(instance_id, backup_path, resp.handles) do |msg|
         if msg['success']
           async_reply
         else
