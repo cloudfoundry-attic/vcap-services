@@ -140,19 +140,22 @@ class VCAP::Services::MongoDB::Node
       username = UUIDTools::UUID.random_create.to_s
       password = UUIDTools::UUID.random_create.to_s
 
+      # wait for mongod to start
+      sleep 0.5
+
       mongodb_add_admin({
         :port      => provisioned_service.port,
         :username  => [provisioned_service.admin, username],
         :password  => [provisioned_service.adminpass, password],
         :db        => provisioned_service.db,
-        :timeout   => 10
+        :times     => 10
       })
       mongodb_add_admin({
         :port      => provisioned_service.port,
         :username  => [provisioned_service.admin],
         :password  => [provisioned_service.adminpass],
         :db        => 'admin',
-        :timeout   => 3
+        :times     => 3
       })
 
     rescue => e
@@ -394,13 +397,9 @@ class VCAP::Services::MongoDB::Node
 
   def mongodb_add_admin(options)
     @logger.info("add admin user: req #{options}")
+    t = options[:times] || 1
 
-    timeout = EM.add_timer(options[:timeout]) do
-      EM.cancel_timer(timer)
-      @logger.warn("Could not add admin in #{options[:port]}")
-    end
-
-    timer = EM.add_periodic_timer(0.50) do
+    t.times do
       begin
         db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
         options[:username].each_index do |i|
@@ -408,12 +407,14 @@ class VCAP::Services::MongoDB::Node
           raise "user not added" if user.nil?
           @logger.debug("user #{options[:username][i]} added in db #{options[:db]}")
         end
-        EM.cancel_timer(timer)
-        EM.cancel_timer(timeout)
+        return true
       rescue => e
         @logger.warn("add user #{options[:username]} failed! #{e}")
+        sleep 1
       end
     end
+
+    raise "Could not add admin user #{options[:username]}"
   end
 
   def mongodb_add_user(options)
