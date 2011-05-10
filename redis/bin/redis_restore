@@ -46,7 +46,7 @@ def send_request(config)
     },
     :body => {
       :instance_id => config["instance_id"],
-      :backup_file => config["backup_path"]
+      :backup_path => config["backup_path"]
     }.to_json
   }
   http = EM::HttpRequest.new("#{http_uri(config["gateway_uri"])}/service/internal/v1/#{config["mode"]}").post(req)
