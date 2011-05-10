@@ -19,7 +19,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
     @node_nats.subscribe("#{service_name}.provision.#{@node_id}") { |msg, reply|
-      on_provision(msg, reply)
+      EM.defer { on_provision(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.unprovision.#{@node_id}") { |msg, reply|
       on_unprovision(msg, reply)
@@ -29,6 +29,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     }
     @node_nats.subscribe("#{service_name}.unbind.#{@node_id}") { |msg, reply|
       on_unbind(msg, reply)
+    }
+    @node_nats.subscribe("#{service_name}.restore.#{@node_id}") { |msg, reply|
+      EM.defer { on_restore(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.discover") { |_, reply|
       on_discover(reply)
@@ -86,6 +89,18 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @node_nats.publish(reply, encode_failure(e))
   end
 
+  def on_restore(msg, reply)
+    @logger.debug("#{service_description}: Restore request: #{msg} from #{reply}")
+    restore_message = Yajl::Parser.parse(msg)
+    instance_id = restore_message["instance_id"]
+    backup_file = restore_message["backup_file"]
+    response = restore(instance_id, backup_file)
+    @node_nats.publish(reply, encode_success(response))
+  rescue => e
+    @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(e))
+  end
+
   def on_discover(reply)
     send_node_announcement(reply)
   end
@@ -114,10 +129,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   # unprovision(name) --> void
   abstract :unprovision
 
-  # bind(name, app_id, bind_opts) --> {host, port, login, secret}
+  # bind(name, bind_opts) --> {host, port, login, secret}
   abstract :bind
 
-  # unbind(name, app_id)  --> void
+  # unbind(credentials)  --> void
   abstract :unbind
 
   # announcement() --> { any service-specific announcement details }
