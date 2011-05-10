@@ -19,7 +19,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
     @node_nats.subscribe("#{service_name}.provision.#{@node_id}") { |msg, reply|
-      on_provision(msg, reply)
+      EM.defer { on_provision(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.unprovision.#{@node_id}") { |msg, reply|
       on_unprovision(msg, reply)
@@ -29,6 +29,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     }
     @node_nats.subscribe("#{service_name}.unbind.#{@node_id}") { |msg, reply|
       on_unbind(msg, reply)
+    }
+    @node_nats.subscribe("#{service_name}.restore.#{@node_id}") { |msg, reply|
+      EM.defer { on_restore(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.discover") { |_, reply|
       on_discover(reply)
@@ -43,7 +46,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Provision request: #{msg} from #{reply}")
     provision_message = Yajl::Parser.parse(msg)
     plan = provision_message["plan"]
-    response = provision(plan)
+    credentials = provision_message["credentials"]
+    response = provision(plan, credentials)
     response["node_id"] = @node_id
     @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
     @node_nats.publish(reply, encode_success(response))
@@ -69,7 +73,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     bind_message = Yajl::Parser.parse(msg)
     name      = bind_message["name"]
     bind_opts = bind_message["bind_opts"]
-    response = bind(name, bind_opts)
+    credentials = bind_message["credentials"]
+    response = bind(name, bind_opts, credentials)
     @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
@@ -80,6 +85,18 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Unbind request: #{msg} from #{reply}")
     unbind_message = Yajl::Parser.parse(msg)
     response = unbind(unbind_message)
+    @node_nats.publish(reply, encode_success(response))
+  rescue => e
+    @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(e))
+  end
+
+  def on_restore(msg, reply)
+    @logger.debug("#{service_description}: Restore request: #{msg} from #{reply}")
+    restore_message = Yajl::Parser.parse(msg)
+    instance_id = restore_message["instance_id"]
+    backup_path = restore_message["backup_path"]
+    response = restore(instance_id, backup_path)
     @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
@@ -114,10 +131,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   # unprovision(name) --> void
   abstract :unprovision
 
-  # bind(name, app_id, bind_opts) --> {host, port, login, secret}
+  # bind(name, bind_opts) --> {host, port, login, secret}
   abstract :bind
 
-  # unbind(name, app_id)  --> void
+  # unbind(credentials)  --> void
   abstract :unbind
 
   # announcement() --> { any service-specific announcement details }
