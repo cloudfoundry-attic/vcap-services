@@ -2,5 +2,6 @@ service_name: mongodb
 backup_base_dir: <%= BACKUP_DIR %>
 local_db: sqlite3:/tmp/mongo/mongodb_node.db
 service_base_dir: /tmp/mongo/instances
+mongodump_path: mongodump
 log_level: DEBUG
 log_file: /tmp/mongodb_backup.log

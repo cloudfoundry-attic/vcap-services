@@ -73,10 +73,13 @@ if !options[:tolerant] && %x[mount | awk '{print $3}'].split(/\n/).index(config[
   exit 1
 end
 
+# make sure local_db exists
 unless File.exist? config['local_db'].split(':')[1]
   echo "Could not find local_db: #{config['local_db']}"
   exit 1
 end
+
+mongodump_path = config['mongodump_path'] || 'mongodump'
 
 DataMapper.setup(:default, config['local_db'])
 DataMapper::auto_upgrade!
@@ -90,7 +93,7 @@ provisioned_service.each do |service|
   path = get_dump_path(config['backup_base_dir'], config['service_name'], service.name)
 
   # Run mongodump
-  command = "mongodump -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
+  command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
   res = Kernel.system(command)
   echo "#{command} result: #{res}", !res
 
