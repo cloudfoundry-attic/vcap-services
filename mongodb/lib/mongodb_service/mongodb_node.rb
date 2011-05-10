@@ -116,12 +116,15 @@ class VCAP::Services::MongoDB::Node
   end
 
 
-  def provision(plan)
-    port = @free_ports.first
+  def provision(plan, credential = nil)
+    port = credential && credential['port'] ? credential['port'] : @free_ports.first
+    name = credential && credential['name'] ? credential['name'] : "mongodb-#{UUIDTools::UUID.random_create.to_s}"
+    db   = credential && credential['db']   ? credential['db']   : 'db'
+
     @free_ports.delete(port)
 
     provisioned_service           = ProvisionedService.new
-    provisioned_service.name      = "mongodb-#{UUIDTools::UUID.random_create.to_s}"
+    provisioned_service.name      = name
     provisioned_service.port      = port
     provisioned_service.plan      = plan
     provisioned_service.password  = UUIDTools::UUID.random_create.to_s
@@ -129,7 +132,7 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.pid       = start_instance(provisioned_service)
     provisioned_service.admin     = 'admin'
     provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
-    provisioned_service.db        = 'db'
+    provisioned_service.db        = db
 
     unless provisioned_service.save
       cleanup_service(provisioned_service)
@@ -137,8 +140,8 @@ class VCAP::Services::MongoDB::Node
     end
 
     begin
-      username = UUIDTools::UUID.random_create.to_s
-      password = UUIDTools::UUID.random_create.to_s
+      username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
+      password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
 
       # wait for mongod to start
       sleep 0.5
@@ -200,15 +203,15 @@ class VCAP::Services::MongoDB::Node
     true
   end
 
-  def bind(name, bind_opts)
+  def bind(name, bind_opts, credential = nil)
     @logger.debug("Bind request: name=#{name}, bind_opts=#{bind_opts}")
     bind_opts ||= BIND_OPT
 
     provisioned_service = ProvisionedService.get(name)
     raise "Could not find service: #{name}" if provisioned_service.nil?
 
-    username = UUIDTools::UUID.random_create.to_s
-    password = UUIDTools::UUID.random_create.to_s
+    username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
+    password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
 
     mongodb_add_user({
       :port      => provisioned_service.port,
@@ -222,7 +225,7 @@ class VCAP::Services::MongoDB::Node
 
     response = {
       "hostname" => @local_ip,
-      "port"    => provisioned_service.port,
+      "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
       "name"     => provisioned_service.name,
@@ -233,24 +236,24 @@ class VCAP::Services::MongoDB::Node
     response
   end
 
-  def unbind(credentials)
-    @logger.debug("Unbind request: credentials=#{credentials}")
+  def unbind(credential)
+    @logger.debug("Unbind request: credential=#{credential}")
 
-    name = credentials['name']
+    name = credential['name']
     provisioned_service = ProvisionedService.get(name)
     raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     # FIXME  Current implementation: Delete self
     #        Here I presume the user to be deleted is RW user
     mongodb_remove_user({
-        :port      => credentials['port'],
+        :port      => credential['port'],
         :admin     => provisioned_service.admin,
         :adminpass => provisioned_service.adminpass,
-        :username  => credentials['username'],
-        :db        => credentials['db']
+        :username  => credential['username'],
+        :db        => credential['db']
       })
 
-    @logger.debug("Successfully unbind #{credentials}")
+    @logger.debug("Successfully unbind #{credential}")
     true
   end
 
