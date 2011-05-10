@@ -219,6 +219,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
         end
       end
     end
+    async_mode
   end
 
 
