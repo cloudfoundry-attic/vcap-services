@@ -57,7 +57,7 @@ describe "Test backup/restore"  do
     coll.insert(row)
 
     # Run mongodb_backup
-    res = Kernel.system("../bin/mongodb_backup -c #{CONFIG_FILE}")
+    res = Kernel.system("../bin/mongodb_backup -c #{CONFIG_FILE} -t")
     raise 'mongodb_backup failed' unless res
 
     # Change value after backup

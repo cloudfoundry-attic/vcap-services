@@ -14,6 +14,9 @@ opt_parser = OptionParser.new do |opts|
   opts.on("-c", "--config FILE", "Config file location") do
     |file| options[:config] = file
   end
+  opts.on("-t", "--tolerant",    "Tolerant mode") do
+    options[:tolerant] = true
+  end
   opts.on("-h", "--help",        "Help") do
     puts opts
     exit
@@ -62,6 +65,12 @@ end
   when "ERROR" then Logger::ERROR
   when "FATAL" then Logger::FATAL
   else Logger::UNKNOWN
+end
+
+# make sure the backup base dir is mounted
+if !options[:tolerant] && %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
+  @logger.error config["backup_base_dir"] + " is not mounted, exit"
+  exit 1
 end
 
 nfs_base = [config['backup_base_dir'], config['service_name']].join('/')
