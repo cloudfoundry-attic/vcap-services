@@ -184,7 +184,7 @@ class VCAP::Services::Mysql::Node
   def provision(plan, credential=nil)
     provisioned_service = ProvisionedService.new
     if credential
-      name, user, password = %w(name user password).map{|key| credentail[key]}
+      name, user, password = %w(name user password).map{|key| credential[key]}
       provisioned_service.name = name
       provisioned_service.user = user
       provisioned_service.password = password
@@ -241,7 +241,7 @@ class VCAP::Services::Mysql::Node
       # create new credential for binding
       binding = Hash.new
       if credential
-        binding[:user] = credentail["user"]
+        binding[:user] = credential["user"]
         binding[:password ]= credential["password"]
       else
         binding[:user] = 'u' + generate_credential
@@ -333,12 +333,12 @@ class VCAP::Services::Mysql::Node
   end
 
   # restore a given instance using backup file.
-  def restore(name, backup_file)
-    @logger.debug("Restore db #{name} using backup at #{backup_file}")
+  def restore(name, backup_path)
+    @logger.debug("Restore db #{name} using backup at #{backup_path}")
     service = ProvisionedService.get(name)
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
-    path = File.join(backup_file, "#{name}.sql.gz")
+    path = File.join(backup_path, "#{name}.sql.gz")
     cmd ="gzip -dc #{path}|" +
       "mysql -h #{host} -P #{port} -u #{user} --password=#{pass}"
     cmd += " -S #{socket}" unless socket.nil?
