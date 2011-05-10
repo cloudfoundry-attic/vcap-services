@@ -1,0 +1,77 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+
+require "rubygems"
+require "nats/client"
+require "yajl"
+require "logger"
+require "optparse"
+require 'eventmachine'
+require 'em-http-request'
+require 'json'
+require 'uri'
+require 'yaml'
+
+config_file = File.expand_path("../../config/restore.yml", __FILE__)
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: restore [options]"
+  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+    config_file = opt
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+begin
+  config = YAML.load(File.open(config_file))
+rescue => e
+  puts "Could not read configuration file: #{e}"
+  exit
+end
+
+def get_gateway_uri
+end
+
+def send_request(config)
+  req = {
+    :head => {
+      "Content-Type" => config["content_type"],
+      "X-VCAP-Service-Token" => config["token"],
+    },
+    :body => {
+      :instance_id => config["instance_id"],
+      :backup_path => config["backup_path"]
+    }.to_json
+  }
+  http = EM::HttpRequest.new("#{http_uri(config["gateway_uri"])}/service/internal/v1/#{config["mode"]}").post(req)
+
+  http.callback do
+    if http.response_header.status == 200
+      puts "Restore successfully"
+    else
+      puts "Failed to restore, status = #{http.response_header.status}"
+    end
+  end
+
+  http.errback do
+    puts "Failed to restore: #{http.error}"
+  end
+end
+
+def http_uri(uri)
+  uri = "http://#{uri}" if (uri.index('http://') != 0)
+  uri
+end
+
+EM.run do
+  trap('TERM') {puts "\nInterupted"; exit(1)}
+  trap('INT') {puts "\nInterupted"; exit(1)}
+  send_request(config)
+  EM.add_timer(1) {EM.stop}
+end

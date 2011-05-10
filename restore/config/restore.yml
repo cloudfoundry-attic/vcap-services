@@ -1,0 +1,8 @@
+# Gateway URI should include IP and port
+gateway_uri: 10.135.81.72:59477
+instance_id: mongodb-3b92291c-00c1-44fb-8fc4-45eb749809ed
+backup_path: /mnt/nfs/servicebackup/backups/mongodb/3b/92/29/3b92291c-00c1-44fb-8fc4-45eb749809ed/1305027149/
+token: "0xdeadbeef"
+content_type: application/json
+# The mode can be restore or recover
+mode: recover
