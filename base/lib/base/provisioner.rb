@@ -333,6 +333,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       :prov_svcs => svcs
     }
     return varz
+  rescue => e
+    @logger.warn(e)
   end
 
   # Service Provisioner subclasses must implement the following
