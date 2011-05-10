@@ -27,6 +27,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # Updates our internal state to match that supplied by handles
   # +handles+  An array of config handles
   def update_handles(handles)
+    # FIXME update_handles only support add handles. Need refine.
+    @logger.debug("Update handles: #{handles.inspect}")
     current   = Set.new(@prov_svcs.keys)
     supplied  = Set.new(handles.map {|h| h['service_id']})
     intersect = current & supplied
@@ -35,6 +37,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     handles.each {|v| handles_keyed[v['service_id']] = v}
 
     to_add = supplied - intersect
+    @logger.debug("to add: #{to_add.inspect}")
     to_add.each do |h_id|
       @logger.debug("[#{service_description}] Adding handle #{h_id}")
       h = handles_keyed[h_id]
@@ -52,10 +55,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def find_all_bindings(name)
     res = []
     @prov_svcs.each do |k,v|
-      # FIXME workaround for handles with 1 outer format, 2 inner format.
-      configuration = (v[:configuration].nil?) ? v[:data] : v[:configuration]
-      id = (configuration.nil?) ? nil : configuration['name']
-      res << v[:credentials] if id == name && v[:service_id] != name
+      res << v[:credentials] if v[:credentials]["name"] == name && v[:service_id] != name
     end
     res
   end
@@ -84,7 +84,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       svc = @prov_svcs[instance_id]
       raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
 
-      node_id = svc[:data]["node_id"]
+      node_id = svc[:credentials]["node_id"]
       raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       bindings = find_all_bindings(instance_id)
@@ -126,14 +126,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  def provision_service(version, plan, &blk)
-    @logger.debug("[#{service_description}] Attempting to provision instance (version=#{version}, plan=#{plan})")
+  def provision_service(request, prov_handle=nil, &blk)
+    @logger.debug("[#{service_description}] Attempting to provision instance (label=#{request['label']}, plan=#{request['plan']})")
     subscription = nil
     barrier = VCAP::Services::Base::Barrier.new(:timeout => @node_timeout, :callbacks => @nodes.length) do |responses|
       @logger.debug("[#{service_description}] Found the following nodes: #{responses.pretty_inspect}")
       @node_nats.unsubscribe(subscription)
       unless responses.empty?
-        provision_node(version, plan, responses, blk)
+        provision_node(request, responses, prov_handle, blk)
       end
     end
     subscription = @node_nats.request("#{service_name}.discover", &barrier.callback)
@@ -142,14 +142,16 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     blk.call(internal_fail)
   end
 
-  def provision_node(version, plan, node_msgs, blk)
-    @logger.debug("[#{service_description}] Provisioning node (version=#{version}, plan=#{plan}, nnodes=#{node_msgs.length})")
+  def provision_node(request, node_msgs, prov_handle, blk)
+    @logger.debug("[#{service_description}] Provisioning node (label=#{request['label']}, plan=#{request['plan']}, nnodes=#{node_msgs.length})")
     nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
     best_node = nodes.max_by { |node| node_score(node) }
     if best_node && node_score(best_node) > 0
       best_node = best_node["id"]
       @logger.debug("[#{service_description}] Provisioning on #{best_node}")
-      request = {"plan" => plan}
+      request = {"plan" => request['plan']}
+      # use old credentials to provision a service if provided.
+      request["credentials"] = prov_handle["credentials"] if prov_handle
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
         @node_nats.unsubscribe(subscription)
@@ -165,7 +167,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           opts = Yajl::Parser.parse(msg)
           if opts['success']
             opts = opts['response']
-            svc = {:data => opts, :service_id => opts['name'], :credentials => opts}
+            svc = {:data => request, :service_id => opts['name'], :credentials => opts}
             @logger.debug("Provisioned #{svc.pretty_inspect}")
             @prov_svcs[svc[:service_id]] = svc
             blk.call(success(svc))
@@ -180,14 +182,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  def bind_instance(instance_id, binding_options, &blk)
+  def bind_instance(instance_id, binding_options, bind_handle=nil, &blk)
     @logger.debug("[#{service_description}] Attempting to bind to service #{instance_id}")
 
     begin
       svc = @prov_svcs[instance_id]
       raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
 
-      node_id = svc[:data]["node_id"]
+      node_id = svc[:credentials]["node_id"]
       raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] bind instance #{instance_id} from #{node_id}")
@@ -196,6 +198,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         'name'      => instance_id,
         'bind_opts' => binding_options
       }
+      request["credentials"] = bind_handle["credentials"] if bind_handle
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
         @node_nats.unsubscribe(subscription)
@@ -238,10 +241,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       svc = @prov_svcs[handle_id]
       raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
 
-      # FIXME workaround for handles with 1 outer format, 2 inner format.
-      configuration = (svc[:configuration].nil?) ? svc[:data] : svc[:configuration]
-      @logger.debug("[#{service_description}] svc[configuration]: #{configuration}")
-      node_id = configuration["node_id"]
+      node_id = svc[:credentials]["node_id"]
       raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] Unbind instance #{handle_id} from #{node_id}")
@@ -272,20 +272,20 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  def restore_instance(instance_id, backup_file, &blk)
+  def restore_instance(instance_id, backup_path, &blk)
     @logger.debug("[#{service_description}] Attempting to restore to service #{instance_id}")
 
     begin
       svc = @prov_svcs[instance_id]
       raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
 
-      node_id = svc[:data]["node_id"]
+      node_id = svc[:credentials]["node_id"]
       raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] restore instance #{instance_id} from #{node_id}")
       request = {
         'instance_id' => instance_id,
-        'backup_file' => backup_file
+        'backup_path' => backup_path
       }
 
       subscription = nil
@@ -312,6 +312,52 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
+  # Recover an instance
+  # 1) Provision an instance use old credential
+  # 2) restore instance use backup file
+  # 3) re-bind bindings use old credential
+  def recover(instance_id, backup_path, handles, &blk)
+    @logger.debug("Recover instance: #{instance_id} form #{backup_path} with handles #{handles.inspect}.")
+    prov_handle = nil
+    prov_handle = handles.find {|handle| handle['service_id'] == instance_id }
+    @logger.debug("Provsion Handle: #{prov_handle.inspect}")
+    request = prov_handle["configuration"]
+    provision_service(request, prov_handle) do |msg|
+      if msg['success']
+        @logger.info("Recover: Success re-provision instance.")
+        restore_instance(instance_id, backup_path) do |res|
+          if res['success']
+            @logger.info("Recover: Success restore instance.")
+            binding_handles = handles - [prov_handle]
+            binding_handles.each do |handle|
+              bind_instance(instance_id, nil, handle) do |bind_res|
+                if bind_res['success']
+                  @logger.info("Recover: Success re-bind bindings.")
+                else
+                  blk.call(internal_fail)
+                end
+              end
+            end
+            success = {
+              'success' => true,
+              'response' => "{}"
+            }
+            blk.call(success)
+          else
+            blk.call(internal_fail)
+          end
+        end
+      else
+        blk.call(internal_fail)
+      end
+    end
+  end
+
+  def register_update_handle_callback(&blk)
+    @logger.debug("Register update handle callback with #{blk}")
+    @update_handle_callback = blk
+  end
+
   def varz_details()
     # Service Provisioner subclasses may want to override this method
     # to provide service specific data beyond the following
@@ -319,11 +365,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     # Mask password from varz details
     svcs = @prov_svcs.deep_dup
     svcs.each do |k,v|
-      # FIXME workaround for handles with 1 outer format, 2 inner format.
-      configuration = (v[:configuration].nil?) ? v[:data] : v[:configuration]
-      configuration['pass'] &&= MASKED_PASSWORD
-      configuration['password'] &&= MASKED_PASSWORD
-
       v[:credentials]['pass'] &&= MASKED_PASSWORD
       v[:credentials]['password'] &&= MASKED_PASSWORD
     end
@@ -333,6 +374,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       :prov_svcs => svcs
     }
     return varz
+  rescue => e
+    @logger.warn(e)
   end
 
   # Service Provisioner subclasses must implement the following

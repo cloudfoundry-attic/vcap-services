@@ -46,7 +46,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Provision request: #{msg} from #{reply}")
     provision_message = Yajl::Parser.parse(msg)
     plan = provision_message["plan"]
-    response = provision(plan)
+    credentials = provision_message["credentials"]
+    response = provision(plan, credentials)
     response["node_id"] = @node_id
     @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
     @node_nats.publish(reply, encode_success(response))
@@ -72,7 +73,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     bind_message = Yajl::Parser.parse(msg)
     name      = bind_message["name"]
     bind_opts = bind_message["bind_opts"]
-    response = bind(name, bind_opts)
+    credentials = bind_message["credentials"]
+    response = bind(name, bind_opts, credentials)
     @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
@@ -93,8 +95,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Restore request: #{msg} from #{reply}")
     restore_message = Yajl::Parser.parse(msg)
     instance_id = restore_message["instance_id"]
-    backup_file = restore_message["backup_file"]
-    response = restore(instance_id, backup_file)
+    backup_path = restore_message["backup_path"]
+    response = restore(instance_id, backup_path)
     @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
