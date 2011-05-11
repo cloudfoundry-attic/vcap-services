@@ -7,6 +7,7 @@ ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 
 require 'rubygems'
 require 'bundler/setup'
+require 'optparse'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
 
@@ -25,15 +26,16 @@ class MysqlBackup
   def self.backup_database(opts, &blk)
     backup_cmd, compress_cmd, name, ts=
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
+    path_prefix = "backups"
     if SYSTEM_DB.index(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<service specific data>
-      full_path = File.join(opts[:backup_path], opts[:service_name], name,
+      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name], name,
                             ts.to_i.to_s)
     else
       # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
       # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-      full_path = File.join(opts[:backup_path], opts[:service_name],
+      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name],
                             name[0,2], name[2,2], name[4,2], name,
                             ts.to_i.to_s)
     end
