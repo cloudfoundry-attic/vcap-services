@@ -14,7 +14,8 @@ module VCAP
         REDIS_STOP_INSTANCE_FAILED        = [31104, HTTP_INTERNAL, "Could not stop instance: %s"]
         REDIS_INVALID_PLAN                = [31105, HTTP_INTERNAL, "Invalid plan: %s"]
         REDIS_CLEANUP_INSTANCE_FAILED     = [31106, HTTP_INTERNAL, "Could not cleanup instance, the reasons: %s"]
-        REDIS_GET_INSTANCE_INFO_FAILED    = [31107, HTTP_INTERNAL, "Could get instance %s information"]
+        REDIS_CONNECT_INSTANCE_FAILED     = [31107, HTTP_INTERNAL, "Could not connect redis instance"]
+        REDIS_SET_INSTANCE_PASS_FAILED    = [31108, HTTP_INTERNAL, "Could not set redis instance password"]
       end
     end
   end
