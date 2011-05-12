@@ -53,6 +53,7 @@ class VCAP::Services::Mysql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
+    @mysqldump_bin = options[:mysqldump_bin]
 
     @connection = mysql_connect
 
@@ -350,6 +351,74 @@ class VCAP::Services::Mysql::Node
   rescue => e
     @logger.error("Error during restore #{e}")
     raise e
+  end
+
+  # Disable all credentials and kill user sessions
+  def disable_instance(prov_cred, binding_creds)
+    @logger.debug("Disable instance #{prov_cred["name"]} request.")
+    binding_creds << prov_cred
+    binding_creds.each do |cred|
+      unbind(cred)
+    end
+    true
+  rescue  => e
+    @logger.warn(e)
+    nil
+  end
+
+  # Dump db content into given path
+  def dump_instance(prov_cred, binding_creds, dump_file_path)
+    @logger.debug("Dump instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    dump_file = File.join(dump_file_path, "#{name}.sql")
+    @logger.info("Dump instance #{name} content to #{dump_file}")
+    cmd = "#{@mysqldump_bin} -h #{host} -u #{user} --password=#{password} --single-transaction #{name} > #{dump_file}"
+    @logger.debug("Execute dump instance cmd #{cmd}")
+    result = `#{cmd}`
+    @logger.info("Dump instance command execution result: #{result}")
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  # Provision and import dump files
+  # Refer to #dump_instance
+  def import_instance(prov_cred, binding_creds, dump_file_path, plan)
+    @logger.debug("Import instance #{prov_cred["name"]} request.")
+    @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
+    provision(plan, prov_cred)
+    name = prov_cred["name"]
+    import_file = File.join(dump_file_path, "#{name}.sql")
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    @logger.info("Import data from #{import_file} to database #{name}")
+    cmd = "mysql --host=#{host} --user=#{user} --password=#{password} #{name} < #{import_file}"
+    @logger.debug("Execute import cmd #{cmd}")
+    result = `#{cmd}`
+    @logger.info("Import instance command execution result: #{result}")
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  # Re-bind credentials
+  # Refer to #disable_instance
+  def enable_instance(prov_cred, binding_creds)
+    @logger.debug("Enable instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    binding_creds << prov_cred
+    new_binding_creds = []
+    binding_creds.each do |cred|
+      binding_opts = cred["binding_options"]
+      new_cred = bind(name, binding_opts, cred)
+      new_binding_creds << new_cred
+    end
+    return new_binding_creds
+  rescue => e
+    @logger.warn(e)
+    []
   end
 
   def varz_details()
