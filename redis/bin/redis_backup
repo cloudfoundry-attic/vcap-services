@@ -40,6 +40,21 @@ logger.level = Logger::INFO
 logger.info "backup task start.."
 logger.info "config: " + config.to_s
 
+# check if backup process is already running
+cmds = %x[ps ax -o args=].split(/\n/)
+count = 0
+cmds.each do |cmd|
+  if cmd.index(__FILE__) != nil
+    logger.info cmd
+    count += 1
+  end
+end
+logger.info "backup process count: " + count.to_s
+if count > 2
+  logger.info "backup is running, exit"
+  exit
+end
+
 # Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
 
 # \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>

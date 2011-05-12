@@ -155,6 +155,21 @@ abort "Can't write to #{opts[:backup_path]}" unless File.writable_real?(opts[:ba
 logger = Logger.new(opts[:logfile], "daily")
 logger.level = Logger::INFO
 
+# check if backup process is already running
+cmds = %x[ps ax -o args=].split(/\n/)
+count = 0
+cmds.each do |cmd|
+  if cmd.index(__FILE__) != nil
+    logger.info cmd
+    count += 1
+  end
+end
+logger.info "backup process count: " + count.to_s
+if count > 2
+  logger.info "backup is running, exit"
+  exit
+end
+
 MysqlBackup.setlogger(logger)
 
 conn = Mysql.real_connect(opts[:host], opts[:user], opts[:passwd], 'mysql',
