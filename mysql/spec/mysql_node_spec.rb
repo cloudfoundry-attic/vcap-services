@@ -271,7 +271,6 @@ describe "Mysql server node" do
       host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
       tmp_file = "/tmp/#{db['name']}.sql.gz"
       result = `/usr/bin/mysqldump -h #{host} -P #{port} -u #{user} --password=#{password} #{db['name']} | gzip > #{tmp_file}`
-      puts "Result of mysql backup: #{result}"
       conn.query("drop table test")
       res = conn.query("show tables")
       res.num_rows().should == 0
@@ -309,6 +308,32 @@ describe "Mysql server node" do
         line = f.each_line.find {|line| line =~ /MyTestTable/}
         line.should_not be nil
       end
+      EM.stop
+    end
+  end
+
+  it "should recreate database and user when import instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      @node.dump_instance(db, nil , '/tmp')
+      @node.unprovision(db['name'], [])
+      @node.import_instance(db, [], '/tmp', @default_plan)
+      conn = connect_to_mysql(db)
+      expect { conn.query('select 1')}.should_not raise_error
+      EM.stop
+    end
+  end
+
+  it "should recreate bindings when enable instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      binding = @node.bind(db['name'], @default_opts)
+      conn = connect_to_mysql(binding)
+      @node.disable_instance(db, [binding])
+      expect {conn = connect_to_mysql(binding)}.should raise_error
+      @node.enable_instance(db, [binding])
+      expect {conn = connect_to_mysql(binding)}.should_not raise_error
       EM.stop
     end
   end

@@ -395,7 +395,7 @@ class VCAP::Services::Mysql::Node
     import_file = File.join(dump_file_path, "#{name}.sql")
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     @logger.info("Import data from #{import_file} to database #{name}")
-    cmd = "mysql --host=#{host} --user=#{user} --password=#{password} #{name} < #{import_file}"
+    cmd = "#{@mysql_bin} --host=#{host} --user=#{user} --password=#{password} #{name} < #{import_file}"
     @logger.debug("Execute import cmd #{cmd}")
     result = `#{cmd}`
     @logger.info("Import instance command execution result: #{result}")
