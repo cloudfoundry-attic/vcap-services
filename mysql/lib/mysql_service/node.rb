@@ -53,6 +53,8 @@ class VCAP::Services::Mysql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
+    @gzip_bin = options[:gzip_bin]
+    @mysql_bin = options[:mysql_bin]
 
     @connection = mysql_connect
 
@@ -339,8 +341,8 @@ class VCAP::Services::Mysql::Node
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     path = File.join(backup_path, "#{name}.sql.gz")
-    cmd ="gzip -dc #{path}|" +
-      "mysql -h #{host} -P #{port} -u #{user} --password=#{pass}"
+    cmd ="#{@gzip_bin} -dc #{path}|" +
+      "#{@mysql_bin} -h #{host} -P #{port} -u #{user} --password=#{pass}"
     cmd += " -S #{socket}" unless socket.nil?
     cmd += " #{name}"
     @logger.debug("Restore command: #{cmd}")
