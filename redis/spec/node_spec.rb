@@ -430,9 +430,9 @@ describe VCAP::Services::Redis::Node do
       sleep 1
       credentials_list = @node.enable_instance(@credentials, @binding_credentials_list)
       credentials_list.size.should == 3
-      Redis.new({:port => credentials_list[0]["port"], :password => credentials_list[0]["password"]}).get("test_key").should == "test_value"
-      Redis.new({:port => credentials_list[1]["port"], :password => credentials_list[1]["password"]}).get("test_key").should == "test_value"
-      Redis.new({:port => credentials_list[2]["port"], :password => credentials_list[2]["password"]}).get("test_key").should == "test_value"
+      credentials_list.each do |credentials|
+        Redis.new({:port => credentials["port"], :password => credentials["password"]}).get("test_key").should == "test_value"
+      end
     end
   end
 
