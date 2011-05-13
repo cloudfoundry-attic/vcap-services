@@ -2,6 +2,8 @@
 local_db: sqlite3:/var/vcap/services/mysql/mysql_node.db
 base_dir: /var/vcap/services/mysql/
 mysqldump_bin: /usr/bin/mysqldump
+gzip_bin: /bin/gzip
+mysql_bin: /usr/bin/mysql
 ip_route: 127.0.0.1
 mbus: nats://localhost:4222
 log_level: DEBUG
