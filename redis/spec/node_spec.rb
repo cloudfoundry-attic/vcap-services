@@ -386,16 +386,23 @@ describe VCAP::Services::Redis::Node do
       sleep 1
       Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).set("test_key", "test_value")
       @dump_dir = File.join("/tmp/migration/redis", @credentials["name"])
+      @binding_credentials1 = @node.bind(@credentials["name"])
+      @binding_credentials2 = @node.bind(@credentials["name"])
+      @binding_credentials_list = []
+      @binding_credentials_list << @binding_credentials1
+      @binding_credentials_list << @binding_credentials2
     end
 
     after :all do
       sleep 1
+      @node.unbind(@binding_credentials1)
+      @node.unbind(@binding_credentials2)
       @node.unprovision(@credentials["name"])
       FileUtils.rm_rf(@dump_dir)
     end
 
     it "should not access redis server after disable the instance" do
-      @node.disable_instance(@credentials, [])
+      @node.disable_instance(@credentials, @binding_credentials_list)
       sleep 1
       begin
         @node.get_info(@credentials["port"], @credentials["password"])
@@ -405,13 +412,13 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should dump db file to right location after dump instance" do
-      @node.dump_instance(@credentials, [], @dump_dir)
+      @node.dump_instance(@credentials, @binding_credentials_list, @dump_dir)
       dump_file = File.join(@dump_dir, "dump.rdb")
       File.exists?(dump_file).should == true
     end
 
     it "should access redis server in old node after enable the instance" do
-      @node.enable_instance(@credentials, [])
+      @node.enable_instance(@credentials, @binding_credentials_list)
       sleep 1
       @node.check_password(@credentials["port"], @credentials["password"]).should == true
     end
@@ -419,10 +426,13 @@ describe VCAP::Services::Redis::Node do
     it "should import db file from right location after import instance" do
       @node.unprovision(@credentials["name"])
       sleep 1
-      @node.import_instance(@credentials, [], @dump_dir, :free)
+      @node.import_instance(@credentials, @binding_credentials_list, @dump_dir, :free)
       sleep 1
-      credentials_list = @node.enable_instance(@credentials, [])
+      credentials_list = @node.enable_instance(@credentials, @binding_credentials_list)
+      credentials_list.size.should == 3
       Redis.new({:port => credentials_list[0]["port"], :password => credentials_list[0]["password"]}).get("test_key").should == "test_value"
+      Redis.new({:port => credentials_list[1]["port"], :password => credentials_list[1]["password"]}).get("test_key").should == "test_value"
+      Redis.new({:port => credentials_list[2]["port"], :password => credentials_list[2]["password"]}).get("test_key").should == "test_value"
     end
   end
 
