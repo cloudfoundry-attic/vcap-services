@@ -231,7 +231,7 @@ describe VCAP::Services::Rabbit::Node do
       @node.unprovision(@instance_credentials["name"])
     end
 
-    it "should access redis server use the returned credential" do
+    it "should access rabbitmq server use the returned credential" do
       EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],
@@ -287,7 +287,7 @@ describe VCAP::Services::Rabbit::Node do
       @node.unprovision(@instance_credentials["name"])
     end
 
-    it "should not access redis server after unbinding" do
+    it "should not access rabbitmq server after unbinding" do
       EM.run do
         AMQP.start(:host => @binding_credentials["hostname"],
                    :vhost => @binding_credentials["vhost"],
@@ -352,12 +352,99 @@ describe VCAP::Services::Rabbit::Node do
     end
   end
 
+  describe "Node.migration" do
+    before :all do
+      @instance_credentials = @node.provision(:free)
+      sleep 1
+      @dump_dir = File.join("/tmp/migration/rabbit", @instance_credentials["name"])
+      @binding_credentials1 = @node.bind(@instance_credentials["name"])
+      @binding_credentials2 = @node.bind(@instance_credentials["name"])
+      @binding_credentials_list = []
+      @binding_credentials_list << @binding_credentials1
+      @binding_credentials_list << @binding_credentials2
+    end
+
+    after :all do
+      sleep 1
+      @node.unprovision(@instance_credentials["name"], @binding_credentials_list)
+    end
+
+    it "should not access rabbitmq server after disable the instance" do
+      @node.disable_instance(@instance_credentials, @binding_credentials_list)
+      sleep 1
+      EM.run do
+        AMQP.start(:host => @binding_credentials1["hostname"],
+                   :vhost => @binding_credentials1["vhost"],
+                   :user => @binding_credentials1["user"],
+                   :pass => @binding_credentials1["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        AMQP.start(:host => @binding_credentials2["hostname"],
+                   :vhost => @binding_credentials2["vhost"],
+                   :user => @binding_credentials2["user"],
+                   :pass => @binding_credentials2["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
+    end
+
+    it "should dump db file to right location after dump instance" do
+      @node.dump_instance(@instance_credentials, @binding_credentials_list, @dump_dir).should == true
+    end
+
+    it "should access rabbitmq server in old node after enable the instance" do
+      @node.enable_instance(@instance_credentials, @binding_credentials_list)
+      EM.run do
+        AMQP.start(:host => @binding_credentials1["hostname"],
+                   :vhost => @binding_credentials1["vhost"],
+                   :user => @binding_credentials1["user"],
+                   :pass => @binding_credentials1["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        AMQP.start(:host => @binding_credentials2["hostname"],
+                   :vhost => @binding_credentials2["vhost"],
+                   :user => @binding_credentials2["user"],
+                   :pass => @binding_credentials2["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
+      sleep 1
+    end
+
+    it "should import db file from right location after import instance" do
+      @node.unprovision(@instance_credentials["name"], @binding_credentials_list)
+      sleep 1
+      @node.import_instance(@instance_credentials, @binding_credentials_list, @dump_dir, :free)
+      sleep 1
+      credentials_list = @node.enable_instance(@instance_credentials, @binding_credentials_list)
+      credentials_list.size.should == 3
+      EM.run do
+        credentials_list.each do |credentials|
+          AMQP.start(:host => credentials["hostname"],
+                     :vhost => credentials["vhost"],
+                     :user => credentials["user"],
+                     :pass => credentials["pass"]) do |conn|
+            conn.connected?.should == false
+          end
+          AMQP.stop
+        end
+        EM.add_timer(1) {EM.stop}
+      end
+    end
+  end
+
   describe "Node.shutdown" do
     it "should return true when shutdown finished" do
       EM.run do
         @node.shutdown.should be
         sleep 1
-        %x[#{@options[:rabbit_ctl]} status].split(/\n/)[-1].should_not == "...done."
+        %x[#{@options[:rabbit_ctl]} status 2> /dev/null].split(/\n/)[-1].should_not == "...done."
         EM.add_timer(0.1) {EM.stop}
       end
     end

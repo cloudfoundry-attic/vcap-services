@@ -45,9 +45,10 @@ class VCAP::Services::Rabbit::Node
     @max_memory = options[:max_memory]
     @local_db = options[:local_db]
     @binding_options = ["configure", "write", "read"]
-    @options = options
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
+    @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
+    @options = options
   end
 
   def start
@@ -72,14 +73,21 @@ class VCAP::Services::Rabbit::Node
     }
   end
 
-  def provision(plan)
+  def provision(plan, credentials = nil)
     instance = ProvisionedInstance.new
-    instance.name = "rabbitmq-#{UUIDTools::UUID.random_create.to_s}"
     instance.plan = plan
     instance.plan_option = ""
-    instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
-    instance.admin_username = "au" + generate_credential
-    instance.admin_password = "ap" + generate_credential
+    if credentials
+      instance.name = credentials["name"]
+      instance.vhost = credentials["vhost"]
+      instance.admin_username = credentials["user"]
+      instance.admin_password = credentials["pass"]
+    else
+      instance.name = "rabbitmq-#{UUIDTools::UUID.random_create.to_s}"
+      instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
+      instance.admin_username = "au" + generate_credential
+      instance.admin_password = "ap" + generate_credential
+    end
     instance.memory   = @max_memory
 
     @available_memory -= instance.memory
@@ -114,14 +122,20 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
-  def bind(instance_id, binding_options = :all)
+  def bind(instance_id, binding_options = :all, binding_credentials = nil)
     credentials = {}
     instance = get_instance(instance_id)
     credentials["hostname"] = @local_ip
     credentials["port"] = @rabbit_port
-    credentials["user"] = "u" + generate_credential
-    credentials["pass"] = "p" + generate_credential
-    credentials["vhost"] = instance.vhost
+    if binding_credentials
+      credentials["vhost"] = binding_credentials["vhost"]
+      credentials["user"] = binding_credentials["user"]
+      credentials["pass"] = binding_credentials["pass"]
+    else
+      credentials["vhost"] = instance.vhost
+      credentials["user"] = "u" + generate_credential
+      credentials["pass"] = "p" + generate_credential
+    end
     add_user(credentials["user"], credentials["pass"])
     set_permissions(credentials["vhost"], credentials["user"], get_permissions(binding_options))
 
@@ -154,6 +168,33 @@ class VCAP::Services::Rabbit::Node
   rescue => e
     logger.warn(e)
     {}
+  end
+
+  def disable_instance(service_credentials, binding_credentials_list = [])
+    binding_credentials_list.each do |credentials|
+      delete_user(credentials["user"])
+    end
+    true
+  end
+
+  def enable_instance(service_credentials, binding_credentials_list = [])
+    credentials_list = []
+    credentials_list << service_credentials
+    binding_credentials_list.each do |credentials|
+      bind(service_credentials["name"], nil, credentials)
+      credentials_list << credentials
+    end
+    credentials_list
+  end
+
+  # Rabbitmq has no data to dump for migration
+  def dump_instance(service_credentials, binding_credentials_list = [], dump_dir)
+    true
+  end
+
+  def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
+    provision(plan, service_credentials)
+    true
   end
 
   def start_db
