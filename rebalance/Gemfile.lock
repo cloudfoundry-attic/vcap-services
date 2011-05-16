@@ -1,0 +1,18 @@
+GEM
+  remote: http://rubygems.org/
+  specs:
+    daemons (1.1.2)
+    eventmachine (0.12.10)
+    json_pure (1.5.1)
+    nats (0.4.8)
+      daemons (>= 1.1.0)
+      eventmachine (>= 0.12.10)
+      json_pure (>= 1.5.1)
+    yajl-ruby (0.8.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  nats (>= 0.4.8)
+  yajl-ruby

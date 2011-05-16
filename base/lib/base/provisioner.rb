@@ -69,6 +69,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.announce") { |msg|
       on_node_announce(msg)
     }
+    @node_nats.subscribe("#{service_name}.handles") {|msg, reply| on_query_handles(msg, reply) }
+    @node_nats.subscribe("#{service_name}.update_service_handle") {|msg, reply| on_update_service_handle(msg, reply) }
     @node_nats.publish("#{service_name}.discover")
   end
 
@@ -76,6 +78,18 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Received node announcement: #{msg}")
     announce_message = Yajl::Parser.parse(msg)
     @nodes[announce_message["id"]] = Time.now.to_i if announce_message["id"]
+  end
+
+  # query all handles for a given instance
+  def on_query_handles(instance, reply)
+    @logger.debug("[#{service_description}] Receive query handles request for instance: #{instance}")
+    if instance.empty?
+      res = Yajl::Encoder.encode(@prov_svcs)
+    else
+      handles = find_all_bindings(msg)
+      res = Yajl::Encoder.encode(handles)
+    end
+    @node_nats.publish(reply, res)
   end
 
   def unprovision_service(instance_id, &blk)
@@ -167,6 +181,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           opts = Yajl::Parser.parse(msg)
           if opts['success']
             opts = opts['response']
+            # remove unnecessary credential in request
+            request.delete('credentials') if request.has_key?('credentials')
             svc = {:data => request, :service_id => opts['name'], :credentials => opts}
             # FIXME: workaround for inconsistant representation of bind handle and provision handle
             svc_local = {:configuration => request, :service_id => opts['name'], :credentials => opts}
@@ -353,6 +369,23 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       else
         blk.call(internal_fail)
       end
+    end
+  end
+
+  def on_update_service_handle(msg, reply)
+    @logger.debug("[#{service_description}] Update service handle #{msg.inspect}")
+    handle = Yajl::Parser.parse(msg)
+    @update_handle_callback.call(handle) do |response|
+      response = Yajl::Encoder.encode(response)
+      @node_nats.publish(reply, response)
+    end
+  end
+  def on_update_service_handle(msg, reply)
+    @logger.debug("[#{service_description}] Update service handle #{msg.inspect}")
+    handle = Yajl::Parser.parse(msg)
+    @update_handle_callback.call(handle) do |response|
+      response = Yajl::Encoder.encode(response)
+      @node_nats.publish(reply, response)
     end
   end
 
