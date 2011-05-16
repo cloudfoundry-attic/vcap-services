@@ -238,14 +238,17 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def unbind_instance(instance_id, handle_id, binding_options, &blk)
     @logger.debug("[#{service_description}] Attempting to unbind to service #{instance_id}")
     begin
-      svc = @prov_svcs[handle_id]
+      svc = @prov_svcs[instance_id]
       raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
+
+      handle = @prov_svcs[handle_id]
+      raise ServiceError.new(ServiceError::NOT_FOUND, "handle_id #{handle_id}") if handle.nil?
 
       node_id = svc[:credentials]["node_id"]
       raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] Unbind instance #{handle_id} from #{node_id}")
-      request = svc[:credentials]
+      request = handle[:credentials]
 
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
