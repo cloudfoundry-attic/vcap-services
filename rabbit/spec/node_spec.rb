@@ -273,6 +273,7 @@ describe VCAP::Services::Rabbit::Node do
       @binding_credentials["vhost"].should be
       @binding_credentials["user"].should be
       @binding_credentials["pass"].should be
+      @binding_credentials["name"].should be
     end
   end
 

@@ -154,6 +154,7 @@ class VCAP::Services::Redis::Node
     credentials = {
       "hostname" => @local_ip,
       "port" => instance.port,
+      "name" => instance_id,
       "password" => instance.password
     }
   end

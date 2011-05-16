@@ -334,6 +334,7 @@ describe VCAP::Services::Redis::Node do
       @binding_credentials["hostname"].should be
       @binding_credentials["port"].should be
       @binding_credentials["password"].should be
+      @binding_credentials["name"].should be
     end
   end
 

@@ -125,6 +125,7 @@ class VCAP::Services::Rabbit::Node
   def bind(instance_id, binding_options = :all, binding_credentials = nil)
     credentials = {}
     instance = get_instance(instance_id)
+    credentials["name"] = instance_id
     credentials["hostname"] = @local_ip
     credentials["port"] = @rabbit_port
     if binding_credentials
