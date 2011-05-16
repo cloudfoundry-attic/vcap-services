@@ -171,21 +171,33 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
+  # Only keep the vhost and delete all users
   def disable_instance(service_credentials, binding_credentials_list = [])
+    delete_user(service_credentials["user"])
     binding_credentials_list.each do |credentials|
-      delete_user(credentials["user"])
+      unbind(credentials)
     end
     true
   end
 
-  def enable_instance(service_credentials, binding_credentials_list = [])
-    credentials_list = []
-    credentials_list << service_credentials
-    binding_credentials_list.each do |credentials|
-      bind(service_credentials["name"], nil, credentials)
-      credentials_list << credentials
+  # This function may run in old node or new node, it does these things:
+  # 1. Try to check whether the rabbitmq service has user in service_credentials.
+  # 2. If it has, then it's the new node, otherwise the old node.
+  # 3. For new node, it need do binding using all binding credentials,
+  #    for old node, it should restore all the instance user and binding users.
+  def enable_instance(service_credentials, binding_credentials_map = [])
+    if list_users.index(service_credentials["user"]) == nil
+      # The old node
+      add_user(service_credentials["user"], service_credentials["pass"])
+      set_permissions(service_credentials["vhost"], service_credentials["user"], '".*" ".*" ".*"')
     end
-    credentials_list
+    binding_credentials_map.each do |key, value|
+      bind(service_credentials["name"], nil, value)
+    end
+    [service_credentials, binding_credentials_map]
+  rescue => e
+    @logger.warn(e)
+    nil
   end
 
   # Rabbitmq has no data to dump for migration

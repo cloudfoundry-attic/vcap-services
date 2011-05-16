@@ -360,9 +360,11 @@ describe VCAP::Services::Rabbit::Node do
       @dump_dir = File.join("/tmp/migration/rabbit", @instance_credentials["name"])
       @binding_credentials1 = @node.bind(@instance_credentials["name"])
       @binding_credentials2 = @node.bind(@instance_credentials["name"])
-      @binding_credentials_list = []
-      @binding_credentials_list << @binding_credentials1
-      @binding_credentials_list << @binding_credentials2
+      @binding_credentials_list = [@binding_credentials1, @binding_credentials2]
+      @binding_credentials_map = {
+        "credentials1" => @binding_credentials1,
+        "credentials2" => @binding_credentials2
+      }
     end
 
     after :all do
@@ -397,7 +399,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should access rabbitmq server in old node after enable the instance" do
-      @node.enable_instance(@instance_credentials, @binding_credentials_list)
+      @node.enable_instance(@instance_credentials, @binding_credentials_map)
       EM.run do
         AMQP.start(:host => @binding_credentials1["host"],
                    :vhost => @binding_credentials1["vhost"],
@@ -423,14 +425,24 @@ describe VCAP::Services::Rabbit::Node do
       sleep 1
       @node.import_instance(@instance_credentials, @binding_credentials_list, @dump_dir, :free)
       sleep 1
-      credentials_list = @node.enable_instance(@instance_credentials, @binding_credentials_list)
-      credentials_list.size.should == 3
+      credentials_list = @node.enable_instance(@instance_credentials, @binding_credentials_map)
+      credentials_list.size.should == 2
       EM.run do
-        credentials_list.each do |credentials|
-          AMQP.start(:host => credentials["host"],
-                     :vhost => credentials["vhost"],
-                     :user => credentials["user"],
-                     :pass => credentials["pass"]) do |conn|
+        AMQP.start(:host => credentials_list[0]["host"],
+                   :vhost => credentials_list[0]["vhost"],
+                   :user => credentials_list[0]["user"],
+                   :pass => credentials_list[0]["pass"]) do |conn|
+          conn.connected?.should == false
+        end
+        AMQP.stop
+        EM.add_timer(1) {EM.stop}
+      end
+      EM.run do
+        credentials_list[1].each do |key, value|
+          AMQP.start(:host => value["host"],
+                     :vhost => value["vhost"],
+                     :user => value["user"],
+                     :pass => value["pass"]) do |conn|
             conn.connected?.should == false
           end
           AMQP.stop

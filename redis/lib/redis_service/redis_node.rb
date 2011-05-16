@@ -186,32 +186,21 @@ class VCAP::Services::Redis::Node
   #    if successed, then it's the new node.
   # 3. For old node, it should restore the password,
   #    for new node, nothing need to do, all are done in import_instance.
-  # 4. The new node need return all the updated handler to gateway.
-  def enable_instance(service_credentials, binding_credentials_list = [])
-    credentials_list = []
+  def enable_instance(service_credentials, binding_credentials_map = {})
     if check_password(service_credentials["port"], service_credentials["password"])
       # The new node
       instance = get_instance(service_credentials["name"])
-      updated_service_credentials = service_credentials.clone
-      updated_service_credentials["port"] = instance.port
-      updated_service_credentials["hostname"] = @local_ip
-      credentials_list << updated_service_credentials
-      binding_credentials_list.each do |credentials|
-        updated_binding_credentials = credentials.clone
-        updated_binding_credentials["port"] = instance.port
-        updated_binding_credentials["hostname"] = @local_ip
-        credentials_list << updated_binding_credentials
+      service_credentials["port"] = instance.port
+      service_credentials["hostname"] = @local_ip
+      binding_credentials_map.each do |key, value|
+        binding_credentials_map[key]["port"] = instance.port
+        binding_credentials_map[key]["hostname"] = @local_ip
       end
     else
       # The old node
       set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
-      sleep 1
-      credentials_list << service_credentials
-      binding_credentials_list.each do |credentials|
-        credentials_list << credentials
-      end
     end
-    credentials_list
+    [service_credentials, binding_credentials_map]
   rescue => e
     @logger.warn(e)
     nil
