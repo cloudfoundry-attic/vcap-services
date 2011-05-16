@@ -116,12 +116,15 @@ class VCAP::Services::MongoDB::Node
   end
 
 
-  def provision(plan)
-    port = @free_ports.first
+  def provision(plan, credential = nil)
+    port = credential && credential['port'] ? credential['port'] : @free_ports.first
+    name = credential && credential['name'] ? credential['name'] : "mongodb-#{UUIDTools::UUID.random_create.to_s}"
+    db   = credential && credential['db']   ? credential['db']   : 'db'
+
     @free_ports.delete(port)
 
     provisioned_service           = ProvisionedService.new
-    provisioned_service.name      = "mongodb-#{UUIDTools::UUID.random_create.to_s}"
+    provisioned_service.name      = name
     provisioned_service.port      = port
     provisioned_service.plan      = plan
     provisioned_service.password  = UUIDTools::UUID.random_create.to_s
@@ -129,7 +132,7 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.pid       = start_instance(provisioned_service)
     provisioned_service.admin     = 'admin'
     provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
-    provisioned_service.db        = 'db'
+    provisioned_service.db        = db
 
     unless provisioned_service.save
       cleanup_service(provisioned_service)
@@ -137,22 +140,25 @@ class VCAP::Services::MongoDB::Node
     end
 
     begin
-      username = UUIDTools::UUID.random_create.to_s
-      password = UUIDTools::UUID.random_create.to_s
+      username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
+      password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
+
+      # wait for mongod to start
+      sleep 0.5
 
       mongodb_add_admin({
         :port      => provisioned_service.port,
         :username  => [provisioned_service.admin, username],
         :password  => [provisioned_service.adminpass, password],
         :db        => provisioned_service.db,
-        :timeout   => 10
+        :times     => 10
       })
       mongodb_add_admin({
         :port      => provisioned_service.port,
         :username  => [provisioned_service.admin],
         :password  => [provisioned_service.adminpass],
         :db        => 'admin',
-        :timeout   => 3
+        :times     => 3
       })
 
     rescue => e
@@ -197,15 +203,15 @@ class VCAP::Services::MongoDB::Node
     true
   end
 
-  def bind(name, bind_opts)
+  def bind(name, bind_opts, credential = nil)
     @logger.debug("Bind request: name=#{name}, bind_opts=#{bind_opts}")
     bind_opts ||= BIND_OPT
 
     provisioned_service = ProvisionedService.get(name)
     raise "Could not find service: #{name}" if provisioned_service.nil?
 
-    username = UUIDTools::UUID.random_create.to_s
-    password = UUIDTools::UUID.random_create.to_s
+    username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
+    password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
 
     mongodb_add_user({
       :port      => provisioned_service.port,
@@ -219,7 +225,7 @@ class VCAP::Services::MongoDB::Node
 
     response = {
       "hostname" => @local_ip,
-      "port"    => provisioned_service.port,
+      "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
       "name"     => provisioned_service.name,
@@ -230,24 +236,51 @@ class VCAP::Services::MongoDB::Node
     response
   end
 
-  def unbind(credentials)
-    @logger.debug("Unbind request: credentials=#{credentials}")
+  def unbind(credential)
+    @logger.debug("Unbind request: credential=#{credential}")
 
-    name = credentials['name']
+    name = credential['name']
     provisioned_service = ProvisionedService.get(name)
     raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     # FIXME  Current implementation: Delete self
     #        Here I presume the user to be deleted is RW user
     mongodb_remove_user({
-        :port      => credentials['port'],
+        :port      => credential['port'],
         :admin     => provisioned_service.admin,
         :adminpass => provisioned_service.adminpass,
-        :username  => credentials['username'],
-        :db        => credentials['db']
+        :username  => credential['username'],
+        :db        => credential['db']
       })
 
-    @logger.debug("Successfully unbind #{credentials}")
+    @logger.debug("Successfully unbind #{credential}")
+    true
+  end
+
+  def restore(instance_id, backup_file)
+    @logger.debug("Restore request: instance_id=#{instance_id}, backup_file=#{backup_file}")
+
+    provisioned_service = ProvisionedService.get(instance_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if provisioned_service.nil?
+
+    username = provisioned_service.admin
+    password = provisioned_service.adminpass
+    port     = provisioned_service.port
+    database = provisioned_service.db
+
+    # Drop original collections
+    db = Mongo::Connection.new('127.0.0.1', port).db(database)
+    db.authenticate(username, password)
+    db.collection_names.each do |name|
+      if name != 'system.users' && name != 'system.indexes'
+        db[name].drop
+      end
+    end
+
+    # Run mongorestore
+    command = "mongorestore -u #{username} -p#{password} --port #{port} #{backup_file}"
+    res = Kernel.system(command)
+    raise 'mongorestore failed' unless res
     true
   end
 
@@ -367,13 +400,9 @@ class VCAP::Services::MongoDB::Node
 
   def mongodb_add_admin(options)
     @logger.info("add admin user: req #{options}")
+    t = options[:times] || 1
 
-    timeout = EM.add_timer(options[:timeout]) do
-      EM.cancel_timer(timer)
-      @logger.warn("Could not add admin in #{options[:port]}")
-    end
-
-    timer = EM.add_periodic_timer(0.50) do
+    t.times do
       begin
         db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
         options[:username].each_index do |i|
@@ -381,12 +410,14 @@ class VCAP::Services::MongoDB::Node
           raise "user not added" if user.nil?
           @logger.debug("user #{options[:username][i]} added in db #{options[:db]}")
         end
-        EM.cancel_timer(timer)
-        EM.cancel_timer(timeout)
+        return true
       rescue => e
         @logger.warn("add user #{options[:username]} failed! #{e}")
+        sleep 1
       end
     end
+
+    raise "Could not add admin user #{options[:username]}"
   end
 
   def mongodb_add_user(options)

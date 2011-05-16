@@ -10,6 +10,8 @@ require "rubygems"
 require "rspec"
 require "socket"
 require "timeout"
+require "mongo"
+require "erb"
 
 HTTP_PORT = 9865
 
@@ -27,6 +29,19 @@ def is_port_open?(host, port)
   rescue Timeout::Error
   end
   false
+end
+
+def get_backup_dir(backup_dir)
+  dir = backup_dir
+  # Backup Dir: base_backup/mongodb/ab/cd/ef/uuid/timestamp
+  #             base_backup/<6-more-layers>
+  6.times do
+    dirs = Dir.entries(dir)
+    dirs.delete('.')
+    dirs.delete('..')
+    dir = File.join(dir, dirs[0])
+  end
+  dir
 end
 
 def shutdown(mongodb_node)
