@@ -13,6 +13,7 @@ node_id: mysql_node_1
 max_db_size: 20
 max_long_query: 3
 max_long_tx: 0
+migration_nfs: /mnt/migration
 mysql:
   host: 127.0.0.1
   port: 3306
