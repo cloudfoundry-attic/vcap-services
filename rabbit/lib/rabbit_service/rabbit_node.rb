@@ -100,7 +100,7 @@ class VCAP::Services::Rabbit::Node
 
     credentials = {
       "name" => instance.name,
-      "hostname" => @local_ip,
+      "host" => @local_ip,
       "port"  => @rabbit_port,
       "vhost" => instance.vhost,
       "user" => instance.admin_username,
@@ -126,7 +126,7 @@ class VCAP::Services::Rabbit::Node
     credentials = {}
     instance = get_instance(instance_id)
     credentials["name"] = instance_id
-    credentials["hostname"] = @local_ip
+    credentials["host"] = @local_ip
     credentials["port"] = @rabbit_port
     if binding_credentials
       credentials["vhost"] = binding_credentials["vhost"]
