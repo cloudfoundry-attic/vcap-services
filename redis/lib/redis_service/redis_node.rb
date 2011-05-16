@@ -143,9 +143,14 @@ class VCAP::Services::Redis::Node
     {}
   end
 
-  def bind(instance_id, binding_options = :all)
+  def bind(instance_id, binding_options = :all, credentials = nil)
     # FIXME: Redis has no user level security, just return provisioned credentials.
-    instance = get_instance(instance_id)
+    instance = nil
+    if credentials
+      instance = get_instance(credentials["name"])
+    else
+      instance = get_instance(instance_id)
+    end
     credentials = {
       "hostname" => @local_ip,
       "port" => instance.port,
