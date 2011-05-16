@@ -42,7 +42,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       @logger.debug("[#{service_description}] Adding handle #{h_id}")
       h = handles_keyed[h_id]
       @prov_svcs[h_id] = {
-        :data        => h['configuration'],
+        :configuration => h['configuration'],
         :credentials => h['credentials'],
         :service_id   => h_id
       }
@@ -168,8 +168,10 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           if opts['success']
             opts = opts['response']
             svc = {:data => request, :service_id => opts['name'], :credentials => opts}
+            # FIXME: workaround for inconsistant representation of bind handle and provision handle
+            svc_local = {:configuration => request, :service_id => opts['name'], :credentials => opts}
             @logger.debug("Provisioned #{svc.pretty_inspect}")
-            @prov_svcs[svc[:service_id]] = svc
+            @prov_svcs[svc[:service_id]] = svc_local
             blk.call(success(svc))
           else
             blk.call(opts)
@@ -215,7 +217,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
             opts = opts['response']
             res = {
               :service_id => UUIDTools::UUID.random_create.to_s,
-              :configuration => svc[:data],
+              :configuration => svc[:configuration],
               :credentials => opts
             }
             @logger.debug("[#{service_description}] Binded: #{res.pretty_inspect}")
