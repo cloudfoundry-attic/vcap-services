@@ -318,8 +318,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # 3) re-bind bindings use old credential
   def recover(instance_id, backup_path, handles, &blk)
     @logger.debug("Recover instance: #{instance_id} form #{backup_path} with handles #{handles.inspect}.")
-    prov_handle = nil
-    prov_handle = handles.find {|handle| handle['service_id'] == instance_id }
+    prov_handle, binding_handles = find_instance_handles(instance_id, handles)
     @logger.debug("Provsion Handle: #{prov_handle.inspect}")
     request = prov_handle["configuration"]
     provision_service(request, prov_handle) do |msg|
@@ -328,7 +327,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         restore_instance(instance_id, backup_path) do |res|
           if res['success']
             @logger.info("Recover: Success restore instance.")
-            binding_handles = handles - [prov_handle]
             binding_handles.each do |handle|
               bind_instance(instance_id, nil, handle) do |bind_res|
                 if bind_res['success']
@@ -376,6 +374,24 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     return varz
   rescue => e
     @logger.warn(e)
+  end
+
+  ########
+  # Helpers
+  ########
+
+  # Find instance related handles in all handles
+  def find_instance_handles(instance_id, handles)
+    prov_handle = nil
+    binding_handles = []
+    handles.each do |h|
+      if h['service_id'] == instance_id
+        prov_handle = h
+      else
+        binding_handles << h if h['configuration']['name'] == instance_id
+      end
+    end
+    return [prov_handle, binding_handles]
   end
 
   # Service Provisioner subclasses must implement the following
