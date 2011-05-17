@@ -284,6 +284,100 @@ class VCAP::Services::MongoDB::Node
     true
   end
 
+  def disable_instance(service_credential, binding_credentials)
+    @logger.debug("disable_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}")
+    service_id = service_credential['name']
+    provisioned_service = ProvisionedService.get(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if provisioned_service.nil?
+    Process.kill(9, provisioned_service.pid) if provisioned_service.running?
+    rm_lockfile(service_id)
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def dump_instance(service_credential, binding_credentials, dump_dir)
+    @logger.debug("dump_instance :service_credential #{service_credential}, binding_credentials: #{binding_credentials}, dump_dir: #{dump_dir}")
+
+    from_dir = service_dir(service_credential['name'])
+    FileUtils.mkdir_p(dump_dir)
+
+    provisioned_service = ProvisionedService.get(service_credential['name'])
+    raise "Cannot file service #{service_credential['name']}" if provisioned_service.nil?
+
+    d_file = dump_file(dump_dir)
+    File.open(d_file, 'w') do |f|
+      Marshal.dump(provisioned_service, f)
+    end
+    FileUtils.cp_r(File.join(from_dir, '.'), dump_dir)
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def import_instance(service_credential, binding_credentials, dump_dir, plan)
+    @logger.debug("import_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}, dump_dir: #{dump_dir}, plan: #{plan}")
+
+    to_dir = service_dir(service_credential['name'])
+    FileUtils.rm_rf(to_dir)
+    FileUtils.mkdir_p(to_dir)
+    FileUtils.cp_r(File.join(dump_dir, '.'), to_dir)
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def enable_instance(service_credential, binding_credentials)
+    @logger.debug("enable_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}")
+
+    # Load provisioned_service from dumped file
+    stored_service = nil
+    dest_dir = service_dir(service_credential['name'])
+    d_file = dump_file(dest_dir)
+    File.open(d_file, 'r') do |f|
+      stored_service = Marshal.load(f)
+    end
+    raise "Cannot parse dumpfile stored_service in #{d_file}" if stored_service.nil?
+
+    # Provision the new instance using dumped instance files
+    port = @free_ports.first
+    @free_ports.delete(port)
+
+    provisioned_service           = ProvisionedService.new
+    provisioned_service.name      = stored_service.name
+    provisioned_service.plan      = stored_service.plan
+    provisioned_service.password  = stored_service.password
+    provisioned_service.memory    = stored_service.memory
+    provisioned_service.admin     = stored_service.admin
+    provisioned_service.adminpass = stored_service.adminpass
+    provisioned_service.db        = stored_service.db
+    provisioned_service.port      = port
+    provisioned_service.pid       = start_instance(provisioned_service)
+    @logger.debug("Provisioned_service: #{provisioned_service}")
+
+    unless provisioned_service.save
+      provisioned_service.kill
+      raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
+    end
+
+    # Update credentials for the new credential
+    service_credential['port'] = port
+    service_credential['host'] = @local_ip
+
+    binding_credentials.each_value do |v|
+      v['port'] = port
+      v['host'] = @local_ip
+    end
+
+    [service_credential, binding_credentials]
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
   def varz_details
     # Do disk summary
     du_hash = {}
@@ -339,7 +433,7 @@ class VCAP::Services::MongoDB::Node
 
       port = provisioned_service.port
       password = provisioned_service.password
-      dir = File.join(@base_dir, provisioned_service.name)
+      dir = service_dir(provisioned_service.name)
       data_dir = File.join(dir, "data")
       log_file = File.join(dir, "log")
 
@@ -455,5 +549,22 @@ class VCAP::Services::MongoDB::Node
   rescue => e
     @logger.warn(e)
     nil
+  end
+
+  def transition_dir(service_id)
+    File.join(@backup_dir, service_name, service_id)
+  end
+
+  def service_dir(service_id)
+    File.join(@base_dir, service_id)
+  end
+
+  def dump_file(to_dir)
+    File.join(to_dir, 'dump_file')
+  end
+
+  def rm_lockfile(service_id)
+    lockfile = File.join(service_dir(service_id), 'data', 'mongod.lock')
+    FileUtils.rm_rf(lockfile)
   end
 end
