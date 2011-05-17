@@ -203,10 +203,11 @@ class Runner
 
   def clean_nfs(instance, msg)
     puts "Cleanup on NFS..."
-    msg = {
+    clean_msg = {
       'name' => instance,
     }
-    @nats.publish(@channel[:cleanup_nfs], msg)
+    clean_msg = Yajl::Encoder.encode(clean_msg)
+    @nats.publish(@channel[:cleanup_nfs], clean_msg)
     true
   end
 

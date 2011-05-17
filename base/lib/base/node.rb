@@ -141,8 +141,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     result = enable_instance(prov_cred, binding_creds_hash)
     # Update node_id in credentials..
     prov_cred, binding_creds_hash = result
+    prov_cred['node_id'] = @node_id
     binding_creds_hash.each do |k,v|
-      v['node_id'] =  @node_id if v.has_key?('node_id')
+      v['node_id'] =  @node_id
     end
     result = [prov_cred, binding_creds_hash]
     @node_nats.publish(reply, Yajl::Encoder.encode(result))
