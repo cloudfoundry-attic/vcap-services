@@ -27,29 +27,16 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # Updates our internal state to match that supplied by handles
   # +handles+  An array of config handles
   def update_handles(handles)
-    # FIXME update_handles only support add handles. Need refine.
     @logger.debug("Update handles: #{handles.inspect}")
-    current   = Set.new(@prov_svcs.keys)
-    supplied  = Set.new(handles.map {|h| h['service_id']})
-    intersect = current & supplied
-
-    handles_keyed = {}
-    handles.each {|v| handles_keyed[v['service_id']] = v}
-
-    to_add = supplied - intersect
-    @logger.debug("to add: #{to_add.inspect}")
-    to_add.each do |h_id|
-      @logger.debug("[#{service_description}] Adding handle #{h_id}")
-      h = handles_keyed[h_id]
-      @prov_svcs[h_id] = {
+    handles.each do |handle|
+      h = handle.deep_dup
+      @prov_svcs[h['service_id']] = {
         :configuration => h['configuration'],
         :credentials => h['credentials'],
-        :service_id   => h_id
+        :service_id => h['service_id']
       }
     end
-
     @logger.debug("[#{service_description}] Handles updated prov_svcs: #{@prov_svcs}")
-    # TODO: Handle removing existing handles if we decide to periodically sync with the CC
   end
 
   def find_all_bindings(name)
