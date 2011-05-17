@@ -187,7 +187,7 @@ class Runner
           handle['credentials'] = v
           handle_msg = Yajl::Encoder.encode(handle)
           nat_request(@channel[:update_handle], instance, data=handle_msg) do |res|
-            puts "Update handle #{handle} result #{res}"
+            puts "Update handle #{handle} result #{res}" if @verbose
           end
         end
         unprovision_node(instance, msg)
@@ -227,7 +227,7 @@ class Runner
 
   def unprovision_node(instance, msg, node="src")
     puts "Unprovision instance #{instance} on #{node} node"
-    puts "D: Msg send to node #{msg.class}:#{msg}"
+    puts "D: Msg send to node #{msg.class}:#{msg}" if @verbose
     channel = nil
     if node == "src"
       channel = @channel[:unprovision_src]
