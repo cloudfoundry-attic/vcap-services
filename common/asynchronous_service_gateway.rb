@@ -260,16 +260,22 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       end
       id = handle["service_id"]
       uri = @handles_uri + "/#{id}"
+      handle_json = Yajl::Encoder.encode(handle)
       req = {
         :head => @cc_req_hdrs,
-        :body => handle,
+        :body => handle_json,
       }
       http = EM::HttpRequest.new(uri).post(req)
       http.callback do
-        @logger.info("Successful update handle #{id}")
-        # Update local array in provisioner
-        @provisioner.update_handles([handle])
-        cb.call(true) if cb
+        if http.response_header.status == 200
+          @logger.info("Successful update handle #{id}.")
+          # Update local array in provisioner
+          @provisioner.update_handles([handle])
+          cb.call(true) if cb
+        else
+          @logger.error("Failed to update handle #{id}: #{http.error}")
+          cb.call(false) if cb
+        end
       end
       http.errback do
         @logger.error("Failed to update handle #{id}: #{http.error}")

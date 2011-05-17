@@ -101,7 +101,7 @@ class NodeTests
       @announcement_invoked = true
       Hash.new
     end
-    def provision(plan)
+    def provision(plan, credential)
       sleep 5 # Provision takes 5 seconds to finish
       @mutex.synchronize { @provision_times += 1 }
       @provision_invoked = true
@@ -110,7 +110,7 @@ class NodeTests
     def unprovision(name, bindings)
       @unprovision_invoked = true
     end
-    def bind(name, bind_opts)
+    def bind(name, bind_opts, credential)
       @bind_invoked = true
     end
     def unbind(credentials)
@@ -226,7 +226,7 @@ class ProvisionerTests
       @bind_id = nil
     end
     def send_provision_request
-      @provisioner.provision_service(nil, nil) do |res|
+      @provisioner.provision_service({}, nil) do |res|
         @instance_id = res['response'][:service_id]
         @got_provision_response = res['success']
       end
@@ -237,7 +237,7 @@ class ProvisionerTests
       end
     end
     def send_bind_request
-      @provisioner.bind_instance(@instance_id, nil) do |res|
+      @provisioner.bind_instance(@instance_id, nil, nil) do |res|
         @bind_id = res['response'][:service_id]
         @got_bind_response = res['success']
       end
