@@ -1,0 +1,4 @@
+source "http://rubygems.org"
+
+gem "nats", '>= 0.4.8'
+gem "yajl-ruby"

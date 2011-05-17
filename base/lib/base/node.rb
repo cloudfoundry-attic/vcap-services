@@ -1,6 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require 'nats/client'
 require 'vcap/component'
+require 'fileutils'
 
 $:.unshift(File.dirname(__FILE__))
 require 'base'
@@ -10,6 +11,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def initialize(options)
     super(options)
     @node_id = options[:node_id]
+    @migration_nfs = options[:migration_nfs]
   end
 
   def flavor
@@ -35,6 +37,19 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     }
     @node_nats.subscribe("#{service_name}.discover") { |_, reply|
       on_discover(reply)
+    }
+    # rebalance channels
+    @node_nats.subscribe("#{service_name}.disable_instance.#{@node_id}") { |msg, reply|
+      on_disable_instance(msg, reply)
+    }
+    @node_nats.subscribe("#{service_name}.enable_instance.#{@node_id}") { |msg, reply|
+      on_enable_instance(msg, reply)
+    }
+    @node_nats.subscribe("#{service_name}.import_instance.#{@node_id}") { |msg, reply|
+      on_import_instance(msg, reply)
+    }
+    @node_nats.subscribe("#{service_name}.cleanup_nfs.#{@node_id}") { |msg, reply|
+      on_cleanup_nfs(msg, reply)
     }
     send_node_announcement
     EM.add_periodic_timer(30) {
@@ -103,6 +118,67 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @node_nats.publish(reply, encode_failure(e))
   end
 
+  # disable and dump instance
+  def on_disable_instance(msg, reply)
+    @logger.debug("#{service_description}: Disable instance #{msg} request from #{reply}")
+    credentials = Yajl::Parser.parse(msg)
+    prov_cred, binding_creds = credentials
+    instance = prov_cred['name']
+    file_path = get_migration_folder(instance)
+    FileUtils.mkdir_p(file_path)
+    result = disable_instance(prov_cred, binding_creds)
+    result = dump_instance(prov_cred, binding_creds, file_path) if result
+    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+  rescue => e
+    @logger.warn(e)
+  end
+
+  # enable instance and send updated credentials back
+  def on_enable_instance(msg, reply)
+    @logger.debug("#{service_description}: enable instance #{msg} request from #{reply}")
+    credentials = Yajl::Parser.parse(msg)
+    prov_cred, binding_creds_hash = credentials
+    result = enable_instance(prov_cred, binding_creds_hash)
+    # Update node_id in credentials..
+    prov_cred, binding_creds_hash = result
+    binding_creds_hash.each do |k,v|
+      v['node_id'] =  @node_id if v.has_key?('node_id')
+    end
+    result = [prov_cred, binding_creds_hash]
+    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+  rescue => e
+    @logger.warn(e)
+  end
+
+  # Cleanup nfs folder which contains migration data
+  def on_cleanup_nfs(msg, reply)
+    @logger.debug("#{service_description}: cleanup nfs request #{msg} from #{reply}")
+    request = Yajl::Parser.parse(msg)
+    prov_cred, binding_creds = request
+    instance = prov_cred['name']
+    FileUtils.rm_rf(get_migration_folder(instance))
+    @node_nats.publish(reply, Yajl::Encoder.encode(true))
+  rescue => e
+    @logger.warn(e)
+  end
+
+  # Get the tmp folder for migration
+  def get_migration_folder(instance)
+    File.join(@migration_nfs, 'migration', service_name, instance)
+  end
+
+  def on_import_instance(msg, reply)
+    @logger.debug("#{service_description}: import instance #{msg} request from #{reply}")
+    credentials = Yajl::Parser.parse(msg)
+    plan, prov_cred, binding_creds = credentials
+    instance = prov_cred['name']
+    file_path = get_migration_folder(instance)
+    result = import_instance(prov_cred, binding_creds, file_path, plan)
+    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+  rescue => e
+    @logger.warn(e)
+  end
+
   def on_discover(reply)
     send_node_announcement(reply)
   end
@@ -142,5 +218,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   # service_name() --> string
   # (inhereted from VCAP::Services::Base::Base)
+
+  # <action>_instance(prov_credential, binding_credentials)  -->  true for success and nil for fail
+  abstract :disable_instance, :dump_instance, :import_instance, :enable_instance
 
 end
