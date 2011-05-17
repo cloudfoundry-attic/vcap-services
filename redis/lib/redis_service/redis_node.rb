@@ -129,6 +129,8 @@ class VCAP::Services::Redis::Node
       raise e1
     end
 
+    # Sleep 1 second to wait for redis instance start
+    sleep 1
     credentials = {
       "hostname" => @local_ip,
       "port" => instance.port,
@@ -239,7 +241,6 @@ class VCAP::Services::Redis::Node
   def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
     provision(plan, service_credentials, db_file)
-    true
   rescue => e
     @logger.warn(e)
     nil

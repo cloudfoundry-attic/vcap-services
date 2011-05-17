@@ -2,7 +2,7 @@
 local_db: sqlite3:/var/vcap/services/redis/redis_node.db
 mbus: nats://localhost:4222
 base_dir: /var/vcap/services/redis/instances
-ip_route: 127.0.0.1
+ip_route: 10.135.81.79
 log_level: DEBUG
 pid: /var/vcap/sys/run/redis_node.pid
 available_memory: 4096
@@ -13,3 +13,4 @@ redis_server_path: redis-server
 port_range:
   first: 5000
   last: 25000
+migration_nfs: /mnt/appcloud

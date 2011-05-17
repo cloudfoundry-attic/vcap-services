@@ -26,6 +26,8 @@ module VCAP
         RABBIT_LIST_QUEUES_FAILED      = [31316, HTTP_INTERNAL, "Could not list queues"]
         RABBIT_LIST_EXCHANGES_FAILED   = [31317, HTTP_INTERNAL, "Could not list exchanges"]
         RABBIT_LIST_BINDINGS_FAILED    = [31318, HTTP_INTERNAL, "Could not list bindings"]
+        RABBIT_SET_PASSWORD_FAILED     = [31319, HTTP_INTERNAL, "Could not set user %s password to %s"]
+        RABBIT_CLEAR_PERMISSION_FAILED = [31320, HTTP_INTERNAL, "Could not clean user %s permissions"]
       end
     end
   end

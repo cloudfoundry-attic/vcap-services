@@ -2,6 +2,7 @@
 require "set"
 require "datamapper"
 require "uuidtools"
+require "amqp"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
@@ -39,6 +40,8 @@ class VCAP::Services::Rabbit::Node
   def initialize(options)
     super(options)
     @rabbit_port = options[:rabbit_port] || 5672
+    ENV["RABBITMQ_NODE_PORT"] = @rabbit_port.to_s
+    ENV["RABBITMQ_NODENAME"] = "rnode-#{UUIDTools::UUID.random_create.to_s}"
     @rabbit_ctl = options[:rabbit_ctl]
     @rabbit_server = options[:rabbit_server]
     @available_memory = options[:available_memory]
@@ -47,7 +50,6 @@ class VCAP::Services::Rabbit::Node
     @binding_options = ["configure", "write", "read"]
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
-    @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     @options = options
   end
 
@@ -96,7 +98,7 @@ class VCAP::Services::Rabbit::Node
 
     add_vhost(instance.vhost)
     add_user(instance.admin_username, instance.admin_password)
-    set_permissions(instance.vhost, instance.admin_username, '".*" ".*" ".*"')
+    set_permissions(instance.vhost, instance.admin_username, "'.*' '.*' '.*'")
 
     credentials = {
       "name" => instance.name,
@@ -138,7 +140,7 @@ class VCAP::Services::Rabbit::Node
       credentials["pass"] = "p" + generate_credential
     end
     add_user(credentials["user"], credentials["pass"])
-    set_permissions(credentials["vhost"], credentials["user"], get_permissions(binding_options))
+    set_permissions(credentials["vhost"], credentials["user"], get_permissions_by_options(binding_options))
 
     credentials
   rescue => e
@@ -171,28 +173,33 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
-  # Only keep the vhost and delete all users
+  # Clean all users permissions
   def disable_instance(service_credentials, binding_credentials_list = [])
-    delete_user(service_credentials["user"])
+    clear_permissions(service_credentials["vhost"], service_credentials["user"])
     binding_credentials_list.each do |credentials|
-      unbind(credentials)
+      clear_permissions(credentials["vhost"], credentials["user"])
     end
     true
   end
 
   # This function may run in old node or new node, it does these things:
-  # 1. Try to check whether the rabbitmq service has user in service_credentials.
-  # 2. If it has, then it's the new node, otherwise the old node.
+  # 1. Try to check user permissions
+  # 2. If permissions are empty, then it's the new node, otherwise the old node.
   # 3. For new node, it need do binding using all binding credentials,
-  #    for old node, it should restore all the instance user and binding users.
+  #    for old node, it should restore all the users permissions.
   def enable_instance(service_credentials, binding_credentials_map = [])
-    if list_users.index(service_credentials["user"]) == nil
+    if get_permissions(service_credentials["vhost"], service_credentials["user"]) != ""
+      # The new node
+      binding_credentials_map.each do |key, value|
+        bind(service_credentials["name"], nil, value)
+      end
+    else
       # The old node
-      add_user(service_credentials["user"], service_credentials["pass"])
-      set_permissions(service_credentials["vhost"], service_credentials["user"], '".*" ".*" ".*"')
-    end
-    binding_credentials_map.each do |key, value|
-      bind(service_credentials["name"], nil, value)
+      set_permissions(service_credentials["vhost"], service_credentials["user"], "'.*' '.*' '.*'")
+      binding_credentials_map.each do |key, value|
+        # FIXME: should get binding options then use get_permissions_by_options
+        set_permissions(value["vhost"], value["user"], "'.*' '.*' '.*'")
+      end
     end
     [service_credentials, binding_credentials_map]
   rescue => e
@@ -207,7 +214,6 @@ class VCAP::Services::Rabbit::Node
 
   def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
     provision(plan, service_credentials)
-    true
   end
 
   def start_db
@@ -295,12 +301,33 @@ class VCAP::Services::Rabbit::Node
     raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username) unless %x[#{@rabbit_ctl} delete_user #{username}].split(/\n/)[-1] == "...done."
   end
 
-  def get_permissions(binding_options)
-    '".*" ".*" ".*"'
+  def get_permissions_by_options(binding_options)
+    "'.*' '.*' '.*'"
+  end
+
+  def get_permissions(vhost, username)
+    output = %x[#{@rabbit_ctl} list_user_permissions -p #{vhost} #{username}].split(/\n/)
+    raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username, permissions) unless output[-1] == "...done."
+    if output.size == 3
+      list = output[1].split(/\t/)
+      "'#{list[1]}' '#{list[2]}' '#{list[3]}'"
+    elsif output.size == 2
+      return ""
+    else
+     raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username, permissions)
+    end
   end
 
   def set_permissions(vhost, username, permissions)
     raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSION_FAILED, username, permissions) unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions}].split(/\n/)[-1] == "...done."
+  end
+
+  def clear_permissions(vhost, username)
+    raise RabbitError.new(RabbitError::RABBIT_CLEAR_PERMISSION_FAILED, username) unless %x[#{@rabbit_ctl} clear_permissions -p #{vhost} #{username}].split(/\n/)[-1] == "...done."
+  end
+
+  def set_password(vhost, username, password)
+    raise RabbitError.new(RabbitError::RABBIT_SET_PASSWORD_FAILED, username, password) unless %x[#{@rabbit_ctl} change_password -p #{vhost} #{username} #{password}].split(/\n/)[-1] == "...done."
   end
 
   def list_users

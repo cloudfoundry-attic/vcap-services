@@ -61,12 +61,14 @@ options = {
   :base_dir => parse_property(config, "base_dir", String),
   :rabbit_ctl => parse_property(config, "rabbit_ctl", String),
   :rabbit_server => parse_property(config, "rabbit_server", String),
+  :rabbit_port => parse_property(config, "rabbit_port", Integer),
   :ip_route => parse_property(config, "local_ip", String, :optional => true),
   :node_id => parse_property(config, "node_id", String),
   :available_memory => parse_property(config, "available_memory", Integer),
   :max_memory => parse_property(config, "max_memory", Integer),
   :local_db => parse_property(config, "local_db", String),
   :mbus => parse_property(config, "mbus", String),
+  :migration_nfs => parse_property(config, "migration_nfs", String),
 }
 
 def shutdown(rabbit_node)
