@@ -218,9 +218,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           opts = Yajl::Parser.parse(msg)
           if(opts['success'])
             opts = opts['response']
+            # Save binding-options in :data section of configuration
+            config = svc[:configuration].clone
+            config[:data] = {:binding_options => binding_options}
             res = {
               :service_id => UUIDTools::UUID.random_create.to_s,
-              :configuration => svc[:configuration],
+              :configuration => config,
               :credentials => opts
             }
             @logger.debug("[#{service_description}] Binded: #{res.pretty_inspect}")
