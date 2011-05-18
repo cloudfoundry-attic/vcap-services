@@ -139,12 +139,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     credentials = Yajl::Parser.parse(msg)
     prov_cred, binding_creds_hash = credentials
     result = enable_instance(prov_cred, binding_creds_hash)
-    # Update node_id in credentials..
+    # Update node_id in provision credentials..
     prov_cred, binding_creds_hash = result
     prov_cred['node_id'] = @node_id
-    binding_creds_hash.each do |k,v|
-      v['node_id'] =  @node_id
-    end
     result = [prov_cred, binding_creds_hash]
     @node_nats.publish(reply, Yajl::Encoder.encode(result))
   rescue => e
