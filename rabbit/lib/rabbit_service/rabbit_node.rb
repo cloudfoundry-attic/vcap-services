@@ -196,7 +196,6 @@ class VCAP::Services::Rabbit::Node
       # The old node
       set_permissions(service_credentials["vhost"], service_credentials["user"], "'.*' '.*' '.*'")
       binding_credentials_map.each do |key, value|
-        # FIXME: should get binding options then use get_permissions_by_options
         set_permissions(value["credentials"]["vhost"], value["credentials"]["user"], get_permissions_by_options(value["binding_options"]))
       end
     end
