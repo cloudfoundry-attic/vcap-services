@@ -2,7 +2,6 @@
 require "set"
 require "datamapper"
 require "uuidtools"
-require "amqp"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
