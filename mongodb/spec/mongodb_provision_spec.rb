@@ -1,23 +1,8 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
-require "mongodb_service/mongodb_node"
-require "mongo"
 
-include VCAP::Services::MongoDB
-
-
-module VCAP
-  module Services
-    module MongoDB
-      class Node
-        attr_reader :available_memory
-      end
-    end
-  end
-end
-
-describe VCAP::Services::MongoDB::Node do
+describe "mongodb_node provision" do
 
   before :all do
     EM.run do

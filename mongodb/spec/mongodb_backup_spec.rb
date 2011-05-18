@@ -1,22 +1,8 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
-require "erb"
-require "mongodb_service/mongodb_node"
-require "mongo"
 
-include VCAP::Services::MongoDB
-
-describe "Test backup/restore"  do
-
-  TEST_COLL    = 'testColl'
-  TEST_KEY     = 'test_key'
-  TEST_VAL     = 1234
-  TEST_VAL_2   = 4321
-
-  BACKUP_DIR    = './backup'
-  CONFIG_FILE   = 'config/mongodb_backup.yml'
-  TEMPLATE_FILE = 'config/mongodb_backup.yml.erb'
+describe "mongodb backup/restore"  do
 
   before :all do
     EM.run do

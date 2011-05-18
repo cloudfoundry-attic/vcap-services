@@ -1,26 +1,9 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "spec_helper"
-require "mongodb_service/mongodb_node"
-require "mongo"
 
-include VCAP::Services::MongoDB
-
-
-module VCAP
-  module Services
-    module MongoDB
-      class Node
-        attr_reader :available_memory
-      end
-    end
-  end
-end
-
-describe "mongodb rebalance" do
-  DUMP_DIR = './tmp/dump'
+describe "mongodb_node bind" do
 
   before :all do
-    FileUtils.rm_rf(DUMP_DIR)
     EM.run do
       @app_id = "myapp"
       @opts = get_node_config()
@@ -38,10 +21,6 @@ describe "mongodb rebalance" do
     end
   end
 
-  after :all do
-    FileUtils.rm_rf(File.dirname(DUMP_DIR))
-  end
-
   it "should have valid response" do
     @bind_resp.should_not be_nil
     @bind_resp['hostname'].should_not be_nil
@@ -54,45 +33,13 @@ describe "mongodb rebalance" do
     is_port_open?('127.0.0.1', @resp['port']).should be_true
   end
 
-  it "should be able to disable instance" do
-    res = @node.disable_instance(@resp, {'' => @bind_resp})
-    res.should == true
-    is_port_open?('127.0.0.1', @resp['port']).should be_false
-  end
-
-  it "should be able to dump instance" do
-    res = @node.dump_instance(@resp, {'' => @bind_resp}, DUMP_DIR)
-    res.should == true
-    File.directory?(DUMP_DIR).should be_true
-    Dir.entries(DUMP_DIR).size.should > 0
-  end
-
-  # unprovision here
-  it "should be able to unprovision an existing instance" do
-    EM.run do
-      @node.unprovision(@resp['name'], [])
-      EM.stop
+  it "should return error when tring to bind on non-existed instance" do
+    e = nil
+    begin
+      @node.bind('non-existed', 'rw')
+    rescue => e
     end
-  end
-
-  it "should be able to import instance" do
-    EM.run do
-      EM.add_timer(1) do
-        res = @node.import_instance(@resp, {'' => @bind_resp}, DUMP_DIR, 'free')
-        res.should == true
-        EM.stop
-      end
-    end
-  end
-
-  it "should be able to enable instance" do
-    EM.run do
-      EM.add_timer(1) do
-        res = @node.enable_instance(@resp, {''=>@bind_resp})
-        res.should_not be_nil
-        EM.stop
-      end
-    end
+    e.should_not be_nil
   end
 
   it "should allow authorized user to access the instance" do
@@ -103,6 +50,22 @@ describe "mongodb rebalance" do
       coll = conn.collection('mongo_unit_test')
       coll.insert({'a' => 1})
       coll.find()
+      coll.count().should == 1
+      EM.stop
+    end
+  end
+
+  it "should not allow unauthorized user to access the instance" do
+    EM.run do
+      conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])
+      begin
+        coll = conn.collection('mongo_unit_test')
+        coll.insert({'a' => 1})
+        coll.find()
+        coll.count().should == 1
+      rescue => e
+      end
+      e.should_not be_nil
       EM.stop
     end
   end
@@ -139,7 +102,6 @@ describe "mongodb rebalance" do
   # unbind here
   it "should be able to unbind it" do
     EM.run do
-      sleep 30
       resp  = @node.unbind(@bind_resp)
       resp.should be_true
       EM.add_timer(1) do
