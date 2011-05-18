@@ -380,8 +380,17 @@ class VCAP::Services::Redis::Node
     begin
       redis.shutdown
     rescue => e
-      # FIXME: it will raise exception even if shutdown successfully,
-      # should be a redis ruby binding bug. Here just ignore it.
+      if e.class == Errno::ECONNREFUSED
+        # FIXME: it will raise exception even if shutdown successfully,
+        # should be a redis ruby binding bug. Here just ignore it.
+      elsif e.class == RuntimeError
+        # It could be a disabled instance
+        redis = Redis.new({:port => instance.port, :password => @disable_password})
+        begin
+          redis.shutdown
+        rescue => e
+        end
+      end
     end
   end
 
