@@ -371,8 +371,14 @@ describe VCAP::Services::Rabbit::Node do
       @binding_credentials2 = @node.bind(@instance_credentials["name"])
       @binding_credentials_list = [@binding_credentials1, @binding_credentials2]
       @binding_credentials_map = {
-        "credentials1" => @binding_credentials1,
-        "credentials2" => @binding_credentials2
+        "credentials1" => {
+          "binding_options" => nil,
+          "credentials" => @binding_credentials1
+        },
+        "credentials2" => {
+          "binding_options" => nil,
+          "credentials" => @binding_credentials2
+        },
       }
     end
 
@@ -395,21 +401,15 @@ describe VCAP::Services::Rabbit::Node do
 
     it "should access rabbitmq server in old node after enable the instance" do
       @node.enable_instance(@instance_credentials, @binding_credentials_map)
-      AMQP.start(:host => @binding_credentials1["host"],
-                 :port => @binding_credentials1["port"],
-                 :vhost => @binding_credentials1["vhost"],
-                 :user => @binding_credentials1["user"],
-                 :pass => @binding_credentials1["pass"]) do |conn|
-        conn.connected?.should == true
-        AMQP.stop {EM.stop}
-      end
-      AMQP.start(:host => @binding_credentials2["host"],
-                 :port => @binding_credentials2["port"],
-                 :vhost => @binding_credentials2["vhost"],
-                 :user => @binding_credentials2["user"],
-                 :pass => @binding_credentials2["pass"]) do |conn|
-        conn.connected?.should == true
-        AMQP.stop {EM.stop}
+      @binding_credentials_list.each do |credentials|
+        AMQP.start(:host => credentials["host"],
+                   :port => credentials["port"],
+                   :vhost => credentials["vhost"],
+                   :user => credentials["user"],
+                   :pass => credentials["pass"]) do |conn|
+          conn.connected?.should == true
+          AMQP.stop {EM.stop}
+        end
       end
       sleep 1
     end
@@ -430,11 +430,11 @@ describe VCAP::Services::Rabbit::Node do
         AMQP.stop {EM.stop}
       end
       credentials_list[1].each do |key, value|
-        AMQP.start(:host => value["host"],
-                   :port => value["port"],
-                   :vhost => value["vhost"],
-                   :user => value["user"],
-                   :pass => value["pass"]) do |conn|
+        AMQP.start(:host => value["credentials"]["host"],
+                   :port => value["credentials"]["port"],
+                   :vhost => value["credentials"]["vhost"],
+                   :user => value["credentials"]["user"],
+                   :pass => value["credentials"]["pass"]) do |conn|
           conn.connected?.should == true
           AMQP.stop {EM.stop}
         end

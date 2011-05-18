@@ -391,8 +391,14 @@ describe VCAP::Services::Redis::Node do
       @binding_credentials2 = @node.bind(@credentials["name"])
       @binding_credentials_list = [@binding_credentials1, @binding_credentials2]
       @binding_credentials_map = {
-        "credentials1" => @binding_credentials1,
-        "credentials2" => @binding_credentials2
+        "credentials1" => {
+          "binding_options" => nil,
+          "credentials" => @binding_credentials1
+        },
+        "credentials2" => {
+          "binding_options" => nil,
+          "credentials" => @binding_credentials2
+        },
       }
     end
 
@@ -435,7 +441,7 @@ describe VCAP::Services::Redis::Node do
       credentials_list.size.should == 2
       Redis.new({:port => credentials_list[0]["port"], :password => credentials_list[0]["password"]}).get("test_key").should == "test_value"
       credentials_list[1].each do |key, value|
-        Redis.new({:port => value["port"], :password => value["password"]}).get("test_key").should == "test_value"
+        Redis.new({:port => value["credentials"]["port"], :password => value["credentials"]["password"]}).get("test_key").should == "test_value"
       end
     end
   end

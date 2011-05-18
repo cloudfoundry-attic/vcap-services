@@ -195,8 +195,8 @@ class VCAP::Services::Redis::Node
       service_credentials["port"] = instance.port
       service_credentials["hostname"] = @local_ip
       binding_credentials_map.each do |key, value|
-        binding_credentials_map[key]["port"] = instance.port
-        binding_credentials_map[key]["hostname"] = @local_ip
+        binding_credentials_map[key]["credentials"]["port"] = instance.port
+        binding_credentials_map[key]["credentials"]["hostname"] = @local_ip
       end
     else
       # The old node
