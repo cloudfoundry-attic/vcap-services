@@ -266,7 +266,7 @@ class VCAP::Services::Rabbit::Node
 
   def start_server
     raise RabbitError.new(RabbitError::RABBIT_START_SERVER_FAILED) unless %x[#{@rabbit_server} -detached] == "Activating RabbitMQ plugins ...\n0 plugins activated:\n\n"
-    sleep 1
+    sleep 3
     # If the guest user is existed, then delete it for security
     begin
       users = list_users
