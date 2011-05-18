@@ -411,8 +411,9 @@ class VCAP::Services::Mysql::Node
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
     binding_creds_hash[name] = prov_cred
-    binding_creds_hash.each do |key, cred|
-      binding_opts = cred["binding_options"]
+    binding_creds_hash.each do |k, v|
+      cred = v["credentials"]
+      binding_opts = v["binding_options"]
       bind(name, binding_opts, cred)
     end
     # Mysql don't need to modify binding info
