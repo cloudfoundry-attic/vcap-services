@@ -145,27 +145,31 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not allow null credentials to access the instance instance" do
-#      AMQP.start(:host => @credentials["host"],
-#                 :port => @credentials["port"],
-#                 :vhost => @credentials["vhost"],) do |conn|
-#        conn.connected?.should == false
-#        AMQP.stop {EM.stop}
-#      end
+      begin
+        EM.run do
+          AMQP.connect(:host => @credentials["host"],
+                     :port => @credentials["port"],
+                     :vhost => @credentials["vhost"],
+                     :user => "",
+                     :pass => "")
+        end
+      rescue => e
+        e.class.should be
+      end
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-#      begin
-#        AMQP.start(:host => @credentials["host"],
-#                   :port => @credentials["port"],
-#                   :vhost => @credentials["vhost"],
-#                   :user => @credentials["user"],
-#                   :pass => "wrong_pass") do |conn|
-#          AMQP.stop {EM.stop}
-#        end
-#      rescue => e
-#        e.class.should == AMQP::Error
-#        AMQP.stop
-#      end
+      begin
+        EM.run do
+          AMQP.connect(:host => @credentials["host"],
+                     :port => @credentials["port"],
+                     :vhost => @credentials["vhost"],
+                     :user => @credentials["user"],
+                     :pass => "wrong_pass")
+        end
+      rescue => e
+        e.class.should be
+      end
     end
 
     it "should decrease available memory when finish a provision" do
@@ -192,14 +196,17 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not access the instance instance when doing unprovision" do
-#      AMQP.start(:host => @credentials["host"],
-#                 :port => @credentials["port"],
-#                 :vhost => @credentials["vhost"],
-#                 :user => @credentials["user"],
-#                 :pass => @credentials["pass"]) do |conn|
-#        conn.connected?.should == false
-#        AMQP.stop {EM.stop}
-#      end
+      begin
+        EM.run do
+          AMQP.connect(:host => @credentials["host"],
+                     :port => @credentials["port"],
+                     :vhost => @credentials["vhost"],
+                     :user => @credentials["user"],
+                     :pass => @credential["pass"])
+        end
+      rescue => e
+        e.class.should be
+      end
     end
 
     it "should decrease available memory when finish a provision" do
@@ -241,22 +248,31 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not allow null credentials to access the instance instance" do
-#      AMQP.start(:host => @binding_credentials["host"],
-#                 :vhost => @binding_credentials["vhost"],) do |conn|
-#        conn.connected?.should == false
-#        AMQP.stop {EM.stop}
-#      end
+      begin
+        EM.run do
+          AMQP.connect(:host => @binding_credentials["host"],
+                     :port => @binding_credentials["port"],
+                     :vhost => @binding_credentials["vhost"],
+                     :user => "",
+                     :pass => "")
+        end
+      rescue => e
+        e.class.should be
+      end
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-#      AMQP.start(:host => @binding_credentials["host"],
-#                 :port => @binding_credentials["port"],
-#                 :vhost => @binding_credentials["vhost"],
-#                 :user => @binding_credentials["user"],
-#                 :pass => "wrong_pass") do |conn|
-#        conn.connected?.should == false
-#        AMQP.stop {EM.stop}
-#      end
+      begin
+        EM.run do
+          AMQP.connect(:host => @binding_redentials["host"],
+                     :port => @binding_credentials["port"],
+                     :vhost => @binding_credentials["vhost"],
+                     :user => @binding_credentials["user"],
+                     :pass => "wrong_pass")
+        end
+      rescue => e
+        e.class.should be
+      end
     end
 
     it "should send binding messsage when finish a binding" do
@@ -281,14 +297,17 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not access rabbitmq server after unbinding" do
-#      AMQP.start(:host => @binding_credentials["host"],
-#                 :port => @binding_credentials["port"],
-#                 :vhost => @binding_credentials["vhost"],
-#                 :user => @binding_credentials["user"],
-#                 :pass => @binding_credentials["pass"]) do |conn|
-#        conn.connected?.should == false
-#        AMQP.stop {EM.stop}
-#      end
+      begin
+        EM.run do
+          AMQP.connect(:host => @binding_redentials["host"],
+                     :port => @binding_credentials["port"],
+                     :vhost => @binding_credentials["vhost"],
+                     :user => @binding_credentials["user"],
+                     :pass => @binding_credentials["pass"])
+        end
+      rescue => e
+        e.class.should be
+      end
     end
 
     it "should return empty when unbinding successfully" do
