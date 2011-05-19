@@ -332,7 +332,13 @@ describe "Mysql server node" do
       conn = connect_to_mysql(binding)
       @node.disable_instance(db, [binding])
       expect {conn = connect_to_mysql(binding)}.should raise_error
-      result = @node.enable_instance(db, {"fake_service_id"=> binding})
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.enable_instance(db, value)
       result.should be_instance_of Array
       expect {conn = connect_to_mysql(binding)}.should_not raise_error
       EM.stop
