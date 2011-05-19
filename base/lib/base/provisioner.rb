@@ -220,7 +220,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
             opts = opts['response']
             # Save binding-options in :data section of configuration
             config = svc[:configuration].clone
-            config[:data] = {:binding_options => binding_options}
+            config['data'] ||= {}
+            config['data']['binding_options'] = binding_options
             res = {
               :service_id => UUIDTools::UUID.random_create.to_s,
               :configuration => config,
