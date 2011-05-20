@@ -274,7 +274,7 @@ describe "Mysql server node" do
       conn.query("drop table test")
       res = conn.query("show tables")
       res.num_rows().should == 0
-      @node.restore(db["name"], "/tmp/")
+      @node.restore(db["name"], "/tmp/").should == true
       res = conn.query("show tables")
       res.num_rows().should == 1
       res.fetch_row[0].should == "test"
@@ -303,7 +303,7 @@ describe "Mysql server node" do
     EM.run do
       conn = connect_to_mysql(@db)
       conn.query('create table MyTestTable(id int)')
-      @node.dump_instance(@db, nil, '/tmp')
+      @node.dump_instance(@db, nil, '/tmp').should == true
       File.open(File.join("/tmp", "#{@db['name']}.sql")) do |f|
         line = f.each_line.find {|line| line =~ /MyTestTable/}
         line.should_not be nil
@@ -318,7 +318,7 @@ describe "Mysql server node" do
       @test_dbs[db] = []
       @node.dump_instance(db, nil , '/tmp')
       @node.unprovision(db['name'], [])
-      @node.import_instance(db, [], '/tmp', @default_plan)
+      @node.import_instance(db, [], '/tmp', @default_plan).should == true
       conn = connect_to_mysql(db)
       expect { conn.query('select 1')}.should_not raise_error
       EM.stop

@@ -7,6 +7,7 @@ require "pp"
 require "datamapper"
 require "uuidtools"
 require "mysql"
+require "open3"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
@@ -346,13 +347,15 @@ class VCAP::Services::Mysql::Node
       "#{@mysql_bin} -h #{host} -P #{port} -u #{user} --password=#{pass}"
     cmd += " -S #{socket}" unless socket.nil?
     cmd += " #{name}"
-    @logger.debug("Restore command: #{cmd}")
-    result = `#{cmd}`
-    @logger.info("Restore command results: #{result}")
-    true
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
   rescue => e
     @logger.error("Error during restore #{e}")
-    raise e
+    nil
   end
 
   # Disable all credentials and kill user sessions
@@ -376,10 +379,12 @@ class VCAP::Services::Mysql::Node
     dump_file = File.join(dump_file_path, "#{name}.sql")
     @logger.info("Dump instance #{name} content to #{dump_file}")
     cmd = "#{@mysqldump_bin} -h #{host} -u #{user} --password=#{password} --single-transaction #{name} > #{dump_file}"
-    @logger.debug("Execute dump instance cmd #{cmd}")
-    result = `#{cmd}`
-    @logger.info("Dump instance command execution result: #{result}")
-    true
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
   rescue => e
     @logger.warn(e)
     nil
@@ -396,10 +401,12 @@ class VCAP::Services::Mysql::Node
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     @logger.info("Import data from #{import_file} to database #{name}")
     cmd = "#{@mysql_bin} --host=#{host} --user=#{user} --password=#{password} #{name} < #{import_file}"
-    @logger.debug("Execute import cmd #{cmd}")
-    result = `#{cmd}`
-    @logger.info("Import instance command execution result: #{result}")
-    true
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
   rescue => e
     @logger.warn(e)
     nil
@@ -421,6 +428,18 @@ class VCAP::Services::Mysql::Node
   rescue => e
     @logger.warn(e)
     []
+  end
+
+  # shell CMD wrapper and logger
+  def exe_cmd(cmd, stdin=nil)
+    @logger.debug("Execute shell cmd:[#{cmd}]")
+    o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
+    if s.exitstatus == 0
+      @logger.info("Execute cmd:[#{cmd}] successd.")
+    else
+      @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
+    end
+    return [o, e, s]
   end
 
   def varz_details()
