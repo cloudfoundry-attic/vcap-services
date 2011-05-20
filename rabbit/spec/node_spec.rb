@@ -17,7 +17,7 @@ end
 describe VCAP::Services::Rabbit::Node do
   before :all do
     @logger = Logger.new(STDOUT, "daily")
-    @logger.level = Logger::DEBUG
+    @logger.level = Logger::ERROR
     @local_db_file = "/tmp/rabbit_node_" + Time.now.to_i.to_s + ".db"
     @options = {
       :logger => @logger,
@@ -92,13 +92,11 @@ describe VCAP::Services::Rabbit::Node do
   describe "Node.start_db" do
     it "should fail when set local db with non-existed file argument" do
       @node.local_db = "sqlite3:/non_existed/non-existed.db"
-      @node.logger.level = Logger::ERROR
       begin
         @node.start_db
       rescue => e
         e.should be
       end
-      @node.logger.level = Logger::DEBUG
       @node.local_db = @options[:local_db]
     end
 

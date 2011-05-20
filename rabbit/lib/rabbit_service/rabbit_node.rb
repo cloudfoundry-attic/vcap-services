@@ -263,40 +263,75 @@ class VCAP::Services::Rabbit::Node
   end
 
   def start_server
-    raise RabbitError.new(RabbitError::RABBIT_START_SERVER_FAILED) unless %x[#{@rabbit_server} -detached] == "Activating RabbitMQ plugins ...\n0 plugins activated:\n\n"
-    sleep 3
-    # If the guest user is existed, then delete it for security
-    begin
-      users = list_users
-      users.each do |user|
-        if user == "guest"
-          delete_user(user)
-          break
+    output = %x[#{@rabbit_server} -detached]
+    if output == "Activating RabbitMQ plugins ...\n0 plugins activated:\n\n"
+      sleep 2
+      # If the guest user is existed, then delete it for security
+      begin
+        users = list_users
+        users.each do |user|
+          if user == "guest"
+            delete_user(user)
+            break
+          end
         end
+      rescue => e
       end
-    rescue => e
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_START_SERVER_FAILED)
     end
-    true
   end
 
   def stop_server
-    raise RabbitError.new(RabbitError::RABBIT_STOP_SERVER_FAILED) unless %x[#{@rabbit_ctl} stop 2> /dev/null].split(/\n/)[-1] == "...done."
+    output = %x[#{@rabbit_ctl} stop 2>&1]
+    if output.split(/\n/)[-1] == "...done."
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_STOP_SERVER_FAILED)
+    end
   end
 
   def add_vhost(vhost)
-    raise RabbitError.new(RabbitError::RABBIT_ADD_VHOST_FAILED, vhost) unless %x[#{@rabbit_ctl} add_vhost #{vhost} 2> /dev/null].split(/\n/)[-1] == "...done."
+    output = %x[#{@rabbit_ctl} add_vhost #{vhost} 2>&1]
+    if output.split(/\n/)[-1] == "...done."
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_ADD_VHOST_FAILED, vhost)
+    end
   end
 
   def delete_vhost(vhost)
-    raise RabbitError.new(RabbitError::RABBIT_DELETE_VHOST_FAILED, vhost) unless %x[#{@rabbit_ctl} delete_vhost #{vhost} 2> /dev/null].split(/\n/)[-1] == "...done."
+    output = %x[#{@rabbit_ctl} delete_vhost #{vhost} 2>&1]
+    if output.split(/\n/)[-1] == "...done."
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_DELETE_VHOST_FAILED, vhost)
+    end
   end
 
   def add_user(username, password)
-    raise RabbitError.new(RabbitError::RABBIT_ADD_USER_FAILED, username) unless %x[#{@rabbit_ctl} add_user #{username} #{password} 2> /dev/null].split(/\n/)[-1] == "...done."
+    output = %x[#{@rabbit_ctl} add_user #{username} #{password} 2>&1]
+    if output.split(/\n/)[-1] == "...done."
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_ADD_USER_FAILED, username)
+    end
   end
 
   def delete_user(username)
-    raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username) unless %x[#{@rabbit_ctl} delete_user #{username} 2> /dev/null].split(/\n/)[-1] == "...done."
+    output = %x[#{@rabbit_ctl} delete_user #{username} 2>&1]
+    if output.split(/\n/)[-1] == "...done."
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username)
+    end
   end
 
   def get_permissions_by_options(binding_options)
@@ -304,80 +339,113 @@ class VCAP::Services::Rabbit::Node
   end
 
   def get_permissions(vhost, username)
-    output = %x[#{@rabbit_ctl} list_user_permissions -p #{vhost} #{username} 2> /dev/null].split(/\n/)
-    raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username) unless output[-1] == "...done."
-    if output.size == 3
-      list = output[1].split(/\t/)
-      "'#{list[1]}' '#{list[2]}' '#{list[3]}'"
-    elsif output.size == 2
-      return ""
+    output = %x[#{@rabbit_ctl} list_user_permissions -p #{vhost} #{username} 2>&1]
+    lines = output.split(/\n/)
+    if lines[-1] == "...done."
+      if lines.size == 3
+        list = lines[1].split(/\t/)
+        return "'#{list[1]}' '#{list[2]}' '#{list[3]}'"
+      elsif lines.size == 2
+        return ""
+      else
+       raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSIONS_FAILED, username)
+      end
     else
-     raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username)
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSIONS_FAILED, username)
     end
   end
 
   def set_permissions(vhost, username, permissions)
-    raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSION_FAILED, username, permissions) unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions} 2> /dev/null].split(/\n/)[-1] == "...done."
+    output = %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions} 2>&1]
+    if output.split(/\n/)[-1] == "...done."
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSIONS_FAILED, username, permissions)
+    end
   end
 
   def clear_permissions(vhost, username)
-    raise RabbitError.new(RabbitError::RABBIT_CLEAR_PERMISSION_FAILED, username) unless %x[#{@rabbit_ctl} clear_permissions -p #{vhost} #{username} 2> /dev/null].split(/\n/)[-1] == "...done."
+    output = %x[#{@rabbit_ctl} clear_permissions -p #{vhost} #{username} 2>&1]
+    if output.split(/\n/)[-1] == "...done."
+      return true
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_CLEAR_PERMISSIONS_FAILED, username)
+    end
   end
 
   def list_users
-    data = %x[#{@rabbit_ctl} list_users 2> /dev/null]
-    lines = data.split(/\n/)
-    raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED) unless lines[-1] == "...done."
-    users = []
-    lines.each do |line|
-      items = line.split(/\t/)
-      if items.size > 1
-        users << items[0]
+    output = %x[#{@rabbit_ctl} list_users 2>&1]
+    lines = output.split(/\n/)
+    if lines[-1] == "...done."
+      users = []
+      lines.each do |line|
+        items = line.split(/\t/)
+        if items.size > 1
+          users << items[0]
+        end
       end
+      return users
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED)
     end
-    users
   end
 
   def list_queues(vhost)
-    data = %x[#{@rabbit_ctl} list_queues -p #{vhost} 2> /dev/null]
-    lines = data.split(/\n/)
-    raise RabbitError.new(RabbitError::RABBIT_LIST_QUEUES_FAILED) unless lines[-1] == "...done."
-    queues = []
-    lines.each do |line|
-      items = line.split(/\t/)
-      if items.size > 1
-        queues << items[0]
+    output = %x[#{@rabbit_ctl} list_queues -p #{vhost} 2>&1]
+    lines = output.split(/\n/)
+    if lines[-1] == "...done."
+      queues = []
+      lines.each do |line|
+        items = line.split(/\t/)
+        if items.size > 1
+          queues << items[0]
+        end
       end
+      return queues
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED, vhost)
     end
-    queues
   end
 
   def list_exchanges(vhost)
-    data = %x[#{@rabbit_ctl} list_exchanges -p #{vhost} 2> /dev/null]
-    lines = data.split(/\n/)
-    raise RabbitError.new(RabbitError::RABBIT_LIST_EXCHANGES_FAILED) unless lines[-1] == "...done."
-    exchanges = []
-    lines.each do |line|
-      items = line.split(/\t/)
-      if items.size > 1
-        exchanges << items[0]
+    output = %x[#{@rabbit_ctl} list_exchanges -p #{vhost} 2>&1]
+    lines = output.split(/\n/)
+    if lines[-1] == "...done."
+      exchanges = []
+      lines.each do |line|
+        items = line.split(/\t/)
+        if items.size > 1
+          exchanges << items[0]
+        end
       end
+      return exchanges
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_LIST_EXCHANGES_FAILED, vhost)
     end
-    exchanges
   end
 
   def list_bindings(vhost)
-    data = %x[#{@rabbit_ctl} list_bindings -p #{vhost} 2> /dev/null]
-    lines = data.split(/\n/)
-    raise RabbitError.new(RabbitError::RABBIT_LIST_BINDINGS_FAILED) unless lines[-1] == "...done."
-    bindings = []
-    lines.each do |line|
-      items = line.split(/\t/)
-      if items.size > 1
-        bindings.push << items[0]
+    output = %x[#{@rabbit_ctl} list_bindings -p #{vhost} 2>&1]
+    lines = output.split(/\n/)
+    if lines[-1] == "...done."
+      bindings = []
+      lines.each do |line|
+        items = line.split(/\t/)
+        if items.size > 1
+          bindings.push << items[0]
+        end
       end
+      return bindings
+    else
+      logger.warn("rabbitmqctl error: #{output}")
+      raise RabbitError.new(RabbitError::RABBIT_LIST_BINDINGS_FAILED, vhost)
     end
-    bindings
   end
 
   def generate_credential(length = 12)
