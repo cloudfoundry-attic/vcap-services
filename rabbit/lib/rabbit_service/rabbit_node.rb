@@ -280,23 +280,23 @@ class VCAP::Services::Rabbit::Node
   end
 
   def stop_server
-    raise RabbitError.new(RabbitError::RABBIT_STOP_SERVER_FAILED) unless %x[#{@rabbit_ctl} stop].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_STOP_SERVER_FAILED) unless %x[#{@rabbit_ctl} stop 2> /dev/null].split(/\n/)[-1] == "...done."
   end
 
   def add_vhost(vhost)
-    raise RabbitError.new(RabbitError::RABBIT_ADD_VHOST_FAILED, vhost) unless %x[#{@rabbit_ctl} add_vhost #{vhost}].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_ADD_VHOST_FAILED, vhost) unless %x[#{@rabbit_ctl} add_vhost #{vhost} 2> /dev/null].split(/\n/)[-1] == "...done."
   end
 
   def delete_vhost(vhost)
-    raise RabbitError.new(RabbitError::RABBIT_DELETE_VHOST_FAILED, vhost) unless %x[#{@rabbit_ctl} delete_vhost #{vhost}].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_DELETE_VHOST_FAILED, vhost) unless %x[#{@rabbit_ctl} delete_vhost #{vhost} 2> /dev/null].split(/\n/)[-1] == "...done."
   end
 
   def add_user(username, password)
-    raise RabbitError.new(RabbitError::RABBIT_ADD_USER_FAILED, username) unless %x[#{@rabbit_ctl} add_user #{username} #{password}].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_ADD_USER_FAILED, username) unless %x[#{@rabbit_ctl} add_user #{username} #{password} 2> /dev/null].split(/\n/)[-1] == "...done."
   end
 
   def delete_user(username)
-    raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username) unless %x[#{@rabbit_ctl} delete_user #{username}].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username) unless %x[#{@rabbit_ctl} delete_user #{username} 2> /dev/null].split(/\n/)[-1] == "...done."
   end
 
   def get_permissions_by_options(binding_options)
@@ -304,32 +304,28 @@ class VCAP::Services::Rabbit::Node
   end
 
   def get_permissions(vhost, username)
-    output = %x[#{@rabbit_ctl} list_user_permissions -p #{vhost} #{username}].split(/\n/)
-    raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username, permissions) unless output[-1] == "...done."
+    output = %x[#{@rabbit_ctl} list_user_permissions -p #{vhost} #{username} 2> /dev/null].split(/\n/)
+    raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username) unless output[-1] == "...done."
     if output.size == 3
       list = output[1].split(/\t/)
       "'#{list[1]}' '#{list[2]}' '#{list[3]}'"
     elsif output.size == 2
       return ""
     else
-     raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username, permissions)
+     raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSION_FAILED, username)
     end
   end
 
   def set_permissions(vhost, username, permissions)
-    raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSION_FAILED, username, permissions) unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions}].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSION_FAILED, username, permissions) unless %x[#{@rabbit_ctl} set_permissions -p #{vhost} #{username} #{permissions} 2> /dev/null].split(/\n/)[-1] == "...done."
   end
 
   def clear_permissions(vhost, username)
-    raise RabbitError.new(RabbitError::RABBIT_CLEAR_PERMISSION_FAILED, username) unless %x[#{@rabbit_ctl} clear_permissions -p #{vhost} #{username}].split(/\n/)[-1] == "...done."
-  end
-
-  def set_password(vhost, username, password)
-    raise RabbitError.new(RabbitError::RABBIT_SET_PASSWORD_FAILED, username, password) unless %x[#{@rabbit_ctl} change_password -p #{vhost} #{username} #{password}].split(/\n/)[-1] == "...done."
+    raise RabbitError.new(RabbitError::RABBIT_CLEAR_PERMISSION_FAILED, username) unless %x[#{@rabbit_ctl} clear_permissions -p #{vhost} #{username} 2> /dev/null].split(/\n/)[-1] == "...done."
   end
 
   def list_users
-    data = %x[#{@rabbit_ctl} list_users]
+    data = %x[#{@rabbit_ctl} list_users 2> /dev/null]
     lines = data.split(/\n/)
     raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED) unless lines[-1] == "...done."
     users = []
@@ -343,7 +339,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def list_queues(vhost)
-    data = %x[#{@rabbit_ctl} list_queues -p #{vhost}]
+    data = %x[#{@rabbit_ctl} list_queues -p #{vhost} 2> /dev/null]
     lines = data.split(/\n/)
     raise RabbitError.new(RabbitError::RABBIT_LIST_QUEUES_FAILED) unless lines[-1] == "...done."
     queues = []
@@ -357,7 +353,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def list_exchanges(vhost)
-    data = %x[#{@rabbit_ctl} list_exchanges -p #{vhost}]
+    data = %x[#{@rabbit_ctl} list_exchanges -p #{vhost} 2> /dev/null]
     lines = data.split(/\n/)
     raise RabbitError.new(RabbitError::RABBIT_LIST_EXCHANGES_FAILED) unless lines[-1] == "...done."
     exchanges = []
@@ -371,7 +367,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def list_bindings(vhost)
-    data = %x[#{@rabbit_ctl} list_bindings -p #{vhost}]
+    data = %x[#{@rabbit_ctl} list_bindings -p #{vhost} 2> /dev/null]
     lines = data.split(/\n/)
     raise RabbitError.new(RabbitError::RABBIT_LIST_BINDINGS_FAILED) unless lines[-1] == "...done."
     bindings = []

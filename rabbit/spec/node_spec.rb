@@ -31,6 +31,7 @@ describe VCAP::Services::Rabbit::Node do
       :local_db => "sqlite3:" + @local_db_file,
       :mbus => "nats://localhost:4222"
     }
+    @default_permissions = "'.*' '.*' '.*'"
 
     # Start NATS server
     @uri = URI.parse(@options[:mbus])
@@ -109,6 +110,173 @@ describe VCAP::Services::Rabbit::Node do
   describe "Node.start_server" do
     it "should start rabbit server correctly" do
       @node.start_server.should be
+    end
+  end
+
+  describe "Node.rabbitmqctl.vhost" do
+    it "should add vhost successfully using right arguments" do
+      @node.add_vhost("test_vhost")
+      %x[#{@options[:rabbit_ctl]} list_permissions -p test_vhost 2> /dev/null].split(/\n/)[-1].should == "...done."
+    end
+
+    it "should raise exception when add vhost using wrong arguments" do
+      begin
+        @node.add_vhost("test_vhost")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+
+    it "should delete vhost successfully using right arguments" do
+      @node.delete_vhost("test_vhost")
+      %x[#{@options[:rabbit_ctl]} list_permissions -p test_vhost 2> /dev/null].split(/\n/)[-1].should_not == "...done."
+    end
+
+    it "should raise exception when delete vhost using wrong arguments" do
+      begin
+        @node.delete_vhost("test_vhost")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+  end
+
+  describe "Node.rabbitmqctl.user" do
+    it "should add user successfully using right arguments" do
+      @node.add_user("test_user", "test_password")
+      @node.list_users.index("test_user").should be
+    end
+
+    it "should raise exception when add user using wrong arguments" do
+      begin
+        @node.add_user("test_user", "test_password")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+
+    it "should delete user successfully using right arguments" do
+      @node.delete_user("test_user")
+      @node.list_users.index("test_user").should be_nil
+    end
+
+    it "should raise exception when delete user using wrong arguments" do
+      begin
+        @node.delete_vhost("test_user")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+  end
+
+  describe "Node.rabbitmqctl.permissions" do
+    before :all do
+      @node.add_vhost("test_vhost")
+      @node.add_user("test_user", "test_password")
+    end
+
+    after :all do
+      @node.delete_user("test_user")
+      @node.delete_vhost("test_vhost")
+    end
+
+    it "should set permissons successfully using right arguments" do
+      @node.set_permissions("test_vhost", "test_user", @default_permissions)
+      @node.get_permissions("test_vhost", "test_user").should == @default_permissions
+    end
+
+    it "should raise exception when get permissons using wrong arguments" do
+      begin
+        @node.set_permissions("test_vhost", "no_existed_user", @default_permissions)
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+
+    it "should get permissons successfully using right arguments" do
+      @node.get_permissions("test_vhost", "test_user").should == @default_permissions
+    end
+
+    it "should raise exception when get permissions using wrong arguments" do
+      begin
+        @node.get_permissions("test_vhost", "no_existed_user")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+
+    it "should clear permissons successfully using right arguments" do
+      @node.clear_permissions("test_vhost", "test_user")
+      @node.get_permissions("test_vhost", "test_user").should == ""
+    end
+
+    it "should raise exception when clear permissons using wrong arguments" do
+      begin
+        @node.clear_permissions("test_vhost", "no_existed_user")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+  end
+
+  describe "Node.rabbitmqctl.stats" do
+    before :all do
+      @node.add_vhost("test_vhost")
+    end
+
+    after :all do
+      @node.delete_vhost("test_vhost")
+    end
+
+    it "should list all users successfully using right arguments" do
+      @node.list_users.should be
+    end
+
+    it "should raise exception when list users using wrong arguments" do
+      begin
+        node_name = ENV["RABBITMQ_NODENAME"]
+        ENV["RABBITMQ_NODENAME"] = "no_existed_node"
+        @node.list_users
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+        ENV["RABBITMQ_NODENAME"] = node_name
+      end
+    end
+
+    it "should list all queues successfully using right arguments" do
+      @node.list_queues("test_vhost").should be
+    end
+
+    it "should raise exception when list queues using wrong arguments" do
+      begin
+        @node.list_queues("no_existed_vhost")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+
+    it "should list all exchanges successfully using right arguments" do
+      @node.list_exchanges("test_vhost").should be
+    end
+
+    it "should raise exception when list exchanges using wrong arguments" do
+      begin
+        @node.list_exchanges("no_existed_vhost")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
+    end
+
+    it "should list all bindings successfully using right arguments" do
+      @node.list_bindings("test_vhost").should be
+    end
+
+    it "should raise exception when list bindings using wrong arguments" do
+      begin
+        @node.list_bindings("no_existed_vhost")
+      rescue => e
+        e.class.should == VCAP::Services::Rabbit::RabbitError
+      end
     end
   end
 
