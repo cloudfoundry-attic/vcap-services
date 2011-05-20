@@ -195,7 +195,7 @@ describe "Mysql server node" do
     if @opts[:max_long_tx] > 0
       EM.run do
         # reduce max_long_tx to accelerate test
-        @opts[:max_long_tx]=2
+        @opts[:max_long_tx] = 1
         @node = VCAP::Services::Mysql::Node.new(@opts)
         conn = connect_to_mysql(@db)
         # prepare a transaction and not commit

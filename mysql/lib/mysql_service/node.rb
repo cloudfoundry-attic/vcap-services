@@ -61,7 +61,7 @@ class VCAP::Services::Mysql::Node
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
     EM.add_periodic_timer(LONG_QUERY_INTERVAL) {kill_long_queries}
-    EM.add_periodic_timer(@max_long_tx/2) {kill_long_transaction} if @max_long_tx > 0
+    EM.add_periodic_timer(@max_long_tx.to_f/2) {kill_long_transaction} if @max_long_tx > 0
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
 
     @base_dir = options[:base_dir]
