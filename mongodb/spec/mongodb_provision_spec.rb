@@ -76,6 +76,26 @@ describe "mongodb_node provision" do
     end
   end
 
+  it "should keep the result after node restart" do
+    port_open_1 = nil
+    port_open_2 = nil
+    EM.run do
+      EM.add_timer(0) { @node.shutdown }
+      EM.add_timer(1) { port_open_1 = is_port_open?('127.0.0.1', @resp['port']) }
+      EM.add_timer(2) { @node = Node.new(@opts) }
+      EM.add_timer(3) { port_open_2 = is_port_open?('127.0.0.1', @resp['port']) }
+      EM.add_timer(4) { EM.stop }
+    end
+
+    port_open_1.should be_false
+    port_open_2.should be_true
+    conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])
+    auth = conn.authenticate(@resp['username'], @resp['password'])
+    auth.should be_true
+    coll = conn.collection('mongo_unit_test')
+    coll.count().should == 1
+  end
+
   it "should return error when unprovisioning a non-existed instance" do
     EM.run do
       e = nil
