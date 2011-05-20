@@ -167,7 +167,7 @@ class VCAP::Services::Rabbit::Node
     end
     varz
   rescue => e
-    logger.warn(e)
+    @logger.warn(e)
     {}
   end
 
@@ -278,7 +278,7 @@ class VCAP::Services::Rabbit::Node
       end
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_START_SERVER_FAILED)
     end
   end
@@ -288,7 +288,7 @@ class VCAP::Services::Rabbit::Node
     if output.split(/\n/)[-1] == "...done."
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_STOP_SERVER_FAILED)
     end
   end
@@ -298,7 +298,7 @@ class VCAP::Services::Rabbit::Node
     if output.split(/\n/)[-1] == "...done."
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_ADD_VHOST_FAILED, vhost)
     end
   end
@@ -308,7 +308,7 @@ class VCAP::Services::Rabbit::Node
     if output.split(/\n/)[-1] == "...done."
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_DELETE_VHOST_FAILED, vhost)
     end
   end
@@ -318,7 +318,7 @@ class VCAP::Services::Rabbit::Node
     if output.split(/\n/)[-1] == "...done."
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_ADD_USER_FAILED, username)
     end
   end
@@ -328,7 +328,7 @@ class VCAP::Services::Rabbit::Node
     if output.split(/\n/)[-1] == "...done."
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_DELETE_USER_FAILED, username)
     end
   end
@@ -350,7 +350,7 @@ class VCAP::Services::Rabbit::Node
        raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSIONS_FAILED, username)
       end
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSIONS_FAILED, username)
     end
   end
@@ -360,7 +360,7 @@ class VCAP::Services::Rabbit::Node
     if output.split(/\n/)[-1] == "...done."
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_SET_PERMISSIONS_FAILED, username, permissions)
     end
   end
@@ -370,7 +370,7 @@ class VCAP::Services::Rabbit::Node
     if output.split(/\n/)[-1] == "...done."
       return true
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_CLEAR_PERMISSIONS_FAILED, username)
     end
   end
@@ -388,7 +388,7 @@ class VCAP::Services::Rabbit::Node
       end
       return users
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED)
     end
   end
@@ -406,7 +406,7 @@ class VCAP::Services::Rabbit::Node
       end
       return queues
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED, vhost)
     end
   end
@@ -424,7 +424,7 @@ class VCAP::Services::Rabbit::Node
       end
       return exchanges
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_LIST_EXCHANGES_FAILED, vhost)
     end
   end
@@ -442,7 +442,7 @@ class VCAP::Services::Rabbit::Node
       end
       return bindings
     else
-      logger.warn("rabbitmqctl error: #{output}")
+      @logger.warn("rabbitmqctl error: #{output}")
       raise RabbitError.new(RabbitError::RABBIT_LIST_BINDINGS_FAILED, vhost)
     end
   end
