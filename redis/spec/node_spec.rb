@@ -19,7 +19,7 @@ describe VCAP::Services::Redis::Node do
 
   before :all do
     @logger = Logger.new(STDOUT, "daily")
-    @logger.level = Logger::DEBUG
+    @logger.level = Logger::ERROR
     @local_db_file = "/tmp/redis_node_" + Time.now.to_i.to_s + ".db"
     @options = {
       :logger => @logger,
@@ -442,6 +442,20 @@ describe VCAP::Services::Redis::Node do
       Redis.new({:port => credentials_list[0]["port"], :password => credentials_list[0]["password"]}).get("test_key").should == "test_value"
       credentials_list[1].each do |key, value|
         Redis.new({:port => value["credentials"]["port"], :password => value["credentials"]["password"]}).get("test_key").should == "test_value"
+      end
+    end
+  end
+
+  describe "Node.restart" do
+    it "should still use the provisioned service after the restart" do
+      EM.run do
+        credentials = @node.provision(:free)
+        @node.shutdown
+        sleep 1
+        @node.start
+        @node.check_password(credentials["port"], credentials["password"]).should == true
+        @node.unprovision(credentials["name"])
+        EM.add_timer(0.1) {EM.stop}
       end
     end
   end

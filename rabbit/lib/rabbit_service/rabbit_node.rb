@@ -40,7 +40,6 @@ class VCAP::Services::Rabbit::Node
     super(options)
     @rabbit_port = options[:rabbit_port] || 5672
     ENV["RABBITMQ_NODE_PORT"] = @rabbit_port.to_s
-    ENV["RABBITMQ_NODENAME"] = "rnode-#{UUIDTools::UUID.random_create.to_s}"
     @rabbit_ctl = options[:rabbit_ctl]
     @rabbit_server = options[:rabbit_server]
     @available_memory = options[:available_memory]

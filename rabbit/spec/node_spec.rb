@@ -608,6 +608,27 @@ describe VCAP::Services::Rabbit::Node do
     end
   end
 
+  describe "Node.restart" do
+    it "should still use the provisioned service after the restart" do
+      EM.run do
+        credentials = @node.provision(:free)
+        @node.shutdown
+        sleep 1
+        @node.start
+        AMQP.start(:host => credentials["host"],
+                   :port => credentials["port"],
+                   :vhost => credentials["vhost"],
+                   :user => credentials["user"],
+                   :pass => credentials["pass"]) do |conn|
+          conn.connected?.should == true
+          AMQP.stop {EM.stop}
+        end
+        @node.unprovision(credentials["name"])
+        EM.add_timer(0.1) {EM.stop}
+      end
+    end
+  end
+
   describe "Node.shutdown" do
     it "should return true when shutdown finished" do
       EM.run do
