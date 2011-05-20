@@ -349,6 +349,23 @@ describe "Mysql server node" do
     end
   end
 
+  it "should retain instance data after node restart" do
+    EM.run do
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      db = node.provision(@default_plan)
+      @test_dbs[db] = []
+      conn = connect_to_mysql(db)
+      conn.query('create table test(id int)')
+      # simulate we restart the node
+      node.shutdown
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      conn2 = connect_to_mysql(db)
+      result = conn2.query('show tables')
+      result.num_rows().should == 1
+      EM.stop
+    end
+  end
+
   it "should able to generate varz." do
     EM.run do
       varz = @node.varz_details
