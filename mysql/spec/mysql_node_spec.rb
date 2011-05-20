@@ -34,6 +34,7 @@ describe "Mysql server node" do
 
   before :all do
     @opts = getNodeTestConfig
+    @opts.freeze
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
@@ -115,11 +116,12 @@ describe "Mysql server node" do
 
   it "should raise error if there is no available storage to provision instance" do
     EM.run do
-      @opts[:available_storage]=10
-      @opts[:max_db_size]=20
-      @node = VCAP::Services::Mysql::Node.new(@opts)
+      opts = @opts.dup
+      opts[:available_storage]=10
+      opts[:max_db_size]=20
+      node = VCAP::Services::Mysql::Node.new(opts)
       expect {
-        @node.provision(@default_plan)
+        node.provision(@default_plan)
       }.should raise_error(MysqlError, /Node disk is full/)
       EM.stop
     end
@@ -194,16 +196,17 @@ describe "Mysql server node" do
   it "should kill long transaction" do
     if @opts[:max_long_tx] > 0
       EM.run do
+        opts = @opts.dup
         # reduce max_long_tx to accelerate test
-        @opts[:max_long_tx] = 1
-        @node = VCAP::Services::Mysql::Node.new(@opts)
+        opts[:max_long_tx] = 1
+        node = VCAP::Services::Mysql::Node.new(opts)
         conn = connect_to_mysql(@db)
         # prepare a transaction and not commit
         conn.query("create table a(id int) engine=innodb")
         conn.query("insert into a value(10)")
         conn.query("begin")
         conn.query("select * from a for update")
-        EM.add_timer(@opts[:max_long_tx]*2) {
+        EM.add_timer(opts[:max_long_tx]*2) {
           expect {conn.query("select * from a for update")}.should raise_error
           EM.stop
         }
@@ -328,6 +331,7 @@ describe "Mysql server node" do
   it "should recreate bindings when enable instance" do
     EM.run do
       db = @node.provision(@default_plan)
+      @test_dbs[db] = []
       binding = @node.bind(db['name'], @default_opts)
       conn = connect_to_mysql(binding)
       @node.disable_instance(db, [binding])
