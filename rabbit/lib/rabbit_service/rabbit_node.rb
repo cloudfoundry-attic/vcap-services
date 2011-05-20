@@ -205,11 +205,11 @@ class VCAP::Services::Rabbit::Node
   end
 
   # Rabbitmq has no data to dump for migration
-  def dump_instance(service_credentials, binding_credentials_list = [], dump_dir)
+  def dump_instance(service_credentials, binding_credentials_list, dump_dir)
     true
   end
 
-  def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
+  def import_instance(service_credentials, binding_credentials_list, dump_dir, plan)
     provision(plan, service_credentials)
   end
 
