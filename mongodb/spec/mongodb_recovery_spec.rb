@@ -43,7 +43,7 @@ describe "mongodb backup/recovery"  do
     coll.insert(row)
 
     # Run mongodb_backup
-    res = Kernel.system("../bin/mongodb_backup -c #{CONFIG_FILE} -t")
+    res = Kernel.system("../bin/mongodb_backup -c #{CONFIG_FILE} -t > /dev/null")
     raise 'mongodb_backup failed' unless res
 
     # Change value after backup

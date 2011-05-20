@@ -280,7 +280,9 @@ class VCAP::Services::MongoDB::Node
 
     # Run mongorestore
     command = "mongorestore -u #{username} -p#{password} --port #{port} #{backup_file}"
-    res = Kernel.system(command)
+    output = `#{command}`
+    res = $?.success?
+    @logger.debug(output)
     raise 'mongorestore failed' unless res
     true
   end
