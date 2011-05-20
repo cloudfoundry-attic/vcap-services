@@ -162,6 +162,7 @@ class VCAP::Services::MongoDB::Node
       })
 
     rescue => e
+      record_service_log(provisioned_service.name)
       cleanup_service(provisioned_service)
       raise e.to_s + ": Could not save admin user."
     end
@@ -434,8 +435,8 @@ class VCAP::Services::MongoDB::Node
       port = provisioned_service.port
       password = provisioned_service.password
       dir = service_dir(provisioned_service.name)
-      data_dir = File.join(dir, "data")
-      log_file = File.join(dir, "log")
+      data_dir = data_dir(dir)
+      log_file = log_file(dir)
 
       config = @config_template.result(binding)
       config_path = File.join(dir, "mongodb.conf")
@@ -446,7 +447,8 @@ class VCAP::Services::MongoDB::Node
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
-      exec("#{@mongod_path} -f #{config_path}")
+      cmd = "#{@mongod_path} -f #{config_path}"
+      exec(cmd) rescue @logger.warn("exec(#{cmd}) failed!")
     end
   end
 
@@ -563,8 +565,31 @@ class VCAP::Services::MongoDB::Node
     File.join(to_dir, 'dump_file')
   end
 
+  def log_file(base_dir)
+    File.join(base_dir, 'log')
+  end
+
+  def data_dir(base_dir)
+    File.join(base_dir, 'data')
+  end
+
   def rm_lockfile(service_id)
     lockfile = File.join(service_dir(service_id), 'data', 'mongod.lock')
     FileUtils.rm_rf(lockfile)
+  end
+
+  def record_service_log(service_id)
+    @logger.warn(" *** BEGIN mongodb log - instance: #{service_id}")
+    @logger.warn("")
+    base_dir = service_dir(service_id)
+    file = File.new(log_file(base_dir), 'r')
+    while (line = file.gets)
+      @logger.warn(line.chomp!)
+    end
+  rescue => e
+    @logger.warn(e)
+  ensure
+    @logger.warn(" *** END mongodb log - instance: #{service_id}")
+    @logger.warn("")
   end
 end
