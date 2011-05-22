@@ -214,6 +214,40 @@ describe "Mysql server node" do
     end
   end
 
+  it "should kill long queries" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      opts = @opts.dup
+      opts[:max_long_query] = 1
+      conn = connect_to_mysql(db)
+      node = VCAP::Services::Mysql::Node.new(opts)
+      conn.query('create table test(id INT) engine innodb')
+      conn.query('insert into test value(10)')
+      conn.query('begin')
+      # lock table test
+      conn.query('select * from test where id = 10 for update')
+      err = nil
+      t = Proc.new do
+        begin
+          name, host, port, user, pass = %w(name hostname port user password).map{|key| db[key]}
+          # use deadlock to simulate long queries
+          err = %x[echo 'select * from test for update'|#{@opts[:mysql_bin]} -h #{host} -P #{port} -u #{user} --password=#{pass} #{name} 2>&1]
+        rescue => e
+          err = e
+        end
+      end
+      EM.defer(t)
+      EM.add_timer(opts[:max_long_query] * 2){
+        err.should_not == nil
+        err.should =~ /interrupted/
+        # counter should also be updated
+        node.varz_details[:long_queries_killed].should == 1
+        EM.stop
+      }
+    end
+  end
+
   it "should create new a credential when binding" do
     EM.run do
       binding = @node.bind(@db["name"],  @default_opts)

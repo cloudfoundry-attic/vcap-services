@@ -61,7 +61,7 @@ class VCAP::Services::Mysql::Node
     @connection = mysql_connect
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
-    EM.add_periodic_timer(LONG_QUERY_INTERVAL) {kill_long_queries}
+    EM.add_periodic_timer(@max_long_query.to_f/2) {kill_long_queries} if @max_long_query > 0
     EM.add_periodic_timer(@max_long_tx.to_f/2) {kill_long_transaction} if @max_long_tx > 0
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
 
@@ -142,6 +142,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def kill_long_queries
+    @logger.debug("Begin kill long queries.")
     process_list = @connection.list_processes
     process_list.each do |proc|
       thread_id, user, _, db, command, time, _, info = proc
@@ -156,6 +157,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def kill_long_transaction
+    @logger.debug("Begin kill long transactions.")
     # FIXME need a better transaction query solution other than parse status text
     result = @connection.query("SHOW ENGINE INNODB STATUS")
     innodb_status = nil
