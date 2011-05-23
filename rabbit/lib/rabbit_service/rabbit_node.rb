@@ -108,11 +108,11 @@ class VCAP::Services::Rabbit::Node
     }
   rescue => e
     # Rollback
-      begin
-        cleanup_instance(instance)
-      rescue => e
-        # Ignore the exception here
-      end
+    begin
+      cleanup_instance(instance)
+    rescue => e1
+      # Ignore the exception here
+    end
     raise e
   end
 
@@ -143,11 +143,11 @@ class VCAP::Services::Rabbit::Node
     credentials
   rescue => e
     # Rollback
-      begin
-        delete_user(credentials["user"])
-      rescue => e
-        # Ignore the exception here
-      end
+    begin
+      delete_user(credentials["user"])
+    rescue => e1
+      # Ignore the exception here
+    end
     raise e
   end
 
