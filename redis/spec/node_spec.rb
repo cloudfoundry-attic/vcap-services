@@ -1,5 +1,4 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require "redis"
 require File.dirname(__FILE__) + '/spec_helper'
 require "redis_service/redis_node"
 require "redis_service/redis_error"
@@ -106,6 +105,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.start_db" do
     it "should fail when set local db with non-existed file argument" do
       @node.local_db = "sqlite3:/non_existed/non-existed.db"
+      thrown = nil
       begin
         @node.start_db
       rescue => e
@@ -183,26 +183,12 @@ describe VCAP::Services::Redis::Node do
 
     it "should not allow null credentials to access the instance instance" do
       redis = Redis.new({:port => @credentials["port"]})
-      thrown = nil
-      begin
-        redis.get("test_key")
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == RuntimeError
+      test_exception(RuntimeError) {redis.get("test_key")}
     end
 
     it "should not allow wrong credentials to access the instance instance" do
       redis = Redis.new({:port => @credentials["port"], :password => "wrong_password"})
-      thrown = nil
-      begin
-        redis.get("test_key")
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == RuntimeError
+      test_exception(RuntimeError) {redis.get("test_key")}
     end
 
     it "should delete the provisioned instance port in free port list when finish a provision" do
@@ -244,14 +230,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should not access the instance instance when doing unprovision" do
       redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
-      thrown = nil
-      begin
-        redis.get("test_key")
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == Errno::ECONNREFUSED
+      test_exception(Errno::ECONNREFUSED) {redis.get("test_key")}
     end
 
     it "should add the provisioned instance port in free port list when finish an unprovision" do
@@ -263,14 +242,7 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should raise error when unprovision an non-existed name" do
-      thrown = nil
-      begin
-        @node.unprovision("non-existed")
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == VCAP::Services::Redis::RedisError
+      test_exception(VCAP::Services::Redis::RedisError) {@node.unprovision("non-existed")}
     end
   end
 
@@ -278,41 +250,20 @@ describe VCAP::Services::Redis::Node do
     it "shuold raise error when save instance instance failed" do
       @instance.pid = 100
       @instance.persisted_state = DataMapper::Resource::State::Immutable
-      thrown = nil
-      begin
-        @node.save_instance(@instance)
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == VCAP::Services::Redis::RedisError
+      test_exception(VCAP::Services::Redis::RedisError) {@node.save_instance(@instance)}
     end
   end
 
   describe "Node.destory_instance" do
     it "shuold raise error when destroy instance instance failed" do
-      thrown = nil
-      begin
-        instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
-        @node.destroy_instance(instance)
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == VCAP::Services::Redis::RedisError
+      instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
+      test_exception(VCAP::Services::Redis::RedisError) {@node.destroy_instance(instance)}
     end
   end
 
   describe "Node.get_instance" do
     it "shuold raise error when get instance instance failed" do
-      thrown = nil
-      begin
-        @node.get_instance("non-existed")
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == VCAP::Services::Redis::RedisError
+      test_exception(VCAP::Services::Redis::RedisError) {@node.get_instance("non-existed")}
     end
   end
 
@@ -337,26 +288,12 @@ describe VCAP::Services::Redis::Node do
 
     it "should not allow null credentials to access the instance instance" do
       redis = Redis.new({:port => @binding_credentials["port"]})
-      thrown = nil
-      begin
-        redis.get("test_key")
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == RuntimeError
+      test_exception(RuntimeError) {redis.get("test_key")}
     end
 
     it "should not allow wrong credentials to access the instance instance" do
       redis = Redis.new({:port => @binding_credentials["port"], :password => "wrong_password"})
-      thrown = nil
-      begin
-        redis.get("test_key")
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == RuntimeError
+      test_exception(RuntimeError) {redis.get("test_key")}
     end
 
     it "should send binding messsage when finish a binding" do
@@ -388,14 +325,7 @@ describe VCAP::Services::Redis::Node do
     it "should raise error when give wrong plan name" do
       instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
       instance.plan = :non_existed_plan
-      thrown = nil
-      begin
-        @node.memory_for_instance(instance)
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == VCAP::Services::Redis::RedisError
+      test_exception(VCAP::Services::Redis::RedisError) {@node.memory_for_instance(instance)}
     end
   end
 
@@ -445,14 +375,7 @@ describe VCAP::Services::Redis::Node do
     it "should not access redis server after disable the instance" do
       @node.disable_instance(@credentials, @binding_credentials_list)
       sleep 1
-      thrown = nil
-      begin
-        @node.get_info(@credentials["port"], @credentials["password"])
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == VCAP::Services::Redis::RedisError
+      test_exception(VCAP::Services::Redis::RedisError) {@node.get_info(@credentials["port"], @credentials["password"])}
     end
 
     it "should dump db file to right location after dump instance" do
