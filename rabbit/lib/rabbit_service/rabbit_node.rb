@@ -62,7 +62,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def shutdown
-    super if defined?(super)
+    super
     stop_server
     true
   end
