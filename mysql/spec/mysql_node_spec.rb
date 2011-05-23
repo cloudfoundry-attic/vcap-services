@@ -248,7 +248,7 @@ describe "Mysql server node" do
     end
   end
 
-  it "should create new a credential when binding" do
+  it "should create a new credential when binding" do
     EM.run do
       binding = @node.bind(@db["name"],  @default_opts)
       binding["name"].should == @db["name"]
@@ -408,7 +408,7 @@ describe "Mysql server node" do
       varz[:queries_per_second].should >= 0
       varz[:database_status].should be_instance_of Array
       varz[:node_storage_capacity].should > 0
-      varz[:node_storage_used].should > 0
+      varz[:node_storage_used].should >= 0
       varz[:long_queries_killed].should >= 0
       varz[:long_transactions_killed].should >= 0
       varz[:provision_served].should >= 0
