@@ -34,6 +34,7 @@ describe "Mysql server node" do
 
   before :all do
     @opts = getNodeTestConfig
+    @opts.freeze
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
@@ -115,11 +116,12 @@ describe "Mysql server node" do
 
   it "should raise error if there is no available storage to provision instance" do
     EM.run do
-      @opts[:available_storage]=10
-      @opts[:max_db_size]=20
-      @node = VCAP::Services::Mysql::Node.new(@opts)
+      opts = @opts.dup
+      opts[:available_storage]=10
+      opts[:max_db_size]=20
+      node = VCAP::Services::Mysql::Node.new(opts)
       expect {
-        @node.provision(@default_plan)
+        node.provision(@default_plan)
       }.should raise_error(MysqlError, /Node disk is full/)
       EM.stop
     end
@@ -194,16 +196,17 @@ describe "Mysql server node" do
   it "should kill long transaction" do
     if @opts[:max_long_tx] > 0
       EM.run do
+        opts = @opts.dup
         # reduce max_long_tx to accelerate test
-        @opts[:max_long_tx]=2
-        @node = VCAP::Services::Mysql::Node.new(@opts)
+        opts[:max_long_tx] = 1
+        node = VCAP::Services::Mysql::Node.new(opts)
         conn = connect_to_mysql(@db)
         # prepare a transaction and not commit
         conn.query("create table a(id int) engine=innodb")
         conn.query("insert into a value(10)")
         conn.query("begin")
         conn.query("select * from a for update")
-        EM.add_timer(@opts[:max_long_tx]*2) {
+        EM.add_timer(opts[:max_long_tx]*2) {
           expect {conn.query("select * from a for update")}.should raise_error
           EM.stop
         }
@@ -211,7 +214,41 @@ describe "Mysql server node" do
     end
   end
 
-  it "should create new a credential when binding" do
+  it "should kill long queries" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      opts = @opts.dup
+      opts[:max_long_query] = 1
+      conn = connect_to_mysql(db)
+      node = VCAP::Services::Mysql::Node.new(opts)
+      conn.query('create table test(id INT) engine innodb')
+      conn.query('insert into test value(10)')
+      conn.query('begin')
+      # lock table test
+      conn.query('select * from test where id = 10 for update')
+      err = nil
+      t = Proc.new do
+        begin
+          name, host, port, user, pass = %w(name hostname port user password).map{|key| db[key]}
+          # use deadlock to simulate long queries
+          err = %x[echo 'select * from test for update'|#{@opts[:mysql_bin]} -h #{host} -P #{port} -u #{user} --password=#{pass} #{name} 2>&1]
+        rescue => e
+          err = e
+        end
+      end
+      EM.defer(t)
+      EM.add_timer(opts[:max_long_query] * 2){
+        err.should_not == nil
+        err.should =~ /interrupted/
+        # counter should also be updated
+        node.varz_details[:long_queries_killed].should == 1
+        EM.stop
+      }
+    end
+  end
+
+  it "should create a new credential when binding" do
     EM.run do
       binding = @node.bind(@db["name"],  @default_opts)
       binding["name"].should == @db["name"]
@@ -271,14 +308,94 @@ describe "Mysql server node" do
       host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
       tmp_file = "/tmp/#{db['name']}.sql.gz"
       result = `/usr/bin/mysqldump -h #{host} -P #{port} -u #{user} --password=#{password} #{db['name']} | gzip > #{tmp_file}`
-      puts "Result of mysql backup: #{result}"
       conn.query("drop table test")
       res = conn.query("show tables")
       res.num_rows().should == 0
-      @node.restore(db["name"], "/tmp/")
+      @node.restore(db["name"], "/tmp/").should == true
       res = conn.query("show tables")
       res.num_rows().should == 1
       res.fetch_row[0].should == "test"
+      EM.stop
+    end
+  end
+
+  it "should be able to disable an instance" do
+    EM.run do
+      conn = connect_to_mysql(@db)
+      bind_cred = @node.bind(@db["name"],  @default_opts)
+      conn2 = connect_to_mysql(bind_cred)
+      @test_dbs[@db] << bind_cred
+      @node.disable_instance(@db, [bind_cred])
+      # kill existing session
+      expect { conn.query('select 1')}.should raise_error
+      expect { conn2.query('select 1')}.should raise_error
+      # delete user
+      expect { connect_to_mysql(@db)}.should raise_error
+      expect { connect_to_mysql(bind_cred)}.should raise_error
+      EM.stop
+    end
+  end
+
+  it "should able to dump instance content to file" do
+    EM.run do
+      conn = connect_to_mysql(@db)
+      conn.query('create table MyTestTable(id int)')
+      @node.dump_instance(@db, nil, '/tmp').should == true
+      File.open(File.join("/tmp", "#{@db['name']}.sql")) do |f|
+        line = f.each_line.find {|line| line =~ /MyTestTable/}
+        line.should_not be nil
+      end
+      EM.stop
+    end
+  end
+
+  it "should recreate database and user when import instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      @node.dump_instance(db, nil , '/tmp')
+      @node.unprovision(db['name'], [])
+      @node.import_instance(db, [], '/tmp', @default_plan).should == true
+      conn = connect_to_mysql(db)
+      expect { conn.query('select 1')}.should_not raise_error
+      EM.stop
+    end
+  end
+
+  it "should recreate bindings when enable instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      conn = connect_to_mysql(binding)
+      @node.disable_instance(db, [binding])
+      expect {conn = connect_to_mysql(binding)}.should raise_error
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.enable_instance(db, value)
+      result.should be_instance_of Array
+      expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      EM.stop
+    end
+  end
+
+  it "should retain instance data after node restart" do
+    EM.run do
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      db = node.provision(@default_plan)
+      @test_dbs[db] = []
+      conn = connect_to_mysql(db)
+      conn.query('create table test(id int)')
+      # simulate we restart the node
+      node.shutdown
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      conn2 = connect_to_mysql(db)
+      result = conn2.query('show tables')
+      result.num_rows().should == 1
       EM.stop
     end
   end
@@ -291,7 +408,7 @@ describe "Mysql server node" do
       varz[:queries_per_second].should >= 0
       varz[:database_status].should be_instance_of Array
       varz[:node_storage_capacity].should > 0
-      varz[:node_storage_used].should > 0
+      varz[:node_storage_used].should >= 0
       varz[:long_queries_killed].should >= 0
       varz[:long_transactions_killed].should >= 0
       varz[:provision_served].should >= 0

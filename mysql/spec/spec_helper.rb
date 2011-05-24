@@ -28,6 +28,8 @@ def getNodeTestConfig()
   options = {
     :logger => getLogger,
     :base_dir => parse_property(config, "base_dir", String),
+    :mysqldump_bin => parse_property(config, "mysqldump_bin", String),
+    :mysql_bin => parse_property(config, "mysql_bin", String),
     :gzip_bin => parse_property(config, "gzip_bin", String),
     :mysql_bin => parse_property(config, "mysql_bin", String),
     :available_storage => parse_property(config, "available_storage", Integer),

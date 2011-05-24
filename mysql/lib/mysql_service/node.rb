@@ -7,6 +7,7 @@ require "pp"
 require "datamapper"
 require "uuidtools"
 require "mysql"
+require "open3"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
@@ -53,14 +54,15 @@ class VCAP::Services::Mysql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
+    @mysqldump_bin = options[:mysqldump_bin]
     @gzip_bin = options[:gzip_bin]
     @mysql_bin = options[:mysql_bin]
 
     @connection = mysql_connect
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
-    EM.add_periodic_timer(LONG_QUERY_INTERVAL) {kill_long_queries}
-    EM.add_periodic_timer(@max_long_tx/2) {kill_long_transaction} if @max_long_tx > 0
+    EM.add_periodic_timer(@max_long_query.to_f/2) {kill_long_queries} if @max_long_query > 0
+    EM.add_periodic_timer(@max_long_tx.to_f/2) {kill_long_transaction} if @max_long_tx > 0
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
 
     @base_dir = options[:base_dir]
@@ -140,6 +142,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def kill_long_queries
+    @logger.debug("Begin kill long queries.")
     process_list = @connection.list_processes
     process_list.each do |proc|
       thread_id, user, _, db, command, time, _, info = proc
@@ -154,6 +157,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def kill_long_transaction
+    @logger.debug("Begin kill long transactions.")
     # FIXME need a better transaction query solution other than parse status text
     result = @connection.query("SHOW ENGINE INNODB STATUS")
     innodb_status = nil
@@ -345,13 +349,99 @@ class VCAP::Services::Mysql::Node
       "#{@mysql_bin} -h #{host} -P #{port} -u #{user} --password=#{pass}"
     cmd += " -S #{socket}" unless socket.nil?
     cmd += " #{name}"
-    @logger.debug("Restore command: #{cmd}")
-    result = `#{cmd}`
-    @logger.info("Restore command results: #{result}")
-    true
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
   rescue => e
     @logger.error("Error during restore #{e}")
-    raise e
+    nil
+  end
+
+  # Disable all credentials and kill user sessions
+  def disable_instance(prov_cred, binding_creds)
+    @logger.debug("Disable instance #{prov_cred["name"]} request.")
+    binding_creds << prov_cred
+    binding_creds.each do |cred|
+      unbind(cred)
+    end
+    true
+  rescue  => e
+    @logger.warn(e)
+    nil
+  end
+
+  # Dump db content into given path
+  def dump_instance(prov_cred, binding_creds, dump_file_path)
+    @logger.debug("Dump instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    dump_file = File.join(dump_file_path, "#{name}.sql")
+    @logger.info("Dump instance #{name} content to #{dump_file}")
+    cmd = "#{@mysqldump_bin} -h #{host} -u #{user} --password=#{password} --single-transaction #{name} > #{dump_file}"
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  # Provision and import dump files
+  # Refer to #dump_instance
+  def import_instance(prov_cred, binding_creds, dump_file_path, plan)
+    @logger.debug("Import instance #{prov_cred["name"]} request.")
+    @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
+    provision(plan, prov_cred)
+    name = prov_cred["name"]
+    import_file = File.join(dump_file_path, "#{name}.sql")
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    @logger.info("Import data from #{import_file} to database #{name}")
+    cmd = "#{@mysql_bin} --host=#{host} --user=#{user} --password=#{password} #{name} < #{import_file}"
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  # Re-bind credentials
+  # Refer to #disable_instance
+  def enable_instance(prov_cred, binding_creds_hash)
+    @logger.debug("Enable instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    binding_creds_hash[name] = prov_cred
+    binding_creds_hash.each do |k, v|
+      cred = v["credentials"]
+      binding_opts = v["binding_options"]
+      bind(name, binding_opts, cred)
+    end
+    # Mysql don't need to modify binding info
+    return [prov_cred, binding_creds_hash]
+  rescue => e
+    @logger.warn(e)
+    []
+  end
+
+  # shell CMD wrapper and logger
+  def exe_cmd(cmd, stdin=nil)
+    @logger.debug("Execute shell cmd:[#{cmd}]")
+    o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
+    if s.exitstatus == 0
+      @logger.info("Execute cmd:[#{cmd}] successd.")
+    else
+      @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
+    end
+    return [o, e, s]
   end
 
   def varz_details()
