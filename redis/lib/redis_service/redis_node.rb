@@ -76,7 +76,7 @@ class VCAP::Services::Redis::Node
   end
 
   def shutdown
-    super if defined?(super)
+    super
     ProvisionedInstance.all.each do |instance|
       stop_redis_server(instance)
     end
@@ -89,16 +89,23 @@ class VCAP::Services::Redis::Node
     }
   end
 
-  def provision(plan, credentials = nil)
+  def provision(plan, credentials = nil, db_file = nil)
     instance = ProvisionedInstance.new
     instance.plan = plan
-    port = @free_ports.first
-    @free_ports.delete(port)
     if credentials
       instance.name = credentials["name"]
-      instance.port = credentials["port"]
+      if @free_ports.include?(credentials["port"])
+        @free_ports.delete(credentials["port"])
+        instance.port = credentials["port"]
+      else
+        port = @free_ports.first
+        @free_ports.delete(port)
+        instance.port = port
+      end
       instance.password = credentials["password"]
     else
+      port = @free_ports.first
+      @free_ports.delete(port)
       instance.name = "redis-#{UUIDTools::UUID.random_create.to_s}"
       instance.port = port
       instance.password = UUIDTools::UUID.random_create.to_s
@@ -111,7 +118,7 @@ class VCAP::Services::Redis::Node
       raise e
     end
     begin
-      instance.pid = start_instance(instance)
+      instance.pid = start_instance(instance, db_file)
       save_instance(instance)
     rescue => e1
       begin
@@ -122,6 +129,8 @@ class VCAP::Services::Redis::Node
       raise e1
     end
 
+    # Sleep 1 second to wait for redis instance start
+    sleep 1
     credentials = {
       "hostname" => @local_ip,
       "port" => instance.port,
@@ -136,12 +145,18 @@ class VCAP::Services::Redis::Node
     {}
   end
 
-  def bind(instance_id, binding_options = :all)
+  def bind(instance_id, binding_options = :all, credentials = nil)
     # FIXME: Redis has no user level security, just return provisioned credentials.
-    instance = get_instance(instance_id)
+    instance = nil
+    if credentials
+      instance = get_instance(credentials["name"])
+    else
+      instance = get_instance(instance_id)
+    end
     credentials = {
       "hostname" => @local_ip,
       "port" => instance.port,
+      "name" => instance_id,
       "password" => instance.password
     }
   end
@@ -159,6 +174,76 @@ class VCAP::Services::Redis::Node
     instance.pid = start_instance(instance, dump_file)
     save_instance(instance)
     {}
+  end
+
+  def disable_instance(service_credentials, binding_credentials_list = [])
+    set_config(service_credentials["port"], service_credentials["password"], "requirepass", @disable_password)
+    true
+  end
+
+  # This function may run in old node or new node, it does these things:
+  # 1. Try to use password in credentials to connect to redis instance
+  # 2. If connection failed, then it's the old node,
+  #    since the password old node is changed to deny then access,
+  #    if successed, then it's the new node.
+  # 3. For old node, it should restore the password,
+  #    for new node, nothing need to do, all are done in import_instance.
+  def enable_instance(service_credentials, binding_credentials_map = {})
+    if check_password(service_credentials["port"], service_credentials["password"])
+      # The new node
+      instance = get_instance(service_credentials["name"])
+      service_credentials["port"] = instance.port
+      service_credentials["hostname"] = @local_ip
+      binding_credentials_map.each do |key, value|
+        binding_credentials_map[key]["credentials"]["port"] = instance.port
+        binding_credentials_map[key]["credentials"]["hostname"] = @local_ip
+      end
+    else
+      # The old node
+      set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
+    end
+    [service_credentials, binding_credentials_map]
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def dump_instance(service_credentials, binding_credentials_list = [], dump_dir)
+    FileUtils.mkdir_p(dump_dir)
+    save = get_config(service_credentials["port"], @disable_password, "save")
+    dir = get_config(service_credentials["port"], @disable_password, "dir")
+    set_config(service_credentials["port"], @disable_password, "dir", dump_dir)
+    # This will activate the redis instance to do snapshot in 1 second.
+    set_config(service_credentials["port"], @disable_password, "save", "1 0")
+    # After 2 second, the dump work should start or finish,
+    # if not finish, then check its status each second.
+    sleep 1
+    is_dump_finish = false
+    max_waiting_time = 0
+    while true
+      is_dump_finish = (get_info(service_credentials["port"], @disable_password)["bgsave_in_progress"] == "0")
+      sleep 1
+      if is_dump_finish
+        break
+      end
+      max_waiting_time = max_waiting_time + 1
+      if max_waiting_time > 30
+        return nil
+      end
+    end
+    # Restore snapshot configuration
+    set_config(service_credentials["port"], @disable_password, "save", save)
+    sleep 1
+    set_config(service_credentials["port"], @disable_password, "dir", dir)
+    true
+  end
+
+  def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
+    db_file = File.join(dump_dir, "dump.rdb")
+    provision(plan, service_credentials, db_file)
+  rescue => e
+    @logger.warn(e)
+    nil
   end
 
   def varz_details
@@ -256,7 +341,6 @@ class VCAP::Services::Redis::Node
       exec("#{@redis_server_path} #{config_path}")
     end
   rescue => e
-    puts e.backtrace
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.pretty_inspect)
   end
 
@@ -296,8 +380,17 @@ class VCAP::Services::Redis::Node
     begin
       redis.shutdown
     rescue => e
-      # FIXME: it will raise exception even if shutdown successfully,
-      # should be a redis ruby binding bug. Here just ignore it.
+      if e.class == Errno::ECONNREFUSED
+        # FIXME: it will raise exception even if shutdown successfully,
+        # should be a redis ruby binding bug. Here just ignore it.
+      elsif e.class == RuntimeError
+        # It could be a disabled instance
+        redis = Redis.new({:port => instance.port, :password => @disable_password})
+        begin
+          redis.shutdown
+        rescue => e
+        end
+      end
     end
   end
 
@@ -335,15 +428,41 @@ class VCAP::Services::Redis::Node
     max
   end
 
-  def get_info(instance)
-    redis = Redis.new({:port => instance.port, :password => instance.password})
+  def check_password(port, password)
+    redis = Redis.new({:port => port})
+    redis.auth(password)
+    true
+  rescue => e
+    if e.message == "ERR invalid password"
+      return false
+    else
+      raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
+    end
+  end
+
+  def get_info(port, password)
+    redis = Redis.new({:port => port, :password => password})
     redis.info
   rescue => e
-    raise RedisError.new(RedisError::REDIS_GET_INSTANCE_INFO_FAILED, instance.pretty_inspect)
+    raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
+  end
+
+  def get_config(port, password, key)
+    redis = Redis.new({:port => port, :password => password})
+    redis.config(:get, key)[key]
+  rescue => e
+    raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
+  end
+
+  def set_config(port, password, key, value)
+    redis = Redis.new({:port => port, :password => password})
+    redis.config(:set, key, value)
+  rescue => e
+    raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   end
 
   def get_varz(instance)
-    info = get_info(instance)
+    info = get_info(instance.port, instance.password)
     varz = {}
     varz[:name] = instance.name
     varz[:port] = instance.port

@@ -11,3 +11,4 @@ require 'nats/client'
 require 'vcap/common'
 require "datamapper"
 require "uri"
+require "redis"
