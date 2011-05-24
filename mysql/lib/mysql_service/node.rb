@@ -330,7 +330,7 @@ class VCAP::Services::Mysql::Node
       end
     rescue Mysql::Error => e
       # kill session failed error, only log it.
-      @logger.error("Could not kill user session.:[#{e1.errno}] #{e1.error}")
+      @logger.error("Could not kill user session.:[#{e.errno}] #{e.error}")
     end
   end
 
