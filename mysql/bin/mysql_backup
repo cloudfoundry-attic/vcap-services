@@ -7,6 +7,7 @@ ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 
 require 'rubygems'
 require 'bundler/setup'
+require 'optparse'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
 
@@ -25,15 +26,16 @@ class MysqlBackup
   def self.backup_database(opts, &blk)
     backup_cmd, compress_cmd, name, ts=
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
+    path_prefix = "backups"
     if SYSTEM_DB.index(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<service specific data>
-      full_path = File.join(opts[:backup_path], opts[:service_name], name,
+      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name], name,
                             ts.to_i.to_s)
     else
       # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
       # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-      full_path = File.join(opts[:backup_path], opts[:service_name],
+      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name],
                             name[0,2], name[2,2], name[4,2], name,
                             ts.to_i.to_s)
     end
@@ -152,6 +154,21 @@ abort "Can't write to #{opts[:backup_path]}" unless File.writable_real?(opts[:ba
 
 logger = Logger.new(opts[:logfile], "daily")
 logger.level = Logger::INFO
+
+# check if backup process is already running
+cmds = %x[ps ax -o args=].split(/\n/)
+count = 0
+cmds.each do |cmd|
+  if cmd.index(__FILE__) != nil
+    logger.info cmd
+    count += 1
+  end
+end
+logger.info "backup process count: " + count.to_s
+if count > 2
+  logger.info "backup is running, exit"
+  exit
+end
 
 MysqlBackup.setlogger(logger)
 

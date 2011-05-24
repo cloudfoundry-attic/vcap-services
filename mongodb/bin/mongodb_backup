@@ -67,6 +67,21 @@ end
   else Logger::UNKNOWN
 end
 
+# check if backup process is already running
+cmds = %x[ps ax -o args=].split(/\n/)
+count = 0
+cmds.each do |cmd|
+  if cmd.index(__FILE__) != nil
+    logger.info cmd
+    count += 1
+  end
+end
+logger.info "backup process count: " + count.to_s
+if count > 2
+  logger.info "backup is running, exit"
+  exit
+end
+
 # make sure the backup base dir is mounted
 if !options[:tolerant] && %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
   @logger.error config["backup_base_dir"] + " is not mounted, exit"
