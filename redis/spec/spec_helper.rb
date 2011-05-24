@@ -12,14 +12,3 @@ require 'vcap/common'
 require "datamapper"
 require "uri"
 require "redis"
-
-def test_exception(exception_type)
-  thrown = nil
-  begin
-    yield
-  rescue => e
-    thrown = e
-  end
-  thrown.should be
-  thrown.class.should == exception_type
-end

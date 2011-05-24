@@ -92,14 +92,7 @@ describe VCAP::Services::Rabbit::Node do
   describe "Node.start_db" do
     it "should fail when set local db with non-existed file argument" do
       @node.local_db = "sqlite3:/non_existed/non-existed.db"
-      thrown = nil
-      begin
-        @node.start_db
-      rescue => e
-        thrown = e
-      end
-      thrown.should be
-      thrown.class.should == DataObjects::ConnectionError
+      expect {@node.start_db}.should raise_error
       @node.local_db = @options[:local_db]
     end
 
@@ -121,7 +114,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise exception when add vhost using wrong arguments" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.add_vhost("test_vhost")}
+      expect {@node.add_vhost("test_vhost")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
 
     it "should delete vhost successfully using right arguments" do
@@ -130,7 +123,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise exception when delete vhost using wrong arguments" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.delete_vhost("test_vhost")}
+      expect {@node.delete_vhost("test_vhost")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
@@ -141,7 +134,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise exception when add user using wrong arguments" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.add_user("test_user", "test_password")}
+      expect {@node.add_user("test_user", "test_password")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
 
     it "should delete user successfully using right arguments" do
@@ -150,7 +143,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise exception when delete user using wrong arguments" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.delete_vhost("test_user")}
+      expect {@node.delete_vhost("test_user")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
@@ -171,7 +164,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise exception when get permissons using wrong arguments" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.set_permissions("test_vhost", "no_existed_user", @default_permissions)}
+      expect {@node.set_permissions("test_vhost", "no_existed_user", @default_permissions)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
 
     it "should get permissons successfully using right arguments" do
@@ -179,7 +172,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise exception when get permissions using wrong arguments" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.get_permissions("test_vhost", "no_existed_user")}
+      expect {@node.get_permissions("test_vhost", "no_existed_user")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
 
     it "should clear permissons successfully using right arguments" do
@@ -188,7 +181,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise exception when clear permissons using wrong arguments" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.clear_permissions("test_vhost", "no_existed_user")}
+      expect {@node.clear_permissions("test_vhost", "no_existed_user")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
@@ -208,7 +201,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should raise exception when list users using wrong arguments" do
       node_name = ENV["RABBITMQ_NODENAME"]
       ENV["RABBITMQ_NODENAME"] = "no_existed_node"
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.list_users}
+      expect {@node.list_users}.should raise_error(VCAP::Services::Rabbit::RabbitError)
       ENV["RABBITMQ_NODENAME"] = node_name
     end
 
@@ -219,7 +212,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should raise exception when list queues using wrong arguments" do
       node_name = ENV["RABBITMQ_NODENAME"]
       ENV["RABBITMQ_NODENAME"] = "no_existed_node"
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.list_queues("test_vhost")}
+      expect {@node.list_queues("test_vhost")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
       ENV["RABBITMQ_NODENAME"] = node_name
     end
 
@@ -230,7 +223,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should raise exception when list exchanges using wrong arguments" do
       node_name = ENV["RABBITMQ_NODENAME"]
       ENV["RABBITMQ_NODENAME"] = "no_existed_node"
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.list_exchanges("test_vhost")}
+      expect {@node.list_exchanges("test_vhost")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
       ENV["RABBITMQ_NODENAME"] = node_name
     end
 
@@ -241,7 +234,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should raise exception when list bindings using wrong arguments" do
       node_name = ENV["RABBITMQ_NODENAME"]
       ENV["RABBITMQ_NODENAME"] = "no_existed_node"
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.list_bindings("test_vhost")}
+      expect {@node.list_bindings("test_vhost")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
       ENV["RABBITMQ_NODENAME"] = node_name
     end
   end
@@ -279,7 +272,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not allow null credentials to access the instance instance" do
-      test_exception(AMQP::Error) do
+      expect do
         EM.run do
           AMQP.connect(:host => @credentials["host"],
                      :port => @credentials["port"],
@@ -287,11 +280,11 @@ describe VCAP::Services::Rabbit::Node do
                      :user => "",
                      :pass => "")
         end
-      end
+      end.should raise_error(AMQP::Error)
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-      test_exception(AMQP::Error) do
+      expect do
         EM.run do
           AMQP.connect(:host => @credentials["host"],
                      :port => @credentials["port"],
@@ -299,7 +292,7 @@ describe VCAP::Services::Rabbit::Node do
                      :user => @credentials["user"],
                      :pass => "wrong_pass")
         end
-      end
+      end.should raise_error(AMQP::Error)
     end
 
     it "should decrease available memory when finish a provision" do
@@ -326,7 +319,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not access the instance instance when doing unprovision" do
-      test_exception(AMQP::Error) do
+      expect do
         EM.run do
           AMQP.connect(:host => @credentials["host"],
                      :port => @credentials["port"],
@@ -334,7 +327,7 @@ describe VCAP::Services::Rabbit::Node do
                      :user => @credentials["user"],
                      :pass => @credentials["pass"])
         end
-      end
+      end.should raise_error(AMQP::Error)
     end
 
     it "should decrease available memory when finish a provision" do
@@ -342,7 +335,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should raise error when unprovision an non-existed name" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.unprovision("non-existed")}
+      expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
@@ -372,7 +365,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not allow null credentials to access the instance instance" do
-      test_exception(AMQP::Error) do
+      expect do
         EM.run do
           AMQP.connect(:host => @binding_credentials["host"],
                      :port => @binding_credentials["port"],
@@ -380,11 +373,11 @@ describe VCAP::Services::Rabbit::Node do
                      :user => "",
                      :pass => "")
         end
-      end
+      end.should raise_error(AMQP::Error)
     end
 
     it "should not allow wrong credentials to access the instance instance" do
-      test_exception(AMQP::Error) do
+      expect do
         EM.run do
           AMQP.connect(:host => @binding_credentials["host"],
                      :port => @binding_credentials["port"],
@@ -392,7 +385,7 @@ describe VCAP::Services::Rabbit::Node do
                      :user => @binding_credentials["user"],
                      :pass => "wrong_pass")
         end
-      end
+      end.should raise_error(AMQP::Error)
     end
 
     it "should send binding messsage when finish a binding" do
@@ -417,7 +410,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should not access rabbitmq server after unbinding" do
-      test_exception(AMQP::Error) do
+      expect do
         EM.run do
           AMQP.connect(:host => @binding_credentials["host"],
                      :port => @binding_credentials["port"],
@@ -425,7 +418,7 @@ describe VCAP::Services::Rabbit::Node do
                      :user => @binding_credentials["user"],
                      :pass => @binding_credentials["pass"])
         end
-      end
+      end.should raise_error(AMQP::Error)
     end
 
     it "should return empty when unbinding successfully" do
@@ -436,20 +429,20 @@ describe VCAP::Services::Rabbit::Node do
   describe "Node.save_instance" do
     it "shuold raise error when save instance instance failed" do
       @instance.persisted_state = DataMapper::Resource::State::Immutable
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.save_instance(@instance)}
+      expect {@node.save_instance(@instance)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
   describe "Node.destory_instance" do
     it "shuold raise error when destroy instance instance failed" do
       instance = VCAP::Services::Rabbit::Node::ProvisionedInstance.new
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.destroy_instance(instance)}
+      expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
   describe "Node.get_instance" do
     it "shuold raise error when get instance instance failed" do
-      test_exception(VCAP::Services::Rabbit::RabbitError) {@node.get_instance("non-existed")}
+      expect {@node.get_instance("non-existed")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 

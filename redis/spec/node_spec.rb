@@ -183,12 +183,12 @@ describe VCAP::Services::Redis::Node do
 
     it "should not allow null credentials to access the instance instance" do
       redis = Redis.new({:port => @credentials["port"]})
-      test_exception(RuntimeError) {redis.get("test_key")}
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should not allow wrong credentials to access the instance instance" do
       redis = Redis.new({:port => @credentials["port"], :password => "wrong_password"})
-      test_exception(RuntimeError) {redis.get("test_key")}
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should delete the provisioned instance port in free port list when finish a provision" do
@@ -230,7 +230,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should not access the instance instance when doing unprovision" do
       redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
-      test_exception(Errno::ECONNREFUSED) {redis.get("test_key")}
+      expect {redis.get("test_key")}.should raise_error(Errno::ECONNREFUSED)
     end
 
     it "should add the provisioned instance port in free port list when finish an unprovision" do
@@ -242,7 +242,7 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should raise error when unprovision an non-existed name" do
-      test_exception(VCAP::Services::Redis::RedisError) {@node.unprovision("non-existed")}
+      expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
@@ -250,20 +250,20 @@ describe VCAP::Services::Redis::Node do
     it "shuold raise error when save instance instance failed" do
       @instance.pid = 100
       @instance.persisted_state = DataMapper::Resource::State::Immutable
-      test_exception(VCAP::Services::Redis::RedisError) {@node.save_instance(@instance)}
+      expect {@node.save_instance(@instance)}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
   describe "Node.destory_instance" do
     it "shuold raise error when destroy instance instance failed" do
       instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
-      test_exception(VCAP::Services::Redis::RedisError) {@node.destroy_instance(instance)}
+      expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
   describe "Node.get_instance" do
     it "shuold raise error when get instance instance failed" do
-      test_exception(VCAP::Services::Redis::RedisError) {@node.get_instance("non-existed")}
+      expect {@node.get_instance("non-existed")}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
@@ -288,12 +288,12 @@ describe VCAP::Services::Redis::Node do
 
     it "should not allow null credentials to access the instance instance" do
       redis = Redis.new({:port => @binding_credentials["port"]})
-      test_exception(RuntimeError) {redis.get("test_key")}
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should not allow wrong credentials to access the instance instance" do
       redis = Redis.new({:port => @binding_credentials["port"], :password => "wrong_password"})
-      test_exception(RuntimeError) {redis.get("test_key")}
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should send binding messsage when finish a binding" do
@@ -325,7 +325,7 @@ describe VCAP::Services::Redis::Node do
     it "should raise error when give wrong plan name" do
       instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
       instance.plan = :non_existed_plan
-      test_exception(VCAP::Services::Redis::RedisError) {@node.memory_for_instance(instance)}
+      expect {@node.memory_for_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
@@ -375,7 +375,7 @@ describe VCAP::Services::Redis::Node do
     it "should not access redis server after disable the instance" do
       @node.disable_instance(@credentials, @binding_credentials_list)
       sleep 1
-      test_exception(VCAP::Services::Redis::RedisError) {@node.get_info(@credentials["port"], @credentials["password"])}
+      expect {@node.get_info(@credentials["port"], @credentials["password"])}.should raise_error(VCAP::Services::Redis::RedisError)
     end
 
     it "should dump db file to right location after dump instance" do
