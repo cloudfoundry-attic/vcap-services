@@ -4,20 +4,48 @@
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 
 require "rubygems"
-require "bundler/setup"
+require "optparse"
+
+PROG_NAME = 'mongodb_backup'
+
+options = {}
+opt_parser = OptionParser.new do |opts|
+  opts.banner = "Usage: #{PROG_NAME} [options]"
+  opts.on("-c", "--config FILE", "Config file location") do
+    |file| options[:config] = file
+  end
+  opts.on("-t", "--tolerant",    "Tolerant mode") do
+    options[:tolerant] = true
+  end
+  opts.on("-h", "--help",        "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+config_file = options[:config]
+config_file ||= File.expand_path("../../config/mongodb_backup.yml", __FILE__)
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
 
+require "bundler/setup"
 require "mongodb_service/mongodb_node"
 require "yaml"
 require "fileutils"
 
 include VCAP::Services::MongoDB
 
+begin
+  config = YAML.load_file(config_file)
+rescue => e
+  puts "Could not read configuration file: #{e}"
+  exit 1
+end
+
 # TODO  we really should abstract this to common
-def get_dump_path(nfs_base, name)
+def get_dump_path(nfs_base, service_name, name)
   name.gsub!(/^(mongodb|redis|mysql)-/, '')
-  [nfs_base, name[0,2], name[2,2], name[4,2], name, Time.new.to_i.to_s].join('/')
+  [nfs_base, 'backups', service_name, name[0,2], name[2,2], name[4,2], name, Time.new.to_i.to_s].join('/')
 end
 
 def echo(output, err=false)
@@ -27,15 +55,6 @@ def echo(output, err=false)
   else
     @logger.info(output) unless @logger.nil?
   end
-end
-
-config_file = File.expand_path("../../config/mongodb_backup.yml", __FILE__)
-
-begin
-  config = YAML.load_file(config_file)
-rescue => e
-  puts "Could not read configuration file: #{e}"
-  exit 1
 end
 
 @logger = Logger.new(config["log_file"] || STDOUT, "daily")
@@ -48,30 +67,40 @@ end
   else Logger::UNKNOWN
 end
 
-nfs_base = [config['backup_base_dir'], config['service_name']].join('/')
-FileUtils.mkdir_p nfs_base
+# make sure the backup base dir is mounted
+if !options[:tolerant] && %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
+  @logger.error config["backup_base_dir"] + " is not mounted, exit"
+  exit 1
+end
 
+# make sure local_db exists
 unless File.exist? config['local_db'].split(':')[1]
   echo "Could not find local_db: #{config['local_db']}"
   exit 1
 end
+
+mongodump_path = config['mongodump_path'] || 'mongodump'
 
 DataMapper.setup(:default, config['local_db'])
 DataMapper::auto_upgrade!
 
 provisioned_service = Node::ProvisionedService.all
 provisioned_service.each do |service|
-
   user = service.admin
   pass = service.adminpass
   port = service.port
 
-  path = get_dump_path(nfs_base, service.name)
+  path = get_dump_path(config['backup_base_dir'], config['service_name'], service.name)
 
-  command = "mongodump -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
-  echo "Running: #{command}"
+  # Run mongodump
+  command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
   res = Kernel.system(command)
-  echo "result: #{res}", !res
+  echo "#{command} result: #{res}", !res
+
+  # Delete system.user.bson
+  command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
+  res = Kernel.system(command)
+  echo "#{command} result: #{res}", !res
 end
 echo "Backup Done!"
-
+exit 0
