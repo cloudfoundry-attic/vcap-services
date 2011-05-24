@@ -72,13 +72,13 @@ cmds = %x[ps ax -o args=].split(/\n/)
 count = 0
 cmds.each do |cmd|
   if cmd.index(__FILE__) != nil
-    logger.info cmd
+    @logger.info cmd
     count += 1
   end
 end
-logger.info "backup process count: " + count.to_s
+@logger.info "backup process count: " + count.to_s
 if count > 2
-  logger.info "backup is running, exit"
+  @logger.info "backup is running, exit"
   exit
 end
 
