@@ -68,6 +68,7 @@ options = {
   :config_template => redis_conf_template,
   :local_db => parse_property(config, "local_db", String),
   :port_range => parse_property(config, "port_range", Range),
+  :migration_nfs => parse_property(config, "migration_nfs", String),
   :max_memory => parse_property(config, "max_memory", Integer)
 }
 

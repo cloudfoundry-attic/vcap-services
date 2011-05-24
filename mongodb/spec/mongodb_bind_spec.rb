@@ -1,22 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "spec_helper"
-require "mongodb_service/mongodb_node"
-require "mongo"
 
-include VCAP::Services::MongoDB
-
-
-module VCAP
-  module Services
-    module MongoDB
-      class Node
-        attr_reader :available_memory
-      end
-    end
-  end
-end
-
-describe VCAP::Services::MongoDB::Node do
+describe "mongodb_node bind" do
 
   before :all do
     EM.run do

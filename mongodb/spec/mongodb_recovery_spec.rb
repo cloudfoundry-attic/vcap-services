@@ -2,7 +2,7 @@
 $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 
-describe "mongodb backup/restore"  do
+describe "mongodb backup/recovery"  do
 
   before :all do
     EM.run do
@@ -63,6 +63,50 @@ describe "mongodb backup/restore"  do
     coll = conn.collection(TEST_COLL)
     doc = coll.find_one()
     doc[TEST_KEY].should == TEST_VAL
+  end
+
+  # unbind here
+  it "should be able to unbind it" do
+    EM.run do
+      resp  = @node.unbind(@bind_resp)
+      resp.should be_true
+      EM.add_timer(1) do
+        EM.stop
+      end
+    end
+  end
+
+  # unprovision here
+  it "should be able to unprovision an existing instance" do
+    EM.run do
+      @node.unprovision(@resp['name'], [])
+
+      e = nil
+      begin
+        conn = Mongo::Connection.new('localhost', @resp['port']).db('db')
+      rescue => e
+      end
+      e.should_not be_nil
+      EM.stop
+    end
+  end
+
+  it "should be able to recover the backup instance" do
+    dir = get_backup_dir(BACKUP_DIR)
+    EM.run do
+      EM.add_timer(0) { @node.provision('free', @resp) }
+      EM.add_timer(1) { @node.restore(@resp['name'], dir) }
+      EM.add_timer(2) { @node.bind(@resp['name'], 'rw', @bind_resp) }
+      EM.add_timer(3) {
+        # Should be the same like what it was before backup
+        conn = Mongo::Connection.new(@bind_resp['hostname'], @bind_resp['port']).db(@resp['db'])
+        conn.authenticate(@bind_resp['username'], @bind_resp['password'])
+        coll = conn.collection(TEST_COLL)
+        doc = coll.find_one()
+        doc[TEST_KEY].should == TEST_VAL
+        EM.stop
+      }
+    end
   end
 
   # unbind here
