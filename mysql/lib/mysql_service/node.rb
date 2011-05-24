@@ -53,6 +53,8 @@ class VCAP::Services::Mysql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
+    @gzip_bin = options[:gzip_bin]
+    @mysql_bin = options[:mysql_bin]
 
     @connection = mysql_connect
 
@@ -181,11 +183,18 @@ class VCAP::Services::Mysql::Node
     @logger.error("Error during kill long tx: #{e}. Innodb status:#{result}")
   end
 
-  def provision(plan)
+  def provision(plan, credential=nil)
     provisioned_service = ProvisionedService.new
-    provisioned_service.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    provisioned_service.user = 'u' + generate_credential
-    provisioned_service.password = 'p' + generate_credential
+    if credential
+      name, user, password = %w(name user password).map{|key| credential[key]}
+      provisioned_service.name = name
+      provisioned_service.user = user
+      provisioned_service.password = password
+    else
+      provisioned_service.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      provisioned_service.user = 'u' + generate_credential
+      provisioned_service.password = 'p' + generate_credential
+    end
     provisioned_service.plan = plan
 
     create_database(provisioned_service)
@@ -225,7 +234,7 @@ class VCAP::Services::Mysql::Node
     true
   end
 
-  def bind(name, bind_opts)
+  def bind(name, bind_opts, credential=nil)
     @logger.debug("Bind service for db:#{name}, bind_opts = #{bind_opts}")
     binding = nil
     begin
@@ -233,8 +242,13 @@ class VCAP::Services::Mysql::Node
       raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
       # create new credential for binding
       binding = Hash.new
-      binding[:user] = 'u' + generate_credential
-      binding[:password ]= 'p' + generate_credential
+      if credential
+        binding[:user] = credential["user"]
+        binding[:password ]= credential["password"]
+      else
+        binding[:user] = 'u' + generate_credential
+        binding[:password ]= 'p' + generate_credential
+      end
       binding[:bind_opts] = bind_opts
       create_database_user(name, binding[:user], binding[:password])
       response = gen_credential(name, binding[:user], binding[:password])
@@ -296,6 +310,15 @@ class VCAP::Services::Mysql::Node
 
   def delete_database_user(user)
     @logger.info("Delete user #{user}")
+    kill_user_session(user)
+    @connection.query("DROP USER #{user}")
+    @connection.query("DROP USER #{user}@'localhost'")
+  rescue Mysql::Error => e
+    @logger.fatal("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
+  end
+
+  def kill_user_session(user)
+    @logger.info("Kill sessions of user: #{user}")
     begin
       process_list = @connection.list_processes
       process_list.each do |proc|
@@ -305,14 +328,30 @@ class VCAP::Services::Mysql::Node
           @logger.info("Kill session: user:#{user} db:#{db}")
         end
       end
-    rescue Mysql::Error => e1
+    rescue Mysql::Error => e
       # kill session failed error, only log it.
       @logger.error("Could not kill user session.:[#{e1.errno}] #{e1.error}")
     end
-    @connection.query("DROP USER #{user}")
-    @connection.query("DROP USER #{user}@'localhost'")
-  rescue Mysql::Error => e
-    @logger.fatal("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
+  end
+
+  # restore a given instance using backup file.
+  def restore(name, backup_path)
+    @logger.debug("Restore db #{name} using backup at #{backup_path}")
+    service = ProvisionedService.get(name)
+    raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
+    host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    path = File.join(backup_path, "#{name}.sql.gz")
+    cmd ="#{@gzip_bin} -dc #{path}|" +
+      "#{@mysql_bin} -h #{host} -P #{port} -u #{user} --password=#{pass}"
+    cmd += " -S #{socket}" unless socket.nil?
+    cmd += " #{name}"
+    @logger.debug("Restore command: #{cmd}")
+    result = `#{cmd}`
+    @logger.info("Restore command results: #{result}")
+    true
+  rescue => e
+    @logger.error("Error during restore #{e}")
+    raise e
   end
 
   def varz_details()
