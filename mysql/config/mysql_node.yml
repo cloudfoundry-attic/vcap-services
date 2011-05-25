@@ -15,7 +15,7 @@ max_long_query: 3
 max_long_tx: 30
 migration_nfs: /mnt/migration
 mysql:
-  host: 127.0.0.1
+  host: localhost
   port: 3306
   user: root
   pass: root
