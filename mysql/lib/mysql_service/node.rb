@@ -123,7 +123,7 @@ class VCAP::Services::Mysql::Node
       begin
         return Mysql.real_connect(host, user, password, 'mysql', port.to_i, socket)
       rescue Mysql::Error => e
-        @logger.info("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
+        @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(5)
       end
     end
