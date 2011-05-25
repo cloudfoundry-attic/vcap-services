@@ -309,7 +309,7 @@ describe "Mysql server node" do
       # backup current db
       host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
       tmp_file = "/tmp/#{db['name']}.sql.gz"
-      result = `/usr/bin/mysqldump -h #{host} -P #{port} -u #{user} --password=#{password} #{db['name']} | gzip > #{tmp_file}`
+      result = `mysqldump -h #{host} -P #{port} -u #{user} --password=#{password} #{db['name']} | gzip > #{tmp_file}`
       conn.query("drop table test")
       res = conn.query("show tables")
       res.num_rows().should == 0

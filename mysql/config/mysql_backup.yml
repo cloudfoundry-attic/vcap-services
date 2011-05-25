@@ -1,8 +1,8 @@
 ---
 service_name: mysql
 backup_path: /opt/backup_nfs/
-backup_cmd: /usr/bin/mysqldump --host=:host --user=:user --password=:passwd --result-file=:full_path/:name.sql --single-transaction :name
-compress_cmd: /bin/gzip :full_path/:name.sql
+backup_cmd: mysqldump --host=:host --user=:user --password=:passwd --result-file=:full_path/:name.sql --single-transaction :name
+compress_cmd: gzip :full_path/:name.sql
 logfile: /tmp/mysql_backup.log
 mysql:
   host: localhost
