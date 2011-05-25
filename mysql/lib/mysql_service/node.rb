@@ -218,16 +218,16 @@ class VCAP::Services::Mysql::Node
     @logger.debug("Unprovision database:#{name}, bindings: #{credentials.inspect}")
     provisioned_service = ProvisionedService.get(name)
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) if provisioned_service.nil?
-    delete_database(provisioned_service)
     # TODO: validate that database files are not lingering
-    storage = storage_for_service(provisioned_service)
-    @available_storage += storage
     # Delete all bindings, ignore not_found error since we are unprovision
     begin
       credentials.each{ |credential| unbind(credential)} if credentials
     rescue =>e
       # ignore
     end
+    delete_database(provisioned_service)
+    storage = storage_for_service(provisioned_service)
+    @available_storage += storage
     if not provisioned_service.destroy
       @logger.error("Could not delete service: #{provisioned_service.errors.pretty_inspect}")
       raise MysqlError.new(MysqError::MYSQL_LOCAL_DB_ERROR)
@@ -302,9 +302,9 @@ class VCAP::Services::Mysql::Node
   def delete_database(provisioned_service)
     name, user = [:name, :user].map { |field| provisioned_service.send(field) }
     begin
+      delete_database_user(user)
       @logger.info("Deleting database: #{name}")
       @connection.query("DROP DATABASE #{name}")
-      delete_database_user(user)
     rescue Mysql::Error => e
       @logger.fatal("Could not delete database: [#{e.errno}] #{e.error}")
     end
@@ -312,9 +312,9 @@ class VCAP::Services::Mysql::Node
 
   def delete_database_user(user)
     @logger.info("Delete user #{user}")
-    kill_user_session(user)
     @connection.query("DROP USER #{user}")
     @connection.query("DROP USER #{user}@'localhost'")
+    kill_user_session(user)
   rescue Mysql::Error => e
     @logger.fatal("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
   end

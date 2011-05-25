@@ -283,7 +283,7 @@ describe "Mysql server node" do
       res.should be true
       expect {connect_to_mysql(binding_res)}.should raise_error
       # old session should be killed
-      expect {conn.query("SELECT 1")}.should raise_error
+      expect {conn.query("SELECT 1")}.should raise_error(Mysql::Error, /MySQL server has gone away/)
       EM.stop
     end
   end
