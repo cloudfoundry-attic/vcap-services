@@ -7,8 +7,10 @@ require "uuidtools"
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'base/base'
 require 'barrier'
+require 'service_message'
 
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
+  include VCAP::Services::Internal
   MASKED_PASSWORD = '********'
 
   def initialize(options)
@@ -91,11 +93,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
       bindings = find_all_bindings(instance_id)
       @logger.debug("[#{service_description}] Unprovisioning instance #{instance_id} from #{node_id}")
-      request = {
-        'name'     => instance_id,
-        'bindings' => bindings
-      }
-
+      request = UnprovisionRequest.new
+      request.name = instance_id
+      request.bindings = bindings
       @logger.debug("[#{service_description}] Sending reqeust #{request}")
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
@@ -104,8 +104,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       }
       subscription =
         @node_nats.request(
-          "#{service_name}.unprovision.#{node_id}",
-          Yajl::Encoder.encode(request)
+          "#{service_name}.unprovision.#{node_id}", request.encode
        ) do |msg|
           # Delete local entries
           @prov_svcs.delete(instance_id)
@@ -151,9 +150,10 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     if best_node && ( @allow_over_provisioning || node_score(best_node) > 0 )
       best_node = best_node["id"]
       @logger.debug("[#{service_description}] Provisioning on #{best_node}")
-      request = {"plan" => request['plan']}
+      prov_req = ProvisionRequest.new
+      prov_req.plan = request['plan']
       # use old credentials to provision a service if provided.
-      request["credentials"] = prov_handle["credentials"] if prov_handle
+      prov_req.credentials = prov_handle["credentials"] if prov_handle
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
         @node_nats.unsubscribe(subscription)
@@ -162,23 +162,24 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       subscription =
         @node_nats.request(
           "#{service_name}.provision.#{best_node}",
-          Yajl::Encoder.encode(request)
+          prov_req.encode
        ) do |msg|
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
-          opts = Yajl::Parser.parse(msg)
-          if opts['success']
-            opts = opts['response']
-            # remove unnecessary credential in request
-            request.delete('credentials') if request.has_key?('credentials')
-            svc = {:data => request, :service_id => opts['name'], :credentials => opts}
+          response = ProvisionResponse.decode(msg)
+          if response.success
+            @logger.debug("Successfully provision response:[#{response.inspect}]")
+            # credentials is not necessary in cache
+            prov_req.credentials = nil
+            credential = response.credentials
+            svc = {:data => prov_req.dup, :service_id => credential['name'], :credentials => credential}
             # FIXME: workaround for inconsistant representation of bind handle and provision handle
-            svc_local = {:configuration => request, :service_id => opts['name'], :credentials => opts}
+            svc_local = {:configuration => prov_req.dup, :service_id => credential['name'], :credentials => credential}
             @logger.debug("Provisioned #{svc.pretty_inspect}")
             @prov_svcs[svc[:service_id]] = svc_local
             blk.call(success(svc))
           else
-            blk.call(opts)
+            blk.call(wrap_error(response))
           end
         end
     else
@@ -200,13 +201,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
       @logger.debug("[#{service_description}] bind instance #{instance_id} from #{node_id}")
       #FIXME options = {} currently, should parse it in future.
-      request = {
-        'name'      => instance_id,
-        'bind_opts' => binding_options
-      }
+      request = BindRequest.new
+      request.name = instance_id
+      request.bind_opts = binding_options
       service_id = nil
       if bind_handle
-        request["credentials"] = bind_handle["credentials"]
+        request.credentials = bind_handle["credentials"]
         service_id = bind_handle["service_id"]
       else
         service_id = UUIDTools::UUID.random_create.to_s
@@ -218,13 +218,13 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       }
       subscription =
         @node_nats.request( "#{service_name}.bind.#{node_id}",
-          Yajl::Encoder.encode(request)
+                           request.encode
        ) do |msg|
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
-          opts = Yajl::Parser.parse(msg)
-          if(opts['success'])
-            opts = opts['response']
+          opts = BindResponse.decode(msg)
+          if opts.success
+            opts = opts.credentials
             # Save binding-options in :data section of configuration
             config = svc[:configuration].clone
             config['data'] ||= {}
@@ -238,7 +238,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
             @prov_svcs[res[:service_id]] = res
             blk.call(success(res))
           else
-            blk.call(opts)
+            blk.call(wrap_error(opts))
           end
         end
     rescue => e
@@ -264,7 +264,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] Unbind instance #{handle_id} from #{node_id}")
-      request = handle[:credentials]
+      request = UnbindRequest.new
+      request.credentials = handle[:credentials]
 
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
@@ -273,13 +274,17 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       }
       subscription =
         @node_nats.request( "#{service_name}.unbind.#{node_id}",
-          Yajl::Encoder.encode(request)
+                           request.encode
        ) do |msg|
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
-          opts = Yajl::Parser.parse(msg)
-          @prov_svcs.delete(handle_id)
-          blk.call(opts)
+          opts = SimpleResponse.decode(msg)
+          if opts.success
+            @prov_svcs.delete(handle_id)
+            blk.call(success())
+          else
+            blk.call(wrap_error(opts))
+          end
         end
     rescue => e
       if e.instance_of? ServiceError
@@ -302,11 +307,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] restore instance #{instance_id} from #{node_id}")
-      request = {
-        'instance_id' => instance_id,
-        'backup_path' => backup_path
-      }
-
+      request = RestoreRequest.new
+      request.instance_id = instance_id
+      request.backup_path = backup_path
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
         @node_nats.unsubscribe(subscription)
@@ -314,12 +317,16 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       }
       subscription =
         @node_nats.request( "#{service_name}.restore.#{node_id}",
-          Yajl::Encoder.encode(request)
+          request.encode
        ) do |msg|
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
-          opts = Yajl::Parser.parse(msg)
-          blk.call(opts)
+          opts = SimpleResponse.decode(msg)
+          if opts.success
+            blk.call(success())
+          else
+            blk.call(wrap_error(opts))
+          end
         end
     rescue => e
       if e.instance_of? ServiceError
@@ -485,6 +492,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       end
     end
     return [prov_handle, binding_handles]
+  end
+
+  # wrap a service message to hash
+  def wrap_error(service_msg)
+    {
+      'success' => false,
+      'response' => service_msg.error
+    }
   end
 
   # Service Provisioner subclasses must implement the following

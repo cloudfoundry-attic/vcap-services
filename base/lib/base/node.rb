@@ -5,8 +5,10 @@ require 'fileutils'
 
 $:.unshift(File.dirname(__FILE__))
 require 'base'
+require 'service_message'
 
 class VCAP::Services::Base::Node < VCAP::Services::Base::Base
+  include VCAP::Services::Internal
 
   def initialize(options)
     super(options)
@@ -60,63 +62,81 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   def on_provision(msg, reply)
     @logger.debug("#{service_description}: Provision request: #{msg} from #{reply}")
-    provision_message = Yajl::Parser.parse(msg)
-    plan = provision_message["plan"]
-    credentials = provision_message["credentials"]
-    response = provision(plan, credentials)
-    response["node_id"] = @node_id
+    response = ProvisionResponse.new
+    provision_req = ProvisionRequest.decode(msg)
+    plan = provision_req.plan
+    credentials = provision_req.credentials
+    credential = provision(plan, credentials)
+    credential['node_id'] = @node_id
+    response.credentials = credential
     @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
     @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(e))
+    @node_nats.publish(reply, encode_failure(response, e))
   end
 
   def on_unprovision(msg, reply)
     @logger.debug("#{service_description}: Unprovision request: #{msg}.")
-    unprovision_message = Yajl::Parser.parse(msg)
-    name     = unprovision_message["name"]
-    bindings = unprovision_message["bindings"]
-    response = unprovision(name, bindings)
-    @node_nats.publish(reply, encode_success(response))
+    response = SimpleResponse.new
+    unprovision_req = UnprovisionRequest.decode(msg)
+    name     = unprovision_req.name
+    bindings = unprovision_req.bindings
+    result = unprovision(name, bindings)
+    if result
+      @node_nats.publish(reply, encode_success(response))
+    else
+      @node_nats.publish(reply, encode_failure(response))
+    end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(e))
+    @node_nats.publish(reply, encode_failure(response, e))
   end
 
   def on_bind(msg, reply)
     @logger.debug("#{service_description}: Bind request: #{msg} from #{reply}")
-    bind_message = Yajl::Parser.parse(msg)
-    name      = bind_message["name"]
-    bind_opts = bind_message["bind_opts"]
-    credentials = bind_message["credentials"]
-    response = bind(name, bind_opts, credentials)
+    response = BindResponse.new
+    bind_message = BindRequest.decode(msg)
+    name      = bind_message.name
+    bind_opts = bind_message.bind_opts
+    credentials = bind_message.credentials
+    response.credentials = bind(name, bind_opts, credentials)
     @node_nats.publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(e))
+    @node_nats.publish(reply, encode_failure(response, e))
   end
 
   def on_unbind(msg, reply)
     @logger.debug("#{service_description}: Unbind request: #{msg} from #{reply}")
-    unbind_message = Yajl::Parser.parse(msg)
-    response = unbind(unbind_message)
-    @node_nats.publish(reply, encode_success(response))
+    response = SimpleResponse.new
+    unbind_req = UnbindRequest.decode(msg)
+    result = unbind(unbind_req.credentials)
+    if result
+      @node_nats.publish(reply, encode_success(response))
+    else
+      @node_nats.publish(reply, encode_failure(response))
+    end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(e))
+    @node_nats.publish(reply, encode_failure(response, e))
   end
 
   def on_restore(msg, reply)
     @logger.debug("#{service_description}: Restore request: #{msg} from #{reply}")
-    restore_message = Yajl::Parser.parse(msg)
-    instance_id = restore_message["instance_id"]
-    backup_path = restore_message["backup_path"]
-    response = restore(instance_id, backup_path)
-    @node_nats.publish(reply, encode_success(response))
+    response = SimpleResponse.new
+    restore_message = RestoreRequest.decode(msg)
+    instance_id = restore_message.instance_id
+    backup_path = restore_message.backup_path
+    result = restore(instance_id, backup_path)
+    if result
+      @node_nats.publish(reply, encode_success(response))
+    else
+      @node_nats.publish(reply, encode_failure(response))
+    end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(e))
+    @node_nats.publish(reply, encode_failure(response, e))
   end
 
   # disable and dump instance
@@ -207,6 +227,19 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     healthz = {
       :self => "ok"
     }
+  end
+
+  # Helper
+  def encode_success(response)
+    response.success = true
+    response.encode
+  end
+
+  def encode_failure(response, error=nil)
+    response.success = false
+    error = ServiceError.new(ServiceError::INTERNAL_ERROR) unless error.is_a? ServiceError
+    response.error = error if error
+    response.encode
   end
 
   # Service Node subclasses must implement the following methods
