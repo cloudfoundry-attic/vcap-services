@@ -206,9 +206,9 @@ describe "Mysql server node" do
         conn.query("insert into a value(10)")
         conn.query("begin")
         conn.query("select * from a for update")
-        conn.close
         EM.add_timer(opts[:max_long_tx]*2) {
-          expect {conn.query("select * from a for update")}.should raise_error
+          expect {conn.query("select * from a for update")}.should raise_error(Mysql::Error, /interrupted/)
+          conn.close
           EM.stop
         }
       end
