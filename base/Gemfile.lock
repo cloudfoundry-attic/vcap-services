@@ -57,6 +57,11 @@ GEM
       dm-core (~> 1.1.0)
     do_sqlite3 (0.10.3)
       data_objects (= 0.10.3)
+    em-http-request (0.3.0)
+      addressable (>= 2.0.0)
+      escape_utils
+      eventmachine (>= 0.12.9)
+    escape_utils (0.2.3)
     eventmachine (0.12.10)
     eventmachine_httpserver (0.2.1)
     fastercsv (1.5.4)
@@ -82,11 +87,15 @@ GEM
       diff-lcs (~> 1.1.2)
     rspec-mocks (2.5.0)
     ruby-hmac (0.4.0)
+    sinatra (1.2.3)
+      rack (~> 1.1)
+      tilt (< 2.0, >= 1.2.2)
     stringex (1.2.1)
     thin (1.2.11)
       daemons (>= 1.0.9)
       eventmachine (>= 0.12.6)
       rack (>= 1.0.0)
+    tilt (1.2.2)
     uuidtools (2.1.2)
     yajl-ruby (0.8.2)
 
@@ -97,6 +106,7 @@ DEPENDENCIES
   ci_reporter
   datamapper (>= 0.10.2)
   do_sqlite3
+  em-http-request
   eventmachine
   eventmachine_httpserver
   json
@@ -106,5 +116,7 @@ DEPENDENCIES
   rcov
   rspec
   ruby-hmac
+  sinatra
+  thin
   uuidtools
   vcap_common!

@@ -1,6 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 # XXX(mjp)
-$:.unshift(File.expand_path("../../../lib", __FILE__))
 require 'rubygems'
 
 require 'eventmachine'
@@ -10,11 +9,11 @@ require 'sinatra/base'
 require 'uri'
 require 'thread'
 
+$:.unshift(File.expand_path("../../../../../lib", __FILE__))
 require 'json_message'
 require 'services/api'
 
-$:.unshift(File.expand_path("../../base/lib", __FILE__))
-require 'base/service_error'
+require 'service_error'
 
 module VCAP
   module Services

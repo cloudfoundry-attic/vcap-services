@@ -337,3 +337,301 @@ class ProvisionerTests
   end
 
 end
+
+require 'base/asynchronous_service_gateway'
+
+class AsyncGatewayTests
+  CC_PORT = 34512
+  GW_PORT = 34513
+
+  def self.create_nice_gateway
+    MockGateway.new(true)
+  end
+
+  def self.create_nasty_gateway
+    MockGateway.new(false)
+  end
+
+  def self.create_cloudcontroller
+    MockCloudController.new
+  end
+
+  class MockGateway
+    attr_accessor :provision_http_code
+    attr_accessor :unprovision_http_code
+    attr_accessor :bind_http_code
+    attr_accessor :unbind_http_code
+    attr_accessor :restore_http_code
+
+    def initialize(nice)
+      @token = '0xdeadbeef'
+      @cc_head = {
+        'Content-Type'         => 'application/json',
+        'X-VCAP-Service-Token' => @token,
+      }
+      @label = "service-1.0"
+      sp = nice ? NiceProvisioner.new : NastyProvisioner.new
+      sg = VCAP::Services::AsynchronousServiceGateway.new(
+        :service => {
+                      :label => @label,
+                      :name => 'service',
+                      :version => '1.0',
+                      :description => 'sample desc',
+                      :plans => ['free'],
+                      :tags => ['nosql']
+                    },
+        :token   => @token,
+        :provisioner => sp,
+        :cloud_controller_uri => "http://localhost:#{CC_PORT}"
+      )
+      @server = Thin::Server.new('localhost', GW_PORT, sg)
+      @provision_http_code = 0
+      @unprovision_http_code = 0
+      @bind_http_code = 0
+      @unbind_http_code = 0
+      @restore_http_code = 0
+      @last_service_id = nil
+      @last_bind_id = nil
+    end
+
+    def start
+      Thread.new { @server.start }
+    end
+
+    def stop
+      @server.stop
+    end
+
+    def gen_req(body = nil)
+      req = { :head => @cc_head }
+      req[:body] = body if body
+      req
+    end
+
+    def send_provision_request
+      msg = Yajl::Encoder.encode({
+        :label => @label,
+        :plan  => "free"
+      })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations").post(gen_req(msg))
+      http.callback {
+        @provision_http_code = http.response_header.status
+        res = Yajl::Parser.parse(http.response)
+        @last_service_id = res['service_id']
+      }
+      http.errback {
+        @provision_http_code = -1
+      }
+    end
+
+    def send_unprovision_request(service_id = nil)
+      service_id ||= @last_service_id
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations/#{service_id}").delete(gen_req)
+      http.callback {
+        @unprovision_http_code = http.response_header.status
+      }
+      http.errback {
+        @unprovision_http_code = -1
+      }
+    end
+
+    def send_bind_request(service_id = nil)
+      service_id ||= @last_service_id
+      msg = Yajl::Encoder.encode({
+        :service_id => service_id,
+        :label => @label,
+        :binding_options => {}
+      })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations/#{service_id}/handles").post(gen_req(msg))
+      http.callback {
+        @bind_http_code = http.response_header.status
+        res = Yajl::Parser.parse(http.response)
+        @last_bind_id = res['service_id']
+      }
+      http.errback {
+        @bind_http_code = -1
+      }
+    end
+
+    def send_unbind_request(service_id = nil, bind_id = nil)
+      service_id ||= @last_service_id
+      bind_id ||= @last_bind_id
+      msg = Yajl::Encoder.encode({
+        :service_id => service_id,
+        :handle_id => bind_id,
+        :binding_options => {}
+      })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations/#{service_id}/handles/#{bind_id}").delete(gen_req(msg))
+      http.callback {
+        @unbind_http_code = http.response_header.status
+      }
+      http.errback {
+        @unbind_http_code = -1
+      }
+    end
+
+    def send_restore_request(service_id = nil)
+      service_id ||= @last_service_id
+      msg = Yajl::Encoder.encode({
+        :instance_id => service_id,
+        :backup_path => '/'
+      })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/restore").post(gen_req(msg))
+      http.callback {
+        @restore_http_code = http.response_header.status
+      }
+      http.errback {
+        @restore_http_code = -1
+      }
+    end
+  end
+
+  class MockCloudController
+    def initialize
+      @server = Thin::Server.new('localhost', CC_PORT, Handler.new)
+    end
+
+    def start
+      Thread.new { @server.start }
+    end
+
+    def stop
+      @server.stop if @server
+    end
+
+    class Handler < Sinatra::Base
+      post "/services/v1/offerings" do
+        "{}"
+      end
+
+      get "/services/v1/offerings/:label/handles" do
+        Yajl::Encoder.encode({
+          :handles => []
+        })
+      end
+
+      get "/services/v1/offerings/:label/handles/:id" do
+        "{}"
+      end
+    end
+  end
+
+  class NiceProvisioner
+    SERV_ID = "service_id"
+    BIND_ID = "bind_id"
+
+    include VCAP::Services::Base::Error
+
+    attr_accessor :got_provision_request
+    attr_accessor :got_unprovision_request
+    attr_accessor :got_bind_request
+    attr_accessor :got_unbind_request
+    attr_accessor :got_restore_request
+    attr_accessor :got_recover_request
+
+    def initialize
+      @got_provision_request = false
+      @got_unprovision_request = false
+      @got_bind_request = false
+      @got_unbind_request = false
+      @got_restore_request = false
+      @got_recover_request = false
+    end
+
+    def provision_service(request, prov_handle=nil, &blk)
+      @got_provision_request = true
+      blk.call(success({:data => {}, :service_id => SERV_ID, :credentials => {}}))
+    end
+
+    def unprovision_service(instance_id, &blk)
+      @got_unprovision_request = true
+      blk.call(success(true))
+    end
+
+    def bind_instance(instance_id, binding_options, bind_handle=nil, &blk)
+      @got_bind_request = true
+      blk.call(success({:configuration => {}, :service_id => BIND_ID, :credentials => {}}))
+    end
+
+    def unbind_instance(instance_id, handle_id, binding_options, &blk)
+      @got_unbind_request = true
+      blk.call(success(true))
+    end
+
+    def restore_instance(instance_id, backup_path, &blk)
+      @got_restore_request = true
+      blk.call(success(true))
+    end
+
+    def recover(instance_id, backup_path, handles, &blk)
+      @got_recover_reqeust = true
+      blk.call(success(true))
+    end
+
+    def register_update_handle_callback
+      # Do nothing
+    end
+
+    def update_handles(handles)
+      # Do nothing
+    end
+  end
+
+  class NastyProvisioner
+    include VCAP::Services::Base::Error
+
+    attr_accessor :got_provision_request
+    attr_accessor :got_unprovision_request
+    attr_accessor :got_bind_request
+    attr_accessor :got_unbind_request
+    attr_accessor :got_restore_request
+    attr_accessor :got_recover_request
+
+    def initialize
+      @got_provision_request = false
+      @got_unprovision_request = false
+      @got_bind_request = false
+      @got_unbind_request = false
+      @got_restore_request = false
+      @got_recover_request = false
+    end
+
+    def provision_service(request, prov_handle=nil, &blk)
+      @got_provision_request = true
+      blk.call(internal_fail)
+    end
+
+    def unprovision_service(instance_id, &blk)
+      @got_unprovision_request = true
+      blk.call(internal_fail)
+    end
+
+    def bind_instance(instance_id, binding_options, bind_handle=nil, &blk)
+      @got_bind_request = true
+      blk.call(internal_fail)
+    end
+
+    def unbind_instance(instance_id, handle_id, binding_options, &blk)
+      @got_unbind_request = true
+      blk.call(internal_fail)
+    end
+
+    def restore_instance(instance_id, backup_path, &blk)
+      @got_restore_request = true
+      blk.call(internal_fail)
+    end
+
+    def recover(instance_id, backup_path, handles, &blk)
+      @got_recover_reqeust = true
+      blk.call(internal_fail)
+    end
+
+    def register_update_handle_callback
+      # Do nothing
+    end
+
+    def update_handles(handles)
+      # Do nothing
+    end
+  end
+end

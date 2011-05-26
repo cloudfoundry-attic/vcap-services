@@ -9,11 +9,11 @@ require 'thin'
 require 'yaml'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
-require 'common/asynchronous_service_gateway'
-require 'common/util'
 require 'vcap/common'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
+require 'asynchronous_service_gateway'
+require 'util'
 require 'abstract'
 
 module VCAP
