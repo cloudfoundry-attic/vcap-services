@@ -51,7 +51,7 @@ describe "mongodb rebalance" do
     res = @node.dump_instance(@resp, {'' => @bind_resp}, DUMP_DIR)
     res.should == true
     File.directory?(DUMP_DIR).should be_true
-    Dir.entries(DUMP_DIR).size.should > 0
+    Dir.entries(DUMP_DIR).size.should > 2
   end
 
   # unprovision here
