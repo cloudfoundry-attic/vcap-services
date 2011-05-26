@@ -35,9 +35,7 @@ rescue => e
   exit
 end
 
-def get_gateway_uri
-end
-
+@is_successful = false
 def send_request(config)
   req = {
     :head => {
@@ -54,6 +52,7 @@ def send_request(config)
   http.callback do
     if http.response_header.status == 200
       puts "Restore successfully"
+      @is_successful = true
     else
       puts "Failed to restore, status = #{http.response_header.status}"
     end
@@ -73,5 +72,13 @@ EM.run do
   trap('TERM') {puts "\nInterupted"; exit(1)}
   trap('INT') {puts "\nInterupted"; exit(1)}
   send_request(config)
-  EM.add_timer(1) {EM.stop}
+  EM.add_periodic_timer(1) do
+    if @is_successful
+      EM.stop
+    end
+  end
+  EM.add_timer(config["timeout"].to_i) do
+    puts "Failed to restore: timeout when waiting for gateway response"
+    EM.stop
+  end
 end
