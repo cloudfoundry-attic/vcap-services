@@ -192,7 +192,7 @@ class VCAP::Services::MongoDB::Node
     @logger.debug("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
     raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
 
-    Process.kill(9, provisioned_service.pid) if provisioned_service.running?
+    provisioned_service.kill if provisioned_service.running?
 
     dir = File.join(@base_dir, provisioned_service.name)
 
