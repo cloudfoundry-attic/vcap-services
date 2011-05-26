@@ -60,6 +60,7 @@ describe "mongodb rebalance" do
       @node.unprovision(@resp['name'], [])
       EM.stop
     end
+    is_port_open?('127.0.0.1', @resp['port']).should be_false
   end
 
   it "should be able to import instance" do
