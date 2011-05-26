@@ -110,7 +110,7 @@ describe NodeTests do
         Do.at(0) { node = NodeTests.create_node }
         Do.at(1) { provisioner = NodeTests.create_provisioner }
         Do.at(2) { provisioner.send_unprovision_request }
-        Do.at(3) { EM.stop ; NATS.stop }
+        Do.at(7) { EM.stop ; NATS.stop }
       }
     end
     node.unprovision_invoked.should be_true
@@ -125,7 +125,7 @@ describe NodeTests do
         Do.at(0) { node = NodeTests.create_node }
         Do.at(1) { provisioner = NodeTests.create_provisioner }
         Do.at(2) { provisioner.send_bind_request }
-        Do.at(3) { EM.stop ; NATS.stop }
+        Do.at(7) { EM.stop ; NATS.stop }
       }
     end
     node.bind_invoked.should be_true
@@ -140,7 +140,7 @@ describe NodeTests do
         Do.at(0) { node = NodeTests.create_node }
         Do.at(1) { provisioner = NodeTests.create_provisioner }
         Do.at(2) { provisioner.send_unbind_request }
-        Do.at(3) { EM.stop ; NATS.stop }
+        Do.at(7) { EM.stop ; NATS.stop }
       }
     end
     node.unbind_invoked.should be_true

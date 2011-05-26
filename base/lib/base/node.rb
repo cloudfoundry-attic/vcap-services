@@ -24,13 +24,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       EM.defer { on_provision(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.unprovision.#{@node_id}") { |msg, reply|
-      on_unprovision(msg, reply)
+      EM.defer { on_unprovision(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.bind.#{@node_id}") { |msg, reply|
-      on_bind(msg, reply)
+      EM.defer { on_bind(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.unbind.#{@node_id}") { |msg, reply|
-      on_unbind(msg, reply)
+      EM.defer { on_unbind(msg, reply) }
     }
     @node_nats.subscribe("#{service_name}.restore.#{@node_id}") { |msg, reply|
       EM.defer { on_restore(msg, reply) }
