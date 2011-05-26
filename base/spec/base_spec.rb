@@ -92,7 +92,7 @@ describe NodeTests do
         # Start 5 concurrent provision requests, each of which takes 5 seconds to finish
         # Non-concurrent provision handler won't finish in 10 seconds
         Do.sec(2) { 5.times { provisioner.send_provision_request } }
-        Do.sec(10) { EM.stop ; NATS.stop }
+        Do.sec(20) { EM.stop ; NATS.stop }
 
       }
     end
@@ -110,7 +110,7 @@ describe NodeTests do
         Do.at(0) { node = NodeTests.create_node }
         Do.at(1) { provisioner = NodeTests.create_provisioner }
         Do.at(2) { provisioner.send_unprovision_request }
-        Do.at(7) { EM.stop ; NATS.stop }
+        Do.at(20) { EM.stop ; NATS.stop }
       }
     end
     node.unprovision_invoked.should be_true
@@ -125,7 +125,7 @@ describe NodeTests do
         Do.at(0) { node = NodeTests.create_node }
         Do.at(1) { provisioner = NodeTests.create_provisioner }
         Do.at(2) { provisioner.send_bind_request }
-        Do.at(7) { EM.stop ; NATS.stop }
+        Do.at(20) { EM.stop ; NATS.stop }
       }
     end
     node.bind_invoked.should be_true
@@ -140,7 +140,7 @@ describe NodeTests do
         Do.at(0) { node = NodeTests.create_node }
         Do.at(1) { provisioner = NodeTests.create_provisioner }
         Do.at(2) { provisioner.send_unbind_request }
-        Do.at(7) { EM.stop ; NATS.stop }
+        Do.at(20) { EM.stop ; NATS.stop }
       }
     end
     node.unbind_invoked.should be_true
@@ -155,7 +155,7 @@ describe NodeTests do
         Do.at(0) { node = NodeTests.create_node }
         Do.at(1) { provisioner = NodeTests.create_provisioner }
         Do.at(2) { provisioner.send_restore_request }
-        Do.at(7) { EM.stop ; NATS.stop }
+        Do.at(20) { EM.stop ; NATS.stop }
       }
     end
     node.restore_invoked.should be_true
