@@ -8,6 +8,7 @@ require "bundler/setup"
 require "set"
 require "logger"
 
+once = false
 daemon = false
 config_file = File.join(File.dirname(__FILE__), "..", "config", "backup_manager.yml")
 
@@ -18,6 +19,9 @@ OptionParser.new do |opts|
   end
   opts.on("-d", "--[no-]daemon", "Run as a daemon") do |opt|
     daemon = opt
+  end
+  opts.on("-o", "--once", "Run once") do |opt|
+    once = opt
   end
   opts.on("-h", "--help", "Help") do
     puts opts
@@ -66,6 +70,7 @@ rotation = {
 DEFAULT_WAKEUP_INTERVAL = 60*60 # one hour
 
 options = {
+  :once => once,
   :daemon => daemon,
   :logger => logger,
   :root => parse_property(config, "root", String),

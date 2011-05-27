@@ -13,10 +13,11 @@ class VCAP::Services::Backup::Manager
 
   def initialize(options)
     @logger = options[:logger]
+    @once = options[:once]
     @daemon = options[:daemon]
     @logger.info("#{self.class}: Initializing")
     @wakeup_interval = options[:wakeup_interval]
-    @root = options[:root]
+    @root = File.join(options[:root], "backups")
     @tasks = [
       VCAP::Services::Backup::Rotator.new(self, options[:rotation])
     ]
@@ -39,8 +40,13 @@ class VCAP::Services::Backup::Manager
           run
         }
       end
-    else
+    elsif @once
       run
+    else
+      loop {
+        sleep @wakeup_interval
+        run
+      }
     end
   end
 
