@@ -411,6 +411,7 @@ describe VCAP::Services::Redis::Node do
         @node.shutdown
         sleep 1
         @node.start
+        sleep 2
         @node.check_password(credentials["port"], credentials["password"]).should == true
         @node.unprovision(credentials["name"])
         EM.add_timer(0.1) {EM.stop}
