@@ -6,7 +6,6 @@ gem "do_sqlite3", :require => nil
 gem "eventmachine"
 gem "eventmachine_httpserver", :require => "evma_httpserver"
 gem "json"
-gem "mysql"
 gem "uuidtools"
 gem "ruby-hmac", :require => "hmac-sha1"
 gem "em-http-request"
