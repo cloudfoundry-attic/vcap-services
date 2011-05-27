@@ -130,8 +130,11 @@ class VCAP::Services::Postgresql::Node
     5.times do
       begin
         @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database}")
-        return PGconn.connect(host, port, nil, nil, database, user, password)
-        @logger.info("Connected...")
+        connect = PGconn.connect(host, port, nil, nil, database, user, password)
+        version = get_postgres_version(connect)
+        @logger.info("PostgreSQL server version: #{version}")
+        @logger.info("Connected")
+        return connect
       rescue PGError => e
         @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}")
         sleep(2)
@@ -342,8 +345,8 @@ class VCAP::Services::Postgresql::Node
     sys_password = binduser.sys_password
     begin
       @logger.info("Creating credentials: #{user}/#{password} for database #{name}")
-      user = @connection.query("select * from pg_roles where rolname = '#{user}'")
-      if user
+      exist_user = @connection.query("select * from pg_roles where rolname = '#{user}'")
+      if exist_user.num_tuples() != 0
         @logger.warn("Role: #{user} already exists")
       else
         @logger.info("Create role: #{user}/#{password}")
@@ -362,9 +365,21 @@ class VCAP::Services::Postgresql::Node
           do_revoke_query(db_connection, user, sys_user)
         else
           db_connection.query("grant create on schema public to public")
-          db_connection.query("grant all on all tables in schema public to public")
-          db_connection.query("grant all on all sequences in schema public to public")
-          db_connection.query("grant all on all functions in schema public to public")
+          if get_postgres_version(db_connection) == '9'
+            db_connection.query("grant all on all tables in schema public to public")
+            db_connection.query("grant all on all sequences in schema public to public")
+            db_connection.query("grant all on all functions in schema public to public")
+          else
+            querys = db_connection.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
+            querys.each do |query_to_do|
+              p query_to_do['query_to_do'].to_s
+              db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+            querys = db_connection.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
+            querys.each do |query_to_do|
+              db_connection.query(query_to_do['query_to_do'].to_s)
+            end
+          end
         end
       rescue PGError => e
         @logger.error("Could not Initialize user privileges: #{e}")
@@ -409,15 +424,34 @@ class VCAP::Services::Postgresql::Node
     begin
       db_connection.query("DROP OWNED BY #{binduser.user}")
       db_connection.query("DROP OWNED BY #{binduser.sys_user}")
-      db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
-      db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
+      if get_postgres_version(db_connection) == '9'
+        db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
+        db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
+        db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
+        db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
+        db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
+        db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
+      else
+        querys = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
+        querys.each do |query_to_do|
+          db_connection.query(query_to_do['query_to_do'].to_s)
+        end
+        querys = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
+        querys.each do |query_to_do|
+          db_connection.query(query_to_do['query_to_do'].to_s)
+        end
+        querys = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
+        querys.each do |query_to_do|
+          db_connection.query(query_to_do['query_to_do'].to_s)
+        end
+        querys = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
+        querys.each do |query_to_do|
+          db_connection.query(query_to_do['query_to_do'].to_s)
+        end
+      end
       db_connection.query("REVOKE ALL ON DATABASE #{db} from #{binduser.user} CASCADE")
-      db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
       db_connection.query("REVOKE ALL ON SCHEMA PUBLIC from #{binduser.user} CASCADE")
-      db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
-      db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
       db_connection.query("REVOKE ALL ON DATABASE #{db} from #{binduser.sys_user} CASCADE")
-      db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
       db_connection.query("REVOKE ALL ON SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
     rescue PGError => e
       @logger.warn("Could not revoke user dependencies: #{e}")
@@ -439,6 +473,12 @@ class VCAP::Services::Postgresql::Node
       "user" => user,
       "password" => passwd,
     }
+  end
+
+  def get_postgres_version(db_connection)
+    version = db_connection.query("select version()")
+    reg = /([0-9.]{5})/
+    return version[0]['version'].scan(reg)[0][0][0]
   end
 
 end
