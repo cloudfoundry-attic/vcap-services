@@ -214,6 +214,7 @@ class ProvisionerTests
     attr_accessor :got_bind_response
     attr_accessor :got_unbind_response
     attr_accessor :got_restore_response
+    attr_accessor :got_recover_response
     def initialize(provisioner)
       @provisioner = provisioner
       @got_announcement = false
@@ -222,6 +223,7 @@ class ProvisionerTests
       @got_bind_response = false
       @got_unbind_response = false
       @got_restore_response = false
+      @got_recover_response = false
       @instance_id = nil
       @bind_id = nil
     end
@@ -250,6 +252,11 @@ class ProvisionerTests
     def send_restore_request
       @provisioner.restore_instance(@instance_id, nil) do |res|
         @got_restore_response = res['success']
+      end
+    end
+    def send_recover_request
+      @provisioner.recover(@instance_id, nil, [{'service_id' => @instance_id, 'configuration' => {}}]) do |res|
+        @got_recover_response = res['success']
       end
     end
   end
@@ -362,6 +369,7 @@ class AsyncGatewayTests
     attr_accessor :bind_http_code
     attr_accessor :unbind_http_code
     attr_accessor :restore_http_code
+    attr_accessor :recover_http_code
 
     def initialize(nice)
       @token = '0xdeadbeef'
@@ -390,6 +398,7 @@ class AsyncGatewayTests
       @bind_http_code = 0
       @unbind_http_code = 0
       @restore_http_code = 0
+      @recover_http_code = 0
       @last_service_id = nil
       @last_bind_id = nil
     end
@@ -484,6 +493,21 @@ class AsyncGatewayTests
         @restore_http_code = -1
       }
     end
+
+    def send_recover_request(service_id = nil)
+      service_id ||= @last_service_id
+      msg = Yajl::Encoder.encode({
+        :instance_id => service_id,
+        :backup_path => '/'
+      })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/recover").post(gen_req(msg))
+      http.callback {
+        @recover_http_code = http.response_header.status
+      }
+      http.errback {
+        @recover_http_code = -1
+      }
+    end
   end
 
   class MockCloudController
@@ -506,7 +530,11 @@ class AsyncGatewayTests
 
       get "/services/v1/offerings/:label/handles" do
         Yajl::Encoder.encode({
-          :handles => []
+          :handles => [{
+            'service_id' => MockProvisioner::SERV_ID,
+            'configuration' => {},
+            'credentials' => {}
+          }]
         })
       end
 
@@ -516,7 +544,7 @@ class AsyncGatewayTests
     end
   end
 
-  class NiceProvisioner
+  class MockProvisioner
     SERV_ID = "service_id"
     BIND_ID = "bind_id"
 
@@ -538,6 +566,16 @@ class AsyncGatewayTests
       @got_recover_request = false
     end
 
+    def register_update_handle_callback
+      # Do nothing
+    end
+
+    def update_handles(handles)
+      # Do nothing
+    end
+  end
+
+  class NiceProvisioner < MockProvisioner
     def provision_service(request, prov_handle=nil, &blk)
       @got_provision_request = true
       blk.call(success({:data => {}, :service_id => SERV_ID, :credentials => {}}))
@@ -567,35 +605,9 @@ class AsyncGatewayTests
       @got_recover_reqeust = true
       blk.call(success(true))
     end
-
-    def register_update_handle_callback
-      # Do nothing
-    end
-
-    def update_handles(handles)
-      # Do nothing
-    end
   end
 
-  class NastyProvisioner
-    include VCAP::Services::Base::Error
-
-    attr_accessor :got_provision_request
-    attr_accessor :got_unprovision_request
-    attr_accessor :got_bind_request
-    attr_accessor :got_unbind_request
-    attr_accessor :got_restore_request
-    attr_accessor :got_recover_request
-
-    def initialize
-      @got_provision_request = false
-      @got_unprovision_request = false
-      @got_bind_request = false
-      @got_unbind_request = false
-      @got_restore_request = false
-      @got_recover_request = false
-    end
-
+  class NastyProvisioner < MockProvisioner
     def provision_service(request, prov_handle=nil, &blk)
       @got_provision_request = true
       blk.call(internal_fail)
@@ -624,14 +636,6 @@ class AsyncGatewayTests
     def recover(instance_id, backup_path, handles, &blk)
       @got_recover_reqeust = true
       blk.call(internal_fail)
-    end
-
-    def register_update_handle_callback
-      # Do nothing
-    end
-
-    def update_handles(handles)
-      # Do nothing
     end
   end
 end
