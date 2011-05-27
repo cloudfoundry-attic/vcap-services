@@ -18,6 +18,7 @@ require 'eventmachine'
 
 class MysqlBackup
   SYSTEM_DB = %w(mysql information_schema)
+  IGNORE_DB = %w(test)
 
   def self.setlogger(logger)
     @@logger = logger
@@ -27,7 +28,11 @@ class MysqlBackup
     backup_cmd, compress_cmd, name, ts=
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
     path_prefix = "backups"
-    if SYSTEM_DB.index(name)
+    if IGNORE_DB.include?(name)
+      @@logger.info("Ignore backup database #{name}.")
+      blk.call if blk
+      return
+    elsif SYSTEM_DB.include?(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<service specific data>
       full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name], name,
