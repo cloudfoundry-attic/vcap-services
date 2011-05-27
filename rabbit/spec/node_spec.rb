@@ -32,15 +32,6 @@ describe VCAP::Services::Rabbit::Node do
       :mbus => "nats://localhost:4222"
     }
     @default_permissions = "'.*' '.*' '.*'"
-
-    # Start NATS server
-    @uri = URI.parse(@options[:mbus])
-    @pid_file = "/tmp/nats-rabbit-test.pid"
-    if !NATS.server_running?(@uri)
-      %x[ruby -S bundle exec nats-server -p #{@uri.port} -P #{@pid_file} -d 2> /dev/null]
-    end
-    sleep 1
-
     EM.run do
       @node = VCAP::Services::Rabbit::Node.new(@options)
       EM.add_timer(0.1) {EM.stop}
@@ -48,12 +39,6 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   after :all do
-    # Stop NATS server
-    if File.exists?(@pid_file)
-      pid = File.read(@pid_file).chomp.to_i
-      %x[kill -9 #{pid}]
-      %x[rm -f #{@pid_file}]
-    end
     %x[rm -f #{@local_db_file}]
   end
 
@@ -69,7 +54,7 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   describe "Node.initialize" do
-    it "should set up a rabbit controler path" do
+    it "should set up a rabbit controller path" do
       @node.rabbit_ctl.should be @options[:rabbit_ctl]
     end
     it "should set up a rabbit server path" do

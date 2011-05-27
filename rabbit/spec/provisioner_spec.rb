@@ -14,7 +14,7 @@ describe VCAP::Services::Rabbit::Provisioner do
   end
 
   describe 'Provisioner.node_score' do
-    it "should returen the node available memory when get the node score" do
+    it "should return the node available memory when get the node score" do
       @provisioner.node_score({"available_memory" => 1024}).should == 1024
     end
   end
