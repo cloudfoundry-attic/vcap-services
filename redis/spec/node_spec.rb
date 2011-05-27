@@ -343,6 +343,40 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
+  describe "Node.restore" do
+    before :all do
+      @restore_dir = "/tmp/restore/redis"
+      FileUtils.mkdir_p(@restore_dir)
+      @credentials1 = @node.provision(:free)
+      @credentials2 = @node.provision(:free)
+      sleep 1
+      Redis.new({:port => @credentials1["port"], :password => @credentials1["password"]}).set("test_key", "test_value")
+      @node.set_config(@credentials1["port"], @credentials1["password"], "save", "1 0")
+      @node.set_config(@credentials1["port"], @credentials1["password"], "dir", @restore_dir)
+      sleep 2
+      @restore_result = @node.restore(@credentials2["name"], @restore_dir)
+      sleep 1
+    end
+
+    after :all do
+      @node.unprovision(@credentials1["name"])
+      @node.unprovision(@credentials2["name"])
+      FileUtils.rm_rf("/tmp/restore")
+    end
+
+    it "should restore user data from a backup file" do
+      Redis.new({:port => @credentials2["port"], :password => @credentials2["password"]}).get("test_key").should == "test_value"
+    end
+
+    it "should return an empty hash if restore successfully" do
+      @restore_result.should == {}
+    end
+
+    it "should raise exception if the instance is not existed" do
+      expect {@node.restore("non-existed", @restore_dir)}.should raise_error(VCAP::Services::Redis::RedisError)
+    end
+  end
+
   describe "Node.migration" do
     before :all do
       @credentials = @node.provision(:free)
