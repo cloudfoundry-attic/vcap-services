@@ -81,7 +81,7 @@ describe AsyncGatewayTests do
     gateway.unbind_http_code.should == 200
   end
 
-  it "should be able to return error when restore failed" do
+  it "should be able to restore" do
     cc = nil
     gateway = nil
     EM.run do
@@ -91,6 +91,18 @@ describe AsyncGatewayTests do
       Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
     end
     gateway.restore_http_code.should == 200
+  end
+
+  it "should be able to recover" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(2) { gateway.send_recover_request }
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.recover_http_code.should == 200
   end
 
   it "should be able to return error when provision failed" do
@@ -151,5 +163,17 @@ describe AsyncGatewayTests do
       Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
     end
     gateway.restore_http_code.should == 500
+  end
+
+  it "should be able to return error when recover failed" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nasty_gateway ; gateway.start }
+      Do.at(2) { gateway.send_recover_request }
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.recover_http_code.should == 500
   end
 end

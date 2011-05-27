@@ -335,6 +335,23 @@ describe ProvisionerTests do
     gateway.got_restore_response.should be_true
   end
 
+  it "should support recover" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      NATS.start(:uri => BaseTests::Options::NATS_URI, :autostart => true) {
+        Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_node(1) }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_recover_request }
+        Do.at(5) { EM.stop ; NATS.stop }
+      }
+    end
+    gateway.got_recover_response.should be_true
+  end
+
   it "should support varz" do
     provisioner = nil
     gateway = nil
