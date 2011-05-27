@@ -176,17 +176,17 @@ describe VCAP::Services::Redis::Node do
       @node.unprovision(@credentials["name"])
     end
 
-    it "should access the instance instance using the credentials returned by sucessful provision" do
+    it "should access the instance using the credentials returned by successful provision" do
       redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
       redis.get("test_key").should be_nil
     end
 
-    it "should not allow null credentials to access the instance instance" do
+    it "should not allow null credentials to access the instance" do
       redis = Redis.new({:port => @credentials["port"]})
       expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
-    it "should not allow wrong credentials to access the instance instance" do
+    it "should not allow wrong credentials to access the instance" do
       redis = Redis.new({:port => @credentials["port"], :password => "wrong_password"})
       expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
@@ -199,7 +199,7 @@ describe VCAP::Services::Redis::Node do
       (@old_memory - @node.available_memory).should == @node.max_memory
     end
 
-    it "should send provision messsage when finish a provision" do
+    it "should send provision message when finish a provision" do
       @credentials["hostname"].should be
       @credentials["port"].should be
       @credentials["password"].should be
@@ -228,7 +228,7 @@ describe VCAP::Services::Redis::Node do
       @node.unprovision(@credentials["name"])
     end
 
-    it "should not access the instance instance when doing unprovision" do
+    it "should not access the instance when doing unprovision" do
       redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
       expect {redis.get("test_key")}.should raise_error(Errno::ECONNREFUSED)
     end
@@ -241,13 +241,13 @@ describe VCAP::Services::Redis::Node do
       (@node.available_memory - @old_memory).should == @node.max_memory
     end
 
-    it "should raise error when unprovision an non-existed name" do
+    it "should raise exception when unprovision an non-existed name" do
       expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
   describe "Node.save_instance" do
-    it "shuold raise error when save instance instance failed" do
+    it "should raise exception when save instance failed" do
       @instance.pid = 100
       @instance.persisted_state = DataMapper::Resource::State::Immutable
       expect {@node.save_instance(@instance)}.should raise_error(VCAP::Services::Redis::RedisError)
@@ -255,14 +255,14 @@ describe VCAP::Services::Redis::Node do
   end
 
   describe "Node.destory_instance" do
-    it "shuold raise error when destroy instance instance failed" do
+    it "should raise exception when destroy instance failed" do
       instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
       expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
   describe "Node.get_instance" do
-    it "shuold raise error when get instance instance failed" do
+    it "should raise exception when get instance failed" do
       expect {@node.get_instance("non-existed")}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
@@ -281,22 +281,22 @@ describe VCAP::Services::Redis::Node do
       @node.unprovision(@instance_credentials["name"])
     end
 
-    it "should access redis server use the returned credential" do
+    it "should access redis server using the returned credential" do
       redis = Redis.new({:port => @binding_credentials["port"], :password => @binding_credentials["password"]})
       redis.get("test_key").should be_nil
     end
 
-    it "should not allow null credentials to access the instance instance" do
+    it "should not allow null credentials to access the instance" do
       redis = Redis.new({:port => @binding_credentials["port"]})
       expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
-    it "should not allow wrong credentials to access the instance instance" do
+    it "should not allow wrong credentials to access the instance" do
       redis = Redis.new({:port => @binding_credentials["port"], :password => "wrong_password"})
       expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
-    it "should send binding messsage when finish a binding" do
+    it "should send binding message when finish a binding" do
       @binding_credentials["hostname"].should be
       @binding_credentials["port"].should be
       @binding_credentials["password"].should be
@@ -322,7 +322,7 @@ describe VCAP::Services::Redis::Node do
       @node.memory_for_instance(instance).should == 16
     end
 
-    it "should raise error when give wrong plan name" do
+    it "should raise exception when giving wrong plan name" do
       instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
       instance.plan = :non_existed_plan
       expect {@node.memory_for_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)

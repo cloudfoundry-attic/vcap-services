@@ -260,7 +260,7 @@ describe VCAP::Services::Rabbit::Node do
       @node.unprovision(@credentials["name"])
     end
 
-    it "should access the instance instance using the credentials returned by sucessful provision" do
+    it "should access the instance using the credentials returned by successful provision" do
       AMQP.start(:host => @credentials["host"],
                  :port => @credentials["port"],
                  :vhost => @credentials["vhost"],
@@ -271,7 +271,7 @@ describe VCAP::Services::Rabbit::Node do
       end
     end
 
-    it "should not allow null credentials to access the instance instance" do
+    it "should not allow null credentials to access the instance" do
       expect do
         EM.run do
           AMQP.connect(:host => @credentials["host"],
@@ -283,7 +283,7 @@ describe VCAP::Services::Rabbit::Node do
       end.should raise_error(AMQP::Error)
     end
 
-    it "should not allow wrong credentials to access the instance instance" do
+    it "should not allow wrong credentials to access the instance" do
       expect do
         EM.run do
           AMQP.connect(:host => @credentials["host"],
@@ -299,7 +299,7 @@ describe VCAP::Services::Rabbit::Node do
       (@old_memory - @node.available_memory).should == @node.max_memory
     end
 
-    it "should send provision messsage when finish a provision" do
+    it "should send provision message when finish a provision" do
       @credentials["name"].should be
       @credentials["host"].should be
       @credentials["port"].should be
@@ -318,7 +318,7 @@ describe VCAP::Services::Rabbit::Node do
       sleep 1
     end
 
-    it "should not access the instance instance when doing unprovision" do
+    it "should not access the instance when doing unprovision" do
       expect do
         EM.run do
           AMQP.connect(:host => @credentials["host"],
@@ -334,7 +334,7 @@ describe VCAP::Services::Rabbit::Node do
       (@node.available_memory - @old_memory).should == @node.max_memory
     end
 
-    it "should raise error when unprovision an non-existed name" do
+    it "should raise exception when unprovision an non-existed name" do
       expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
@@ -364,7 +364,7 @@ describe VCAP::Services::Rabbit::Node do
       end
     end
 
-    it "should not allow null credentials to access the instance instance" do
+    it "should not allow null credentials to access the instance" do
       expect do
         EM.run do
           AMQP.connect(:host => @binding_credentials["host"],
@@ -376,7 +376,7 @@ describe VCAP::Services::Rabbit::Node do
       end.should raise_error(AMQP::Error)
     end
 
-    it "should not allow wrong credentials to access the instance instance" do
+    it "should not allow wrong credentials to access the instance" do
       expect do
         EM.run do
           AMQP.connect(:host => @binding_credentials["host"],
@@ -388,7 +388,7 @@ describe VCAP::Services::Rabbit::Node do
       end.should raise_error(AMQP::Error)
     end
 
-    it "should send binding messsage when finish a binding" do
+    it "should send binding message when finish a binding" do
       @binding_credentials["host"].should be
       @binding_credentials["port"].should be
       @binding_credentials["vhost"].should be
@@ -427,21 +427,21 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   describe "Node.save_instance" do
-    it "shuold raise error when save instance instance failed" do
+    it "should raise exception when save instance failed" do
       @instance.persisted_state = DataMapper::Resource::State::Immutable
       expect {@node.save_instance(@instance)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
   describe "Node.destory_instance" do
-    it "shuold raise error when destroy instance instance failed" do
+    it "should raise exception when destroy instance failed" do
       instance = VCAP::Services::Rabbit::Node::ProvisionedInstance.new
       expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 
   describe "Node.get_instance" do
-    it "shuold raise error when get instance instance failed" do
+    it "should raise exception when get instance failed" do
       expect {@node.get_instance("non-existed")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
