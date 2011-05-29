@@ -263,7 +263,13 @@ class VCAP::Services::Rabbit::Node
 
   def start_server
     output = %x[#{@rabbit_server} -detached]
-    if output == "Activating RabbitMQ plugins ...\n0 plugins activated:\n\n"
+    # successfuly startup message looks like:
+    #   Activating RabbitMQ plugins ...
+    #   0 plugins activated:
+    # possibly with some noise if your setup is a little wonky
+    # (lists.rabbitmq.com/pipermail/rabbitmq-discuss/2011-May/012918.html):
+    #   *WARNING* Undefined function gb_trees:map/2
+    if !output.index("Activating RabbitMQ plugins").nil? && !output.index("plugins activated:").nil?
       sleep 2
       # If the guest user is existed, then delete it for security
       begin
