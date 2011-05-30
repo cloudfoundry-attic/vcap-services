@@ -59,6 +59,7 @@ end
 
 options = {
   :logger => logger,
+  :index => parse_property(config, "index", Integer, :optional => true),
   :base_dir => parse_property(config, "base_dir", String),
   :redis_server_path => parse_property(config, "redis_server_path", String),
   :ip_route => parse_property(config, "ip_route", String, :optional => true),
