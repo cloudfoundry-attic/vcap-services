@@ -102,7 +102,7 @@ class VCAP::Services::Mysql::Node
     ProvisionedService.all.each do |service|
       db, user = service.name, service.user
       if not db_list.include?([db, user]) then
-        @logger.info("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
+        @logger.error("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
         next
       end
     end
@@ -137,27 +137,25 @@ class VCAP::Services::Mysql::Node
   def mysql_keep_alive
     @connection.ping()
   rescue Mysql::Error => e
-    @logger.info("MySQL connection lost: [#{e.errno}] #{e.error}")
+    @logger.error("MySQL connection lost: [#{e.errno}] #{e.error}")
     @connection = mysql_connect
   end
 
   def kill_long_queries
-    @logger.debug("Begin kill long queries.")
     process_list = @connection.list_processes
     process_list.each do |proc|
       thread_id, user, _, db, command, time, _, info = proc
       if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
         @connection.query("KILL QUERY " + thread_id)
-        @logger.info("Killed long query: user:#{user} db:#{db} time:#{time} info:#{info}")
+        @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} info:#{info}")
         @long_queries_killed += 1
       end
     end
   rescue Mysql::Error => e
-    @logger.info("MySQL error: [#{e.errno}] #{e.error}")
+    @logger.error("MySQL error: [#{e.errno}] #{e.error}")
   end
 
   def kill_long_transaction
-    @logger.debug("Begin kill long transactions.")
     # FIXME need a better transaction query solution other than parse status text
     result = @connection.query("SHOW ENGINE INNODB STATUS")
     innodb_status = nil
@@ -174,7 +172,7 @@ class VCAP::Services::Mysql::Node
         while (lines[i] =~ /^---/) == nil
           if lines[i] =~ /MySQL thread id (\d*).* (\w*)$/
             @connection.query("KILL QUERY #{$1}")
-            @logger.info"Kill long transaction: user:#{$2} thread: #{$1} active_time:#{active_time}"
+            @logger.warn("Kill long transaction: user:#{$2} thread: #{$1} active_time:#{active_time}")
             @long_tx_killed +=1
           end
           i +=1
@@ -463,7 +461,6 @@ class VCAP::Services::Mysql::Node
     # how many provision/binding operations since startup.
     varz[:provision_served] = @provision_served
     varz[:binding_served] = @binding_served
-    @logger.debug("Varz update: #{varz.inspect}")
     varz
   rescue => e
     @logger.error("Error during generate varz:"+e)
