@@ -58,6 +58,7 @@ end
 
 options = {
   :logger => logger,
+  :index => parse_property(config, "index", Integer, :optional => true),
   :base_dir => parse_property(config, "base_dir", String),
   :rabbit_ctl => parse_property(config, "rabbit_ctl", String),
   :rabbit_server => parse_property(config, "rabbit_server", String),

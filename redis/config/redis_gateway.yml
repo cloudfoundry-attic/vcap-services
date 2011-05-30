@@ -7,6 +7,7 @@ service:
   plans: ['free']
   tags: ['redis', 'redis-2.2', 'key-value', 'nosql']
 host: localhost
+index: 0
 token: "0xdeadbeef"
 log_level: DEBUG
 mbus: nats://localhost:4222

@@ -77,6 +77,7 @@ class VCAP::Services::Base::Gateway
     EM.run do
       sp = provisioner_class.new(
              :logger   => logger,
+             :index    => config[:index],
              :version  => config[:service][:version],
              :local_ip => config[:host],
              :mbus => config[:mbus],

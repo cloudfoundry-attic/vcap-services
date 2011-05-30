@@ -45,6 +45,7 @@ end
 
 options = {
   :logger => logger,
+  :index => parse_property(config, "index", Integer, :optional => true),
   :base_dir => parse_property(config, "base_dir", String),
   :mysqldump_bin => parse_property(config, "mysqldump_bin", String),
   :gzip_bin => parse_property(config, "gzip_bin", String),

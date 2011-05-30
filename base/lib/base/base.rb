@@ -38,6 +38,7 @@ class VCAP::Services::Base::Base
       :nats => @node_nats,
       :type => service_description,
       :host => @local_ip,
+      :index => options[:index] || 0,
       :config => options
     )
     EM.add_timer(5) { update_varz } # give service a chance to wake up
