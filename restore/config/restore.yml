@@ -8,4 +8,4 @@ token: "0xdeadbeef"
 content_type: application/json
 # The mode can be restore or recover
 mode: recover
-timout: 10
+timeout: 10
