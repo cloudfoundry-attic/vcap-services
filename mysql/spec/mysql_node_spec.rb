@@ -229,7 +229,15 @@ describe "Mysql server node" do
       # lock table test
       conn.query('select * from test where id = 10 for update')
       err = nil
+      old_counter = node.varz_details[:long_queries_killed]
       t = Proc.new do
+        EM.add_timer(opts[:max_long_query] * 2){
+          err.should_not == nil
+          err.should =~ /interrupted/
+          # counter should also be updated
+          node.varz_details[:long_queries_killed].should > old_counter
+          EM.stop
+        }
         begin
           name, host, port, user, pass = %w(name hostname port user password).map{|key| db[key]}
           # use deadlock to simulate long queries
@@ -239,15 +247,7 @@ describe "Mysql server node" do
         end
         conn.close
       end
-      old_counter = node.varz_details[:long_queries_killed]
       EM.defer(t)
-      EM.add_timer(opts[:max_long_query] * 2){
-        err.should_not == nil
-        err.should =~ /interrupted/
-        # counter should also be updated
-        node.varz_details[:long_queries_killed].should > old_counter
-        EM.stop
-      }
     end
   end
 
