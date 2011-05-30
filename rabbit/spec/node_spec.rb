@@ -96,13 +96,17 @@ describe VCAP::Services::Rabbit::Node do
     it "should add vhost successfully using right arguments" do
       @node.add_vhost("test_vhost")
       %x[#{@options[:rabbit_ctl]} list_permissions -p test_vhost 2> /dev/null].split(/\n/)[-1].should == "...done."
+      @node.delete_vhost("test_vhost")
     end
 
     it "should raise exception when add vhost using wrong arguments" do
+      @node.add_vhost("test_vhost")
       expect {@node.add_vhost("test_vhost")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
+      @node.delete_vhost("test_vhost")
     end
 
     it "should delete vhost successfully using right arguments" do
+      @node.add_vhost("test_vhost")
       @node.delete_vhost("test_vhost")
       %x[#{@options[:rabbit_ctl]} list_permissions -p test_vhost 2> /dev/null].split(/\n/)[-1].should_not == "...done."
     end
@@ -116,13 +120,17 @@ describe VCAP::Services::Rabbit::Node do
     it "should add user successfully using right arguments" do
       @node.add_user("test_user", "test_password")
       @node.list_users.index("test_user").should be
+      @node.delete_user("test_user")
     end
 
     it "should raise exception when add user using wrong arguments" do
+      @node.add_user("test_user", "test_password")
       expect {@node.add_user("test_user", "test_password")}.should raise_error(VCAP::Services::Rabbit::RabbitError)
+      @node.delete_user("test_user")
     end
 
     it "should delete user successfully using right arguments" do
+      @node.add_user("test_user", "test_password")
       @node.delete_user("test_user")
       @node.list_users.index("test_user").should be_nil
     end
@@ -146,6 +154,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should set permissons successfully using right arguments" do
       @node.set_permissions("test_vhost", "test_user", @default_permissions)
       @node.get_permissions("test_vhost", "test_user").should == @default_permissions
+      @node.clear_permissions("test_vhost", "test_user")
     end
 
     it "should raise exception when get permissons using wrong arguments" do
@@ -153,6 +162,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should get permissons successfully using right arguments" do
+      @node.set_permissions("test_vhost", "test_user", @default_permissions)
       @node.get_permissions("test_vhost", "test_user").should == @default_permissions
     end
 
@@ -161,6 +171,7 @@ describe VCAP::Services::Rabbit::Node do
     end
 
     it "should clear permissons successfully using right arguments" do
+      @node.set_permissions("test_vhost", "test_user", @default_permissions)
       @node.clear_permissions("test_vhost", "test_user")
       @node.get_permissions("test_vhost", "test_user").should == ""
     end
