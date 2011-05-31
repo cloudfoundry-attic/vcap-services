@@ -57,6 +57,9 @@ describe "mongodb backup/recovery"  do
     # Run restore
     @node.restore(@resp['name'], dir)
 
+    # wait for restore to happen
+    sleep 10
+
     # Should be the same like what it was before backup
     conn = Mongo::Connection.new(@bind_resp['hostname'], @bind_resp['port']).db(@resp['db'])
     conn.authenticate(@bind_resp['username'], @bind_resp['password'])
@@ -95,9 +98,9 @@ describe "mongodb backup/recovery"  do
     dir = get_backup_dir(BACKUP_DIR)
     EM.run do
       EM.add_timer(0) { @node.provision('free', @resp) }
-      EM.add_timer(1) { @node.restore(@resp['name'], dir) }
-      EM.add_timer(2) { @node.bind(@resp['name'], 'rw', @bind_resp) }
-      EM.add_timer(3) {
+      EM.add_timer(2) { @node.restore(@resp['name'], dir) }
+      EM.add_timer(10) { @node.bind(@resp['name'], 'rw', @bind_resp) }
+      EM.add_timer(11) {
         # Should be the same like what it was before backup
         conn = Mongo::Connection.new(@bind_resp['hostname'], @bind_resp['port']).db(@resp['db'])
         conn.authenticate(@bind_resp['username'], @bind_resp['password'])

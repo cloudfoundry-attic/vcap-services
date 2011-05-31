@@ -57,6 +57,9 @@ describe "mongodb backup/restore"  do
     # Run restore
     @node.restore(@resp['name'], dir)
 
+    # wait for restore to happen
+    sleep 10
+
     # Should be the same like what it was before backup
     conn = Mongo::Connection.new(@bind_resp['hostname'], @bind_resp['port']).db(@resp['db'])
     conn.authenticate(@bind_resp['username'], @bind_resp['password'])
