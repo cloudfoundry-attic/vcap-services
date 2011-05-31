@@ -35,14 +35,6 @@ describe VCAP::Services::Redis::Node do
       :mbus => "nats://localhost:4222",
     }
 
-    # Start NATS server
-    @uri = URI.parse(@options[:mbus])
-    @pid_file = "/tmp/nats-redis-test.pid"
-    if !NATS.server_running?(@uri)
-      %x[ruby -S bundle exec nats-server -p #{@uri.port} -P #{@pid_file} -d 2> /dev/null]
-    end
-    sleep 1
-
     EM.run do
       @node = VCAP::Services::Redis::Node.new(@options)
       EM.add_timer(0.1) {EM.stop}
@@ -59,12 +51,6 @@ describe VCAP::Services::Redis::Node do
   end
 
   after :all do
-    # Stop NATS server
-    if File.exists?(@pid_file)
-      pid = File.read(@pid_file).chomp.to_i
-      %x[kill -9 #{pid}]
-      %x[rm -f #{@pid_file}]
-    end
     %x[rm -f #{@local_db_file}]
   end
 
