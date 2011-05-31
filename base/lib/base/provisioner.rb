@@ -361,6 +361,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         blk.call(internal_fail)
       end
     end
+  rescue => e
+    @logger.warn(e)
+    blk.call(internal_fail)
   end
 
   def on_update_service_handle(msg, reply)
