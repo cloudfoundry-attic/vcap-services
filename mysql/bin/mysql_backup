@@ -154,6 +154,8 @@ missing_opts = opts.keys.select{|key| opts[key]==nil}
 unless missing_opts.empty?
   abort "Missing required configuration items #{missing_opts.inspect}"
 end
+# Optional socket config
+opts[:socket] = config["mysql"]["socket"]
 
 abort "Can't write to #{opts[:backup_path]}" unless File.writable_real?(opts[:backup_path])
 
@@ -178,7 +180,7 @@ end
 MysqlBackup.setlogger(logger)
 
 conn = Mysql.real_connect(opts[:host], opts[:user], opts[:passwd], 'mysql',
-                          opts[:port].to_i)
+                          opts[:port].to_i, opts[:socket])
 result = conn.query("show databases;")
 dbs = []
 result.each {|db| dbs << db[0] }
