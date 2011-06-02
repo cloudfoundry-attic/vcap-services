@@ -75,7 +75,8 @@ options = {
   :logger => logger,
   :root => parse_property(config, "root", String),
   :wakeup_interval => parse_property(config, "wakeup_interval", Integer, :optional => true) || DEFAULT_WAKEUP_INTERVAL,
-  :rotation => rotation
+  :rotation => rotation,
+  :enable => parse_property(config, "enable", Object, :optional => true) || false
 }
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "lib")

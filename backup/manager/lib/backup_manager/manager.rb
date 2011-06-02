@@ -21,6 +21,7 @@ class VCAP::Services::Backup::Manager
     @tasks = [
       VCAP::Services::Backup::Rotator.new(self, options[:rotation])
     ]
+    @enable = options[:enable]
   end
 
   attr_reader :root
@@ -51,15 +52,21 @@ class VCAP::Services::Backup::Manager
   end
 
   def run
-    @logger.info("#{self.class}: Running")
-    @tasks.each { |task|
-      unless task.run
-        @logger.warn("#{self.class}: #{task.class} failed")
+    if @enable
+      begin
+        @logger.info("#{self.class}: Running")
+        @tasks.each { |task|
+          unless task.run
+            @logger.warn("#{self.class}: #{task.class} failed")
+          end
+        }
+      rescue => x
+        # tasks should catch their own exceptions, but just in case...
+        @logger.error("#{self.class}: Exception while running: #{x.to_s}")
       end
-    }
-  rescue => x
-    # tasks should catch their own exceptions, but just in case...
-    @logger.error("#{self.class}: Exception while running: #{x.to_s}")
+    else
+      @logger.info("#{self.class}: Not enabled")
+    end
   end
 
   def time
