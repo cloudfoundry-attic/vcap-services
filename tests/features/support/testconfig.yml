@@ -1,0 +1,72 @@
+---
+# Timeout value after we which we give up on AppCloud operations that are long running.
+# Within this value, we poll for completion status of the operations.
+timeout_secs: 60
+
+simple_app:
+  framework: "http://b20nine.com/unknown"
+  startup: "ruby foo.rb"
+
+service_test_app:
+  framework: "http://b20nine.com/unknown"
+  startup: "ruby server.rb"
+
+tiny_java_app:
+  framework: "spring_web/1.0"
+  startup: "thin start"
+
+simple_db_app:
+  framework: "http://b20nine.com/unknown"
+  startup: "ruby simple_db_app.rb"
+
+redis_lb_app:
+  framework: "http://b20nine.com/unknown"
+  startup: "ruby redis_lb.rb"
+
+env_test_app:
+  framework: "http://b20nine.com/unknown"
+  startup: "ruby env_test.rb"
+
+broken_app:
+  framework: "http://b20nine.com/unknown"
+  startup: "ruby broken.rb"
+
+rails3_app:
+  framework: "rails/1.0"
+  startup: "thin start"
+  memory: 256
+
+jpa_app:
+  framework: "spring_web/1.0"
+  startup: "thin start"
+  memory: 256
+
+hibernate_app:
+  framework: "spring_web/1.0"
+  startup: "thin start"
+  memory: 256
+
+dbrails_app:
+  framework: "rails/1.0"
+  startup: "thin start"
+  memory: 256
+
+dbrails_broken_app:
+  framework: "rails/1.0"
+  startup: "thin start"
+  memory: 256
+
+grails_app:
+  framework: "grails/1.0"
+  startup: "thin start"
+  memory: 512
+
+roo_app:
+  framework: "spring_web/1.0"
+  startup: "thin start"
+  memory: 256
+
+mochiweb_test:
+  framework: "otp_rebar"
+  startup: erlangR14B02
+  memory: 64

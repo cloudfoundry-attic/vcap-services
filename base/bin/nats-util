@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+
+command = ARGV.first
+opt = RUBY_PLATFORM =~ /linux/ ? '-r' : ''
+
+if command == "start"
+  puts "#{$0}: Starting a NATS server"
+  pid = fork
+  if pid
+    Process.detach(pid)
+  else
+    `nats-server`
+  end
+elsif command == "stop"
+  puts "#{$0}: Stopping all NATS servers"
+  `ps a | grep nats-server | grep -v grep | sed 's/ .*//' | xargs #{opt} kill -9`
+else
+  warn "Usage: #{$0} {start, stop}"
+end

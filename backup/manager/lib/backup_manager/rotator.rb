@@ -28,22 +28,36 @@ class VCAP::Services::Backup::Rotator
       each_subdirectory(ab) { |cd|
         each_subdirectory(cd) { |ef|
           each_subdirectory(ef) { |guid|
-            backups = {}
-            each_subdirectory(guid) { |backup|
-              timestamp = validate(backup)
-              if timestamp
-                backups[timestamp] = backup
-              else
-                @manager.logger.warn("Ignoring invalid backup #{backup}")
-              end
-            }
-            prune_all(backups)
+            rotate(guid)
           }
         }
       }
     }
+    # special case: for mysql we should take care of system data
+    # $root/mysql/{information_schema|mysql}/timestamp
+    if service == File.join(@manager.root, "mysql")
+      rotate(File.join(service, "information_schema"))
+      rotate(File.join(service, "mysql"))
+    end
   rescue Exception => x
     @manager.logger.error("#{self.class}: Exception while running: #{x.message}, #{x.backtrace.join(', ')}")
+  end
+
+  def rotate(dir)
+    if File.directory? dir then
+      backups = {}
+      each_subdirectory(dir) { |backup|
+        timestamp = validate(backup)
+        if timestamp
+          backups[timestamp] = backup
+        else
+          @manager.logger.warn("Ignoring invalid backup #{backup}")
+        end
+      }
+      prune_all(backups)
+    else
+      @manager.logger.error("#{self.class}: #{dir} does not exist");
+    end
   end
 
   def validate(path)
@@ -53,6 +67,8 @@ class VCAP::Services::Backup::Rotator
       guid = $4
       timestamp = $5
       return timestamp.to_i if guid =~ /\A#{prefix}/
+    elsif path =~ /.+\/mysql\/(information_schema|mysql)\/(\d+)\Z/
+      return $2.to_i
     end
     nil
   end

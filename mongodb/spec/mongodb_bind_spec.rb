@@ -1,22 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "spec_helper"
-require "mongodb_service/mongodb_node"
-require "mongo"
 
-include VCAP::Services::MongoDB
-
-
-module VCAP
-  module Services
-    module MongoDB
-      class Node
-        attr_reader :available_memory
-      end
-    end
-  end
-end
-
-describe VCAP::Services::MongoDB::Node do
+describe "mongodb_node bind" do
 
   before :all do
     EM.run do
@@ -26,12 +11,13 @@ describe VCAP::Services::MongoDB::Node do
 
       @node = Node.new(@opts)
       @resp = @node.provision("free")
-      sleep 1
 
-      @bind_resp = @node.bind(@resp['name'], 'rw')
-      sleep 1
-
-      EM.stop
+      EM.add_timer(1) do
+        @bind_resp = @node.bind(@resp['name'], 'rw')
+        EM.add_timer(1) do
+          EM.stop
+        end
+      end
     end
   end
 
@@ -45,6 +31,15 @@ describe VCAP::Services::MongoDB::Node do
 
   it "should be able to connect to mongodb" do
     is_port_open?('127.0.0.1', @resp['port']).should be_true
+  end
+
+  it "should return error when tring to bind on non-existed instance" do
+    e = nil
+    begin
+      @node.bind('non-existed', 'rw')
+    rescue => e
+    end
+    e.should_not be_nil
   end
 
   it "should allow authorized user to access the instance" do
@@ -91,13 +86,27 @@ describe VCAP::Services::MongoDB::Node do
     end
   end
 
+  it "should return error when trying to unbind a non-existed service" do
+    EM.run do
+      begin
+        resp  = @node.unbind('not existed')
+      rescue => e
+      end
+      e.should be_true
+      EM.add_timer(1) do
+        EM.stop
+      end
+    end
+  end
+
   # unbind here
   it "should be able to unbind it" do
     EM.run do
       resp  = @node.unbind(@bind_resp)
       resp.should be_true
-      sleep 1
-      EM.stop
+      EM.add_timer(1) do
+        EM.stop
+      end
     end
   end
 
@@ -125,7 +134,7 @@ describe VCAP::Services::MongoDB::Node do
 
       e = nil
       begin
-        conn = Mongo::Connection.new('localhost', @resp[:port]).db('local')
+        conn = Mongo::Connection.new('localhost', @resp['port']).db('db')
       rescue => e
       end
       e.should_not be_nil

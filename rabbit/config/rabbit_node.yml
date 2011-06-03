@@ -3,10 +3,13 @@ local_db: sqlite3:/var/vcap/services/rabbit/rabbit_node.db
 base_dir: /var/vcap/services/rabbit/
 rabbit_ctl: rabbitmqctl
 rabbit_server: rabbitmq-server
+rabbit_port: 5672
 mbus: nats://localhost:4222
+index: 0
 log_level: DEBUG
 local_ip: 127.0.0.1
 available_memory: 4096
 max_memory: 16
 node_id: rabbit_node_1
 pid: /var/vcap/sys/run/rabbit_node.pid
+migration_nfs: /mnt/appcloud

@@ -109,7 +109,8 @@ describe BackupRotatorTests do
   it "should prune a very old backup" do
     rotator = BackupRotatorTests.create_rotator('one_very_old')
     rotator.run.should be_true
-    rotator.pruned.length.should == 1
+    # mysql/information_schema/, mysql/mysql/ and sampleservice/ab/cd/ef/abcdefghijk/
+    rotator.pruned.length.should == 3
   end
 
   it "should not prune a very new backup" do

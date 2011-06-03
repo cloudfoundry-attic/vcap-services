@@ -1,5 +1,5 @@
 ---
-#cloud_controller: api.vcap.me
+# cloud_controller_uri: api.vcap.me
 service:
   name: rabbitmq
   version: "2.4"
@@ -7,6 +7,7 @@ service:
   plans: ['free']
   tags: ['rabbitmq', 'rabitmq-2.4', 'message-queue', 'amqp']
 host: localhost
+index: 0
 token: "0xdeadbeef"
 log_level: DEBUG
 mbus: nats://localhost:4222

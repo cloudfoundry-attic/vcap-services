@@ -1,0 +1,106 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+
+require 'yaml'
+require 'fileutils'
+require 'logger'
+require "rubygems"
+require "bundler/setup"
+require 'optparse'
+
+puts "backup task start.."
+
+config_file = File.expand_path("../../config/redis_backup.yml", __FILE__)
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: redis_backup [options]"
+  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+    config_file = opt
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+# load configuration file
+begin
+  config = YAML.load(File.open(config_file))
+rescue => e
+  puts "Could not read configuration file: #{e}"
+  exit
+end
+
+# setup logger
+log_file = config["backup_log"]
+logger = Logger.new(log_file, "weekly")
+logger.level = Logger::INFO
+
+logger.info "backup task start.."
+logger.info "config: " + config.to_s
+
+# check if backup process is already running
+cmds = %x[ps ax -o args=].split(/\n/)
+count = 0
+cmds.each do |cmd|
+  if cmd.index(__FILE__) != nil
+    logger.info cmd
+    count += 1
+  end
+end
+logger.info "backup process count: " + count.to_s
+if count > 2
+  logger.info "backup is running, exit"
+  exit
+end
+
+# Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
+
+# \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+
+# make sure the backup base dir is mounted
+if %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
+  logger.error config["backup_base_dir"] + " is not mounted, exit"
+  exit
+end
+
+# make sure backup dir on nfs storage exists
+nfs_base = config["backup_base_dir"] + "/backups/" + config["service_name"]
+if File.directory? nfs_base
+  logger.info nfs_base + " exists"
+else
+  logger.info nfs_base + " does not exist, create it"
+  begin
+    FileUtils.mkdir_p nfs_base
+  rescue => e
+    logger.error "Could not create dir on nfs!"
+    exit
+  end
+end
+
+# backup
+inst_path = config["service_base_dir"]
+if File.directory? inst_path
+  dirnames = Dir.entries inst_path
+  dirnames.each do |dirname|
+    next if dirname.to_s.start_with? "." #skip . & ..
+    logger.info "instance: " + dirname
+    new_dirname = dirname[6, dirname.length]
+    new_dirname_nfs = nfs_base + "/" + new_dirname[0,2] + "/" + new_dirname[2,2] + "/" + new_dirname[4,2] + "/" + new_dirname + "/" + Time.new.to_i.to_s
+    logger.info "new dir: " + new_dirname_nfs
+    begin
+      FileUtils.mkdir_p new_dirname_nfs
+      FileUtils.cp inst_path + "/" + dirname + "/data/dump.rdb", new_dirname_nfs
+    rescue => e
+      logger.error "Could not copy dumpfile: #{e}"
+      next
+    end
+  end
+else
+  logger.error inst_path + " does not exists, exit"
+  exit
+end
+
+logger.info "backup task complete"
+puts "backup task complete"

@@ -1,0 +1,199 @@
+#!/usr/bin/env ruby
+# Copyright (c) 2009-2011 VMware, Inc.
+#
+# This script is used to backup mysql instances used in MyaaS.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+
+require 'rubygems'
+require 'bundler/setup'
+require 'optparse'
+
+$:.unshift(File.expand_path("../../lib", __FILE__))
+
+require 'logger'
+require 'yaml'
+require 'mysql'
+require 'eventmachine'
+
+class MysqlBackup
+  SYSTEM_DB = %w(mysql information_schema)
+  IGNORE_DB = %w(test)
+
+  def self.setlogger(logger)
+    @@logger = logger
+  end
+
+  def self.backup_database(opts, &blk)
+    backup_cmd, compress_cmd, name, ts=
+      %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
+    path_prefix = "backups"
+    if IGNORE_DB.include?(name)
+      @@logger.info("Ignore backup database #{name}.")
+      blk.call if blk
+      return
+    elsif SYSTEM_DB.include?(name)
+      # for system database, dir structure looks like \backups\<service-name>\
+      # <db-name>\<seconds_since_epoc>\<service specific data>
+      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name], name,
+                            ts.to_i.to_s)
+    else
+      # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
+      # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name],
+                            name[0,2], name[2,2], name[4,2], name,
+                            ts.to_i.to_s)
+    end
+    opts.merge!({:full_path => full_path})
+    # options substitution
+    backup_cmd = opts.keys.inject(backup_cmd){|cmd, key|
+      cmd.gsub(":"+key.to_s, opts[key].to_s)}
+    compress_cmd = opts.keys.inject(compress_cmd){|cmd, key|
+      cmd.gsub(":"+key.to_s, opts[key].to_s)}
+    on_err = Proc.new do |cmd, code, msg|
+      @@logger.error("CMD '#{cmd}' exit with code: #{code}. Message: #{msg}")
+      cleanup(full_path)
+      blk.call if blk
+    end
+    unless File.exists?(full_path)
+      CMDHandle.execute("mkdir -p #{full_path}", nil, on_err) do
+        CMDHandle.execute(backup_cmd, 5, on_err) do
+          CMDHandle.execute(compress_cmd, nil, on_err) do
+            @@logger.info("Backup for db #{name} is completed")
+            blk.call if blk
+          end
+        end
+      end
+    end
+  rescue => e
+    @@logger.error("Erorr when backup db #{opts[:name]}. #{e}")
+    cleanup(full_path)
+    blk.call if blk
+  end
+
+  def self.cleanup(path)
+    # don't use async popen to make sure clean up actually finished.
+    %x[ /bin/rm -rf #{path}]
+  end
+end
+
+class CMDHandle
+  def errback(&blk)
+    @errback = blk
+  end
+
+  def initialize(cmd, timeout=nil, &blk)
+    @cmd  = cmd
+    @timeout = timeout
+    @callback = blk
+  end
+
+  def run
+    @pid = EM.system(@cmd) do |out, status|
+      EM.cancel_timer(@timer)
+      if status && status == 0
+        @callback.call(out) if @callback
+      else
+        @errback.call(@cmd,status, out) if @errback
+      end
+    end
+    @timer = EM.add_timer(@timeout) {Process.kill('KILL',@pid)} if @timeout
+  end
+
+  # You can pass callback and errback together.
+  # CMDHandle.execute("ls /", Proc.new{|code, msg| p 'errback'}, Proc.new{|msg| p 'callback'})
+  def self.execute(cmd, timeout = nil, *args, &cb)
+    cb ||= args.pop if args.last.is_a? Proc
+    errb = args.pop if args.last.is_a? Proc
+    instance = self.new(cmd, timeout, &cb)
+    instance.errback(&errb)
+    instance.run
+  end
+end
+
+module Counter
+  def Counter.countdown( num, &blk)
+    num -= 1
+    lambda { (num > 0)? num -= 1: blk.call()}
+  end
+end
+
+config_file = File.expand_path("../../config/mysql_backup.yml", __FILE__)
+
+# Read config file from command line
+OptionParser.new do |opts|
+  opts.banner = "Usage: mysql_backup [options]"
+  opts.on("-c", "--config [ARG]", "Node configuration File") do |opt|
+    config_file = opt
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+begin
+  config = YAML.load_file(config_file)
+rescue => e
+  abort "Can't load config file #{e}"
+end
+
+opts = {
+  :service_name => config["service_name"],
+  :backup_cmd => config["backup_cmd"],
+  :host => config["mysql"]["host"],
+  :port => config["mysql"]["port"],
+  :user => config["mysql"]["user"],
+  :passwd => config["mysql"]["pass"],
+  :backup_path => config["backup_path"],
+  :compress_cmd => config["compress_cmd"],
+  :logfile => config["logfile"],
+}
+
+missing_opts = opts.keys.select{|key| opts[key]==nil}
+unless missing_opts.empty?
+  abort "Missing required configuration items #{missing_opts.inspect}"
+end
+# Optional socket config
+opts[:socket] = config["mysql"]["socket"]
+
+abort "Can't write to #{opts[:backup_path]}" unless File.writable_real?(opts[:backup_path])
+
+logger = Logger.new(opts[:logfile], "daily")
+logger.level = Logger::INFO
+
+# check if backup process is already running
+cmds = %x[ps ax -o args=].split(/\n/)
+count = 0
+cmds.each do |cmd|
+  if cmd.index(__FILE__) != nil
+    logger.info cmd
+    count += 1
+  end
+end
+logger.info "backup process count: " + count.to_s
+if count > 2
+  logger.info "backup is running, exit"
+  exit
+end
+
+MysqlBackup.setlogger(logger)
+
+conn = Mysql.real_connect(opts[:host], opts[:user], opts[:passwd], 'mysql',
+                          opts[:port].to_i, opts[:socket])
+result = conn.query("show databases;")
+dbs = []
+result.each {|db| dbs << db[0] }
+current_time= Time.now
+counter = Counter.countdown(dbs.size) do
+  logger.info("Backup begins at #{current_time} complete.")
+  EM.stop
+end
+
+EM.run do
+  logger.info("Begin backup at #{current_time}")
+  dbs.each do |name|
+    MysqlBackup.backup_database(opts.merge({:name => name, :ts => current_time, :logger => logger})) { counter.call }
+  end
+end
+
