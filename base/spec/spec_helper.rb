@@ -14,9 +14,7 @@ class BaseTests
 
     LOGGER = Logger.new(STDOUT)
 
-    # tests use this message bus to avoid pollution/contamination of a
-    # "real" message bus that might be in use
-    NATS_URI = "nats://localhost:9222"
+    NATS_URI = "nats://localhost:4222"
 
     IP_ROUTE = "127.0.0.1"
 
