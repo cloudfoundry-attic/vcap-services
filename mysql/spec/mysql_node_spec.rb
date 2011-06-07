@@ -314,7 +314,10 @@ describe "Mysql server node" do
       conn.query("drop table test")
       res = conn.query("show tables")
       res.num_rows().should == 0
+      # create a new table which should be deleted after restore
+      conn.query("create table test2(id int)")
       @node.restore(db["name"], "/tmp/").should == true
+      conn = connect_to_mysql(db)
       res = conn.query("show tables")
       res.num_rows().should == 1
       res.fetch_row[0].should == "test"
