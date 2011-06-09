@@ -8,6 +8,7 @@ require 'logger'
 require "rubygems"
 require "bundler/setup"
 require 'optparse'
+require 'timeout'
 
 puts "backup task start.."
 
@@ -79,6 +80,31 @@ else
   end
 end
 
+# Simple version of system with timeout support
+# It's called simple because it doesn't handle SIGINT and SIGQUIT
+# in a standard POSIX way. But it should be enough in this case.
+def timeout_system(timeout, *args)
+  pid = fork
+  if pid
+    # parent process
+    success = false
+    begin
+      success = Timeout::timeout(timeout) do
+        Process.waitpid(pid)
+        $? == 0
+      end
+    rescue Timeout::Error
+      Process.detach(pid)
+      Process.kill("KILL", pid)
+      raise Timeout::Error
+    end
+    success
+  else
+    # child process
+    exec(*args)
+  end
+end
+
 # backup
 inst_path = config["service_base_dir"]
 if File.directory? inst_path
@@ -91,9 +117,21 @@ if File.directory? inst_path
     logger.info "new dir: " + new_dirname_nfs
     begin
       FileUtils.mkdir_p new_dirname_nfs
-      FileUtils.cp inst_path + "/" + dirname + "/data/dump.rdb", new_dirname_nfs
+      #FileUtils.cp inst_path + "/" + dirname + "/data/dump.rdb", new_dirname_nfs
+      cmd = "cp #{inst_path}/#{dirname}/data/dump.rdb #{new_dirname_nfs}"
+      if config["timeout"] == nil
+        # If no timeout option, set a default value
+        config["timeout"] = 600
+      end
+      if timeout_system(config["timeout"], cmd) == false
+        logger.error "Got errors when doing copy"
+      end
     rescue => e
-      logger.error "Could not copy dumpfile: #{e}"
+      if e.is_a?(Timeout::Error)
+        logger.error "Timeout when doing copy"
+      else
+        logger.error "Could not copy dumpfile: #{e}"
+      end
       next
     end
   end
