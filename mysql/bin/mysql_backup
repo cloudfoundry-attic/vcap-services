@@ -8,30 +8,30 @@ ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 require 'rubygems'
 require 'bundler/setup'
 require 'optparse'
+require 'timeout'
+require 'fileutils'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
 
 require 'logger'
 require 'yaml'
 require 'mysql'
-require 'eventmachine'
 
 class MysqlBackup
   SYSTEM_DB = %w(mysql information_schema)
   IGNORE_DB = %w(test)
 
   def self.setlogger(logger)
-    @@logger = logger
+    @logger = logger
   end
 
-  def self.backup_database(opts, &blk)
+  def self.backup_database(opts)
     backup_cmd, compress_cmd, name, ts=
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
     path_prefix = "backups"
     if IGNORE_DB.include?(name)
-      @@logger.info("Ignore backup database #{name}.")
-      blk.call if blk
-      return
+      @logger.info("Ignore backup database #{name}.")
+      return -1
     elsif SYSTEM_DB.include?(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<service specific data>
@@ -51,71 +51,65 @@ class MysqlBackup
     compress_cmd = opts.keys.inject(compress_cmd){|cmd, key|
       cmd.gsub(":"+key.to_s, opts[key].to_s)}
     on_err = Proc.new do |cmd, code, msg|
-      @@logger.error("CMD '#{cmd}' exit with code: #{code}. Message: #{msg}")
+      @logger.error("CMD '#{cmd}' exit with code: #{code}. Message: #{msg}")
       cleanup(full_path)
-      blk.call if blk
+      return 1
     end
-    unless File.exists?(full_path)
-      CMDHandle.execute("mkdir -p #{full_path}", nil, on_err) do
-        CMDHandle.execute(backup_cmd, 5, on_err) do
-          CMDHandle.execute(compress_cmd, nil, on_err) do
-            @@logger.info("Backup for db #{name} is completed")
-            blk.call if blk
-          end
-        end
-      end
-    end
+    t1 = Time.now
+    FileUtils.mkdir_p(full_path) unless File.exists?(full_path)
+    CMDHandle.execute("#{backup_cmd};#{compress_cmd}", opts[:timeout].to_i, on_err)
+    t2 = Time.now
+    @logger.info("Backup for db #{name} complete in #{t2-t1} seconds.")
+    return 0
   rescue => e
-    @@logger.error("Erorr when backup db #{opts[:name]}. #{e}")
+    @logger.error("Erorr when backup db #{opts[:name]}. #{e.backtrace.join("\n")}")
     cleanup(full_path)
-    blk.call if blk
+    return 1
   end
 
   def self.cleanup(path)
-    # don't use async popen to make sure clean up actually finished.
-    %x[ /bin/rm -rf #{path}]
+    FileUtils.rm_rf(path)
   end
 end
 
 class CMDHandle
-  def errback(&blk)
-    @errback = blk
-  end
 
   def initialize(cmd, timeout=nil, &blk)
     @cmd  = cmd
     @timeout = timeout
-    @callback = blk
+    @errback = blk
   end
 
   def run
-    @pid = EM.system(@cmd) do |out, status|
-      EM.cancel_timer(@timer)
-      if status && status == 0
-        @callback.call(out) if @callback
-      else
-        @errback.call(@cmd,status, out) if @errback
+    pid = fork
+    if pid
+      # parent process
+      success = false
+      begin
+        success = Timeout::timeout(@timeout) do
+          Process.waitpid(pid)
+          value = $?.exitstatus
+          @errback.call(@cmd, value, "No message.") unless value == 0
+          return true
+        end
+      rescue Timeout::Error
+        Process.detach(pid)
+        Process.kill("KILL", pid)
+        @errback.call(@cmd, -1, "Killed due to timeout.")
+        return false
       end
+    else
+      # child process
+      exec(@cmd)
     end
-    @timer = EM.add_timer(@timeout) {Process.kill('KILL',@pid)} if @timeout
   end
 
-  # You can pass callback and errback together.
-  # CMDHandle.execute("ls /", Proc.new{|code, msg| p 'errback'}, Proc.new{|msg| p 'callback'})
-  def self.execute(cmd, timeout = nil, *args, &cb)
-    cb ||= args.pop if args.last.is_a? Proc
+  def self.execute(cmd, timeout = nil, *args)
     errb = args.pop if args.last.is_a? Proc
-    instance = self.new(cmd, timeout, &cb)
-    instance.errback(&errb)
+    instance = self.new(cmd, timeout, &errb)
     instance.run
   end
-end
 
-module Counter
-  def Counter.countdown( num, &blk)
-    num -= 1
-    lambda { (num > 0)? num -= 1: blk.call()}
-  end
 end
 
 config_file = File.expand_path("../../config/mysql_backup.yml", __FILE__)
@@ -156,6 +150,8 @@ unless missing_opts.empty?
 end
 # Optional socket config
 opts[:socket] = config["mysql"]["socket"]
+# Optional backup timeout config, default is no timeout
+opts[:timeout] = config["timeout"] || 0
 
 abort "Can't write to #{opts[:backup_path]}" unless File.writable_real?(opts[:backup_path])
 
@@ -185,15 +181,19 @@ result = conn.query("show databases;")
 dbs = []
 result.each {|db| dbs << db[0] }
 current_time= Time.now
-counter = Counter.countdown(dbs.size) do
-  logger.info("Backup begins at #{current_time} complete.")
-  EM.stop
-end
 
-EM.run do
-  logger.info("Begin backup at #{current_time}")
-  dbs.each do |name|
-    MysqlBackup.backup_database(opts.merge({:name => name, :ts => current_time, :logger => logger})) { counter.call }
+logger.info("Begin backup at #{current_time}")
+success, failed, ignored = [0,0,0]
+dbs.each do |name|
+  result = MysqlBackup.backup_database(opts.merge({:name => name, :ts => current_time, :logger => logger}))
+  case result
+  when 0
+    success += 1
+  when 1
+    failed += 1
+  when -1
+    ignored += 1
+  else
   end
 end
-
+logger.info("Backup begins at #{current_time} complete. Success: #{success}. Failed #{failed}. Ignored #{ignored}.")
