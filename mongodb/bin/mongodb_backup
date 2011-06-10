@@ -32,6 +32,7 @@ require "bundler/setup"
 require "mongodb_service/mongodb_node"
 require "yaml"
 require "fileutils"
+require "timeout"
 
 include VCAP::Services::MongoDB
 
@@ -67,6 +68,30 @@ end
   else Logger::UNKNOWN
 end
 
+# Simple version of system with timeout support
+# It's called simple because it doesn't handle SIGINT and SIGQUIT
+# in a standard POSIX way. But it should be enough in this case.
+def timeout_system(timeout, *args)
+  pid = fork
+  if pid
+    # parent process
+    success = false
+    begin
+      success = Timeout::timeout(timeout) do
+        Process.waitpid(pid)
+        $? == 0
+      end
+    rescue Timeout::Error
+      Process.detach(pid)
+      Process.kill("KILL", pid)
+    end
+    success
+  else
+    # child process
+    exec(*args)
+  end
+end
+
 # check if backup process is already running
 cmds = %x[ps ax -o args=].split(/\n/)
 count = 0
@@ -95,6 +120,7 @@ unless File.exist? config['local_db'].split(':')[1]
 end
 
 mongodump_path = config['mongodump_path'] || 'mongodump'
+cmd_timeout = config['timeout'].to_f
 
 DataMapper.setup(:default, config['local_db'])
 DataMapper::auto_upgrade!
@@ -109,12 +135,12 @@ provisioned_service.each do |service|
 
   # Run mongodump
   command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
-  res = Kernel.system(command)
+  res = timeout_system(cmd_timeout, command)
   echo "#{command} result: #{res}", !res
 
   # Delete system.user.bson
   command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
-  res = Kernel.system(command)
+  res = timeout_system(cmd_timeout, command)
   echo "#{command} result: #{res}", !res
 end
 echo "Backup Done!"

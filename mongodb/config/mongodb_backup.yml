@@ -5,3 +5,4 @@ service_base_dir: /var/vcap/services/mongodb/instances/
 mongodump_path: mongodump
 log_level: DEBUG
 log_file: /tmp/mongodb_backup.log
+timeout: 600
