@@ -9,6 +9,7 @@ available_memory: 4096
 max_memory: 128
 node_id: mongodb_node_1
 mongod_path: mongod
+mongorestore_path: mongorestore
 port_range:
   first: 25001
   last: 45000

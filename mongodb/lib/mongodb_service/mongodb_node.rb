@@ -68,6 +68,7 @@ class VCAP::Services::MongoDB::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @mongod_path = options[:mongod_path]
+    @mongorestore_path = options[:mongorestore_path]
 
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
@@ -279,7 +280,7 @@ class VCAP::Services::MongoDB::Node
     end
 
     # Run mongorestore
-    command = "mongorestore -u #{username} -p#{password} --port #{port} #{backup_file}"
+    command = "#{@mongorestore_path} -u #{username} -p#{password} --port #{port} #{backup_file}"
     output = `#{command}`
     res = $?.success?
     @logger.debug(output)
