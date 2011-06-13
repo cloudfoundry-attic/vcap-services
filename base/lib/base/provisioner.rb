@@ -375,14 +375,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       @node_nats.publish(reply, response)
     end
   end
-  def on_update_service_handle(msg, reply)
-    @logger.debug("[#{service_description}] Update service handle #{msg.inspect}")
-    handle = Yajl::Parser.parse(msg)
-    @update_handle_callback.call(handle) do |response|
-      response = Yajl::Encoder.encode(response)
-      @node_nats.publish(reply, response)
-    end
-  end
 
   def register_update_handle_callback(&blk)
     @logger.debug("Register update handle callback with #{blk}")
