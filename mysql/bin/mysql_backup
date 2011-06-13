@@ -153,10 +153,24 @@ opts[:socket] = config["mysql"]["socket"]
 # Optional backup timeout config, default is no timeout
 opts[:timeout] = config["timeout"] || 0
 
-abort "Can't write to #{opts[:backup_path]}" unless File.writable_real?(opts[:backup_path])
-
 logger = Logger.new(opts[:logfile], "daily")
 logger.level = Logger::INFO
+
+nfs_base = File.join(opts[:backup_path], "backups")
+if Dir.exist?(nfs_base)
+  if not File.writable?(nfs_base)
+    logger.error("Can't write to #{nfs_base}, exit.")
+    exit 1
+  end
+else
+  logger.info("Create backup folder: #{nfs_base}")
+  begin
+    FileUtils.mkdir_p(nfs_base)
+  rescue => e
+    logger.error("Failed to create backup folder #{nfs_base}, error: #{e}. Exit.")
+    exit 1
+  end
+end
 
 # check if backup process is already running
 cmds = %x[ps ax -o args=].split(/\n/)
