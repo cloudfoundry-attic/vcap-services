@@ -204,7 +204,13 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         'name'      => instance_id,
         'bind_opts' => binding_options
       }
-      request["credentials"] = bind_handle["credentials"] if bind_handle
+      service_id = nil
+      if bind_handle
+        request["credentials"] = bind_handle["credentials"]
+        service_id = bind_handle["service_id"]
+      else
+        service_id = UUIDTools::UUID.random_create.to_s
+      end
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
         @node_nats.unsubscribe(subscription)
@@ -224,7 +230,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
             config['data'] ||= {}
             config['data']['binding_options'] = binding_options
             res = {
-              :service_id => UUIDTools::UUID.random_create.to_s,
+              :service_id => service_id,
               :configuration => config,
               :credentials => opts
             }
@@ -330,41 +336,96 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # 2) restore instance use backup file
   # 3) re-bind bindings use old credential
   def recover(instance_id, backup_path, handles, &blk)
-    @logger.debug("Recover instance: #{instance_id} form #{backup_path} with handles #{handles.inspect}.")
+    @logger.debug("Recover instance: #{instance_id} from #{backup_path} with handles #{handles.inspect}.")
     prov_handle, binding_handles = find_instance_handles(instance_id, handles)
-    @logger.debug("Provsion Handle: #{prov_handle.inspect}")
+    @logger.debug("Provsion handle: #{prov_handle.inspect}. Binding_handles: #{binding_handles.inspect}")
     request = prov_handle["configuration"]
     provision_service(request, prov_handle) do |msg|
       if msg['success']
-        @logger.info("Recover: Success re-provision instance.")
-        restore_instance(instance_id, backup_path) do |res|
-          if res['success']
-            @logger.info("Recover: Success restore instance.")
-            binding_handles.each do |handle|
-              bind_instance(instance_id, nil, handle) do |bind_res|
-                if bind_res['success']
-                  @logger.info("Recover: Success re-bind bindings.")
-                else
-                  blk.call(internal_fail)
+        updated_prov_handle = msg['response']
+        # transfrom handle format
+        updated_prov_handle[:configuration] = updated_prov_handle[:data]
+        updated_prov_handle.delete(:data)
+        updated_prov_handle = hash_sym_key_to_str(updated_prov_handle)
+        @logger.info("Recover: Success re-provision instance. Updated handle:#{updated_prov_handle}")
+        @update_handle_callback.call(updated_prov_handle) do |update_res|
+          if not update_res
+            @logger.error("Recover: Update provision handle failed.")
+            blk.call(internal_fail)
+          else
+            @logger.info("Recover: Update provision handle success.")
+            restore_instance(instance_id, backup_path) do |res|
+              if res['success']
+                @logger.info("Recover: Success restore instance data.")
+                barrier = VCAP::Services::Base::Barrier.new(:timeout => @node_timeout, :callbacks => binding_handles.length) do |responses|
+                  @logger.debug("Response from barrier: #{responses}.")
+                  updated_handles = responses.select{|i| i[0] }
+                  if updated_handles.length != binding_handles.length
+                    @logger.error("Recover: re-bind or update handle failed. Expect #{binding_handles.length} successful responses, got #{updated_handles.length} ")
+                    blk.call(internal_fail)
+                  else
+                    @logger.info("Recover: recover instance #{instance_id} complete!")
+                    result = {
+                      'success' => true,
+                      'response' => "{}"
+                    }
+                    blk.call(result)
+                  end
                 end
+                @logger.info("Recover: begin rebind binding handles.")
+                bcb = barrier.callback
+                binding_handles.each do |handle|
+                  bind_instance(instance_id, nil, handle) do |bind_res|
+                    if bind_res['success']
+                      updated_bind_handle = bind_res['response']
+                      updated_bind_handle = hash_sym_key_to_str(updated_bind_handle)
+                      @logger.info("Recover: success re-bind binding: #{updated_bind_handle}")
+                      @update_handle_callback.call(updated_bind_handle) do |update_res|
+                        if update_res
+                          @logger.error("Recover: success to update handle: #{updated_prov_handle}")
+                          bcb.call(updated_bind_handle)
+                        else
+                          @logger.error("Recover: failed to update handle: #{updated_prov_handle}")
+                          bcb.call(false)
+                        end
+                      end
+                    else
+                      @logger.error("Recover: failed to re-bind binding handle: #{handle}")
+                      bcb.call(false)
+                    end
+                  end
+                end
+              else
+                @logger.error("Recover: failed to restore instance: #{instance_id}.")
+                blk.call(internal_fail)
               end
             end
-            success = {
-              'success' => true,
-              'response' => "{}"
-            }
-            blk.call(success)
-          else
-            blk.call(internal_fail)
           end
         end
       else
+        @logger.error("Recover: failed to re-provision instance. Handle: #{prov_handle}.")
         blk.call(internal_fail)
       end
     end
   rescue => e
     @logger.warn(e)
     blk.call(internal_fail)
+  end
+
+  # convert symbol key to string key
+  def hash_sym_key_to_str(hash)
+    new_hash = {}
+    hash.each do |k, v|
+      if v.is_a? Hash
+        v = hash_sym_key_to_str(v)
+      end
+      if k.is_a? Symbol
+        new_hash[k.to_s] = v
+      else
+        new_hash[k] = v
+      end
+    end
+    return new_hash
   end
 
   def on_update_service_handle(msg, reply)
@@ -376,6 +437,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
+  # Gateway invoke this function to register a block which provisioner could use to update a service handle
   def register_update_handle_callback(&blk)
     @logger.debug("Register update handle callback with #{blk}")
     @update_handle_callback = blk
@@ -413,7 +475,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       if h['service_id'] == instance_id
         prov_handle = h
       else
-        binding_handles << h if h['configuration']['name'] == instance_id
+        binding_handles << h if h['credentials']['name'] == instance_id
       end
     end
     return [prov_handle, binding_handles]
