@@ -111,7 +111,7 @@ class VCAP::Services::Postgresql::Node
       provisionedservice.bindusers.all.each do |binduser|
         user, sys_user = binduser.user, binduser.sys_user
         if not db_list.include?([db, user]) or not db_list.include?([db, sys_user]) then
-          @logger.info("Node database inconsistent!!! db:user <#{db}:#{user}> not in PostgreSQL.")
+          @logger.warn("Node database inconsistent!!! db:user <#{db}:#{user}> not in PostgreSQL.")
           next
         end
       end
@@ -131,8 +131,9 @@ class VCAP::Services::Postgresql::Node
       begin
         @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database}")
         return PGconn.connect(host, port, nil, nil, database, user, password)
+        @logger.info("Connected...")
       rescue PGError => e
-        @logger.info("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}")
+        @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}")
         sleep(2)
       end
     end
@@ -146,7 +147,7 @@ class VCAP::Services::Postgresql::Node
   def postgresql_keep_alive
     @connection.query("select current_timestamp")
   rescue PGError => e
-    @logger.info("PostgreSQL connection lost: #{e}") # What is the way to get details of error?  #{e}")
+    @logger.warn("PostgreSQL connection lost: #{e}") # What is the way to get details of error?  #{e}")
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
   end
 
@@ -159,7 +160,7 @@ class VCAP::Services::Postgresql::Node
       end
     end
   rescue PGError => e
-    @logger.info("PostgreSQL error: #{e}")
+    @logger.warn("PostgreSQL error: #{e}")
   end
 
   def kill_long_transaction
@@ -171,23 +172,28 @@ class VCAP::Services::Postgresql::Node
       end
     end
   rescue PGError => e
-    @logger.info("PostgreSQL error: #{e}")
+    @logger.warn("PostgreSQL error: #{e}")
   end
 
-  def provision(plan)
+  def provision(plan, credential=nil)
     provisionedservice = Provisionedservice.new
-    provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    provisionedservice.plan = plan
-    provisionedservice.quota_exceeded = false
-
     binduser = Binduser.new
-    binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+    if credential
+      name, user, password = %w(name user password).map{|key| credential[key]}
+      provisioned_service.name = name
+      binduser.user = user
+      binduser.password = password
+    else 
+      provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+    end
     binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
     binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
     binduser.default_user = true
+    provisionedservice.plan = plan
+    provisionedservice.quota_exceeded = false
     provisionedservice.bindusers << binduser
-
     if create_database(provisionedservice) then
       if not binduser.save
         @logger.error("Could not save entry: #{binduser.errors.pretty_inspect}")
@@ -210,7 +216,7 @@ class VCAP::Services::Postgresql::Node
 
   def unprovision(name, credentials)
     return if name.nil?
-    @logger.debug("Unprovision database:#{name}, bindings: #{credentials.inspect}")
+    @logger.info("Unprovision database:#{name}, bindings: #{credentials.inspect}")
     provisionedservice = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) if provisionedservice.nil?
     # Delete all bindings, ignore not_found error since we are unprovision
@@ -225,26 +231,30 @@ class VCAP::Services::Postgresql::Node
 
     provisionedservice.bindusers.all.each do |binduser|
       if not binduser.destroy
-        @logger.error("Could not delete service: #{binduser.errors.pretty_inspect}")
+        @logger.error("Could not delete entry: #{binduser.errors.pretty_inspect}")
       end
     end
     if not provisionedservice.destroy
-      @logger.error("Could not delete service: #{provisionedservice.errors.pretty_inspect}")
+      @logger.error("Could not delete entry: #{provisionedservice.errors.pretty_inspect}")
     end
-    @logger.debug("Successfully fulfilled unprovision request: #{name}")
+    @logger.info("Successfully fulfilled unprovision request: #{name}")
     true
   end
 
-  def bind(name, bind_opts)
-    #bind_opts not used
-    @logger.debug("Bind service for db:#{name}, bind_opts = #{bind_opts}")
+  def bind(name, bind_opts, credential=nil)
+    @logger.info("Bind service for db:#{name}, bind_opts = #{bind_opts}")
     binduser = nil
     begin
       provisionedservice = Provisionedservice.get(name)
       raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless provisionedservice
       # create new credential for binding
-      new_user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      new_password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      if credential
+        new_user = credential["user"]
+        new_password = credential["password"]
+      else
+        new_user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        new_password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      end
       new_sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       new_sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       binduser = Binduser.new
@@ -271,7 +281,7 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
 
-      @logger.debug("Bind response: #{response.inspect}")
+      @logger.info("Bind response: #{response.inspect}")
       return response
     rescue => e
       delete_database_user(binduser,name) if binduser
@@ -281,7 +291,7 @@ class VCAP::Services::Postgresql::Node
 
   def unbind(credential)
     return if credential.nil?
-    @logger.debug("Unbind service: #{credential.inspect}")
+    @logger.info("Unbind service: #{credential.inspect}")
     name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
     provisionedservice = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless provisionedservice
@@ -295,7 +305,7 @@ class VCAP::Services::Postgresql::Node
         @logger.error("Could not delete entry: #{unbinduser.errors.pretty_inspect}")
       end
     else
-      @logger.info("Node database inconsistent!!! user <#{user}> not in PostgreSQL.")
+      @logger.warn("Node database inconsistent!!! user <#{user}> not in PostgreSQL.")
     end
     true
   end
@@ -307,7 +317,7 @@ class VCAP::Services::Postgresql::Node
       start = Time.now
       user = bindusers[0].user
       sys_user = bindusers[0].sys_user
-      @logger.debug("Creating: #{provisionedservice.pretty_inspect}")
+      @logger.info("Creating: #{provisionedservice.pretty_inspect}")
       @connection.query("CREATE DATABASE #{name}")
       @connection.query("REVOKE ALL ON DATABASE #{name} FROM PUBLIC")
       if not create_database_user(name, bindusers[0], false) then
@@ -316,7 +326,7 @@ class VCAP::Services::Postgresql::Node
       storage = storage_for_service(provisionedservice)
       raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if @available_storage < storage
       @available_storage -= storage
-      @logger.debug("Done creating #{provisionedservice.pretty_inspect}. Took #{Time.now - start}.")
+      @logger.info("Done creating #{provisionedservice.pretty_inspect}. Took #{Time.now - start}.")
       true
     rescue PGError => e
       @logger.error("Could not create database: #{e}")
@@ -332,8 +342,13 @@ class VCAP::Services::Postgresql::Node
     sys_password = binduser.sys_password
     begin
       @logger.info("Creating credentials: #{user}/#{password} for database #{name}")
-      @logger.info("Create role: #{user}/#{password}")
-      @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}'")
+      user = @connection.query("select * from pg_roles where rolname = '#{user}'")
+      if user
+        @logger.warn("Role: #{user} already exists")
+      else
+        @logger.info("Create role: #{user}/#{password}")
+        @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}'")
+      end
       @logger.info("Create sys_role: #{sys_user}/#{sys_password}")
       @connection.query("CREATE ROLE #{sys_user} LOGIN PASSWORD '#{sys_password}'")
 
@@ -369,7 +384,7 @@ class VCAP::Services::Postgresql::Node
       begin
         @connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
       rescue PGError => e
-        @logger.error("Could not kill database session: #{e}")
+        @logger.warn("Could not kill database session: #{e}")
       end
       default_binduser = bindusers.all(:default_user => true)[0]
       @connection.query("DROP DATABASE #{name}")
@@ -377,7 +392,7 @@ class VCAP::Services::Postgresql::Node
       @connection.query("DROP ROLE IF EXISTS #{default_binduser.sys_user}") if default_binduser
       true
     rescue PGError => e
-      @logger.fatal("Could not delete database: #{e}")
+      @logger.error("Could not delete database: #{e}")
       false
     end
   end
@@ -388,7 +403,7 @@ class VCAP::Services::Postgresql::Node
     begin
       db_connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
     rescue PGError => e
-      @logger.error("Could not kill user session: #{e}")
+      @logger.warn("Could not kill user session: #{e}")
     end
     #Revoke dependencies. Ignore error.
     begin
@@ -405,14 +420,14 @@ class VCAP::Services::Postgresql::Node
       db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
       db_connection.query("REVOKE ALL ON SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
     rescue PGError => e
-      @logger.error("Could not revoke user dependencies: #{e}")
+      @logger.warn("Could not revoke user dependencies: #{e}")
     end
     db_connection.query("DROP ROLE #{binduser.user}")
     db_connection.query("DROP ROLE #{binduser.sys_user}")
     db_connection.close
     true
   rescue PGError => e
-    @logger.fatal("Could not delete user '#{binduser.user}': #{e}")
+    @logger.error("Could not delete user '#{binduser.user}': #{e}")
     false
   end
 
