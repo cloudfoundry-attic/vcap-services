@@ -69,7 +69,7 @@ options = {
   :max_memory => parse_property(config, "max_memory", Integer),
   :local_db => parse_property(config, "local_db", String),
   :mbus => parse_property(config, "mbus", String),
-  :migration_nfs => parse_property(config, "migration_nfs", String),
+  :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
 }
 
 def shutdown(rabbit_node)

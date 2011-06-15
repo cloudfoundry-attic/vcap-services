@@ -54,7 +54,7 @@ options = {
   :max_db_size => parse_property(config, "max_db_size", Integer),
   :max_long_query => parse_property(config, "max_long_query", Integer),
   :max_long_tx => parse_property(config, "max_long_tx", Integer),
-  :migration_nfs => parse_property(config, "migration_nfs", String),
+  :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
   :node_id => parse_property(config, "node_id", String),
   :mbus => parse_property(config, "mbus", String),
   :local_db => parse_property(config, "local_db", String),

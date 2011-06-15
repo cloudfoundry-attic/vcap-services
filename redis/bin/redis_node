@@ -71,7 +71,7 @@ options = {
   :port_range => parse_property(config, "port_range", Range),
   :max_memory => parse_property(config, "max_memory", Integer),
   :max_swap => parse_property(config, "max_swap", Integer),
-  :migration_nfs => parse_property(config, "migration_nfs", String),
+  :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
 }
 
 def shutdown(redis_node)
