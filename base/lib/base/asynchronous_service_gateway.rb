@@ -272,7 +272,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
           @provisioner.update_handles([handle])
           cb.call(true) if cb
         else
-          @logger.error("Failed to update handle #{id}: #{http.error}")
+          @logger.error("Failed to update handle #{id}: http status #{http.response_header.status}, error: #{http.error}")
           cb.call(false) if cb
         end
       end
