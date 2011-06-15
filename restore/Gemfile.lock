@@ -1,0 +1,28 @@
+GEM
+  remote: http://rubygems.org/
+  specs:
+    addressable (2.2.4)
+    daemons (1.1.2)
+    em-http-request (0.3.0)
+      addressable (>= 2.0.0)
+      escape_utils
+      eventmachine (>= 0.12.9)
+    escape_utils (0.2.3)
+    eventmachine (0.12.10)
+    json (1.4.6)
+    json_pure (1.5.1)
+    nats (0.4.10)
+      daemons (>= 1.1.0)
+      eventmachine (>= 0.12.10)
+      json_pure (>= 1.5.1)
+    yajl-ruby (0.8.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  em-http-request
+  eventmachine
+  json
+  nats (>= 0.4.8)
+  yajl-ruby
