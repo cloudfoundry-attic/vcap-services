@@ -34,9 +34,9 @@ class MysqlBackup
       return -1
     elsif SYSTEM_DB.include?(name)
       # for system database, dir structure looks like \backups\<service-name>\
-      # <db-name>\<seconds_since_epoc>\<service specific data>
+      # <db-name>\<seconds_since_epoc>\<node_id>\<service specific data>
       full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name], name,
-                            ts.to_i.to_s)
+                            ts.to_i.to_s, opts[:node_id])
     else
       # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
       # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
@@ -134,6 +134,7 @@ end
 
 opts = {
   :service_name => config["service_name"],
+  :node_id => config["node_id"],
   :backup_cmd => config["backup_cmd"],
   :host => config["mysql"]["host"],
   :port => config["mysql"]["port"],

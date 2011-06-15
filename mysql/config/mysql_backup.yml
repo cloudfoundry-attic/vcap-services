@@ -5,6 +5,7 @@ backup_cmd: mysqldump --host=:host --user=:user --password=:passwd --result-file
 compress_cmd: gzip :full_path/:name.sql
 logfile: /tmp/mysql_backup.log
 timeout: 120
+node_id: mysql_node_1
 mysql:
   host: localhost
   port: 3306
