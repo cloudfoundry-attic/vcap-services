@@ -13,7 +13,6 @@ require 'vcap/common'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'asynchronous_service_gateway'
-require 'util'
 require 'abstract'
 
 module VCAP
@@ -28,6 +27,8 @@ class VCAP::Services::Base::Gateway
 
   abstract :default_config_file
   abstract :provisioner_class
+
+  CC_CONFIG_FILE = File.expand_path("../../../../../cloud_controller/config/cloud_controller.yml", __FILE__)
 
   def start
 
@@ -96,6 +97,19 @@ class VCAP::Services::Base::Gateway
   end
 
   def default_cloud_controller_uri
-    "api.vcap.me"
+    config = YAML.load_file(CC_CONFIG_FILE)
+    config['external_uri'] || "api.vcap.me"
+  end
+
+  def parse_gateway_config(config_file)
+    config = YAML.load_file(config_file)
+    config = VCAP.symbolize_keys(config)
+
+    token = config[:token]
+    raise "Token missing" unless token
+    raise "Token must be a String or Int, #{token.class} given" unless (token.is_a?(Integer) || token.is_a?(String))
+    config[:token] = token.to_s
+
+    config
   end
 end
