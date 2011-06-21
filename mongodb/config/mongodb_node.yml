@@ -3,6 +3,7 @@ local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
 mbus: nats://localhost:4222
 index: 0
 base_dir: /var/vcap/services/mongodb/instances
+ip_route: 127.0.0.1
 log_level: DEBUG
 pid: /var/vcap/sys/run/mongodb_node.pid
 available_memory: 4096

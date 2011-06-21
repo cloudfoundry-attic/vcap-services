@@ -63,7 +63,7 @@ options = {
   :rabbit_ctl => parse_property(config, "rabbit_ctl", String),
   :rabbit_server => parse_property(config, "rabbit_server", String),
   :rabbit_port => parse_property(config, "rabbit_port", Integer),
-  :ip_route => parse_property(config, "local_ip", String, :optional => true),
+  :ip_route => parse_property(config, "ip_route", String, :optional => true),
   :node_id => parse_property(config, "node_id", String),
   :available_memory => parse_property(config, "available_memory", Integer),
   :max_memory => parse_property(config, "max_memory", Integer),
