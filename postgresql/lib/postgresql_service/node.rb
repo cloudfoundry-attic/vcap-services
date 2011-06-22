@@ -468,7 +468,7 @@ class VCAP::Services::Postgresql::Node
   def gen_credential(name, user, passwd)
     response = {
       "name" => name,
-      "hostname" => @postgresql_config['host'],
+      "hostname" => @local_ip,
       "port" => @postgresql_config['port'],
       "user" => user,
       "password" => passwd,
