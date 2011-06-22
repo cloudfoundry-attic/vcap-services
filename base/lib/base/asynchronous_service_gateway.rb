@@ -402,7 +402,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   end
 
   def http_uri(uri)
-    uri = "http://#{uri}" if (uri.index('http://') != 0)
+    uri = "http://#{uri}" unless (uri.index('http://') == 0 || uri.index('https://') == 0)
     uri
   end
 end
