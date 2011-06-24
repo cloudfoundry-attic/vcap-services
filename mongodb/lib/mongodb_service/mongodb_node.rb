@@ -119,7 +119,7 @@ class VCAP::Services::MongoDB::Node
 
   def provision(plan, credential = nil)
     port = credential && credential['port'] && @free_ports.include?(credential['port']) ? credential['port'] : @free_ports.first
-    name = credential && credential['name'] ? credential['name'] : "mongodb-#{UUIDTools::UUID.random_create.to_s}"
+    name = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
     db   = credential && credential['db']   ? credential['db']   : 'db'
 
     @free_ports.delete(port)

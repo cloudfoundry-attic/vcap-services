@@ -106,7 +106,7 @@ class VCAP::Services::Redis::Node
     else
       port = @free_ports.first
       @free_ports.delete(port)
-      instance.name = "redis-#{UUIDTools::UUID.random_create.to_s}"
+      instance.name = UUIDTools::UUID.random_create.to_s
       instance.port = port
       instance.password = UUIDTools::UUID.random_create.to_s
     end

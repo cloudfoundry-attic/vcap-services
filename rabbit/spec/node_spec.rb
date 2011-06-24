@@ -44,7 +44,7 @@ describe VCAP::Services::Rabbit::Node do
 
   before :each do
     @instance = VCAP::Services::Rabbit::Node::ProvisionedInstance.new
-    @instance.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
+    @instance.name = UUIDTools::UUID.random_create.to_s
     @instance.plan = :free
     @instance.plan_option = ""
     @instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")

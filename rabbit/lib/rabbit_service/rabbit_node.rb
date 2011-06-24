@@ -83,7 +83,7 @@ class VCAP::Services::Rabbit::Node
       instance.admin_username = credentials["user"]
       instance.admin_password = credentials["pass"]
     else
-      instance.name = "rabbitmq-#{UUIDTools::UUID.random_create.to_s}"
+      instance.name = UUIDTools::UUID.random_create.to_s
       instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
       instance.admin_username = "au" + generate_credential
       instance.admin_password = "ap" + generate_credential

@@ -112,8 +112,7 @@ if File.directory? inst_path
   dirnames.each do |dirname|
     next if dirname.to_s.start_with? "." #skip . & ..
     logger.info "instance: " + dirname
-    new_dirname = dirname[6, dirname.length]
-    new_dirname_nfs = nfs_base + "/" + new_dirname[0,2] + "/" + new_dirname[2,2] + "/" + new_dirname[4,2] + "/" + new_dirname + "/" + Time.new.to_i.to_s
+    new_dirname_nfs = nfs_base + "/" + dirname[0,2] + "/" + dirname[2,2] + "/" + dirname[4,2] + "/" + dirname + "/" + Time.new.to_i.to_s
     logger.info "new dir: " + new_dirname_nfs
     begin
       FileUtils.mkdir_p new_dirname_nfs

@@ -43,7 +43,7 @@ describe VCAP::Services::Redis::Node do
 
   before :each do
     @instance          = VCAP::Services::Redis::Node::ProvisionedInstance.new
-    @instance.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
+    @instance.name     = UUIDTools::UUID.random_create.to_s
     @instance.port     = VCAP.grab_ephemeral_port
     @instance.plan     = :free
     @instance.password = UUIDTools::UUID.random_create.to_s
@@ -194,7 +194,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should provision from specified credentials" do
       in_credentials = {}
-      in_credentials["name"] = "redis-#{UUIDTools::UUID.random_create.to_s}"
+      in_credentials["name"] = UUIDTools::UUID.random_create.to_s
       in_credentials["port"] = 22222
       in_credentials["password"] = UUIDTools::UUID.random_create.to_s
       out_credentials = @node.provision(:free, in_credentials)
