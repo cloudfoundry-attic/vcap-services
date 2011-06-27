@@ -182,7 +182,8 @@ class VCAP::Services::Mysql::Node
       provisioned_service.user = user
       provisioned_service.password = password
     else
-      provisioned_service.name = UUIDTools::UUID.random_create.to_s.gsub(/-/, '')
+      # mysql database name should start with alphabet character
+      provisioned_service.name = 'd' + UUIDTools::UUID.random_create.to_s.gsub(/-/, '')
       provisioned_service.user = 'u' + generate_credential
       provisioned_service.password = 'p' + generate_credential
     end
