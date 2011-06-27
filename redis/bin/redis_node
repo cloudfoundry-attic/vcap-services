@@ -95,11 +95,6 @@ File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
 
 EM.run do
   redis_node = VCAP::Services::Redis::Node.new(options)
-  begin
-    redis_node.start
-  rescue => e
-    logger.fatal "Can't start node, exiting: #{e}"
-  end
   trap("INT") {shutdown(redis_node)}
   trap("TERM") {shutdown(redis_node)}
 end

@@ -84,12 +84,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should setup local db with right arguments" do
       @node.start_db.should be
     end
-  end
 
-  describe "Node.start_server" do
-    it "should start rabbit server correctly" do
-      @node.start_server.should be
-    end
   end
 
   describe "Node.rabbitmqctl.vhost" do
@@ -542,18 +537,20 @@ describe VCAP::Services::Rabbit::Node do
       EM.run do
         credentials = @node.provision(:free)
         @node.shutdown
-        sleep 1
-        @node.start
-        AMQP.start(:host => credentials["host"],
-                   :port => credentials["port"],
-                   :vhost => credentials["vhost"],
-                   :user => credentials["user"],
-                   :pass => credentials["pass"]) do |conn|
-          conn.connected?.should == true
-          AMQP.stop {EM.stop}
-        end
-        @node.unprovision(credentials["name"])
-        EM.add_timer(0.1) {EM.stop}
+        sleep 2
+        @node = VCAP::Services::Rabbit::Node.new(@options)
+        EM.add_timer(1) {
+          AMQP.start(:host => credentials["host"],
+                     :port => credentials["port"],
+                     :vhost => credentials["vhost"],
+                     :user => credentials["user"],
+                     :pass => credentials["pass"]) do |conn|
+            conn.connected?.should == true
+            AMQP.stop {EM.stop}
+          end
+          @node.unprovision(credentials["name"])
+          EM.stop
+        }
       end
     end
   end

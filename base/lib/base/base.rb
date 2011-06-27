@@ -29,6 +29,7 @@ class VCAP::Services::Base::Base
 
   def initialize(options)
     @logger = options[:logger]
+    @options = options
     @local_ip = VCAP.local_ip(options[:ip_route])
     @logger.info("#{service_description}: Initializing")
     @node_nats = NATS.connect(:uri => options[:mbus]) {

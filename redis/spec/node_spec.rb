@@ -429,12 +429,12 @@ describe VCAP::Services::Redis::Node do
       EM.run do
         credentials = @node.provision(:free)
         @node.shutdown
-        sleep 1
-        @node.start
-        sleep 2
-        @node.check_password(credentials["port"], credentials["password"]).should == true
-        @node.unprovision(credentials["name"])
-        EM.add_timer(0.1) {EM.stop}
+        @node = VCAP::Services::Redis::Node.new(@options)
+        EM.add_timer(1) {
+          @node.check_password(credentials["port"], credentials["password"]).should == true
+          @node.unprovision(credentials["name"])
+          EM.stop
+        }
       end
     end
   end
