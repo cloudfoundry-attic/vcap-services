@@ -65,14 +65,12 @@ class VCAP::Services::Redis::Node
     options[:port_range].each {|port| @free_ports << port}
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
-    @options = options
   end
 
-  def start
-    @logger.info("Starting redis node...")
+  def pre_send_announcement
+    super
     start_db
     start_provisioned_instances
-    true
   end
 
   def shutdown

@@ -92,9 +92,6 @@ File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
 
 EM.run do
   rabbit_node = VCAP::Services::Rabbit::Node.new(options)
-  EM.add_timer(2) {  # wait for NATS connection
-    rabbit_node.start
-  }
   trap("INT") {shutdown(rabbit_node)}
   trap("TERM") {shutdown(rabbit_node)}
 end

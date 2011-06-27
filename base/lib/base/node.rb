@@ -51,6 +51,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.cleanup_nfs.#{@node_id}") { |msg, reply|
       on_cleanup_nfs(msg, reply)
     }
+    pre_send_announcement
     send_node_announcement
     EM.add_periodic_timer(30) {
       send_node_announcement
@@ -179,6 +180,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   def on_discover(reply)
     send_node_announcement(reply)
+  end
+
+  def pre_send_announcement
   end
 
   def send_node_announcement(reply = nil)
