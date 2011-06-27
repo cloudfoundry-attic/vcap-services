@@ -76,7 +76,7 @@ module VCAP
 
         def encode_failure(exception)
           res = nil
-          if exception.instance_of? ServiceError
+          if exception.is_a? ServiceError
             res = Yajl::Encoder.encode(failure(exception))
           else
             res = encode_failure(ServiceError.new(ServiceError::INTERNAL_ERROR))
