@@ -58,8 +58,10 @@ class VCAP::Services::MongoDB::Node
       VCAP.process_running? pid
     end
 
-    def kill(sig=9)
+    def kill(sig = :SIGTERM)
+      wait_thread = Process.detach(pid)
       Process.kill(sig, pid) if running?
+      wait_thread.join if wait_thread
     end
   end
 
@@ -106,7 +108,11 @@ class VCAP::Services::MongoDB::Node
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    ProvisionedService.all.each { |provisioned_service| provisioned_service.kill(:SIGTERM) }
+    ProvisionedService.all.each { |provisioned_service|
+      @logger.debug("Try to terminate mongod pid:#{provisioned_service.pid}")
+      provisioned_service.kill(:SIGTERM)
+      @logger.debug("mongod pid:#{provisioned_service.pid} terminated")
+    }
   end
 
   def announcement
@@ -293,7 +299,7 @@ class VCAP::Services::MongoDB::Node
     service_id = service_credential['name']
     provisioned_service = ProvisionedService.get(service_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if provisioned_service.nil?
-    Process.kill(9, provisioned_service.pid) if provisioned_service.running?
+    provisioned_service.kill
     rm_lockfile(service_id)
     true
   rescue => e
