@@ -253,7 +253,9 @@ class ProvisionerTests
       end
     end
     def send_recover_request
-      @provisioner.recover(@instance_id, nil, [{'service_id' => @instance_id, 'configuration' => {}}]) do |res|
+      # register a fake callback to provisioner which always return true
+      @provisioner.register_update_handle_callback{|handle, &blk| blk.call(true)}
+      @provisioner.recover(@instance_id, nil, [{'service_id' => @instance_id, 'configuration' => {}},{'service_id' => 'fake_uuid', 'configuratiion' => {}, 'credentials'=>{'name' => @instance_id}}]) do |res|
         @got_recover_response = res['success']
       end
     end
