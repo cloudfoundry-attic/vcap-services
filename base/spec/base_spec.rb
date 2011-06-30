@@ -306,7 +306,7 @@ describe ProvisionerTests do
       Do.at(2) { node = ProvisionerTests.create_node(1) }
       Do.at(3) { gateway.send_provision_request }
       Do.at(4) { gateway.send_recover_request }
-      Do.at(5) { EM.stop }
+      Do.at(10) { EM.stop }
     end
     gateway.got_recover_response.should be_true
   end
