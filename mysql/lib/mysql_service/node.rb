@@ -534,8 +534,10 @@ class VCAP::Services::Mysql::Node
     response = {
       "name" => name,
       "hostname" => @local_ip,
+      "host" => @local_ip,
       "port" => @mysql_config['port'],
       "user" => user,
+      "username" => user,
       "password" => passwd,
     }
   end

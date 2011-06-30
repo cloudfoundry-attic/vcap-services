@@ -293,10 +293,13 @@ describe VCAP::Services::Rabbit::Node do
     it "should send provision message when finish a provision" do
       @credentials["name"].should be
       @credentials["host"].should be
+      @credentials["host"].should == @credentials["hostname"]
       @credentials["port"].should be
       @credentials["vhost"].should be
       @credentials["user"].should be
+      @credentials["user"].should == @credentials["username"]
       @credentials["pass"].should be
+      @credentials["pass"].should == @credentials["password"]
     end
   end
 
@@ -381,10 +384,13 @@ describe VCAP::Services::Rabbit::Node do
 
     it "should send binding message when finish a binding" do
       @binding_credentials["host"].should be
+      @binding_credentials["host"].should == @binding_credentials["hostname"]
       @binding_credentials["port"].should be
       @binding_credentials["vhost"].should be
       @binding_credentials["user"].should be
+      @binding_credentials["user"].should == @binding_credentials["username"]
       @binding_credentials["pass"].should be
+      @binding_credentials["pass"].should == @binding_credentials["password"]
       @binding_credentials["name"].should be
     end
   end

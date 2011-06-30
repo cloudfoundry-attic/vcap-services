@@ -469,8 +469,10 @@ class VCAP::Services::Postgresql::Node
     response = {
       "name" => name,
       "hostname" => @postgresql_config['host'],
+      "host" => @postgresql_config['host'],
       "port" => @postgresql_config['port'],
       "user" => user,
+      "username" => user,
       "password" => passwd,
     }
   end

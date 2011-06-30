@@ -187,6 +187,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should send provision message when finish a provision" do
       @credentials["hostname"].should be
+      @credentials["host"].should == @credentials["hostname"]
       @credentials["port"].should be
       @credentials["password"].should be
       @credentials["name"].should be
@@ -284,6 +285,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should send binding message when finish a binding" do
       @binding_credentials["hostname"].should be
+      @binding_credentials["host"].should == @binding_credentials["hostname"]
       @binding_credentials["port"].should be
       @binding_credentials["password"].should be
       @binding_credentials["name"].should be

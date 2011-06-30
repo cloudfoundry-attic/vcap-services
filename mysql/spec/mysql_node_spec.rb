@@ -49,6 +49,12 @@ describe "Mysql server node" do
     # Create one db be default
     @db = @node.provision(@default_plan)
     @db.should_not == nil
+    @db["name"].should be
+    @db["host"].should be
+    @db["host"].should == @db["hostname"]
+    @db["port"].should be
+    @db["user"].should == @db["username"]
+    @db["password"].should be
     @test_dbs[@db] = []
   end
 
@@ -255,6 +261,11 @@ describe "Mysql server node" do
     EM.run do
       binding = @node.bind(@db["name"],  @default_opts)
       binding["name"].should == @db["name"]
+      binding["host"].should be
+      binding["host"].should == binding["hostname"]
+      binding["port"].should be
+      binding["user"].should == binding["username"]
+      binding["password"].should be
       @test_dbs[@db] << binding
       conn = connect_to_mysql(binding)
       expect {conn.query("Select 1")}.should_not raise_error

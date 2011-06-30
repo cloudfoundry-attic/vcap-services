@@ -170,6 +170,7 @@ class VCAP::Services::MongoDB::Node
 
     response = {
       "hostname" => @local_ip,
+      "host" => @local_ip,
       "port" => provisioned_service.port,
       "name" => provisioned_service.name,
       "db" => provisioned_service.db,
@@ -227,6 +228,7 @@ class VCAP::Services::MongoDB::Node
 
     response = {
       "hostname" => @local_ip,
+      "host" => @local_ip,
       "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
@@ -370,10 +372,12 @@ class VCAP::Services::MongoDB::Node
     # Update credentials for the new credential
     service_credential['port'] = port
     service_credential['host'] = @local_ip
+    service_credential['hostname'] = @local_ip
 
     binding_credentials.each_value do |v|
       v['port'] = port
       v['host'] = @local_ip
+      v['hostname'] = @local_ip
     end
 
     [service_credential, binding_credentials]

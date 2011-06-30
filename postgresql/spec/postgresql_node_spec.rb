@@ -48,6 +48,12 @@ describe "Postgresql server node" do
     # Create one db be default
     @db = @node.provision(@default_plan)
     @db.should_not == nil
+    @db["name"].should be
+    @db["host"].should be
+    @db["host"].should == @db["hostname"]
+    @db["port"].should be
+    @db["user"].should == @db["username"]
+    @db["password"].should be
     @test_dbs[@db] = []
   end
 
@@ -185,6 +191,7 @@ describe "Postgresql server node" do
       # try to login using root account
       fake_creds[2]["user"] = "root"
       fake_creds.each do |creds|
+        puts creds
         expect{connect_to_postgresql(creds)}.should raise_error
       end
       EM.stop
@@ -209,10 +216,15 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should create new a credential when binding" do
+  it "should create a new credential when binding" do
     EM.run do
       binding = @node.bind(@db["name"],  @default_opts)
       binding["name"].should == @db["name"]
+      binding["host"].should be
+      binding["host"].should == binding["hostname"]
+      binding["port"].should be
+      binding["user"].should == binding["username"]
+      binding["password"].should be
       @test_dbs[@db] << binding
       conn = connect_to_postgresql(binding)
       expect {conn.query("Select 1")}.should_not raise_error
