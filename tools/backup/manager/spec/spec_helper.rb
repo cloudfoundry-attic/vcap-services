@@ -5,7 +5,9 @@ $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 require 'rubygems'
 require 'rspec'
 require 'logger'
-
+require 'sinatra'
+require 'thin'
+require 'fileutils'
 require 'backup_manager/manager'
 
 class BackupManagerTests
@@ -14,23 +16,35 @@ end
 
 require 'backup_manager/rotator'
 
+
 class BackupRotatorTests
 
+  CC_PORT=45678
   MAX_DAYS = 7
 
-  def self.create_rotator(root)
+  @@root=''
+  @@complicated=false
+
+  def self.create_rotator(root_p,opts)
     logger = Logger.new(STDOUT)
-    complicated = root == 'complicated' # special handling for this one...
-    root = File.join(File.dirname(__FILE__), 'test_directories', root)
-    if complicated
+    @@complicated = root_p == 'complicated' # special handling for this one...
+    if @@complicated
+      @@root=File.join('/tmp','backup_spec','test_directories',root_p)
       require 'spec/test_directories/complicated/populate'
-      populate_complicated(root)
+      populate_complicated(@@root)
+    else
+      @@root = File.join(File.dirname(__FILE__), 'test_directories', root_p)
     end
-    manager = MockManager.new(root, logger)
-    options = {
-      :max_days => MAX_DAYS
-    }
-    RotatorTester.new(manager, options)
+    manager = MockManager.new(@@root, logger)
+    opts.merge!({:logger=>logger})
+
+    RotatorTester.new(manager, opts)
+  end
+
+  def self.cleanup
+    if @@complicated
+      FileUtils.rm_rf(@@root)
+    end
   end
 
   class MockManager
@@ -49,8 +63,9 @@ class BackupRotatorTests
       super(manager, options)
       @pruned = []
       @retained = []
+      @logger=options[:logger]
     end
-    def prune(path, timestamp)
+    def prune(path, timestamp=nil)
       # IMPORTANT: by overriding this method we prevent files in
       # 'test_directories' from actually getting deleted
       @pruned << [path,timestamp]
@@ -70,5 +85,63 @@ class BackupRotatorTests
     end
   end
 
+  class MockCloudController
+    def initialize
+      @server = Thin::Server.new('localhost', CC_PORT, Handler.new)
+    end
+
+    def start
+      Thread.new { @server.start }
+    end
+
+    def stop
+      @server.stop if @server
+    end
+
+    class Handler < Sinatra::Base
+
+      get "/services/v1/offerings/:label/handles" do
+        case params['label'].gsub!(/-.*$/,'')
+        when 'mysql'
+          res=Yajl::Encoder.encode({
+            :handles => [{
+            'service_id' => 'd35b51e7814b34eeeb9bbb3a6b8750755',
+            'configuration' => {},
+            'credentials' => {}
+          }]
+          })
+        when 'redis'
+          res=Yajl::Encoder.encode({
+            :handles => [{
+            'service_id' => 'f0fe7695-0310-4043-be12-0a09e59e52d0',
+            'configuration' => {},
+            'credentials' => {}
+          }]
+          })
+        when 'mongodb'
+          res=Yajl::Encoder.encode({
+            :handles => [{
+            'service_id' => 'a7d3b56a-92b4-4e70-8efe-080ae129f83b',
+            'configuration' => {},
+            'credentials' => {}
+          }]
+          })
+        else
+          res='{}'
+        end
+        res
+      end
+    end
+  end
 end
+
+def validate_retained(backup,threshold)
+  path=backup[0]
+  timestamp=backup[1]
+  return true if timestamp>threshold
+  all_backup=Dir.entries(File.absolute_path('..',path))-['.','..']
+  return all_backup.max.to_i==timestamp
+end
+
+
 
