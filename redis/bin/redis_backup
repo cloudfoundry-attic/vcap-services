@@ -112,12 +112,13 @@ if File.directory? inst_path
   dirnames.each do |dirname|
     next if dirname.to_s.start_with? "." #skip . & ..
     logger.info "instance: " + dirname
+    dump_file = "#{inst_path}/#{dirname}/data/dump.rdb"
+    dirname.gsub!(/^redis-/, '')
     new_dirname_nfs = nfs_base + "/" + dirname[0,2] + "/" + dirname[2,2] + "/" + dirname[4,2] + "/" + dirname + "/" + Time.new.to_i.to_s
     logger.info "new dir: " + new_dirname_nfs
     begin
       FileUtils.mkdir_p new_dirname_nfs
-      #FileUtils.cp inst_path + "/" + dirname + "/data/dump.rdb", new_dirname_nfs
-      cmd = "cp #{inst_path}/#{dirname}/data/dump.rdb #{new_dirname_nfs}"
+      cmd = "cp #{dump_file} #{new_dirname_nfs}"
       if config["timeout"] == nil
         # If no timeout option, set a default value
         config["timeout"] = 600
