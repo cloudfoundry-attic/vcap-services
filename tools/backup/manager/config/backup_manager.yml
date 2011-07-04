@@ -1,3 +1,14 @@
 ---
 log_level: DEBUG
 root: /mnt/appcloud
+enable: true
+wakeup_interval: 3600
+rotation:
+  max_days: 7
+  cloud_controller_uri: api.vcap.me
+  token: "0xdeadbeef"
+  services:
+    mongodb: "1.8"
+    redis: "2.2"
+    mysql: "5.1"
+
