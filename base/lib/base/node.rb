@@ -201,6 +201,14 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     return announcement
   end
 
+  def healthz_details()
+    # Service Node subclasses may want to override this method to
+    # provide service specific data
+    healthz = {
+      :self => "ok"
+    }
+  end
+
   # Service Node subclasses must implement the following methods
 
   # provision(plan) --> {name, host, port, user, password}

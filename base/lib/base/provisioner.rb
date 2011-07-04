@@ -463,6 +463,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.warn(e)
   end
 
+  def healthz_details()
+    healthz = {
+      :self => "ok"
+    }
+  end
+
   ########
   # Helpers
   ########

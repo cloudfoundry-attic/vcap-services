@@ -42,8 +42,11 @@ class VCAP::Services::Base::Base
       :index => options[:index] || 0,
       :config => options
     )
+    z_interval = options[:z_interval] || 30
     EM.add_timer(5) { update_varz } # give service a chance to wake up
-    EM.add_periodic_timer(30) { update_varz }
+    EM.add_periodic_timer(z_interval) { update_varz }
+    EM.add_timer(5) { update_healthz } # give service a chance to wake up
+    EM.add_periodic_timer(z_interval) { update_healthz }
   end
 
   def service_description()
@@ -54,6 +57,10 @@ class VCAP::Services::Base::Base
     varz_details.each { |k,v|
       VCAP::Component.varz[k] = v
     }
+  end
+
+  def update_healthz()
+    VCAP::Component.healthz = Yajl::Encoder.encode(healthz_details, :pretty => true, :terminator => "\n")
   end
 
   def shutdown()
@@ -67,6 +74,7 @@ class VCAP::Services::Base::Base
   abstract :on_connect_node
   abstract :flavor # "Provisioner" or "Node"
   abstract :varz_details
+  abstract :healthz_details
 
   # Service Provisioner and Node classes must implement the following
   # method
