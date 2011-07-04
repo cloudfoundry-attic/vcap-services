@@ -37,9 +37,11 @@ class BaseTests
   class BaseTester < VCAP::Services::Base::Base
     attr_accessor :node_mbus_connected
     attr_accessor :varz_invoked
+    attr_accessor :healthz_invoked
     def initialize(options)
       @node_mbus_connected = false
       @varz_invoked = false
+      @healthz_invoked = false
       super(options)
     end
     def flavor
@@ -53,6 +55,10 @@ class BaseTests
     end
     def varz_details
       @varz_invoked = true
+      {}
+    end
+    def healthz_details
+      @healthz_invoked = true
       {}
     end
   end
@@ -184,10 +190,12 @@ class ProvisionerTests
   class ProvisionerTester < VCAP::Services::Base::Provisioner
     attr_accessor :prov_svcs
     attr_accessor :varz_invoked
+    attr_accessor :healthz_invoked
     attr_accessor :prov_svcs
     def initialize(options)
       super(options)
       @varz_invoked = false
+      @healthz_invoked = false
     end
     SERVICE_NAME = "Test"
     def service_name
@@ -201,6 +209,10 @@ class ProvisionerTests
     end
     def varz_details
       @varz_invoked = true
+      super
+    end
+    def healthz_details
+      @healthz_invoked = true
       super
     end
   end
