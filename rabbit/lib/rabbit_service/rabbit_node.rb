@@ -163,6 +163,26 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
+  def healthz_details
+    healthz = {}
+    begin
+      list_users
+      healthz[:self] = "ok"
+    rescue => e
+      healthz[:self] = "fail"
+      return healthz
+    end
+    begin
+      ProvisionedInstance.all.each do |instance|
+        healthz[instance.name.to_sym] = get_healthz(instance)
+      end
+    rescue => e
+      @logger.warn("Error get healthz details: #{e}")
+      healthz = {:self => "fail"}
+    end
+    healthz
+  end
+
   # Clean all users permissions
   def disable_instance(service_credentials, binding_credentials_list = [])
     clear_permissions(service_credentials["vhost"], service_credentials["user"])
@@ -464,6 +484,12 @@ class VCAP::Services::Rabbit::Node
     varz[:usage][:exchanges_num] = list_exchanges(instance.vhost).size
     varz[:usage][:bindings_num] = list_bindings(instance.vhost).size
     varz
+  end
+
+  def get_healthz(instance)
+    get_permissions(instance.vhost, instance.admin_username) == "'.*' '.*' '.*'" ? "ok" : "fail"
+  rescue => e
+    "fail"
   end
 
   def gen_credentials(instance, user = nil, pass = nil)
