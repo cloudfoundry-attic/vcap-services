@@ -469,6 +469,33 @@ describe "Mysql server node" do
     end
   end
 
+  it "should report node status in healthz" do
+    EM.run do
+      healthz = @node.healthz_details()
+      healthz[:self].should == "ok"
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      node.connection.close
+      healthz = node.healthz_details()
+      healthz[:self].should == "fail"
+      EM.stop
+    end
+  end
+
+  it "should report instance status in healthz" do
+    EM.run do
+      healthz = @node.healthz_details()
+      instance = @db['name']
+      healthz[instance.to_sym].should == "ok"
+      conn = @node.connection
+      conn.query("Drop database #{instance}")
+      healthz = @node.healthz_details()
+      healthz[instance.to_sym].should == "fail"
+      # restore db so cleanup code doesn't complain.
+      conn.query("create database #{instance}")
+      EM.stop
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin

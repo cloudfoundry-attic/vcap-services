@@ -482,6 +482,39 @@ class VCAP::Services::Mysql::Node
     {}
   end
 
+  def healthz_details()
+    healthz = {:self => "ok"}
+    begin
+      @connection.query("SHOW DATABASES")
+    rescue => e
+      @logger.error("Error get database list: #{e}")
+      healthz[:self] = "fail"
+      return healthz
+    end
+    begin
+      ProvisionedService.all.each do |instance|
+        healthz[instance.name.to_sym] = get_instance_healthz(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+      healthz[:self] = "fail"
+    end
+    healthz
+  end
+
+  def get_instance_healthz(instance)
+    res = "ok"
+    host, port, socket = %w{host port socket}.map { |opt| @mysql_config[opt] }
+    begin
+      conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
+      conn.query("SHOW TABLES")
+    rescue => e
+      @logger.error("Error get tables of #{instance.name}: #{e}")
+      res = "fail"
+    end
+    res
+  end
+
   def get_queries_status()
     @logger.debug("Get mysql query status.")
     result = @connection.query("SHOW STATUS WHERE Variable_name ='QUERIES'")
