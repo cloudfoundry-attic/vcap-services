@@ -64,6 +64,16 @@ describe "mongodb_node provision" do
     end
   end
 
+  it "should return healthz" do
+    EM.run do
+      stats = @node.healthz_details
+      stats.should_not be_nil
+      stats[:self].should == "ok"
+      stats[@resp['name'].to_sym].should == "ok"
+      EM.stop
+    end
+  end
+
   it "should allow authorized user to access the instance" do
     EM.run do
       conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])

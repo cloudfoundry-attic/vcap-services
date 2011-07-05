@@ -423,6 +423,26 @@ class VCAP::Services::MongoDB::Node
     }
   end
 
+  def healthz_details
+    healthz = {}
+    healthz[:self] = "ok"
+    ProvisionedService.all.each do |instance|
+      healthz[instance.name.to_sym] = get_healthz(instance)
+    end
+    healthz
+  rescue => e
+    @logger.warn("Error get healthz details: #{e}")
+    {:self => "fail"}
+  end
+
+  def get_healthz(instance)
+    conn = Mongo::Connection.new(@local_ip, instance.port).db(instance.db)
+    auth = conn.authenticate(instance.admin, instance.adminpass)
+    auth ? "ok" : "fail"
+  rescue => e
+    "fail"
+  end
+
   def start_instance(provisioned_service)
     @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
 
