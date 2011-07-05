@@ -458,6 +458,17 @@ describe VCAP::Services::Rabbit::Node do
     end
   end
 
+  describe "Node.healthz_details" do
+    it "should report healthz details" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      healthz = @node.healthz_details
+      healthz[:self].should == "ok"
+      healthz[@credentials["name"].to_sym].should == "ok"
+      @node.unprovision(@credentials["name"])
+    end
+  end
+
   describe "Node.migration" do
     before :all do
       @instance_credentials = @node.provision(:free)
