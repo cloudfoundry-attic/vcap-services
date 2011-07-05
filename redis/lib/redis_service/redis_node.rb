@@ -247,6 +247,18 @@ class VCAP::Services::Redis::Node
     {}
   end
 
+  def healthz_details
+    healthz = {}
+    healthz[:self] = "ok"
+    ProvisionedInstance.all.each do |instance|
+      healthz[instance.name.to_sym] = get_healthz(instance)
+    end
+    healthz
+  rescue => e
+    @logger.warn("Error get healthz details: #{e}")
+    {:self => "fail"}
+  end
+
   def start_db
     DataMapper.setup(:default, @local_db)
     DataMapper::auto_upgrade!
@@ -472,6 +484,14 @@ class VCAP::Services::Redis::Node
       "password" => instance.password,
       "name" => instance.name
     }
+  end
+
+  def get_healthz(instance)
+    redis = Redis.new({:port => instance.port, :password => instance.password})
+    redis.echo("")
+    "ok"
+  rescue => e
+    "fail"
   end
 
 end
