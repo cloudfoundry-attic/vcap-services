@@ -384,9 +384,11 @@ describe "Mysql server node" do
       db = @node.provision(@default_plan)
       @test_dbs[db] = []
       binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
       conn = connect_to_mysql(binding)
       @node.disable_instance(db, [binding])
       expect {conn = connect_to_mysql(binding)}.should raise_error
+      expect {conn = connect_to_mysql(db)}.should raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
@@ -396,6 +398,7 @@ describe "Mysql server node" do
       result = @node.enable_instance(db, value)
       result.should be_instance_of Array
       expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      expect {conn = connect_to_mysql(db)}.should_not raise_error
       EM.stop
     end
   end
