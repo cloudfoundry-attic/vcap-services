@@ -71,12 +71,16 @@ class VCAP::Services::MongoDB::Node
     FileUtils.mkdir_p(@base_dir)
     @mongod_path = options[:mongod_path]
     @mongorestore_path = options[:mongorestore_path]
+    @image_dir = options[:image_dir]
 
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
+    @max_space  = options[:max_space] * 1024 * 1024
 
     @config_template = ERB.new(File.read(options[:config_template]))
+
+    FileUtils.mkdir_p(@image_dir)
 
     DataMapper.setup(:default, options[:local_db])
     DataMapper::auto_upgrade!
@@ -135,8 +139,8 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.port      = port
     provisioned_service.plan      = plan
     provisioned_service.password  = UUIDTools::UUID.random_create.to_s
-    provisioned_service.memory    = @max_memory
-    provisioned_service.pid       = start_instance(provisioned_service)
+    provisioned_service.memory    = memory_for_instance(provisioned_service)
+    provisioned_service.pid       = new_instance(provisioned_service)
     provisioned_service.admin     = 'admin'
     provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
     provisioned_service.db        = db
@@ -201,14 +205,28 @@ class VCAP::Services::MongoDB::Node
 
     provisioned_service.kill if provisioned_service.running?
 
-    dir = File.join(@base_dir, provisioned_service.name)
+    if is_root?
+      deallocate_space(provisioned_service)
+    else
+      @logger.warn("Node runned by non-root!")
+      @logger.warn("#{provisioned_service.name}'s loopback device is not cleaned up!")
+    end
 
+    dir = service_dir(provisioned_service.name)
     EM.defer { FileUtils.rm_rf(dir) }
 
     @available_memory += provisioned_service.memory
     @free_ports << provisioned_service.port
 
     true
+  end
+
+  def memory_for_instance(instance)
+    @max_memory
+  end
+
+  def space_for_instance(instance)
+    @max_space
   end
 
   def bind(name, bind_opts, credential = nil)
@@ -330,23 +348,9 @@ class VCAP::Services::MongoDB::Node
   def import_instance(service_credential, binding_credentials, dump_dir, plan)
     @logger.debug("import_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}, dump_dir: #{dump_dir}, plan: #{plan}")
 
-    to_dir = service_dir(service_credential['name'])
-    FileUtils.rm_rf(to_dir)
-    FileUtils.mkdir_p(to_dir)
-    FileUtils.cp_r(File.join(dump_dir, '.'), to_dir)
-    true
-  rescue => e
-    @logger.warn(e)
-    nil
-  end
-
-  def enable_instance(service_credential, binding_credentials)
-    @logger.debug("enable_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}")
-
     # Load provisioned_service from dumped file
     stored_service = nil
-    dest_dir = service_dir(service_credential['name'])
-    d_file = dump_file(dest_dir)
+    d_file = dump_file(dump_dir)
     File.open(d_file, 'r') do |f|
       stored_service = Marshal.load(f)
     end
@@ -365,13 +369,26 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.adminpass = stored_service.adminpass
     provisioned_service.db        = stored_service.db
     provisioned_service.port      = port
-    provisioned_service.pid       = start_instance(provisioned_service)
+    provisioned_service.pid       = new_instance_and_load_saved(provisioned_service, dump_dir)
     @logger.debug("Provisioned_service: #{provisioned_service}")
 
     unless provisioned_service.save
       provisioned_service.kill
       raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
     end
+
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def enable_instance(service_credential, binding_credentials)
+    @logger.debug("enable_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}")
+
+    # Fetch port for local db which is saved in import_instance
+    provisioned_service = ProvisionedService.get(service_credential['name'])
+    port = provisioned_service.port
 
     # Update credentials for the new credential
     service_credential['port'] = port
@@ -426,9 +443,36 @@ class VCAP::Services::MongoDB::Node
   end
 
   def start_instance(provisioned_service)
+    _start_instance(provisioned_service, false)
+  end
+
+  def new_instance(provisioned_service)
+    _start_instance(provisioned_service, true)
+  end
+
+  def new_instance_and_load_saved(provisioned_service, dump_dir)
+    _start_instance(provisioned_service, true, dump_dir)
+  end
+
+  def _start_instance(provisioned_service, cleanup_space, dump_dir = nil)
     @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
 
-    memory = @max_memory
+    memory = memory_for_instance(provisioned_service)
+    space  = space_for_instance(provisioned_service)
+
+    dir = service_dir(provisioned_service.name)
+    FileUtils.mkdir_p(dir)
+
+    if is_root?
+      allocate_space(provisioned_service, space, cleanup_space)
+    else
+      @logger.warn("Node runned by non-root!")
+      @logger.warn("#{provisioned_service.name} is not using loopback fs to ensure quota!")
+    end
+
+    FileUtils.rm_rf(File.join(dir, '.')) if cleanup_space
+
+    load_saved_instance(dir, dump_dir) if dump_dir
 
     pid = fork
     if pid
@@ -443,14 +487,12 @@ class VCAP::Services::MongoDB::Node
 
       port = provisioned_service.port
       password = provisioned_service.password
-      dir = service_dir(provisioned_service.name)
       data_dir = data_dir(dir)
       log_file = log_file(dir)
 
       config = @config_template.result(binding)
       config_path = File.join(dir, "mongodb.conf")
 
-      FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
       FileUtils.rm_f(log_file)
       FileUtils.rm_f(config_path)
@@ -459,6 +501,10 @@ class VCAP::Services::MongoDB::Node
       cmd = "#{@mongod_path} -f #{config_path}"
       exec(cmd) rescue @logger.warn("exec(#{cmd}) failed!")
     end
+  end
+
+  def load_saved_instance(dir, dump_dir)
+    FileUtils.cp_r(File.join(dump_dir, '.'), dir)
   end
 
   def memory_for_service(provisioned_service)
@@ -582,9 +628,78 @@ class VCAP::Services::MongoDB::Node
     File.join(base_dir, 'data')
   end
 
+  def image_file(provisioned_service)
+    File.join(@image_dir, provisioned_service.port.to_s + '.img')
+  end
+
+  def loop_dev_file(provisioned_service)
+    File.join("/dev", "loop#{provisioned_service.port}")
+  end
+
   def rm_lockfile(service_id)
     lockfile = File.join(service_dir(service_id), 'data', 'mongod.lock')
     FileUtils.rm_rf(lockfile)
+  end
+
+  def allocate_space(provisioned_service, disk_size, new_image)
+    dir   = service_dir(provisioned_service.name)
+    minor = provisioned_service.port
+
+    image_file    = image_file(provisioned_service)
+    loop_dev_file = loop_dev_file(provisioned_service)
+
+    return if mounted_on?(loop_dev_file, dir)
+
+    raise "Device #{loop_dev_file} already mounted on other mount point" if mounted?(loop_dev_file)
+
+    create_imagefile(image_file, disk_size) if new_image
+
+    # Create device file if it not exists
+    run("mknod #{loop_dev_file} b 7 #{minor}") unless File.exists? loop_dev_file
+
+    # Maps device file with image file
+    run("losetup #{loop_dev_file} #{image_file}", true)
+
+    # Format disk and mount
+    run("mkfs -t ext3 #{loop_dev_file}") if new_image
+    run("mount -t ext3 #{loop_dev_file} #{dir}")
+  end
+
+  def deallocate_space(provisioned_service)
+    dir = service_dir(provisioned_service.name)
+    loop_dev_file = loop_dev_file(provisioned_service)
+    image_file = image_file(provisioned_service)
+
+    run("umount -d #{dir}")
+    FileUtils.rm_rf(image_file)
+  rescue => e
+    @logger.warn(e)
+  end
+
+  def run(command, swallow_fail = false)
+    output = `#{command}`
+    res = $?.success?
+    @logger.debug("Run #{command}, output: #{output}")
+    raise "Failed: #{command}" unless res || swallow_fail
+  end
+
+  def is_root?
+    Process.uid == 0
+  end
+
+  def mounted?(dev_file)
+    system("mount | grep #{dev_file} > /dev/null")
+  end
+
+  def mounted_on?(dev_file, mount_point)
+    system("mount | grep #{dev_file} | grep #{mount_point} > /dev/null")
+  end
+
+  # Create a sparse file with a big hole in it
+  def create_imagefile(file, size)
+    f = File.new(file, 'w')
+    f.truncate(size)
+    f.close
   end
 
   def record_service_log(service_id)

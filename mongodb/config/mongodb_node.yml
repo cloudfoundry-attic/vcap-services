@@ -7,6 +7,8 @@ log_level: DEBUG
 pid: /var/vcap/sys/run/mongodb_node.pid
 available_memory: 4096
 max_memory: 128
+# disk space in MB
+max_space: 100
 node_id: mongodb_node_1
 mongod_path: mongod
 mongorestore_path: mongorestore
@@ -14,3 +16,4 @@ port_range:
   first: 25001
   last: 45000
 migration_nfs: /mnt/migration
+image_dir: /var/vcap/store/mongodb

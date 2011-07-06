@@ -66,6 +66,12 @@ def get_backup_dir(backup_dir)
   dir
 end
 
+# mounted disk_size in MB
+def disk_size(instance_id)
+  `df --block-size=1M | grep #{instance_id} | awk '{print $2}'`.to_i
+end
+
+
 def parse_property(hash, key, type, options = {})
   obj = hash[key]
   if obj.nil?
@@ -88,6 +94,7 @@ def get_node_config()
   mongodb_conf_template = File.join(PWD, "../resources/mongodb.conf.erb")
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
+    :index => parse_property(config, "index", Integer, :optional => true),
     :mongod_path => parse_property(config, "mongod_path", String),
     :mongorestore_path => parse_property(config, "mongorestore_path", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
@@ -96,7 +103,10 @@ def get_node_config()
     :mbus => parse_property(config, "mbus", String),
     :config_template => mongodb_conf_template,
     :port_range => parse_property(config, "port_range", Range),
+    :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
+    :max_space => parse_property(config, "max_space", Integer),
     :max_memory => parse_property(config, "max_memory", Integer),
+    :image_dir => '/tmp/mongo/images',
     :base_dir => '/tmp/mongo/instances',
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db'
   }

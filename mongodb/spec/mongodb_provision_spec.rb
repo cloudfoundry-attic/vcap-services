@@ -27,6 +27,14 @@ describe "mongodb_node provision" do
     inst_name.should_not == ""
   end
 
+  it "should have a correct size of loopback fs (run as root)" do
+    pending "didn't run because u r not root :P" if Process.uid != 0
+
+    size = disk_size(@resp['name'])
+    size.should < @opts[:max_space] * 1.05
+    size.should > @opts[:max_space] * 0.95
+  end
+
   it "should consume node's memory" do
     (@original_memory - @node.available_memory).should > 0
   end
