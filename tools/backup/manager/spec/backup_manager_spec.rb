@@ -140,9 +140,9 @@ describe BackupRotatorTests do
           opts = @options.merge({
           :cloud_controller_uri => "localhost:#{BackupRotatorTests::CC_PORT}",
           :services => {
-            'mongodb'=>'1.8',
-            'redis'=>'2.2',
-            'mysql'=>'5.1'
+            'mongodb'=> {'version'=>'1.8','token'=>'0xdeadbeef'},
+            'redis'=> {'version'=>'2.2','token'=>'0xdeadbeef'},
+            'mysql'=> {'version'=>'5.1','token'=>'0xdeadbeef'},
           }
         })
         rotator=BackupRotatorTests.create_rotator('cc_test',opts)
@@ -187,7 +187,7 @@ describe BackupRotatorTests do
         timestamp = a[1]
         if timestamp > rotator.n_midnights_ago(day) && timestamp < rotator.n_midnights_ago(day-1)
           path =~ /\A(.*)\/\d+\Z/
-          instance = $1
+            instance = $1
           service_count[instance] = (service_count[instance]||0) + 1
         end
       }
