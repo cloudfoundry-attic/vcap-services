@@ -42,7 +42,7 @@ describe VCAP::Services::Redis::Node do
   end
 
   before :each do
-    @instance          = VCAP::Services::Redis::Node::ProvisionedInstance.new
+    @instance          = VCAP::Services::Redis::Node::ProvisionedService.new
     @instance.name     = UUIDTools::UUID.random_create.to_s
     @instance.port     = VCAP.grab_ephemeral_port
     @instance.plan     = :free
@@ -122,7 +122,7 @@ describe VCAP::Services::Redis::Node do
       @instance.save
       sleep 1
       @node.start_provisioned_instances
-      instance = VCAP::Services::Redis::Node::ProvisionedInstance.get(@instance.name)
+      instance = VCAP::Services::Redis::Node::ProvisionedService.get(@instance.name)
       instance.pid.should == @instance.pid
       @node.stop_instance(@instance)
       @instance.destroy
@@ -134,7 +134,7 @@ describe VCAP::Services::Redis::Node do
       @node.stop_instance(@instance)
       sleep 1
       @node.start_provisioned_instances
-      instance = VCAP::Services::Redis::Node::ProvisionedInstance.get(@instance.name)
+      instance = VCAP::Services::Redis::Node::ProvisionedService.get(@instance.name)
       instance.pid.should_not == @instance.pid
       @node.stop_instance(@instance)
       @instance.destroy
@@ -243,7 +243,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.destory_instance" do
     it "should raise exception when destroy instance failed" do
-      instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
+      instance = VCAP::Services::Redis::Node::ProvisionedService.new
       expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
@@ -305,13 +305,13 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.memory_for_instance" do
     it "should return memory size by the plan" do
-      instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
+      instance = VCAP::Services::Redis::Node::ProvisionedService.new
       instance.plan = :free
       @node.memory_for_instance(instance).should == 16
     end
 
     it "should raise exception when giving wrong plan name" do
-      instance = VCAP::Services::Redis::Node::ProvisionedInstance.new
+      instance = VCAP::Services::Redis::Node::ProvisionedService.new
       instance.plan = :non_existed_plan
       expect {@node.memory_for_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)
     end

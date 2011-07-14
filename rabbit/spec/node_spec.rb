@@ -43,7 +43,7 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   before :each do
-    @instance = VCAP::Services::Rabbit::Node::ProvisionedInstance.new
+    @instance = VCAP::Services::Rabbit::Node::ProvisionedService.new
     @instance.name = UUIDTools::UUID.random_create.to_s
     @instance.plan = :free
     @instance.plan_option = ""
@@ -432,7 +432,7 @@ describe VCAP::Services::Rabbit::Node do
 
   describe "Node.destory_instance" do
     it "should raise exception when destroy instance failed" do
-      instance = VCAP::Services::Rabbit::Node::ProvisionedInstance.new
+      instance = VCAP::Services::Rabbit::Node::ProvisionedService.new
       expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
