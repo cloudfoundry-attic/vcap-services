@@ -28,7 +28,7 @@ class VCAP::Services::Redis::Node
   include VCAP::Services::Redis::Common
   include VCAP::Services::Redis
 
-  class ProvisionedInstance
+  class ProvisionedService
     include DataMapper::Resource
     property :name,       String,   :key => true
     property :port,       Integer,  :unique => true
@@ -77,7 +77,7 @@ class VCAP::Services::Redis::Node
 
   def shutdown
     super
-    ProvisionedInstance.all.each do |instance|
+    ProvisionedService.all.each do |instance|
       stop_redis_server(instance)
     end
     true
@@ -90,7 +90,7 @@ class VCAP::Services::Redis::Node
   end
 
   def provision(plan, credentials = nil, db_file = nil)
-    instance = ProvisionedInstance.new
+    instance = ProvisionedService.new
     instance.plan = plan
     if credentials
       instance.name = credentials["name"]
@@ -251,7 +251,7 @@ class VCAP::Services::Redis::Node
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
     varz[:max_instances_num] = @options[:available_memory] / @max_memory
-    ProvisionedInstance.all.each do |instance|
+    ProvisionedService.all.each do |instance|
       varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
     end
@@ -267,7 +267,7 @@ class VCAP::Services::Redis::Node
   end
 
   def start_provisioned_instances
-    ProvisionedInstance.all.each do |instance|
+    ProvisionedService.all.each do |instance|
       @free_ports.delete(instance.port)
       if instance.listening?
         @logger.info("Service #{instance.name} already running on port #{instance.port}")
@@ -298,7 +298,7 @@ class VCAP::Services::Redis::Node
   end
 
   def get_instance(name)
-    instance = ProvisionedInstance.get(name)
+    instance = ProvisionedService.get(name)
     raise RedisError.new(RedisError::REDIS_FIND_INSTANCE_FAILED, name) if instance.nil?
     instance
   end

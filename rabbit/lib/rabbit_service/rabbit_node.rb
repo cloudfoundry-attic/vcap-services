@@ -25,7 +25,7 @@ class VCAP::Services::Rabbit::Node
   include VCAP::Services::Rabbit::Common
   include VCAP::Services::Rabbit
 
-  class ProvisionedInstance
+  class ProvisionedService
     include DataMapper::Resource
     property :name,            String,      :key => true
     property :vhost,           String,      :required => true
@@ -55,7 +55,7 @@ class VCAP::Services::Rabbit::Node
     @logger.info("Starting rabbit node...")
     start_db
     start_server
-    ProvisionedInstance.all.each do |instance|
+    ProvisionedService.all.each do |instance|
       @available_memory -= (instance.memory || @max_memory)
     end
     true
@@ -74,7 +74,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def provision(plan, credentials = nil)
-    instance = ProvisionedInstance.new
+    instance = ProvisionedService.new
     instance.plan = plan
     instance.plan_option = ""
     if credentials
@@ -161,7 +161,7 @@ class VCAP::Services::Rabbit::Node
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
     varz[:max_instances_num] = @options[:available_memory] / @max_memory
-    ProvisionedInstance.all.each do |instance|
+    ProvisionedService.all.each do |instance|
       varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
     end
@@ -227,7 +227,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def get_instance(instance_id)
-    instance = ProvisionedInstance.get(instance_id)
+    instance = ProvisionedService.get(instance_id)
     raise RabbitError.new(RabbitError::RABBIT_FIND_INSTANCE_FAILED, instance_id) if instance.nil?
     instance
   end
