@@ -44,12 +44,15 @@ class VCAP::Services::Backup::Rotator
         resp.handles.each do |h|
           if h['service_id']
             service_id=h['service_id']
-            #service_id.gsub!(/(mongodb|redis)-/,'')
+            #Because some old service_ids may initial with service name,
+            #remove the service name for compatiblity's sake.
+            service_id.gsub!(/^(mongodb|redis)-/,'')
             service_id=String.new(service_id)
             instances << service_id if service_id
           end
         end if resp.handles
         @serv_ins[name]=instances
+        @manager.logger.debug("Live #{name} instances: #{instances}")
       rescue => e
         @manager.logger.error("Error to parse handle: #{e.message}")
       end
