@@ -6,9 +6,14 @@ wakeup_interval: 3600
 rotation:
   max_days: 7
   cloud_controller_uri: api.vcap.me
-  token: "0xdeadbeef"
   services:
-    mongodb: "1.8"
-    redis: "2.2"
-    mysql: "5.1"
+    mongodb:
+      version: "1.8"
+      token: "0xdeadbeef"
+    redis:
+      version: "2.2"
+      token: "0xdeadbeef"
+    mysql:
+      version: "5.1"
+      token: "0xdeadbeef"
 

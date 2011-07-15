@@ -20,7 +20,6 @@ class VCAP::Services::Backup::Rotator
     @manager = manager
     @manager.logger.info("#{self.class}: Initializing")
     @options = options
-    @@req[:head]['X-VCAP-Service-Token']=@options[:token]||'0xdeadbeef'
   end
 
   def run
@@ -55,7 +54,7 @@ class VCAP::Services::Backup::Rotator
         @manager.logger.error("Error to parse handle: #{e.message}")
       end
     else
-      @manager.logger.warn("Fetching handle ans: #{http.response_header.status}")
+      @manager.logger.warn("Fetching #{name} handle ans: #{http.response_header.status}")
     end
   end
 
@@ -83,8 +82,10 @@ class VCAP::Services::Backup::Rotator
     cc_uri=@options[:cloud_controller_uri]||"api.vcap.me"
     cc_uri="http://#{cc_uri}" if !cc_uri.start_with?("http://")
     @serv_ins ={}
-    @options[:services].each do |name,version|
+    @options[:services].each do |name,svc|
+      version=svc['version']
       uri="#{cc_uri}/services/v1/offerings/#{name}-#{version}/handles"
+      @@req[:head]['X-VCAP-Service-Token']=svc['token']||'0xdeadbeef'
       if EM.reactor_running?
         res=request_service_ins_fibered(uri)
         if res[0]
