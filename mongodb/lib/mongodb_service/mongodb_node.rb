@@ -41,6 +41,7 @@ class VCAP::Services::MongoDB::Node
     property :plan,       Enum[:free], :required => true
     property :pid,        Integer
     property :memory,     Integer
+    property :space,      Integer
     property :admin,      String,   :required => true
     property :adminpass,  String,   :required => true
     property :db,         String,   :required => true
@@ -76,7 +77,9 @@ class VCAP::Services::MongoDB::Node
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
-    @max_space  = options[:max_space] * 1024 * 1024
+    @total_space = options[:available_space]
+    @available_space = options[:available_space]
+    @max_space  = options[:max_space]
 
     @config_template = ERB.new(File.read(options[:config_template]))
 
@@ -92,7 +95,8 @@ class VCAP::Services::MongoDB::Node
       @free_ports.delete(provisioned_service.port)
       if provisioned_service.listening?
         @logger.info("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
-        @available_memory -= (provisioned_service.memory || @max_memory)
+        @available_memory -= memory_for_instance(provisioned_service)
+        @available_space  -= space_for_instance(provisioned_service)
         next
       end
       begin
@@ -121,6 +125,7 @@ class VCAP::Services::MongoDB::Node
 
   def announcement
     a = {
+      :available_space  => @available_space,
       :available_memory => @available_memory
     }
     a
@@ -140,6 +145,7 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.plan      = plan
     provisioned_service.password  = UUIDTools::UUID.random_create.to_s
     provisioned_service.memory    = memory_for_instance(provisioned_service)
+    provisioned_service.space     = space_for_instance(provisioned_service)
     provisioned_service.pid       = new_instance(provisioned_service)
     provisioned_service.admin     = 'admin'
     provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
@@ -215,18 +221,19 @@ class VCAP::Services::MongoDB::Node
     dir = service_dir(provisioned_service.name)
     EM.defer { FileUtils.rm_rf(dir) }
 
-    @available_memory += provisioned_service.memory
+    @available_memory += memory_for_instance(provisioned_service)
+    @available_space  += space_for_instance(provisioned_service)
     @free_ports << provisioned_service.port
 
     true
   end
 
   def memory_for_instance(instance)
-    @max_memory
+    instance.memory || @max_memory
   end
 
   def space_for_instance(instance)
-    @max_space
+    instance.space || @max_space
   end
 
   def bind(name, bind_opts, credential = nil)
@@ -438,7 +445,9 @@ class VCAP::Services::MongoDB::Node
       :running_services     => stats,
       :disk                 => du_hash,
       :services_max_memory  => @total_memory,
-      :services_used_memory => @total_memory - @available_memory
+      :services_used_memory => @total_memory - @available_memory,
+      :services_max_space => @total_space,
+      :services_used_space => @total_space - @available_space
     }
   end
 
@@ -463,11 +472,12 @@ class VCAP::Services::MongoDB::Node
     dir = service_dir(provisioned_service.name)
     FileUtils.mkdir_p(dir)
 
-    if is_root?
+    # Only root can allocate space. If the service directory is not empty,
+    # either it's already mounted, or it's deployed before quota is enabled.
+    # In both cases, no need to allocate space. Always try to allocate space
+    # in empty directory.
+    if is_root? && empty_dir?(dir)
       allocate_space(provisioned_service, space, cleanup_space)
-    else
-      @logger.warn("Node runned by non-root!")
-      @logger.warn("#{provisioned_service.name} is not using loopback fs to ensure quota!")
     end
 
     FileUtils.rm_rf(File.join(dir, '.')) if cleanup_space
@@ -478,6 +488,7 @@ class VCAP::Services::MongoDB::Node
     if pid
       @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
       @available_memory -= memory
+      @available_space  -= space
       # In parent, detach the child.
       Process.detach(pid)
       pid
@@ -493,10 +504,12 @@ class VCAP::Services::MongoDB::Node
       config = @config_template.result(binding)
       config_path = File.join(dir, "mongodb.conf")
 
-      FileUtils.mkdir_p(data_dir)
-      FileUtils.rm_f(log_file)
-      FileUtils.rm_f(config_path)
-      File.open(config_path, "w") {|f| f.write(config)}
+      if cleanup_space
+        FileUtils.mkdir_p(data_dir)
+        FileUtils.rm_f(log_file)
+        FileUtils.rm_f(config_path)
+        File.open(config_path, "w") {|f| f.write(config)}
+      end
 
       cmd = "#{@mongod_path} -f #{config_path}"
       exec(cmd) rescue @logger.warn("exec(#{cmd}) failed!")
@@ -641,6 +654,18 @@ class VCAP::Services::MongoDB::Node
     FileUtils.rm_rf(lockfile)
   end
 
+  # Allocate loopback file system for provisioned instance. The following steps
+  # are executed:
+  # 1) Create sparse image file
+  # 2) Create a loopback device file
+  # 3) Map image file with loopback device file
+  # 4) Format device file using ext3
+  # 5) Mount to mount point
+  #
+  # Step 1 and 4 are ignored if new_image is false
+  #
+  # disk_size           the disk space in MByte to be reserved
+  # new_image           to create a new image or to use an existing one
   def allocate_space(provisioned_service, disk_size, new_image)
     dir   = service_dir(provisioned_service.name)
     minor = provisioned_service.port
@@ -652,7 +677,7 @@ class VCAP::Services::MongoDB::Node
 
     raise "Device #{loop_dev_file} already mounted on other mount point" if mounted?(loop_dev_file)
 
-    create_imagefile(image_file, disk_size) if new_image
+    create_imagefile(image_file, disk_size * 1024 * 1024) if new_image
 
     # Create device file if it not exists
     run("mknod #{loop_dev_file} b 7 #{minor}") unless File.exists? loop_dev_file
@@ -693,6 +718,10 @@ class VCAP::Services::MongoDB::Node
 
   def mounted_on?(dev_file, mount_point)
     system("mount | grep #{dev_file} | grep #{mount_point} > /dev/null")
+  end
+
+  def empty_dir?(dir)
+    Dir.entries(dir).size == 2
   end
 
   # Create a sparse file with a big hole in it

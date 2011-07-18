@@ -32,6 +32,7 @@ module VCAP
     module MongoDB
       class Node
         attr_reader :available_memory
+        attr_reader :available_space
       end
     end
   end
@@ -99,6 +100,7 @@ def get_node_config()
     :mongorestore_path => parse_property(config, "mongorestore_path", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :available_memory => parse_property(config, "available_memory", Integer),
+    :available_space => parse_property(config, "available_space", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
     :config_template => mongodb_conf_template,
@@ -111,5 +113,6 @@ def get_node_config()
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db'
   }
   options[:logger].level = Logger::FATAL
+  options[:port_range] = 35000..36000
   options
 end

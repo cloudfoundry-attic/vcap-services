@@ -10,6 +10,7 @@ describe "mongodb_node provision" do
       @logger = @opts[:logger]
       @node = Node.new(@opts)
       @original_memory = @node.available_memory
+      @original_space = @node.available_space
 
       @resp = @node.provision("free")
 
@@ -37,6 +38,10 @@ describe "mongodb_node provision" do
 
   it "should consume node's memory" do
     (@original_memory - @node.available_memory).should > 0
+  end
+
+  it "should consume node's space" do
+    (@original_space - @node.available_space).should > 0
   end
 
   it "should be able to connect to mongodb" do
@@ -134,6 +139,13 @@ describe "mongodb_node provision" do
   it "should release memory" do
     EM.run do
       @original_memory.should == @node.available_memory
+      EM.stop
+    end
+  end
+
+  it "should release space" do
+    EM.run do
+      @original_space.should == @node.available_space
       EM.stop
     end
   end

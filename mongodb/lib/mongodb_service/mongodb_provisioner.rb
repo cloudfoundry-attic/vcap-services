@@ -8,7 +8,7 @@ class VCAP::Services::MongoDB::Provisioner < VCAP::Services::Base::Provisioner
   include VCAP::Services::MongoDB::Common
 
   def node_score(node)
-    node['available_memory']
+    node['available_space']
   end
 end
 

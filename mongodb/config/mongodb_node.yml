@@ -8,6 +8,7 @@ pid: /var/vcap/sys/run/mongodb_node.pid
 available_memory: 4096
 max_memory: 128
 # disk space in MB
+available_space: 4096
 max_space: 100
 node_id: mongodb_node_1
 mongod_path: mongod

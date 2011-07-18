@@ -65,6 +65,7 @@ options = {
   :mongorestore_path => parse_property(config, "mongorestore_path", String),
   :ip_route => parse_property(config, "ip_route", String, :optional => true),
   :available_memory => parse_property(config, "available_memory", Integer),
+  :available_space => parse_property(config, "available_space", Integer),
   :node_id => parse_property(config, "node_id", String),
   :mbus => parse_property(config, "mbus", String),
   :config_template => redis_conf_template,
