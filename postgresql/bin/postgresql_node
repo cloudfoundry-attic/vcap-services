@@ -1,83 +1,34 @@
 #!/usr/bin/env ruby
+# -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 
-require "rubygems"
-require "bundler/setup"
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/node_bin'
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
-require "postgresql_service/util"
 require "postgresql_service/node"
 
-include VCAP::Services::Postgresql::Util
+class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
 
-config_file = File.expand_path("../../config/postgresql_node.yml", __FILE__)
-
-OptionParser.new do |opts|
-  opts.banner = "Usage: postgresql_node [options]"
-  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
-    config_file = opt
+  def node_class
+    VCAP::Services::Postgresql::Node
   end
-  opts.on("-h", "--help", "Help") do
-    puts opts
-    exit
+
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'postgresql_node.yml')
   end
-end.parse!
 
-begin
-  config = YAML.load_file(config_file)
-rescue => e
-  puts "Could not read configuration file:  #{e}"
-  exit
+  def additional_config(options, config)
+    options[:available_storage] = parse_property(config, "available_storage", Integer)
+    options[:max_db_size] = parse_property(config, "max_db_size", Integer)
+    options[:max_long_query] = parse_property(config, "max_long_query", Integer)
+    options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
+    options[:postgresql] = parse_property(config, "postgresql", Hash)
+    options
+  end
+
 end
 
-logger = Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily")
-logger.level = case (parse_property(config, "log_level", String, :optional => true) || "INFO")
-  when "DEBUG" then Logger::DEBUG
-  when "INFO" then Logger::INFO
-  when "WARN" then Logger::WARN
-  when "ERROR" then Logger::ERROR
-  when "FATAL" then Logger::FATAL
-  else Logger::UNKNOWN
-end
-
-options = {
-  :logger => logger,
-  :base_dir => parse_property(config, "base_dir", String),
-  :available_storage => parse_property(config, "available_storage", Integer),
-  :max_db_size => parse_property(config, "max_db_size", Integer),
-  :max_long_query => parse_property(config, "max_long_query", Integer),
-  :max_long_tx => parse_property(config, "max_long_tx", Integer),
-  :node_id => parse_property(config, "node_id", String),
-  :mbus => parse_property(config, "mbus", String),
-  :local_db => parse_property(config, "local_db", String),
-  :postgresql => parse_property(config, "postgresql", Hash),
-  :ip_route => parse_property(config, "ip_route", String, :optional => true)
-}
-
-def shutdown(node)
-  node.shutdown
-  EM.stop
-end
-
-EM.error_handler do |e|
-  logger.fatal("#{e}\n#{e.backtrace.join("\n")}")
-  exit
-end
-
-pid_file = parse_property(config, "pid", String)
-begin
-  FileUtils.mkdir_p(File.dirname(pid_file))
-rescue => e
-  logger.fatal "Can't create pid directory, exiting: #{e}"
-end
-File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
-
-EM.run do
-  node = VCAP::Services::Postgresql::Node.new(options)
-  trap("INT") {shutdown(node)}
-  trap("TERM") {shutdown(node)}
-end
-
+VCAP::Services::Postgresql::NodeBin.new.start
