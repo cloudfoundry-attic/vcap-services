@@ -4,12 +4,14 @@ require 'bundler/setup'
 
 require 'optparse'
 require 'logger'
+require 'logging'
 require 'net/http'
 require 'thin'
 require 'yaml'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'vcap/common'
+require 'vcap/logging'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'asynchronous_service_gateway'
@@ -52,15 +54,9 @@ class VCAP::Services::Base::Gateway
       exit
     end
 
-    logger = Logger.new(config[:log_file] || STDOUT, "daily")
-    logger.level = case (config[:log_level] || "INFO")
-                   when "DEBUG" then Logger::DEBUG
-                   when "INFO" then Logger::INFO
-                   when "WARN" then Logger::WARN
-                   when "ERROR" then Logger::ERROR
-                   when "FATAL" then Logger::FATAL
-                   else Logger::UNKNOWN
-                   end
+    VCAP::Logging.setup_from_config(config[:logging])
+    # Use the current process name for logger identity name, since service gateway only has one instance now.
+    logger = VCAP::Logging.logger($0.split(/\//)[-1])
     config[:logger] = logger
 
     if config[:pid]

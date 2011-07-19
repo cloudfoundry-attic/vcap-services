@@ -3,10 +3,12 @@ require 'rubygems'
 require 'bundler/setup'
 require 'optparse'
 require 'logger'
+require 'logging'
 require 'yaml'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'vcap/common'
+require 'vcap/logging'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'abstract'
@@ -46,18 +48,7 @@ class VCAP::Services::Base::NodeBin
       exit
     end
 
-    logger = Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily")
-    logger.level = case (parse_property(config, "log_level", String, :optional => true) || "INFO")
-      when "DEBUG" then Logger::DEBUG
-      when "INFO" then Logger::INFO
-      when "WARN" then Logger::WARN
-      when "ERROR" then Logger::ERROR
-      when "FATAL" then Logger::FATAL
-      else Logger::UNKNOWN
-    end
-
     options = {
-      :logger => logger,
       :index => parse_property(config, "index", Integer, :optional => true),
       :base_dir => parse_property(config, "base_dir", String),
       :ip_route => parse_property(config, "ip_route", String, :optional => true),
@@ -66,6 +57,10 @@ class VCAP::Services::Base::NodeBin
       :local_db => parse_property(config, "local_db", String),
       :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
     }
+
+    VCAP::Logging.setup_from_config(config["logging"])
+    # Use the node id for logger identity name.
+    options[:logger] = VCAP::Logging.logger(options[:node_id])
 
     options = additional_config(options, config)
 
