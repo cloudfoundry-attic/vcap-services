@@ -437,6 +437,18 @@ describe "Mysql server node" do
     end
   end
 
+  it "should handle Mysql error in varz" do
+    EM.run do
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      # drop mysql connection
+      node.connection.close
+      varz = nil
+      expect {varz = node.varz_details}.should_not raise_error
+      varz.should == {}
+      EM.stop
+    end
+  end
+
   it "should provide provision/binding served info in varz" do
     EM.run do
       v1 = @node.varz_details

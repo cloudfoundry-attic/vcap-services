@@ -478,7 +478,7 @@ class VCAP::Services::Mysql::Node
     varz[:binding_served] = @binding_served
     varz
   rescue => e
-    @logger.error("Error during generate varz:"+e)
+    @logger.error("Error during generate varz: #{e}")
     {}
   end
 
