@@ -156,11 +156,20 @@ class VCAP::Services::Redis::Node
 
   def restore(instance_id, backup_dir)
     instance = get_instance(instance_id)
-    stop_instance(instance) if instance.running?
-    sleep 1
     dump_file = File.join(backup_dir, "dump.rdb")
-    instance.pid = start_instance(instance, dump_file)
-    save_instance(instance)
+    if File.exists?(dump_file)
+      if File.new(dump_file).size > 0
+        stop_instance(instance) if instance.running?
+        sleep 1
+        instance.pid = start_instance(instance, dump_file)
+        save_instance(instance)
+      else
+        redis = Redis.new({:port => instance.port, :password => instance.password})
+        redis.flushall
+      end
+    else
+      raise RedisError.new(RedisError::REDIS_RESTORE_FILE_NOT_FOUND, dump_file)
+    end
     {}
   end
 

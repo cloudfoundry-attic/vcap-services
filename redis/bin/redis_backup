@@ -118,13 +118,18 @@ if File.directory? inst_path
     logger.info "new dir: " + new_dirname_nfs
     begin
       FileUtils.mkdir_p new_dirname_nfs
-      cmd = "cp #{dump_file} #{new_dirname_nfs}"
-      if config["timeout"] == nil
-        # If no timeout option, set a default value
-        config["timeout"] = 600
-      end
-      if timeout_system(config["timeout"], cmd) == false
-        logger.error "Got errors when doing copy"
+      if File.exist?(dump_file)
+        cmd = "cp #{dump_file} #{new_dirname_nfs}"
+        if config["timeout"] == nil
+          # If no timeout option, set a default value
+          config["timeout"] = 600
+        end
+        if timeout_system(config["timeout"], cmd) == false
+          logger.error "Got errors when doing copy"
+        end
+      else
+        # Create an empty file to indicate that backup successfully with no dumped data
+        FileUtils.touch(File.join(new_dirname_nfs, "dump.rdb"))
       end
     rescue => e
       if e.is_a?(Timeout::Error)
