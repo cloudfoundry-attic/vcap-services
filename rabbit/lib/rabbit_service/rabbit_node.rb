@@ -38,6 +38,7 @@ class VCAP::Services::Rabbit::Node
 
   def initialize(options)
     super(options)
+
     @rabbit_port = options[:rabbit_port] || 5672
     ENV["RABBITMQ_NODE_PORT"] = @rabbit_port.to_s
     @rabbit_ctl = options[:rabbit_ctl]
@@ -48,17 +49,19 @@ class VCAP::Services::Rabbit::Node
     @binding_options = ["configure", "write", "read"]
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
-    @options = options
   end
 
-  def start
-    @logger.info("Starting rabbit node...")
+  def pre_send_announcement
+    super
+    if !start_server
+      @logger.fatal("Failed to start RabbitMQ server")
+      shutdown
+      exit
+    end
     start_db
-    start_server
     ProvisionedService.all.each do |instance|
       @available_memory -= (instance.memory || @max_memory)
     end
-    true
   end
 
   def shutdown
@@ -83,7 +86,7 @@ class VCAP::Services::Rabbit::Node
       instance.admin_username = credentials["user"]
       instance.admin_password = credentials["pass"]
     else
-      instance.name = "rabbitmq-#{UUIDTools::UUID.random_create.to_s}"
+      instance.name = UUIDTools::UUID.random_create.to_s
       instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
       instance.admin_username = "au" + generate_credential
       instance.admin_password = "ap" + generate_credential
@@ -98,14 +101,7 @@ class VCAP::Services::Rabbit::Node
     add_user(instance.admin_username, instance.admin_password)
     set_permissions(instance.vhost, instance.admin_username, "'.*' '.*' '.*'")
 
-    credentials = {
-      "name" => instance.name,
-      "host" => @local_ip,
-      "port"  => @rabbit_port,
-      "vhost" => instance.vhost,
-      "user" => instance.admin_username,
-      "pass" => instance.admin_password
-    }
+    gen_credentials(instance)
   rescue => e
     # Rollback
     begin
@@ -123,28 +119,24 @@ class VCAP::Services::Rabbit::Node
   end
 
   def bind(instance_id, binding_options = :all, binding_credentials = nil)
-    credentials = {}
     instance = get_instance(instance_id)
-    credentials["name"] = instance_id
-    credentials["host"] = @local_ip
-    credentials["port"] = @rabbit_port
+    user = nil
+    pass = nil
     if binding_credentials
-      credentials["vhost"] = binding_credentials["vhost"]
-      credentials["user"] = binding_credentials["user"]
-      credentials["pass"] = binding_credentials["pass"]
+      user = binding_credentials["user"]
+      pass = binding_credentials["pass"]
     else
-      credentials["vhost"] = instance.vhost
-      credentials["user"] = "u" + generate_credential
-      credentials["pass"] = "p" + generate_credential
+      user = "u" + generate_credential
+      pass = "p" + generate_credential
     end
-    add_user(credentials["user"], credentials["pass"])
-    set_permissions(credentials["vhost"], credentials["user"], get_permissions_by_options(binding_options))
+    add_user(user, pass)
+    set_permissions(instance.vhost, user, get_permissions_by_options(binding_options))
 
-    credentials
+    gen_credentials(instance, user, pass)
   rescue => e
     # Rollback
     begin
-      delete_user(credentials["user"])
+      delete_user(user)
     rescue => e1
       # Ignore the exception here
     end
@@ -171,6 +163,26 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
+  def healthz_details
+    healthz = {}
+    begin
+      list_users
+      healthz[:self] = "ok"
+    rescue => e
+      healthz[:self] = "fail"
+      return healthz
+    end
+    begin
+      ProvisionedService.all.each do |instance|
+        healthz[instance.name.to_sym] = get_healthz(instance)
+      end
+    rescue => e
+      @logger.warn("Error get healthz details: #{e}")
+      healthz = {:self => "fail"}
+    end
+    healthz
+  end
+
   # Clean all users permissions
   def disable_instance(service_credentials, binding_credentials_list = [])
     clear_permissions(service_credentials["vhost"], service_credentials["user"])
@@ -188,8 +200,12 @@ class VCAP::Services::Rabbit::Node
   def enable_instance(service_credentials, binding_credentials_map = [])
     if get_permissions(service_credentials["vhost"], service_credentials["user"]) != ""
       # The new node
+      service_credentials["hostname"] = @local_ip
+      service_credentials["host"] = @local_ip
       binding_credentials_map.each do |key, value|
         bind(service_credentials["name"], value["binding_options"], value["credentials"])
+        binding_credentials_map[key]["credentials"]["hostname"] = @local_ip
+        binding_credentials_map[key]["credentials"]["host"] = @local_ip
       end
     else
       # The old node
@@ -468,6 +484,34 @@ class VCAP::Services::Rabbit::Node
     varz[:usage][:exchanges_num] = list_exchanges(instance.vhost).size
     varz[:usage][:bindings_num] = list_bindings(instance.vhost).size
     varz
+  end
+
+  def get_healthz(instance)
+    get_permissions(instance.vhost, instance.admin_username) == "'.*' '.*' '.*'" ? "ok" : "fail"
+  rescue => e
+    "fail"
+  end
+
+  def gen_credentials(instance, user = nil, pass = nil)
+    credentials = {
+      "name" => instance.name,
+      "hostname" => @local_ip,
+      "host" => @local_ip,
+      "port"  => @rabbit_port,
+      "vhost" => instance.vhost,
+    }
+    if user && pass # Binding request
+      credentials["username"] = user
+      credentials["user"] = user
+      credentials["password"] = pass
+      credentials["pass"] = pass
+    else # Provision request
+      credentials["username"] = instance.admin_username
+      credentials["user"] = instance.admin_username
+      credentials["password"] = instance.admin_password
+      credentials["pass"] = instance.admin_password
+    end
+    credentials
   end
 
 end

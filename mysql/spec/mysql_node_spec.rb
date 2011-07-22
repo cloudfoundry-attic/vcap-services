@@ -49,6 +49,12 @@ describe "Mysql server node" do
     # Create one db be default
     @db = @node.provision(@default_plan)
     @db.should_not == nil
+    @db["name"].should be
+    @db["host"].should be
+    @db["host"].should == @db["hostname"]
+    @db["port"].should be
+    @db["user"].should == @db["username"]
+    @db["password"].should be
     @test_dbs[@db] = []
   end
 
@@ -255,6 +261,11 @@ describe "Mysql server node" do
     EM.run do
       binding = @node.bind(@db["name"],  @default_opts)
       binding["name"].should == @db["name"]
+      binding["host"].should be
+      binding["host"].should == binding["hostname"]
+      binding["port"].should be
+      binding["user"].should == binding["username"]
+      binding["password"].should be
       @test_dbs[@db] << binding
       conn = connect_to_mysql(binding)
       expect {conn.query("Select 1")}.should_not raise_error
@@ -314,7 +325,10 @@ describe "Mysql server node" do
       conn.query("drop table test")
       res = conn.query("show tables")
       res.num_rows().should == 0
+      # create a new table which should be deleted after restore
+      conn.query("create table test2(id int)")
       @node.restore(db["name"], "/tmp/").should == true
+      conn = connect_to_mysql(db)
       res = conn.query("show tables")
       res.num_rows().should == 1
       res.fetch_row[0].should == "test"
@@ -370,9 +384,11 @@ describe "Mysql server node" do
       db = @node.provision(@default_plan)
       @test_dbs[db] = []
       binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
       conn = connect_to_mysql(binding)
       @node.disable_instance(db, [binding])
       expect {conn = connect_to_mysql(binding)}.should raise_error
+      expect {conn = connect_to_mysql(db)}.should raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
@@ -382,6 +398,7 @@ describe "Mysql server node" do
       result = @node.enable_instance(db, value)
       result.should be_instance_of Array
       expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      expect {conn = connect_to_mysql(db)}.should_not raise_error
       EM.stop
     end
   end
@@ -420,6 +437,18 @@ describe "Mysql server node" do
     end
   end
 
+  it "should handle Mysql error in varz" do
+    EM.run do
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      # drop mysql connection
+      node.connection.close
+      varz = nil
+      expect {varz = node.varz_details}.should_not raise_error
+      varz.should == {}
+      EM.stop
+    end
+  end
+
   it "should provide provision/binding served info in varz" do
     EM.run do
       v1 = @node.varz_details
@@ -451,6 +480,33 @@ describe "Mysql server node" do
       v2 = @node.varz_details
       (v2[:node_storage_used] - v1[:node_storage_used]).should ==
         (@opts[:max_db_size] * 1024 * 1024)
+      EM.stop
+    end
+  end
+
+  it "should report node status in healthz" do
+    EM.run do
+      healthz = @node.healthz_details()
+      healthz[:self].should == "ok"
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      node.connection.close
+      healthz = node.healthz_details()
+      healthz[:self].should == "fail"
+      EM.stop
+    end
+  end
+
+  it "should report instance status in healthz" do
+    EM.run do
+      healthz = @node.healthz_details()
+      instance = @db['name']
+      healthz[instance.to_sym].should == "ok"
+      conn = @node.connection
+      conn.query("Drop database #{instance}")
+      healthz = @node.healthz_details()
+      healthz[instance.to_sym].should == "fail"
+      # restore db so cleanup code doesn't complain.
+      conn.query("create database #{instance}")
       EM.stop
     end
   end

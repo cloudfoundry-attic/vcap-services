@@ -65,14 +65,12 @@ class VCAP::Services::Redis::Node
     options[:port_range].each {|port| @free_ports << port}
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
-    @options = options
   end
 
-  def start
-    @logger.info("Starting redis node...")
+  def pre_send_announcement
+    super
     start_db
     start_provisioned_instances
-    true
   end
 
   def shutdown
@@ -106,7 +104,7 @@ class VCAP::Services::Redis::Node
     else
       port = @free_ports.first
       @free_ports.delete(port)
-      instance.name = "redis-#{UUIDTools::UUID.random_create.to_s}"
+      instance.name = UUIDTools::UUID.random_create.to_s
       instance.port = port
       instance.password = UUIDTools::UUID.random_create.to_s
     end
@@ -131,12 +129,7 @@ class VCAP::Services::Redis::Node
 
     # Sleep 1 second to wait for redis instance start
     sleep 1
-    credentials = {
-      "hostname" => @local_ip,
-      "port" => instance.port,
-      "password" => instance.password,
-      "name" => instance.name
-    }
+    gen_credentials(instance)
   end
 
   def unprovision(instance_id, credentials_list = [])
@@ -153,12 +146,7 @@ class VCAP::Services::Redis::Node
     else
       instance = get_instance(instance_id)
     end
-    credentials = {
-      "hostname" => @local_ip,
-      "port" => instance.port,
-      "name" => instance_id,
-      "password" => instance.password
-    }
+    gen_credentials(instance)
   end
 
   def unbind(credentials)
@@ -192,11 +180,9 @@ class VCAP::Services::Redis::Node
     if check_password(service_credentials["port"], service_credentials["password"])
       # The new node
       instance = get_instance(service_credentials["name"])
-      service_credentials["port"] = instance.port
-      service_credentials["hostname"] = @local_ip
+      service_credentials = gen_credentials(instance)
       binding_credentials_map.each do |key, value|
-        binding_credentials_map[key]["credentials"]["port"] = instance.port
-        binding_credentials_map[key]["credentials"]["hostname"] = @local_ip
+        binding_credentials_map[key]["credentials"] = gen_credentials(instance)
       end
     else
       # The old node
@@ -259,6 +245,18 @@ class VCAP::Services::Redis::Node
   rescue => e
     @logger.warn("Error get varz details: #{e}")
     {}
+  end
+
+  def healthz_details
+    healthz = {}
+    healthz[:self] = "ok"
+    ProvisionedService.all.each do |instance|
+      healthz[instance.name.to_sym] = get_healthz(instance)
+    end
+    healthz
+  rescue => e
+    @logger.warn("Error get healthz details: #{e}")
+    {:self => "fail"}
   end
 
   def start_db
@@ -476,6 +474,24 @@ class VCAP::Services::Redis::Node
     varz[:usage][:last_save_time] = info["last_save_time"].to_i
     varz[:usage][:bgsave_in_progress] = (info["bgsave_in_progress"] == "0" ? false : true)
     varz
+  end
+
+  def gen_credentials(instance)
+    credentials = {
+      "hostname" => @local_ip,
+      "host" => @local_ip,
+      "port" => instance.port,
+      "password" => instance.password,
+      "name" => instance.name
+    }
+  end
+
+  def get_healthz(instance)
+    redis = Redis.new({:port => instance.port, :password => instance.password})
+    redis.echo("")
+    "ok"
+  rescue => e
+    "fail"
   end
 
 end

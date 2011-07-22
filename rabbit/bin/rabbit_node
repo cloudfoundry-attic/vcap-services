@@ -63,7 +63,7 @@ options = {
   :rabbit_ctl => parse_property(config, "rabbit_ctl", String),
   :rabbit_server => parse_property(config, "rabbit_server", String),
   :rabbit_port => parse_property(config, "rabbit_port", Integer),
-  :ip_route => parse_property(config, "local_ip", String, :optional => true),
+  :ip_route => parse_property(config, "ip_route", String, :optional => true),
   :node_id => parse_property(config, "node_id", String),
   :available_memory => parse_property(config, "available_memory", Integer),
   :max_memory => parse_property(config, "max_memory", Integer),
@@ -92,9 +92,6 @@ File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
 
 EM.run do
   rabbit_node = VCAP::Services::Rabbit::Node.new(options)
-  EM.add_timer(2) {  # wait for NATS connection
-    rabbit_node.start
-  }
   trap("INT") {shutdown(rabbit_node)}
   trap("TERM") {shutdown(rabbit_node)}
 end

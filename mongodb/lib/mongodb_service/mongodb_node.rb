@@ -125,7 +125,7 @@ class VCAP::Services::MongoDB::Node
 
   def provision(plan, credential = nil)
     port = credential && credential['port'] && @free_ports.include?(credential['port']) ? credential['port'] : @free_ports.first
-    name = credential && credential['name'] ? credential['name'] : "mongodb-#{UUIDTools::UUID.random_create.to_s}"
+    name = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
     db   = credential && credential['db']   ? credential['db']   : 'db'
 
     @free_ports.delete(port)
@@ -176,6 +176,7 @@ class VCAP::Services::MongoDB::Node
 
     response = {
       "hostname" => @local_ip,
+      "host" => @local_ip,
       "port" => provisioned_service.port,
       "name" => provisioned_service.name,
       "db" => provisioned_service.db,
@@ -233,6 +234,7 @@ class VCAP::Services::MongoDB::Node
 
     response = {
       "hostname" => @local_ip,
+      "host" => @local_ip,
       "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
@@ -376,10 +378,12 @@ class VCAP::Services::MongoDB::Node
     # Update credentials for the new credential
     service_credential['port'] = port
     service_credential['host'] = @local_ip
+    service_credential['hostname'] = @local_ip
 
     binding_credentials.each_value do |v|
       v['port'] = port
       v['host'] = @local_ip
+      v['hostname'] = @local_ip
     end
 
     [service_credential, binding_credentials]
@@ -423,6 +427,26 @@ class VCAP::Services::MongoDB::Node
       :services_max_memory  => @total_memory,
       :services_used_memory => @total_memory - @available_memory
     }
+  end
+
+  def healthz_details
+    healthz = {}
+    healthz[:self] = "ok"
+    ProvisionedService.all.each do |instance|
+      healthz[instance.name.to_sym] = get_healthz(instance)
+    end
+    healthz
+  rescue => e
+    @logger.warn("Error get healthz details: #{e}")
+    {:self => "fail"}
+  end
+
+  def get_healthz(instance)
+    conn = Mongo::Connection.new(@local_ip, instance.port).db(instance.db)
+    auth = conn.authenticate(instance.admin, instance.adminpass)
+    auth ? "ok" : "fail"
+  rescue => e
+    "fail"
   end
 
   def start_instance(provisioned_service)

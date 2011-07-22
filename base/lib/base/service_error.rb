@@ -70,19 +70,6 @@ module VCAP
           end
         end
 
-        def encode_success(response)
-          Yajl::Encoder.encode(success(response))
-        end
-
-        def encode_failure(exception)
-          res = nil
-          if exception.instance_of? ServiceError
-            res = Yajl::Encoder.encode(failure(exception))
-          else
-            res = encode_failure(ServiceError.new(ServiceError::INTERNAL_ERROR))
-          end
-          res
-        end
 
         def success(response = true)
           {'success' => true, 'response' => response}

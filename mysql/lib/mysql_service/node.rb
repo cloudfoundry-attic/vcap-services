@@ -182,7 +182,8 @@ class VCAP::Services::Mysql::Node
       provisioned_service.user = user
       provisioned_service.password = password
     else
-      provisioned_service.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      # mysql database name should start with alphabet character
+      provisioned_service.name = 'd' + UUIDTools::UUID.random_create.to_s.gsub(/-/, '')
       provisioned_service.user = 'u' + generate_credential
       provisioned_service.password = 'p' + generate_credential
     end
@@ -325,11 +326,36 @@ class VCAP::Services::Mysql::Node
     end
   end
 
+  def kill_database_session(database)
+    @logger.info("Kill all sessions connect to db: #{database}")
+    process_list = @connection.list_processes
+    process_list.each do |proc|
+      thread_id, user_, _, db, command, time, _, info = proc
+      if db == database
+        @connection.query("KILL #{thread_id}")
+        @logger.info("Kill session: user:#{user_} db:#{db}")
+      end
+    end
+  end
+
   # restore a given instance using backup file.
   def restore(name, backup_path)
     @logger.debug("Restore db #{name} using backup at #{backup_path}")
     service = ProvisionedService.get(name)
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
+    # revoke write and lock privileges to prevent race with drop database.
+    @connection.query("UPDATE db SET insert_priv='N', create_priv='N',
+                       update_priv='N', lock_tables_priv='N' WHERE Db='#{name}'")
+    @connection.query("FLUSH PRIVILEGES")
+    kill_database_session(name)
+    # mysql can't delete tables that not in dump file.
+    # recreate the database to prevent leave unclean tables after restore.
+    @connection.query("DROP DATABASE #{name}")
+    @connection.query("CREATE DATABASE #{name}")
+    # restore privileges.
+    @connection.query("UPDATE db SET insert_priv='Y', create_priv='Y',
+                       update_priv='Y', lock_tables_priv='Y' WHERE Db='#{name}'")
+    @connection.query("FLUSH PRIVILEGES")
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     path = File.join(backup_path, "#{name}.sql.gz")
     cmd ="#{@gzip_bin} -dc #{path}|" +
@@ -406,7 +432,7 @@ class VCAP::Services::Mysql::Node
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
-    binding_creds_hash[name] = prov_cred
+    bind(name, nil, prov_cred)
     binding_creds_hash.each do |k, v|
       cred = v["credentials"]
       binding_opts = v["binding_options"]
@@ -452,8 +478,41 @@ class VCAP::Services::Mysql::Node
     varz[:binding_served] = @binding_served
     varz
   rescue => e
-    @logger.error("Error during generate varz:"+e)
+    @logger.error("Error during generate varz: #{e}")
     {}
+  end
+
+  def healthz_details()
+    healthz = {:self => "ok"}
+    begin
+      @connection.query("SHOW DATABASES")
+    rescue => e
+      @logger.error("Error get database list: #{e}")
+      healthz[:self] = "fail"
+      return healthz
+    end
+    begin
+      ProvisionedService.all.each do |instance|
+        healthz[instance.name.to_sym] = get_instance_healthz(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+      healthz[:self] = "fail"
+    end
+    healthz
+  end
+
+  def get_instance_healthz(instance)
+    res = "ok"
+    host, port, socket = %w{host port socket}.map { |opt| @mysql_config[opt] }
+    begin
+      conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
+      conn.query("SHOW TABLES")
+    rescue => e
+      @logger.error("Error get tables of #{instance.name}: #{e}")
+      res = "fail"
+    end
+    res
   end
 
   def get_queries_status()
@@ -508,8 +567,10 @@ class VCAP::Services::Mysql::Node
     response = {
       "name" => name,
       "hostname" => @local_ip,
+      "host" => @local_ip,
       "port" => @mysql_config['port'],
       "user" => user,
+      "username" => user,
       "password" => passwd,
     }
   end
