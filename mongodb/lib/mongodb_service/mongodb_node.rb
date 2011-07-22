@@ -83,7 +83,9 @@ class VCAP::Services::MongoDB::Node
 
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
+  end
 
+  def pre_send_announcement
     ProvisionedService.all.each do |provisioned_service|
       @free_ports.delete(provisioned_service.port)
       if provisioned_service.listening?
