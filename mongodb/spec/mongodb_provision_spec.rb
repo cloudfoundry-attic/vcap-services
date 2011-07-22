@@ -118,6 +118,18 @@ describe "mongodb_node provision" do
     end
   end
 
+  it "should report error when admin users are deleted from mongodb" do
+    EM.run do
+      delete_admin(@resp)
+      stats = @node.varz_details
+      stats.should_not be_nil
+      stats[:running_services].length.should > 0
+      stats[:running_services][0]['db'].class.should == String
+      stats[:running_services][0]['overall'].class.should == String
+      EM.stop
+    end
+  end
+
   # unprovision here
   it "should be able to unprovision an existing instance" do
     EM.run do
