@@ -39,7 +39,7 @@ describe VCAP::Services::Rabbit::Node do
   end
 
   after :all do
-    %x[rm -f #{@local_db_file}]
+    FileUtils.rm_f(@local_db_file)
   end
 
   before :each do

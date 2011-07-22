@@ -51,7 +51,7 @@ describe VCAP::Services::Redis::Node do
   end
 
   after :all do
-    %x[rm -f #{@local_db_file}]
+    FileUtils.rm_f(@local_db_file)
   end
 
   describe 'Node.initialize' do
