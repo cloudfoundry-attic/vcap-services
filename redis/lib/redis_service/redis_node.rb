@@ -268,7 +268,7 @@ class VCAP::Services::Redis::Node
     ProvisionedService.all.each do |instance|
       @free_ports.delete(instance.port)
       if instance.listening?
-        @logger.info("Service #{instance.name} already running on port #{instance.port}")
+        @logger.warn("Service #{instance.name} already running on port #{instance.port}")
         @available_memory -= (instance.memory || @max_memory)
         next
       end
