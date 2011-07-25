@@ -87,7 +87,9 @@ class VCAP::Services::Base::NodeBin
   end
 
   def shutdown(node)
+    @logger.info("Begin to shutdown node")
     node.shutdown
+    @logger.info("End to shutdown node")
     EM.stop
   end
 
