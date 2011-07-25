@@ -87,7 +87,7 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.all.each do |provisioned_service|
       @free_ports.delete(provisioned_service.port)
       if provisioned_service.listening?
-        @logger.info("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
+        @logger.warn("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
         @available_memory -= (provisioned_service.memory || @max_memory)
         next
       end
