@@ -4,65 +4,106 @@
 # This script is used to backup mysql instances used in MyaaS.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
-
-require 'rubygems'
-require 'bundler/setup'
-require 'optparse'
-require 'timeout'
-require 'fileutils'
+$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/backup'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
-
-require 'logger'
-require 'yaml'
 require 'mysql'
 
-class MysqlBackup
+module VCAP
+  module Services
+    module Mysql
+    end
+  end
+end
+class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
   SYSTEM_DB = %w(mysql information_schema)
   IGNORE_DB = %w(test)
 
-  def self.setlogger(logger)
-    @logger = logger
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'mysql_backup.yml')
   end
 
-  def self.backup_database(opts)
+  def backup_db
+    opts = {
+      :service_name => @config["service_name"],
+      :backup_cmd => @config["backup_cmd"],
+      :host => @config["mysql"]["host"],
+      :port => @config["mysql"]["port"],
+      :user => @config["mysql"]["user"],
+      :passwd => @config["mysql"]["pass"],
+      :backup_path => @config["backup_base_dir"],
+      :compress_cmd => @config["compress_cmd"],
+    }
+
+    missing_opts = opts.keys.select{|key| opts[key]==nil}
+    unless missing_opts.empty?
+      abort "Missing required configuration items #{missing_opts.inspect}"
+    end
+    # Optional socket config
+    opts[:socket] = @config["mysql"]["socket"]
+    # Optional backup timeout config, default is no timeout
+    opts[:timeout] = @config["timeout"] || 0
+
+    conn = Mysql.real_connect(opts[:host], opts[:user], opts[:passwd], 'mysql',
+                              opts[:port].to_i, opts[:socket])
+    result = conn.query("show databases;")
+    dbs = []
+    result.each {|db| dbs << db[0] }
+    current_time= Time.now
+
+    echo "Begin backup at #{current_time}"
+    success, failed, ignored = [0,0,0]
+    dbs.each do |name|
+      result = exe_backup_db(opts.merge({:name => name, :ts => current_time}))
+      case result
+      when 0
+        success += 1
+      when 1
+        failed += 1
+      when -1
+        ignored += 1
+      else
+      end
+    end
+    echo "Backup begins at #{current_time} complete. Success: #{success}. Failed #{failed}. Ignored #{ignored}."
+  end
+
+  def exe_backup_db(opts)
     backup_cmd, compress_cmd, name, ts=
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
-    path_prefix = "backups"
     if IGNORE_DB.include?(name)
-      @logger.info("Ignore backup database #{name}.")
+      echo "Ignore backup database #{name}."
       return -1
     elsif SYSTEM_DB.include?(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<node_id>\<service specific data>
-      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name], name,
-                            ts.to_i.to_s, opts[:node_id])
+      full_path=get_dump_path(name,1)
     else
       # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
       # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-      full_path = File.join(opts[:backup_path], path_prefix, opts[:service_name],
-                            name[0,2], name[2,2], name[4,2], name,
-                            ts.to_i.to_s)
+      full_path=get_dump_path(name)
     end
     opts.merge!({:full_path => full_path})
     # options substitution
-    backup_cmd = opts.keys.inject(backup_cmd){|cmd, key|
-      cmd.gsub(":"+key.to_s, opts[key].to_s)}
-    compress_cmd = opts.keys.inject(compress_cmd){|cmd, key|
-      cmd.gsub(":"+key.to_s, opts[key].to_s)}
+    backup_cmd = opts.keys.inject(backup_cmd) do|cmd, key|
+      cmd.gsub(":"+key.to_s, opts[key].to_s)
+    end
+    compress_cmd = opts.keys.inject(compress_cmd) do|cmd, key|
+      cmd.gsub(":"+key.to_s, opts[key].to_s)
+    end
     on_err = Proc.new do |cmd, code, msg|
-      @logger.error("CMD '#{cmd}' exit with code: #{code}. Message: #{msg}")
+      echo "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}",true
       cleanup(full_path)
-      return 1
     end
     t1 = Time.now
     FileUtils.mkdir_p(full_path) unless File.exists?(full_path)
-    CMDHandle.execute("#{backup_cmd};#{compress_cmd}", opts[:timeout].to_i, on_err)
+    res=CMDHandle.execute("#{backup_cmd};#{compress_cmd}", opts[:timeout].to_i, on_err)
     t2 = Time.now
-    @logger.info("Backup for db #{name} complete in #{t2-t1} seconds.")
-    return 0
+    echo "Backup for db #{name} complete in #{t2-t1} seconds."
+    return res ? 0:1
   rescue => e
-    @logger.error("Erorr when backup db #{opts[:name]}. #{e.backtrace.join("\n")}")
+    echo "Erorr when backup db #{opts[:name]}. #{e.backtrace.join("\n")}",true
     cleanup(full_path)
     return 1
   end
@@ -70,145 +111,10 @@ class MysqlBackup
   def self.cleanup(path)
     FileUtils.rm_rf(path)
   end
-end
 
-class CMDHandle
-
-  def initialize(cmd, timeout=nil, &blk)
-    @cmd  = cmd
-    @timeout = timeout
-    @errback = blk
-  end
-
-  def run
-    pid = fork
-    if pid
-      # parent process
-      success = false
-      begin
-        success = Timeout::timeout(@timeout) do
-          Process.waitpid(pid)
-          value = $?.exitstatus
-          @errback.call(@cmd, value, "No message.") unless value == 0
-          return true
-        end
-      rescue Timeout::Error
-        Process.detach(pid)
-        Process.kill("KILL", pid)
-        @errback.call(@cmd, -1, "Killed due to timeout.")
-        return false
-      end
-    else
-      # child process
-      exec(@cmd)
-    end
-  end
-
-  def self.execute(cmd, timeout = nil, *args)
-    errb = args.pop if args.last.is_a? Proc
-    instance = self.new(cmd, timeout, &errb)
-    instance.run
-  end
 
 end
 
-config_file = File.expand_path("../../config/mysql_backup.yml", __FILE__)
+VCAP::Services::Mysql::Backup.new.start
 
-# Read config file from command line
-OptionParser.new do |opts|
-  opts.banner = "Usage: mysql_backup [options]"
-  opts.on("-c", "--config [ARG]", "Node configuration File") do |opt|
-    config_file = opt
-  end
-  opts.on("-h", "--help", "Help") do
-    puts opts
-    exit
-  end
-end.parse!
 
-begin
-  config = YAML.load_file(config_file)
-rescue => e
-  abort "Can't load config file #{e}"
-end
-
-opts = {
-  :service_name => config["service_name"],
-  :node_id => config["node_id"],
-  :backup_cmd => config["backup_cmd"],
-  :host => config["mysql"]["host"],
-  :port => config["mysql"]["port"],
-  :user => config["mysql"]["user"],
-  :passwd => config["mysql"]["pass"],
-  :backup_path => config["backup_path"],
-  :compress_cmd => config["compress_cmd"],
-  :logfile => config["logfile"],
-}
-
-missing_opts = opts.keys.select{|key| opts[key]==nil}
-unless missing_opts.empty?
-  abort "Missing required configuration items #{missing_opts.inspect}"
-end
-# Optional socket config
-opts[:socket] = config["mysql"]["socket"]
-# Optional backup timeout config, default is no timeout
-opts[:timeout] = config["timeout"] || 0
-
-logger = Logger.new(opts[:logfile], "daily")
-logger.level = Logger::INFO
-
-nfs_base = File.join(opts[:backup_path], "backups")
-if Dir.exist?(nfs_base)
-  if not File.writable?(nfs_base)
-    logger.error("Can't write to #{nfs_base}, exit.")
-    exit 1
-  end
-else
-  logger.info("Create backup folder: #{nfs_base}")
-  begin
-    FileUtils.mkdir_p(nfs_base)
-  rescue => e
-    logger.error("Failed to create backup folder #{nfs_base}, error: #{e}. Exit.")
-    exit 1
-  end
-end
-
-# check if backup process is already running
-cmds = %x[ps ax -o args=].split(/\n/)
-count = 0
-cmds.each do |cmd|
-  if cmd.index(__FILE__) != nil
-    logger.info cmd
-    count += 1
-  end
-end
-logger.info "backup process count: " + count.to_s
-if count > 2
-  logger.info "backup is running, exit"
-  exit
-end
-
-MysqlBackup.setlogger(logger)
-
-conn = Mysql.real_connect(opts[:host], opts[:user], opts[:passwd], 'mysql',
-                          opts[:port].to_i, opts[:socket])
-result = conn.query("show databases;")
-dbs = []
-result.each {|db| dbs << db[0] }
-current_time= Time.now
-
-logger.info("Begin backup at #{current_time}")
-success, failed, ignored = [0,0,0]
-dbs.each do |name|
-  result = MysqlBackup.backup_database(opts.merge({:name => name, :ts => current_time, :logger => logger}))
-  case result
-  when 0
-    success += 1
-  when 1
-    failed += 1
-  when -1
-    ignored += 1
-  else
-  end
-end
-logger.info("Backup begins at #{current_time} complete. Success: #{success}. Failed #{failed}. Ignored #{ignored}.")
