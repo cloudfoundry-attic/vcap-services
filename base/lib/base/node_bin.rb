@@ -61,11 +61,12 @@ class VCAP::Services::Base::NodeBin
     VCAP::Logging.setup_from_config(config["logging"])
     # Use the node id for logger identity name.
     options[:logger] = VCAP::Logging.logger(options[:node_id])
+    @logger = options[:logger]
 
     options = additional_config(options, config)
 
     EM.error_handler do |e|
-      logger.fatal("#{e}\n#{e.backtrace.join("\n")}")
+      @logger.fatal("#{e}\n#{e.backtrace.join("\n")}")
       exit
     end
 
@@ -73,7 +74,7 @@ class VCAP::Services::Base::NodeBin
     begin
       FileUtils.mkdir_p(File.dirname(pid_file))
     rescue => e
-      logger.fatal "Can't create pid directory, exiting: #{e}"
+      @logger.fatal "Can't create pid directory, exiting: #{e}"
       exit
     end
     File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
