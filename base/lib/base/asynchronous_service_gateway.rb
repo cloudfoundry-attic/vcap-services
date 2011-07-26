@@ -129,7 +129,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       if msg['success']
         async_reply(VCAP::Services::Api::ProvisionResponse.new(msg['response']).encode)
       else
-        async_reply_error(msg['response'])
+        async_reply_error(msg['error'])
       end
     end
     async_mode
@@ -144,7 +144,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       if msg['success']
         async_reply
       else
-        async_reply_error(msg['response'])
+        async_reply_error(msg['error'])
       end
     end
     async_mode
@@ -162,7 +162,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       if msg['success']
         async_reply(VCAP::Services::Api::GatewayBindResponse.new(msg['response']).encode)
       else
-        async_reply_error(msg['response'])
+        async_reply_error(msg['error'])
       end
     end
     async_mode
@@ -179,7 +179,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       if msg['success']
         async_reply
       else
-        async_reply_error(msg['response'])
+        async_reply_error(msg['error'])
       end
     end
     async_mode
@@ -197,7 +197,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       if msg['success']
         async_reply
       else
-        async_reply_error(msg['response'])
+        async_reply_error(msg['error'])
       end
     end
     async_mode
@@ -214,7 +214,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
         if msg['success']
           async_reply
         else
-          async_reply_error(msg['response'])
+          async_reply_error(msg['error'])
         end
       end
     end
