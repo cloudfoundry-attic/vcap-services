@@ -38,7 +38,7 @@ OptionParser.new do |opts|
   opts.on("-u", "--gateway_uri URI", "Service gateway REST API URI, such as 10.135.81.72:59477") {|uri| config["gateway_uri"] = uri}
   opts.on("-b", "--backup_path PATH", "Instance backup data directory") {|path| config["backup_path"] = path}
   opts.on("-i", "--instance_id [ID]", "Service instance id") {|id| config["instance_id"] = id}
-  opts.on("-t", "--token [TOKEN]", "Gateway API access token") {|token| config["token"] = token}
+  opts.on("-k", "--token [TOKEN]", "Gateway API access token") {|token| config["token"] = token}
   opts.on("-m", "--mode [MODE]", "Restore mode, it should be restore or recover") {|mode| config["mode"] = mode}
   opts.on("-t", "--timeout [TIMEOUT]", Integer, "Gateway API response timeout") {|timemout| config["timeout"] = timeout}
   opts.on("-c", "--config CONFIG", "Configuration File") {|opt| config_file = opt}
@@ -78,7 +78,7 @@ else
   else
     # Set default value for optional options
     config["instance_id"] = config["backup_path"].split(/\//)[-2] if config["instance_id"] == nil
-    config["token"] = "0xdeadbeef" if config["token"] == nil
+    config["token"] = 0xdeadbeef if config["token"] == nil
     config["mode"] = "restore" if config["mode"] == nil
     config["timeout"] = 10 if config["timeout"] == nil
     config["content_type"] = "application/json"
