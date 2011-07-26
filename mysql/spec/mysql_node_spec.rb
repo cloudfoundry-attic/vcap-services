@@ -496,6 +496,19 @@ describe "Mysql server node" do
     end
   end
 
+  it "should close extra mysql connections after generate healthz" do
+    EM.run do
+      res = @node.connection.list_processes
+      conns_before_healthz = res.num_rows
+      healthz = @node.healthz_details()
+      healthz.keys.size.should >= 2
+      res = @node.connection.list_processes
+      conns_after_healthz =  res.num_rows
+      conns_before_healthz.should == conns_after_healthz
+      EM.stop
+    end
+  end
+
   it "should report instance status in healthz" do
     EM.run do
       healthz = @node.healthz_details()

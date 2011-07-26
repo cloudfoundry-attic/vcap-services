@@ -281,7 +281,8 @@ class VCAP::Services::MongoDB::Node
     database = provisioned_service.db
 
     # Drop original collections
-    db = Mongo::Connection.new('127.0.0.1', port).db(database)
+    conn = Mongo::Connection.new('127.0.0.1', port)
+    db = conn.db(database)
     db.authenticate(username, password)
     db.collection_names.each do |name|
       if name != 'system.users' && name != 'system.indexes'
@@ -296,6 +297,8 @@ class VCAP::Services::MongoDB::Node
     @logger.debug(output)
     raise 'mongorestore failed' unless res
     true
+  ensure
+    conn.close if conn
   end
 
   def disable_instance(service_credential, binding_credentials)
@@ -448,11 +451,13 @@ class VCAP::Services::MongoDB::Node
   end
 
   def get_healthz(instance)
-    conn = Mongo::Connection.new(@local_ip, instance.port).db(instance.db)
-    auth = conn.authenticate(instance.admin, instance.adminpass)
+    conn = Mongo::Connection.new(@local_ip, instance.port)
+    auth = conn.db(instance.db).authenticate(instance.admin, instance.adminpass)
     auth ? "ok" : "fail"
   rescue => e
     "fail"
+  ensure
+    conn.close if conn
   end
 
   def start_instance(provisioned_service)
@@ -536,10 +541,12 @@ class VCAP::Services::MongoDB::Node
   def mongodb_add_admin(options)
     @logger.info("add admin user: req #{options}")
     t = options[:times] || 1
+    conn = nil
 
     t.times do
       begin
-        db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+        conn = Mongo::Connection.new('127.0.0.1', options[:port])
+        db = conn.db(options[:db])
         options[:username].each_index do |i|
           user = db.add_user(options[:username][i], options[:password][i])
           raise "user not added" if user.nil?
@@ -553,43 +560,55 @@ class VCAP::Services::MongoDB::Node
     end
 
     raise "Could not add admin user #{options[:username]}"
+  ensure
+    conn.close if conn
   end
 
   def mongodb_add_user(options)
     @logger.debug("add user in port: #{options[:port]}, db: #{options[:db]}")
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    db = conn.db(options[:db])
     auth = db.authenticate(options[:admin], options[:adminpass])
     db.add_user(options[:username], options[:password])
     @logger.debug("user #{options[:username]} added")
+  ensure
+    conn.close if conn
   end
 
   def mongodb_remove_user(options)
     @logger.debug("remove user in port: #{options[:port]}, db: #{options[:db]}")
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    db = conn.db(options[:db])
     auth = db.authenticate(options[:admin], options[:adminpass])
     db.remove_user(options[:username])
     @logger.debug("user #{options[:username]} removed")
+  ensure
+    conn.close if conn
   end
 
   def mongodb_overall_stats(options)
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db('admin')
-    auth = db.authenticate(options[:admin], options[:adminpass])
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     # The following command is not documented in mongo's official doc.
     # But it works like calling db.serverStatus from client. And 10gen support has
     # confirmed it's safe to call it in such way.
-    db.command({:serverStatus => 1})
+    conn.db('admin').command({:serverStatus => 1})
   rescue => e
     @logger.warn("Failed mongodb_overall_stats: #{e.message}, options: #{options}")
     "Failed mongodb_overall_stats: #{e.message}, options: #{options}"
+  ensure
+    conn.close if conn
   end
 
   def mongodb_db_stats(options)
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
-    auth = db.authenticate(options[:admin], options[:adminpass])
-    db.stats()
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db(options[:db]).authenticate(options[:admin], options[:adminpass])
+    conn.db(options[:db]).stats()
   rescue => e
     @logger.warn("Failed mongodb_db_stats: #{e.message}, options: #{options}")
     "Failed mongodb_db_stats: #{e.message}, options: #{options}"
+  ensure
+    conn.close if conn
   end
 
   def transition_dir(service_id)
