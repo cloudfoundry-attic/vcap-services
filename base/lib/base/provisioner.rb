@@ -114,8 +114,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
-          opts = Yajl::Parser.parse(msg)
-          blk.call(opts)
+          opts = SimpleResponse.decode(msg)
+          if opts.success
+            blk.call(success())
+          else
+            blk.call(wrap_error(opts))
+          end
         end
     rescue => e
       if e.instance_of? ServiceError
