@@ -5,6 +5,7 @@ require "logger"
 require "pp"
 require "set"
 require "mongo"
+require "timeout"
 
 require "datamapper"
 require "nats/client"
@@ -58,10 +59,23 @@ class VCAP::Services::MongoDB::Node
       VCAP.process_running? pid
     end
 
-    def kill(sig = :SIGTERM)
-      wait_thread = Process.detach(pid)
+    def kill(sig=:SIGTERM)
+      @wait_thread = Process.detach(pid)
       Process.kill(sig, pid) if running?
-      wait_thread.join if wait_thread
+    end
+
+    def wait_killed(timeout=5, interval=0.2)
+      begin
+        Timeout::timeout(timeout) do
+          @wait_thread.join if @wait_thread
+          while running? do
+            sleep interval
+          end
+        end
+      rescue Timeout::Error
+        return false
+      end
+      true
     end
   end
 
@@ -111,7 +125,9 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.all.each { |provisioned_service|
       @logger.debug("Try to terminate mongod pid:#{provisioned_service.pid}")
       provisioned_service.kill(:SIGTERM)
-      @logger.debug("mongod pid:#{provisioned_service.pid} terminated")
+      provisioned_service.wait_killed ?
+        @logger.debug("mongod pid:#{provisioned_service.pid} terminated") :
+        @logger.warn("Timeout to terminate mongod pid:#{provisioned_service.pid}")
     }
   end
 
@@ -200,7 +216,7 @@ class VCAP::Services::MongoDB::Node
     @logger.debug("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
     raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
 
-    provisioned_service.kill if provisioned_service.running?
+    provisioned_service.kill(:SIGKILL) if provisioned_service.running?
 
     dir = File.join(@base_dir, provisioned_service.name)
 
