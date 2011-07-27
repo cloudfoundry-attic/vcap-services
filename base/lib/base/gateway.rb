@@ -55,8 +55,8 @@ class VCAP::Services::Base::Gateway
     end
 
     VCAP::Logging.setup_from_config(config[:logging])
-    # Use the current process name for logger identity name, since service gateway only has one instance now.
-    logger = VCAP::Logging.logger($0.split(/\//)[-1])
+    # Use the current running binary name for logger identity name, since service gateway only has one instance now.
+    logger = VCAP::Logging.logger(File.basename($0))
     config[:logger] = logger
 
     if config[:pid]
