@@ -7,6 +7,10 @@ require "rubygems"
 require "bundler/setup"
 require "set"
 require "logger"
+require 'logging'
+
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
+require 'vcap/logging'
 
 once = false
 daemon = false
@@ -51,15 +55,9 @@ def parse_property(hash, key, type, options = {})
   end
 end
 
-logger = Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily")
-logger.level = case (parse_property(config, "log_level", String, :optional => true) || "INFO")
-  when "DEBUG" then Logger::DEBUG
-  when "INFO" then Logger::INFO
-  when "WARN" then Logger::WARN
-  when "ERROR" then Logger::ERROR
-  when "FATAL" then Logger::FATAL
-  else Logger::UNKNOWN
-end
+VCAP::Logging.setup_from_config(config["logging"])
+# Use the running binary name for logger identity name.
+logger = VCAP::Logging.logger(File.basename($0))
 
 DEFAULT_ROTATION_MAX_DAYS = 7
 rotation = parse_property(config, "rotation", Hash, :optional => true) || Hash.new

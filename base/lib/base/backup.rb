@@ -4,8 +4,12 @@ require 'optparse'
 require 'timeout'
 require 'fileutils'
 require 'logger'
+require 'logging'
 require 'yaml'
 require 'pathname'
+
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
+require 'vcap/logging'
 
 $:.unshift File.dirname(__FILE__)
 require 'abstract'
@@ -55,15 +59,12 @@ class VCAP::Services::Base::Backup
         exit
       end
 
-      @logger = Logger.new(@config["log_file"] || STDOUT, "daily")
-      @logger.level = case (@config["log_level"] || "INFO")
-                      when "DEBUG" then Logger::DEBUG
-                      when "INFO" then Logger::INFO
-                      when "WARN" then Logger::WARN
-                      when "ERROR" then Logger::ERROR
-                      when "FATAL" then Logger::FATAL
-                      else Logger::UNKNOWN
-                      end
+      # Setup logger
+      puts @config["logging"]
+      VCAP::Logging.setup_from_config(@config["logging"])
+      # Use running binary name for logger identity name.
+      @logger = VCAP::Logging.logger(File.basename(script_file))
+
       puts "Check mount points"
       check_mount_points
 
