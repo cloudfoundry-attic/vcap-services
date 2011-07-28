@@ -325,18 +325,6 @@ class VCAP::Services::Mysql::Node
     end
   end
 
-  def kill_database_session(database)
-    @logger.info("Kill all sessions connect to db: #{database}")
-    process_list = @connection.list_processes
-    process_list.each do |proc|
-      thread_id, user_, _, db, command, time, _, info = proc
-      if db == database
-        @connection.query("KILL #{thread_id}")
-        @logger.info("Kill session: user:#{user_} db:#{db}")
-      end
-    end
-  end
-
   # restore a given instance using backup file.
   def restore(name, backup_path)
     @logger.debug("Restore db #{name} using backup at #{backup_path}")

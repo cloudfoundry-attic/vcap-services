@@ -63,17 +63,18 @@ class VCAP::Services::Mysql::Node
     @connection.query("UPDATE db SET insert_priv='Y', create_priv='Y',
                        update_priv='Y' WHERE Db=" +  "'#{db}'")
     @connection.query("FLUSH PRIVILEGES")
+    # kill existing session so that privilege take effect
+    kill_database_session(db)
     service.quota_exceeded = false
     service.save
   end
 
   def revoke_write_access(db, service)
-    user = service.user
     @logger.warn("DB permissions inconsistent....") if access_disabled?(db)
     @connection.query("UPDATE db SET insert_priv='N', create_priv='N',
                        update_priv='N' WHERE Db=" +  "'#{db}'")
     @connection.query("FLUSH PRIVILEGES")
-    kill_user_sessions(user, db)
+    kill_database_session(db)
     service.quota_exceeded = true
     service.save
   end
@@ -101,6 +102,18 @@ class VCAP::Services::Mysql::Node
     rescue Mysql::Error => e
       @logger.warn("MySQL exception: [#{e.errno}] #{e.error} " +
                    e.backtrace.join("|"))
+  end
+
+  def kill_database_session(database)
+    @logger.info("Kill all sessions connect to db: #{database}")
+    process_list = @connection.list_processes
+    process_list.each do |proc|
+      thread_id, user, _, db, command, time, _, info = proc
+      if (db == database) and (user != "root")
+        @connection.query("KILL #{thread_id}")
+        @logger.info("Kill session: user:#{user} db:#{db}")
+      end
+    end
   end
 
 end
