@@ -2,148 +2,68 @@
 # -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 
-require 'yaml'
-require 'fileutils'
-require 'logger'
-require "rubygems"
-require "bundler/setup"
-require 'optparse'
-require 'timeout'
+$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/backup'
 
-puts "backup task start.."
-
-config_file = File.expand_path("../../config/redis_backup.yml", __FILE__)
-
-OptionParser.new do |opts|
-  opts.banner = "Usage: redis_backup [options]"
-  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
-    config_file = opt
-  end
-  opts.on("-h", "--help", "Help") do
-    puts opts
-    exit
-  end
-end.parse!
-
-# load configuration file
-begin
-  config = YAML.load(File.open(config_file))
-rescue => e
-  puts "Could not read configuration file: #{e}"
-  exit
-end
-
-# setup logger
-log_file = config["backup_log"]
-logger = Logger.new(log_file, "weekly")
-logger.level = Logger::INFO
-
-logger.info "backup task start.."
-logger.info "config: " + config.to_s
-
-# check if backup process is already running
-cmds = %x[ps ax -o args=].split(/\n/)
-count = 0
-cmds.each do |cmd|
-  if cmd.index(__FILE__) != nil
-    logger.info cmd
-    count += 1
-  end
-end
-logger.info "backup process count: " + count.to_s
-if count > 2
-  logger.info "backup is running, exit"
-  exit
-end
-
-# Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
-
-# \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-
-# make sure the backup base dir is mounted
-if %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
-  logger.error config["backup_base_dir"] + " is not mounted, exit"
-  exit
-end
-
-# make sure backup dir on nfs storage exists
-nfs_base = config["backup_base_dir"] + "/backups/" + config["service_name"]
-if File.directory? nfs_base
-  logger.info nfs_base + " exists"
-else
-  logger.info nfs_base + " does not exist, create it"
-  begin
-    FileUtils.mkdir_p nfs_base
-  rescue => e
-    logger.error "Could not create dir on nfs!"
-    exit
-  end
-end
-
-# Simple version of system with timeout support
-# It's called simple because it doesn't handle SIGINT and SIGQUIT
-# in a standard POSIX way. But it should be enough in this case.
-def timeout_system(timeout, *args)
-  pid = fork
-  if pid
-    # parent process
-    success = false
-    begin
-      success = Timeout::timeout(timeout) do
-        Process.waitpid(pid)
-        $? == 0
-      end
-    rescue Timeout::Error
-      Process.detach(pid)
-      Process.kill("KILL", pid)
-      raise Timeout::Error
-    end
-    success
-  else
-    # child process
-    exec(*args)
-  end
-end
-
-# backup
-inst_path = config["service_base_dir"]
-if File.directory? inst_path
-  dirnames = Dir.entries inst_path
-  dirnames.each do |dirname|
-    next if dirname.to_s.start_with? "." #skip . & ..
-    logger.info "instance: " + dirname
-    dump_file = "#{inst_path}/#{dirname}/data/dump.rdb"
-    dirname.gsub!(/^redis-/, '')
-    new_dirname_nfs = nfs_base + "/" + dirname[0,2] + "/" + dirname[2,2] + "/" + dirname[4,2] + "/" + dirname + "/" + Time.new.to_i.to_s
-    logger.info "new dir: " + new_dirname_nfs
-    begin
-      FileUtils.mkdir_p new_dirname_nfs
-      if File.exist?(dump_file)
-        cmd = "cp #{dump_file} #{new_dirname_nfs}"
-        if config["timeout"] == nil
-          # If no timeout option, set a default value
-          config["timeout"] = 600
-        end
-        if timeout_system(config["timeout"], cmd) == false
-          logger.error "Got errors when doing copy"
-        end
-      else
-        # Create an empty file to indicate that backup successfully with no dumped data
-        FileUtils.touch(File.join(new_dirname_nfs, "dump.rdb"))
-      end
-    rescue => e
-      if e.is_a?(Timeout::Error)
-        logger.error "Timeout when doing copy"
-      else
-        logger.error "Could not copy dumpfile: #{e}"
-      end
-      next
+module VCAP
+  module Services
+    module Redis
     end
   end
-else
-  logger.error inst_path + " does not exists, exit"
-  exit
 end
 
-logger.info "backup task complete"
-puts "backup task complete"
+class VCAP::Services::Redis::Backup < VCAP::Services::Base::Backup
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'redis_backup.yml')
+  end
+
+  # Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
+  # \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+  def backup_db
+    # backup
+    inst_path = @config["service_base_dir"]
+    if File.directory? inst_path
+      dirnames = Dir.entries inst_path
+      dirnames.each do |dirname|
+        next if dirname.to_s.start_with? "." #skip . & ..
+        echo "instance: " + dirname
+        dump_file = "#{inst_path}/#{dirname}/data/dump.rdb"
+        new_dirname_nfs=get_dump_path(dirname)
+        echo "new dir: " + new_dirname_nfs
+        begin
+          FileUtils.mkdir_p new_dirname_nfs
+          if File.exist?(dump_file)
+            cmd = "cp #{dump_file} #{new_dirname_nfs}"
+            if !@config["timeout"]
+              # If no timeout option, set a default value
+              @config["timeout"] = 600
+            end
+            if !CMDHandle.execute(cmd,@config["timeout"])
+              echo "Got errors when doing copy",true
+            end
+          else
+            # Create an empty file to indicate that backup successfully with no dumped data
+            FileUtils.touch(File.join(new_dirname_nfs, "dump.rdb"))
+          end
+        rescue => e
+          if e.is_a?(Timeout::Error)
+            echo "Timeout when doing copy",true
+          else
+            echo "Could not copy dumpfile: #{e}",true
+          end
+          next
+        end
+      end
+    else
+      echo inst_path + " does not exists, exit",true
+      exit
+    end
+
+    echo "backup task complete"
+  end
+end
+VCAP::Services::Redis::Backup.new.start
+
+
+
+
