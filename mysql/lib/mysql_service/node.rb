@@ -274,7 +274,6 @@ class VCAP::Services::Mysql::Node
       @connection.query("CREATE DATABASE #{name}")
       create_database_user(name, user, password)
       storage = storage_for_service(provisioned_service)
-      raise MysqlError.new(MysqlError::MYSQL_DISK_FULL) if @available_storage < storage
       @available_storage -= storage
       @logger.debug("Done creating #{provisioned_service.pretty_inspect}. Took #{Time.now - start}.")
     rescue Mysql::Error => e

@@ -120,7 +120,7 @@ describe "Mysql server node" do
     end
   end
 
-  it "should raise error if there is no available storage to provision instance" do
+  it "should support over provisioning" do
     EM.run do
       opts = @opts.dup
       opts[:available_storage]=10
@@ -128,7 +128,7 @@ describe "Mysql server node" do
       node = VCAP::Services::Mysql::Node.new(opts)
       expect {
         node.provision(@default_plan)
-      }.should raise_error(MysqlError, /Node disk is full/)
+      }.should_not raise_error
       EM.stop
     end
   end
