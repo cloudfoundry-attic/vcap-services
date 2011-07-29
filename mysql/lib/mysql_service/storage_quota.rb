@@ -99,8 +99,8 @@ class VCAP::Services::Mysql::Node
       end
     end
     rescue Mysql::Error => e
-      @logger.warn("MySQL exception: [#{e.errno}] #{e.error}\n" +
-                   e.backtrace.join("\n"))
+      @logger.warn("MySQL exception: [#{e.errno}] #{e.error} " +
+                   e.backtrace.join("|"))
   end
 
 end

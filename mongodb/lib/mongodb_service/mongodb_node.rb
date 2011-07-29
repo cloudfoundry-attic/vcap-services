@@ -143,7 +143,7 @@ class VCAP::Services::MongoDB::Node
 
     unless provisioned_service.save
       cleanup_service(provisioned_service)
-      raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
+      raise "Could not save entry: #{provisioned_service.errors.inspect}"
     end
 
     begin
@@ -198,7 +198,7 @@ class VCAP::Services::MongoDB::Node
 
   def cleanup_service(provisioned_service)
     @logger.debug("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
-    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
+    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
 
     provisioned_service.kill if provisioned_service.running?
 
@@ -372,7 +372,7 @@ class VCAP::Services::MongoDB::Node
 
     unless provisioned_service.save
       provisioned_service.kill
-      raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
+      raise "Could not save entry: #{provisioned_service.errors.inspect}"
     end
 
     # Update credentials for the new credential
@@ -450,7 +450,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def start_instance(provisioned_service)
-    @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
+    @logger.debug("Starting: #{provisioned_service.inspect}")
 
     memory = @max_memory
 

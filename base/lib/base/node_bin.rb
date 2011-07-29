@@ -66,7 +66,7 @@ class VCAP::Services::Base::NodeBin
     options = additional_config(options, config)
 
     EM.error_handler do |e|
-      @logger.fatal("#{e}\n#{e.backtrace.join("\n")}")
+      @logger.fatal("#{e} #{e.backtrace.join("|")}")
       exit
     end
 

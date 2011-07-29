@@ -297,11 +297,11 @@ class VCAP::Services::Redis::Node
   end
 
   def save_instance(instance)
-    raise RedisError.new(RedisError::REDIS_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
+    raise RedisError.new(RedisError::REDIS_SAVE_INSTANCE_FAILED, instance.inspect) unless instance.save
   end
 
   def destroy_instance(instance)
-    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.pretty_inspect) unless instance.destroy
+    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.destroy
   end
 
   def get_instance(name)
@@ -311,7 +311,7 @@ class VCAP::Services::Redis::Node
   end
 
   def start_instance(instance, db_file = nil)
-    @logger.debug("Starting: #{instance.pretty_inspect} on port #{instance.port}")
+    @logger.debug("Starting: #{instance.inspect} on port #{instance.port}")
 
     pid = fork
     if pid
@@ -348,7 +348,7 @@ class VCAP::Services::Redis::Node
       exec("#{@redis_server_path} #{config_path}")
     end
   rescue => e
-    raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.pretty_inspect)
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
   end
 
   def stop_instance(instance)

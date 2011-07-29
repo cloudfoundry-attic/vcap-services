@@ -192,7 +192,7 @@ class VCAP::Services::Mysql::Node
     create_database(provisioned_service)
 
     if not provisioned_service.save
-      @logger.error("Could not save entry: #{provisioned_service.errors.pretty_inspect}")
+      @logger.error("Could not save entry: #{provisioned_service.errors.inspect}")
       raise MysqlError.new(MysqlError::MYSQL_LOCAL_DB_ERROR)
     end
     response = gen_credential(provisioned_service.name, provisioned_service.user, provisioned_service.password)
@@ -219,7 +219,7 @@ class VCAP::Services::Mysql::Node
     storage = storage_for_service(provisioned_service)
     @available_storage += storage
     if not provisioned_service.destroy
-      @logger.error("Could not delete service: #{provisioned_service.errors.pretty_inspect}")
+      @logger.error("Could not delete service: #{provisioned_service.errors.inspect}")
       raise MysqlError.new(MysqError::MYSQL_LOCAL_DB_ERROR)
     end
     @logger.debug("Successfully fulfilled unprovision request: #{name}")
@@ -270,12 +270,12 @@ class VCAP::Services::Mysql::Node
     name, password, user = [:name, :password, :user].map { |field| provisioned_service.send(field) }
     begin
       start = Time.now
-      @logger.debug("Creating: #{provisioned_service.pretty_inspect}")
+      @logger.debug("Creating: #{provisioned_service.inspect}")
       @connection.query("CREATE DATABASE #{name}")
       create_database_user(name, user, password)
       storage = storage_for_service(provisioned_service)
       @available_storage -= storage
-      @logger.debug("Done creating #{provisioned_service.pretty_inspect}. Took #{Time.now - start}.")
+      @logger.debug("Done creating #{provisioned_service.inspect}. Took #{Time.now - start}.")
     rescue Mysql::Error => e
       @logger.warn("Could not create database: [#{e.errno}] #{e.error}")
     end
