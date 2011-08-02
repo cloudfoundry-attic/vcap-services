@@ -95,11 +95,11 @@ describe "Mysql server node" do
       conn.query("CREATE TABLE test(id INT)")
       conn.query("INSERT INTO test VALUE(10)")
       conn.query("INSERT INTO test VALUE(20)")
-      table_size = @node.db_size(@db["name"])
+      table_size = @node.dbs_size[@db["name"]]
       table_size.should > 0
       # should also calculate index size
       conn.query("CREATE INDEX id_index on test(id)")
-      all_size = @node.db_size(@db["name"])
+      all_size = @node.dbs_size[@db["name"]]
       all_size.should > table_size
       EM.stop
     end

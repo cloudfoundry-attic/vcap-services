@@ -7,17 +7,6 @@ class VCAP::Services::Mysql::Node
 
   DATA_LENGTH_FIELD = 6
 
-  def db_size(db)
-    # calculate both index and table size
-    dbs = @connection.query("SELECT sum( data_length + index_length) 'size'
-                              FROM information_schema.TABLES
-                              WHERE table_schema = '#{db}'
-                              GROUP BY table_schema ;")
-    res = 0
-    dbs.each {|i| res+=i[0].to_i}
-    res
-  end
-
   def dbs_size()
     result = @connection.query('show databases')
     dbs =[]
@@ -85,9 +74,10 @@ class VCAP::Services::Mysql::Node
 
   def enforce_storage_quota
     @connection.select_db('mysql')
+    sizes = dbs_size
     ProvisionedService.all.each do |service|
       db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
-      size = db_size(db)
+      size = sizes[db]
 
       if (size >= @max_db_size) and not quota_exceeded then
         revoke_write_access(db, service)
