@@ -11,11 +11,8 @@ describe "mongodb_node provision" do
       @node = Node.new(@opts)
       @original_memory = @node.available_memory
 
-      @resp = @node.provision("free")
-
-      EM.add_timer(1) do
-        EM.stop
-      end
+      EM.add_timer(2) { @resp = @node.provision("free") }
+      EM.add_timer(4) { EM.stop }
     end
   end
 
@@ -37,13 +34,16 @@ describe "mongodb_node provision" do
 
   it "should not allow unauthorized user to access the instance" do
     EM.run do
-      conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])
       begin
-        coll = conn.collection('mongo_unit_test')
+        conn = Mongo::Connection.new('localhost', @resp['port'])
+        db = conn.db(@resp['db'])
+        coll = db.collection('mongo_unit_test')
         coll.insert({'a' => 1})
         coll.count()
       rescue Exception => e
         @logger.debug e
+      ensure
+        conn.close if conn
       end
       e.should_not be_nil
       EM.stop
@@ -52,11 +52,16 @@ describe "mongodb_node provision" do
 
   it "should return varz" do
     EM.run do
-      stats = @node.varz_details
+      stats = nil
+      10.times do
+        stats = @node.varz_details
+        @node.healthz_details
+      end
       stats.should_not be_nil
       stats[:running_services].length.should > 0
       stats[:running_services][0]['name'].should_not be_nil
       stats[:running_services][0]['db'].should_not be_nil
+      stats[:running_services][0]['overall']['connections']['current'].should == 1
       stats[:disk].should_not be_nil
       stats[:services_max_memory].should > 0
       stats[:services_used_memory].should > 0
@@ -76,12 +81,18 @@ describe "mongodb_node provision" do
 
   it "should allow authorized user to access the instance" do
     EM.run do
-      conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])
-      auth = conn.authenticate(@resp['username'], @resp['password'])
-      auth.should be_true
-      coll = conn.collection('mongo_unit_test')
-      coll.insert({'a' => 1})
-      coll.count().should == 1
+      begin
+        conn = Mongo::Connection.new('localhost', @resp['port'])
+        db = conn.db(@resp['db'])
+        auth = db.authenticate(@resp['username'], @resp['password'])
+        auth.should be_true
+        coll = db.collection('mongo_unit_test')
+        coll.insert({'a' => 1})
+        coll.count().should == 1
+      rescue => e
+      ensure
+        conn.close if conn
+      end
       EM.stop
     end
   end
@@ -97,13 +108,19 @@ describe "mongodb_node provision" do
       EM.add_timer(4) { EM.stop }
     end
 
-    port_open_1.should be_false
-    port_open_2.should be_true
-    conn = Mongo::Connection.new('localhost', @resp['port']).db(@resp['db'])
-    auth = conn.authenticate(@resp['username'], @resp['password'])
-    auth.should be_true
-    coll = conn.collection('mongo_unit_test')
-    coll.count().should == 1
+    begin
+      port_open_1.should be_false
+      port_open_2.should be_true
+      conn = Mongo::Connection.new('localhost', @resp['port'])
+      db = conn.db(@resp['db'])
+      auth = db.authenticate(@resp['username'], @resp['password'])
+      auth.should be_true
+      coll = db.collection('mongo_unit_test')
+      coll.count().should == 1
+    rescue => e
+    ensure
+      conn.close if conn
+    end
   end
 
   it "should return error when unprovisioning a non-existed instance" do
@@ -114,6 +131,18 @@ describe "mongodb_node provision" do
       rescue => e
       end
       e.should_not be_nil
+      EM.stop
+    end
+  end
+
+  it "should report error when admin users are deleted from mongodb" do
+    EM.run do
+      delete_admin(@resp)
+      stats = @node.varz_details
+      stats.should_not be_nil
+      stats[:running_services].length.should > 0
+      stats[:running_services][0]['db'].class.should == String
+      stats[:running_services][0]['overall'].class.should == String
       EM.stop
     end
   end

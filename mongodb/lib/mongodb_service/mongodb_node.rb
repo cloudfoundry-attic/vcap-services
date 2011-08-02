@@ -97,7 +97,9 @@ class VCAP::Services::MongoDB::Node
 
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
+  end
 
+  def pre_send_announcement
     ProvisionedService.all.each do |provisioned_service|
       @free_ports.delete(provisioned_service.port)
       if provisioned_service.listening?
@@ -295,7 +297,8 @@ class VCAP::Services::MongoDB::Node
     database = provisioned_service.db
 
     # Drop original collections
-    db = Mongo::Connection.new('127.0.0.1', port).db(database)
+    conn = Mongo::Connection.new('127.0.0.1', port)
+    db = conn.db(database)
     db.authenticate(username, password)
     db.collection_names.each do |name|
       if name != 'system.users' && name != 'system.indexes'
@@ -310,6 +313,8 @@ class VCAP::Services::MongoDB::Node
     @logger.debug(output)
     raise 'mongorestore failed' unless res
     true
+  ensure
+    conn.close if conn
   end
 
   def disable_instance(service_credential, binding_credentials)
@@ -422,20 +427,24 @@ class VCAP::Services::MongoDB::Node
     # Get mongodb db.stats and db.serverStatus
     stats = []
     ProvisionedService.all.each do |provisioned_service|
+      stat = {}
       overall_stats = mongodb_overall_stats({
         :port      => provisioned_service.port,
+        :name      => provisioned_service.name,
         :admin     => provisioned_service.admin,
         :adminpass => provisioned_service.adminpass
-      }) || {}
+      })
       db_stats = mongodb_db_stats({
         :port      => provisioned_service.port,
+        :name      => provisioned_service.name,
         :admin     => provisioned_service.admin,
         :adminpass => provisioned_service.adminpass,
         :db        => provisioned_service.db
       })
-      overall_stats['db'] = db_stats
-      overall_stats['name'] = provisioned_service.name
-      stats << overall_stats
+      stat['overall'] = overall_stats
+      stat['db'] = db_stats
+      stat['name'] = provisioned_service.name
+      stats << stat
     end
     {
       :running_services     => stats,
@@ -458,11 +467,13 @@ class VCAP::Services::MongoDB::Node
   end
 
   def get_healthz(instance)
-    conn = Mongo::Connection.new(@local_ip, instance.port).db(instance.db)
-    auth = conn.authenticate(instance.admin, instance.adminpass)
+    conn = Mongo::Connection.new(@local_ip, instance.port)
+    auth = conn.db(instance.db).authenticate(instance.admin, instance.adminpass)
     auth ? "ok" : "fail"
   rescue => e
     "fail"
+  ensure
+    conn.close if conn
   end
 
   def start_instance(provisioned_service)
@@ -546,10 +557,12 @@ class VCAP::Services::MongoDB::Node
   def mongodb_add_admin(options)
     @logger.info("add admin user: req #{options}")
     t = options[:times] || 1
+    conn = nil
 
     t.times do
       begin
-        db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+        conn = Mongo::Connection.new('127.0.0.1', options[:port])
+        db = conn.db(options[:db])
         options[:username].each_index do |i|
           user = db.add_user(options[:username][i], options[:password][i])
           raise "user not added" if user.nil?
@@ -557,49 +570,61 @@ class VCAP::Services::MongoDB::Node
         end
         return true
       rescue => e
-        @logger.warn("add user #{options[:username]} failed! #{e}")
+        @logger.warn("Failed add user #{options[:username]}: #{e.message}")
         sleep 1
       end
     end
 
     raise "Could not add admin user #{options[:username]}"
+  ensure
+    conn.close if conn
   end
 
   def mongodb_add_user(options)
     @logger.debug("add user in port: #{options[:port]}, db: #{options[:db]}")
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    db = conn.db(options[:db])
     auth = db.authenticate(options[:admin], options[:adminpass])
     db.add_user(options[:username], options[:password])
     @logger.debug("user #{options[:username]} added")
+  ensure
+    conn.close if conn
   end
 
   def mongodb_remove_user(options)
     @logger.debug("remove user in port: #{options[:port]}, db: #{options[:db]}")
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    db = conn.db(options[:db])
     auth = db.authenticate(options[:admin], options[:adminpass])
     db.remove_user(options[:username])
     @logger.debug("user #{options[:username]} removed")
+  ensure
+    conn.close if conn
   end
 
   def mongodb_overall_stats(options)
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db('admin')
-    auth = db.authenticate(options[:admin], options[:adminpass])
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     # The following command is not documented in mongo's official doc.
     # But it works like calling db.serverStatus from client. And 10gen support has
     # confirmed it's safe to call it in such way.
-    db.command({:serverStatus => 1})
+    conn.db('admin').command({:serverStatus => 1})
   rescue => e
-    @logger.warn(e)
-    nil
+    @logger.warn("Failed mongodb_overall_stats: #{e.message}, options: #{options}")
+    "Failed mongodb_overall_stats: #{e.message}, options: #{options}"
+  ensure
+    conn.close if conn
   end
 
   def mongodb_db_stats(options)
-    db = Mongo::Connection.new('127.0.0.1', options[:port]).db(options[:db])
-    auth = db.authenticate(options[:admin], options[:adminpass])
-    db.stats()
+    conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db(options[:db]).authenticate(options[:admin], options[:adminpass])
+    conn.db(options[:db]).stats()
   rescue => e
-    @logger.warn(e)
-    nil
+    @logger.warn("Failed mongodb_db_stats: #{e.message}, options: #{options}")
+    "Failed mongodb_db_stats: #{e.message}, options: #{options}"
+  ensure
+    conn.close if conn
   end
 
   def transition_dir(service_id)

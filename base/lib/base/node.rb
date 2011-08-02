@@ -237,8 +237,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   def encode_failure(response, error=nil)
     response.success = false
-    error = ServiceError.new(ServiceError::INTERNAL_ERROR) unless error.is_a? ServiceError
-    response.error = error if error
+    if error.nil? || !error.is_a?(ServiceError)
+      error = ServiceError.new(ServiceError::INTERNAL_ERROR)
+    end
+    response.error = error.to_hash
     response.encode
   end
 

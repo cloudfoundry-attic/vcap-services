@@ -445,6 +445,11 @@ class VCAP::Services::Redis::Node
     else
       raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
     end
+  ensure
+    begin
+      redis.quit if redis
+    rescue => e
+    end
   end
 
   def get_info(port, password)
@@ -452,6 +457,11 @@ class VCAP::Services::Redis::Node
     redis.info
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
+  ensure
+    begin
+      redis.quit if redis
+    rescue => e
+    end
   end
 
   def get_config(port, password, key)
@@ -459,6 +469,11 @@ class VCAP::Services::Redis::Node
     redis.config(:get, key)[key]
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
+  ensure
+    begin
+      redis.quit if redis
+    rescue => e
+    end
   end
 
   def set_config(port, password, key, value)
@@ -466,6 +481,11 @@ class VCAP::Services::Redis::Node
     redis.config(:set, key, value)
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
+  ensure
+    begin
+      redis.quit if redis
+    rescue => e
+    end
   end
 
   def get_varz(instance)
@@ -501,6 +521,11 @@ class VCAP::Services::Redis::Node
     "ok"
   rescue => e
     "fail"
+  ensure
+    begin
+      redis.quit if redis
+    rescue => e
+    end
   end
 
 end

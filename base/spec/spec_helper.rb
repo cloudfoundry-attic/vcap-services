@@ -340,6 +340,12 @@ class ProvisionerTests
     MockErrorNode.new(id, score)
   end
 
+  def self.setup_fake_instance(gateway, provisioner, node)
+    instance_id = "fake_instance"
+    gateway.instance_id = instance_id
+    provisioner.prov_svcs[instance_id] = {:credentials => {'node_id' =>node.node_id }}
+  end
+
   class ProvisionerTester < VCAP::Services::Base::Provisioner
     attr_accessor :prov_svcs
     attr_accessor :varz_invoked
@@ -437,6 +443,8 @@ class ProvisionerTests
     attr_accessor :restore_response
     attr_accessor :recover_response
     attr_accessor :error_msg
+    attr_accessor :instance_id
+    attr_accessor :bind_id
     def initialize(provisioner)
       @provisioner = provisioner
       @got_announcement = false
@@ -465,6 +473,7 @@ class ProvisionerTests
     end
     def send_bind_request
       @provisioner.bind_instance(@instance_id, {}, nil) do |res|
+        @bind_response = res['success']
         @bind_id = res['response'][:service_id]
         @bind_response = res['success']
         @error_msg = res['response']
@@ -570,7 +579,6 @@ class ProvisionerTests
 
   # The node that generates error response
   class MockErrorNode < MockNode
-    include VCAP::Services::Internal
     include VCAP::Services::Base::Error
     attr_accessor :got_unprovision_request
     attr_accessor :got_provision_request
@@ -594,7 +602,7 @@ class ProvisionerTests
           @got_provision_request = true
           response = ProvisionResponse.new
           response.success = false
-          response.error = @internal_error
+          response.error = @internal_error.to_hash
           @nats.publish(reply, response.encode)
         }
         @nats.subscribe("#{service_name}.unprovision.#{node_id}") { |msg, reply|
@@ -605,7 +613,7 @@ class ProvisionerTests
           @got_bind_request = true
           response = BindResponse.new
           response.success = false
-          response.error = @internal_error
+          response.error = @internal_error.to_hash
           @nats.publish(reply, response.encode)
         }
         @nats.subscribe("#{service_name}.unbind.#{node_id}") { |msg, reply|
@@ -623,7 +631,7 @@ class ProvisionerTests
     def gen_simple_error_response
       res = SimpleResponse.new
       res.success = false
-      res.error = @internal_error
+      res.error = @internal_error.to_hash
       res
     end
   end

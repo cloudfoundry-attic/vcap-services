@@ -306,8 +306,10 @@ describe ProvisionerTests do
       Do.at(3) { gateway.send_provision_request }
       Do.at(4) { EM.stop }
     end
+    node.got_provision_request.should be_true
     gateway.provision_response.should be_false
-    gateway.error_msg.should =~ /Internal Error/
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
   end
 
   it "should pick the best node when provisioning" do
@@ -335,7 +337,7 @@ describe ProvisionerTests do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
       Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
       Do.at(2) { node = ProvisionerTests.create_node(1) }
-      Do.at(3) { gateway.send_provision_request } #actual failed
+      Do.at(3) { gateway.send_provision_request }
       Do.at(4) { gateway.send_unprovision_request }
       Do.at(5) { EM.stop }
     end
@@ -350,12 +352,15 @@ describe ProvisionerTests do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
       Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
       Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-      Do.at(3) { gateway.send_provision_request }
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
       Do.at(4) { gateway.send_unprovision_request }
       Do.at(5) { EM.stop }
     end
+    node.got_unprovision_request.should be_true
     gateway.unprovision_response.should be_false
-    gateway.error_msg['status'].should == 404
+    gateway.error_msg.should_not == nil
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
   end
 
   it "should support bind" do
@@ -382,13 +387,14 @@ describe ProvisionerTests do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
       Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
       Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-      Do.at(3) { gateway.send_provision_request } # failed
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
       Do.at(4) { gateway.send_bind_request }
       Do.at(5) { EM.stop }
     end
-    gateway.provision_response.should be_false
+    node.got_bind_request.should be_true
     gateway.bind_response.should be_false
-    gateway.error_msg['status'].should == 404
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
   end
 
   it "should handle error in unbind" do
@@ -399,14 +405,19 @@ describe ProvisionerTests do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
       Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
       Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-      Do.at(3) { gateway.send_provision_request } # failed
-      Do.at(4) { gateway.send_bind_request }
+      Do.at(3) {
+        ProvisionerTests.setup_fake_instance(gateway, provisioner, node)
+        bind_id = "fake_bind_id"
+        gateway.bind_id =  bind_id
+        provisioner.prov_svcs[bind_id] = {:credentials => {'node_id' =>node.node_id }}
+      }
       Do.at(5) { gateway.send_unbind_request }
       Do.at(6) { EM.stop }
     end
-    gateway.provision_response.should be_false
+    node.got_unbind_request.should be_true
     gateway.unbind_response.should be_false
-    gateway.error_msg['status'].should == 404
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
   end
 
   it "should support restore" do
@@ -432,13 +443,16 @@ describe ProvisionerTests do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
       Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
       Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-      Do.at(3) { gateway.send_provision_request }
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
       Do.at(4) { gateway.send_restore_request }
       Do.at(5) { EM.stop }
     end
+    node.got_restore_request.should be_true
     gateway.restore_response.should be_false
-    gateway.error_msg['status'].should == 404
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
   end
+
   it "should support recover" do
     provisioner = nil
     gateway = nil
