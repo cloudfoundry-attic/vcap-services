@@ -64,7 +64,7 @@ class VCAP::Services::Base::Gateway
       pf.unlink_at_exit
     end
 
-    config[:host] = VCAP.local_ip(config[:host])
+    config[:host] = VCAP.local_ip(config[:ip_route])
     config[:port] ||= VCAP.grab_ephemeral_port
     config[:service][:label] = "#{config[:service][:name]}-#{config[:service][:version]}"
     config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
@@ -76,7 +76,7 @@ class VCAP::Services::Base::Gateway
              :logger   => logger,
              :index    => config[:index],
              :version  => config[:service][:version],
-             :local_ip => config[:host],
+             :ip_route => config[:ip_route],
              :mbus => config[:mbus],
              :node_timeout => config[:node_timeout] || 2,
              :allow_over_provisioning => config[:allow_over_provisioning]

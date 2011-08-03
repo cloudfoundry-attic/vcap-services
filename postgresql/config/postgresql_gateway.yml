@@ -6,7 +6,7 @@ service:
   description: 'PostgreSQL database service'
   plans: ['free']
   tags: ['postgresql', 'postgresql-9.0', 'relational']
-host: localhost
+ip_route: localhost
 token: "0xdeadbeef"
 logging:
   level: debug

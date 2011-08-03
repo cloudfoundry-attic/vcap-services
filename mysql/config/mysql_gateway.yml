@@ -6,7 +6,7 @@ service:
   description: 'MySQL database service'
   plans: ['free']
   tags: ['mysql', 'mysql-5.1', 'relational']
-host: localhost
+ip_route: localhost
 index: 0
 token: "0xdeadbeef"
 logging:

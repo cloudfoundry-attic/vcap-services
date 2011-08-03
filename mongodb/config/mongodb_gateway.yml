@@ -6,7 +6,7 @@ service:
   description: 'MongoDB NoSQL store'
   plans: ['free']
   tags: ['mongodb', 'mongodb-1.6', 'nosql']
-host: localhost
+ip_route: localhost
 index: 0
 token: "0xdeadbeef"
 mbus: nats://localhost:4222
