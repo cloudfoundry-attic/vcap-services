@@ -5,6 +5,9 @@ gem 'em-http-request'
 gem 'json'
 gem 'yajl-ruby'
 
+gem 'vcap_common', :path => '../../../../common'
+gem 'vcap_logging', :require => ['vcap/logging']
+
 group :test do
   gem 'rspec', '>= 2.4.0', :require => nil
   gem 'rcov'

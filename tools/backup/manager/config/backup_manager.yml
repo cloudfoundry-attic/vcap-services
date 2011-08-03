@@ -1,5 +1,6 @@
 ---
-log_level: DEBUG
+logging:
+  level: debug
 root: /mnt/appcloud
 enable: true
 wakeup_interval: 3600
