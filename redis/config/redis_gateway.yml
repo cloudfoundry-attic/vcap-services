@@ -6,7 +6,7 @@ service:
   description: 'Redis key-value store service'
   plans: ['free']
   tags: ['redis', 'redis-2.2', 'key-value', 'nosql']
-ip_route: 10.135.81.112
+ip_route: localhost
 index: 0
 token: "0xdeadbeef"
 logging:
