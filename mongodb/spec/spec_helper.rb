@@ -1,6 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 
 PWD = File.dirname(__FILE__)
+TMP = '/tmp/mongo'
 
 $:.unshift File.join(PWD, '..')
 $:.unshift File.join(PWD, '..', 'lib')
@@ -12,6 +13,7 @@ require "timeout"
 require "mongo"
 require "erb"
 require "mongodb_service/mongodb_node"
+require "fileutils"
 
 # Define constants
 HTTP_PORT = 9865
@@ -21,9 +23,13 @@ TEST_KEY     = 'test_key'
 TEST_VAL     = 1234
 TEST_VAL_2   = 4321
 
-BACKUP_DIR    = './backup'
-CONFIG_FILE   = File.join(PWD, 'config/mongodb_backup.yml')
+BACKUP_DIR    = File.join(TMP, 'backup')
+CONFIG_DIR    = File.join(TMP, 'config')
+CONFIG_FILE   = File.join(TMP, 'mongodb_backup.yml')
 TEMPLATE_FILE = File.join(PWD, 'config/mongodb_backup.yml.erb')
+
+FileUtils.mkdir_p(BACKUP_DIR)
+FileUtils.mkdir_p(CONFIG_DIR)
 
 include VCAP::Services::MongoDB
 
@@ -64,6 +70,17 @@ def get_backup_dir(backup_dir)
     dir = File.join(dir, dirs[0])
   end
   dir
+end
+
+def delete_admin(options)
+  db = Mongo::Connection.new('127.0.0.1', options['port']).db(options['db'])
+  auth = db.authenticate(options['username'], options['password'])
+  db.remove_user('admin')
+
+  db = Mongo::Connection.new('127.0.0.1', options['port']).db('admin')
+  service = VCAP::Services::MongoDB::Node::ProvisionedService.get(options['name'])
+  auth = db.authenticate(service.admin, service.adminpass)
+  db.remove_user(service.admin)
 end
 
 def parse_property(hash, key, type, options = {})

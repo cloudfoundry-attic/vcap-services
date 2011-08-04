@@ -44,6 +44,16 @@ describe BaseTests do
     base.varz_invoked.should be_true
   end
 
+  it "should call healthz" do
+    base = nil
+    EM.run do
+      Do.sec(0) { base = BaseTests.create_base }
+      # healthz is invoked 5 seconds after base is created
+      Do.sec(6) { EM.stop }
+    end
+    base.healthz_invoked.should be_true
+  end
+
 end
 
 describe NodeTests do
@@ -90,6 +100,20 @@ describe NodeTests do
     provisioner.got_provision_response.should be_true
   end
 
+  it "should handle error in node provision" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.sec(0) { node = NodeTests.create_error_node }
+      Do.sec(1) { provisioner = NodeTests.create_error_provisioner}
+      Do.sec(2) { provisioner.send_provision_request }
+      Do.sec(20) { EM.stop }
+    end
+    node.provision_invoked.should be_true
+    provisioner.response.should =~ /Service unavailable/
+  end
+
   it "should support unprovision" do
     node = nil
     provisioner = nil
@@ -101,6 +125,20 @@ describe NodeTests do
       Do.at(20) { EM.stop }
     end
     node.unprovision_invoked.should be_true
+  end
+
+  it "should handle error in unprovision" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_error_node }
+      Do.at(1) { provisioner = NodeTests.create_error_provisioner }
+      Do.at(2) { provisioner.send_unprovision_request }
+      Do.at(20) { EM.stop }
+    end
+    node.unprovision_invoked.should be_true
+    provisioner.response.should =~ /Service unavailable/
   end
 
   it "should support bind" do
@@ -116,6 +154,20 @@ describe NodeTests do
     node.bind_invoked.should be_true
   end
 
+  it "should handle error in bind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_error_node }
+      Do.at(1) { provisioner = NodeTests.create_error_provisioner }
+      Do.at(2) { provisioner.send_bind_request }
+      Do.at(20) { EM.stop }
+    end
+    node.bind_invoked.should be_true
+    provisioner.response.should =~ /Service unavailable/
+  end
+
   it "should support unbind" do
     node = nil
     provisioner = nil
@@ -129,6 +181,20 @@ describe NodeTests do
     node.unbind_invoked.should be_true
   end
 
+  it "should handle error in unbind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_error_node }
+      Do.at(1) { provisioner = NodeTests.create_error_provisioner }
+      Do.at(2) { provisioner.send_unbind_request }
+      Do.at(20) { EM.stop }
+    end
+    node.unbind_invoked.should be_true
+    provisioner.response.should =~ /Service unavailable/
+  end
+
   it "should support restore" do
     node = nil
     provisioner = nil
@@ -140,6 +206,20 @@ describe NodeTests do
       Do.at(20) { EM.stop }
     end
     node.restore_invoked.should be_true
+  end
+
+  it "should handle error in restore" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_error_node }
+      Do.at(1) { provisioner = NodeTests.create_error_provisioner }
+      Do.at(2) { provisioner.send_restore_request }
+      Do.at(20) { EM.stop }
+    end
+    node.restore_invoked.should be_true
+    provisioner.response.should =~ /Service unavailable/
   end
 end
 
@@ -215,6 +295,23 @@ describe ProvisionerTests do
     gateway.got_provision_response.should be_true
   end
 
+  it "should handle error in provision" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+      Do.at(3) { gateway.send_provision_request }
+      Do.at(4) { EM.stop }
+    end
+    node.got_provision_request.should be_true
+    gateway.provision_response.should be_false
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
+  end
+
   it "should pick the best node when provisioning" do
     provisioner = nil
     gateway = nil
@@ -247,6 +344,25 @@ describe ProvisionerTests do
     node.got_unprovision_request.should be_true
   end
 
+  it "should handle error in unprovision" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
+      Do.at(4) { gateway.send_unprovision_request }
+      Do.at(5) { EM.stop }
+    end
+    node.got_unprovision_request.should be_true
+    gateway.unprovision_response.should be_false
+    gateway.error_msg.should_not == nil
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
+  end
+
   it "should support bind" do
     provisioner = nil
     gateway = nil
@@ -263,22 +379,45 @@ describe ProvisionerTests do
     gateway.got_bind_response.should be_true
   end
 
-  it "should support unbind" do
+  it "should handle error in bind" do
     provisioner = nil
     gateway = nil
     node = nil
     EM.run do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
-      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-      Do.at(2) { node = ProvisionerTests.create_node(1) }
-      Do.at(3) { gateway.send_provision_request }
+      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
       Do.at(4) { gateway.send_bind_request }
+      Do.at(5) { EM.stop }
+    end
+    node.got_bind_request.should be_true
+    gateway.bind_response.should be_false
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
+  end
+
+  it "should handle error in unbind" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+      Do.at(3) {
+        ProvisionerTests.setup_fake_instance(gateway, provisioner, node)
+        bind_id = "fake_bind_id"
+        gateway.bind_id =  bind_id
+        provisioner.prov_svcs[bind_id] = {:credentials => {'node_id' =>node.node_id }}
+      }
       Do.at(5) { gateway.send_unbind_request }
       Do.at(6) { EM.stop }
     end
-    gateway.got_provision_response.should be_true
-    gateway.got_bind_response.should be_true
-    gateway.got_unbind_response.should be_true
+    node.got_unbind_request.should be_true
+    gateway.unbind_response.should be_false
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
   end
 
   it "should support restore" do
@@ -296,6 +435,24 @@ describe ProvisionerTests do
     gateway.got_restore_response.should be_true
   end
 
+  it "should handle error in restore" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
+      Do.at(4) { gateway.send_restore_request }
+      Do.at(5) { EM.stop }
+    end
+    node.got_restore_request.should be_true
+    gateway.restore_response.should be_false
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
+  end
+
   it "should support recover" do
     provisioner = nil
     gateway = nil
@@ -306,7 +463,7 @@ describe ProvisionerTests do
       Do.at(2) { node = ProvisionerTests.create_node(1) }
       Do.at(3) { gateway.send_provision_request }
       Do.at(4) { gateway.send_recover_request }
-      Do.at(5) { EM.stop }
+      Do.at(10) { EM.stop }
     end
     gateway.got_recover_response.should be_true
   end
@@ -338,6 +495,36 @@ describe ProvisionerTests do
     end
     varz_invoked_before.should be_false
     varz_invoked_after.should be_true
+    prov_svcs_before.should == prov_svcs_after
+  end
+
+  it "should support healthz" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    prov_svcs_before = nil
+    prov_svcs_after = nil
+    healthz_invoked_before = nil
+    healthz_invoked_after = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_node(1) }
+      Do.at(3) { gateway.send_provision_request }
+      Do.at(4) { gateway.send_bind_request }
+      Do.at(5) {
+        prov_svcs_before = Marshal.dump(provisioner.prov_svcs)
+        healthz_invoked_before = provisioner.healthz_invoked
+      }
+      # healthz is invoked 5 seconds after provisioner is created
+      Do.at(11) {
+        prov_svcs_after = Marshal.dump(provisioner.prov_svcs)
+        healthz_invoked_after = provisioner.healthz_invoked
+      }
+      Do.at(12) { EM.stop }
+    end
+    healthz_invoked_before.should be_false
+    healthz_invoked_after.should be_true
     prov_svcs_before.should == prov_svcs_after
   end
 

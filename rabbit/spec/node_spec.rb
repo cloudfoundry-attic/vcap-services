@@ -44,7 +44,7 @@ describe VCAP::Services::Rabbit::Node do
 
   before :each do
     @instance = VCAP::Services::Rabbit::Node::ProvisionedService.new
-    @instance.name = "rabbit-#{UUIDTools::UUID.random_create.to_s}"
+    @instance.name = UUIDTools::UUID.random_create.to_s
     @instance.plan = :free
     @instance.plan_option = ""
     @instance.vhost = "v" + UUIDTools::UUID.random_create.to_s.gsub(/-/, "")
@@ -84,12 +84,7 @@ describe VCAP::Services::Rabbit::Node do
     it "should setup local db with right arguments" do
       @node.start_db.should be
     end
-  end
 
-  describe "Node.start_server" do
-    it "should start rabbit server correctly" do
-      @node.start_server.should be
-    end
   end
 
   describe "Node.rabbitmqctl.vhost" do
@@ -298,10 +293,13 @@ describe VCAP::Services::Rabbit::Node do
     it "should send provision message when finish a provision" do
       @credentials["name"].should be
       @credentials["host"].should be
+      @credentials["host"].should == @credentials["hostname"]
       @credentials["port"].should be
       @credentials["vhost"].should be
       @credentials["user"].should be
+      @credentials["user"].should == @credentials["username"]
       @credentials["pass"].should be
+      @credentials["pass"].should == @credentials["password"]
     end
   end
 
@@ -386,10 +384,13 @@ describe VCAP::Services::Rabbit::Node do
 
     it "should send binding message when finish a binding" do
       @binding_credentials["host"].should be
+      @binding_credentials["host"].should == @binding_credentials["hostname"]
       @binding_credentials["port"].should be
       @binding_credentials["vhost"].should be
       @binding_credentials["user"].should be
+      @binding_credentials["user"].should == @binding_credentials["username"]
       @binding_credentials["pass"].should be
+      @binding_credentials["pass"].should == @binding_credentials["password"]
       @binding_credentials["name"].should be
     end
   end
@@ -453,6 +454,17 @@ describe VCAP::Services::Rabbit::Node do
       varz[:provisioned_instances][0][:vhost].should == @credentials["vhost"]
       varz[:provisioned_instances][0][:admin_username].should == @credentials["user"]
       varz[:provisioned_instances][0][:plan].should == :free
+      @node.unprovision(@credentials["name"])
+    end
+  end
+
+  describe "Node.healthz_details" do
+    it "should report healthz details" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      healthz = @node.healthz_details
+      healthz[:self].should == "ok"
+      healthz[@credentials["name"].to_sym].should == "ok"
       @node.unprovision(@credentials["name"])
     end
   end
@@ -542,18 +554,20 @@ describe VCAP::Services::Rabbit::Node do
       EM.run do
         credentials = @node.provision(:free)
         @node.shutdown
-        sleep 1
-        @node.start
-        AMQP.start(:host => credentials["host"],
-                   :port => credentials["port"],
-                   :vhost => credentials["vhost"],
-                   :user => credentials["user"],
-                   :pass => credentials["pass"]) do |conn|
-          conn.connected?.should == true
-          AMQP.stop {EM.stop}
-        end
-        @node.unprovision(credentials["name"])
-        EM.add_timer(0.1) {EM.stop}
+        sleep 2
+        @node = VCAP::Services::Rabbit::Node.new(@options)
+        EM.add_timer(1) {
+          AMQP.start(:host => credentials["host"],
+                     :port => credentials["port"],
+                     :vhost => credentials["vhost"],
+                     :user => credentials["user"],
+                     :pass => credentials["pass"]) do |conn|
+            conn.connected?.should == true
+            AMQP.stop {EM.stop}
+          end
+          @node.unprovision(credentials["name"])
+          EM.stop
+        }
       end
     end
   end

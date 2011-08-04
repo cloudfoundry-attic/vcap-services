@@ -22,8 +22,15 @@ describe "mongodb_node bind" do
   end
 
   it "should have valid response" do
+    @resp.should_not be_nil
+    @resp['hostname'].should_not be_nil
+    @resp['hostname'].should == @bind_resp['host']
+    @resp['port'].should_not be_nil
+    @resp['username'].should_not be_nil
+    @resp['password'].should_not be_nil
     @bind_resp.should_not be_nil
     @bind_resp['hostname'].should_not be_nil
+    @bind_resp['hostname'].should == @bind_resp['host']
     @bind_resp['port'].should_not be_nil
     @bind_resp['username'].should_not be_nil
     @bind_resp['password'].should_not be_nil

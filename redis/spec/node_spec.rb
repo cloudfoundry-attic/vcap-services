@@ -43,7 +43,7 @@ describe VCAP::Services::Redis::Node do
 
   before :each do
     @instance          = VCAP::Services::Redis::Node::ProvisionedService.new
-    @instance.name     = "redis-#{UUIDTools::UUID.random_create.to_s}"
+    @instance.name     = UUIDTools::UUID.random_create.to_s
     @instance.port     = VCAP.grab_ephemeral_port
     @instance.plan     = :free
     @instance.password = UUIDTools::UUID.random_create.to_s
@@ -187,6 +187,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should send provision message when finish a provision" do
       @credentials["hostname"].should be
+      @credentials["host"].should == @credentials["hostname"]
       @credentials["port"].should be
       @credentials["password"].should be
       @credentials["name"].should be
@@ -194,7 +195,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should provision from specified credentials" do
       in_credentials = {}
-      in_credentials["name"] = "redis-#{UUIDTools::UUID.random_create.to_s}"
+      in_credentials["name"] = UUIDTools::UUID.random_create.to_s
       in_credentials["port"] = 22222
       in_credentials["password"] = UUIDTools::UUID.random_create.to_s
       out_credentials = @node.provision(:free, in_credentials)
@@ -284,6 +285,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should send binding message when finish a binding" do
       @binding_credentials["hostname"].should be
+      @binding_credentials["host"].should == @binding_credentials["hostname"]
       @binding_credentials["port"].should be
       @binding_credentials["password"].should be
       @binding_credentials["name"].should be
@@ -325,6 +327,17 @@ describe VCAP::Services::Redis::Node do
       varz[:provisioned_instances][0][:name].should == @credentials["name"]
       varz[:provisioned_instances][0][:port].should == @credentials["port"]
       varz[:provisioned_instances][0][:plan].should == :free
+      @node.unprovision(@credentials["name"])
+    end
+  end
+
+  describe "Node.healthz_details" do
+    it "should report healthz details" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      healthz = @node.healthz_details
+      healthz[:self].should == "ok"
+      healthz[@credentials["name"].to_sym].should == "ok"
       @node.unprovision(@credentials["name"])
     end
   end
@@ -429,12 +442,12 @@ describe VCAP::Services::Redis::Node do
       EM.run do
         credentials = @node.provision(:free)
         @node.shutdown
-        sleep 1
-        @node.start
-        sleep 2
-        @node.check_password(credentials["port"], credentials["password"]).should == true
-        @node.unprovision(credentials["name"])
-        EM.add_timer(0.1) {EM.stop}
+        @node = VCAP::Services::Redis::Node.new(@options)
+        EM.add_timer(1) {
+          @node.check_password(credentials["port"], credentials["password"]).should == true
+          @node.unprovision(credentials["name"])
+          EM.stop
+        }
       end
     end
   end

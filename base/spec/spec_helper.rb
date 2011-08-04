@@ -7,6 +7,8 @@ require 'rspec'
 require 'logger'
 
 require 'base/base'
+require 'base/service_message'
+require 'base/service_error'
 
 class BaseTests
 
@@ -37,9 +39,11 @@ class BaseTests
   class BaseTester < VCAP::Services::Base::Base
     attr_accessor :node_mbus_connected
     attr_accessor :varz_invoked
+    attr_accessor :healthz_invoked
     def initialize(options)
       @node_mbus_connected = false
       @varz_invoked = false
+      @healthz_invoked = false
       super(options)
     end
     def flavor
@@ -55,6 +59,10 @@ class BaseTests
       @varz_invoked = true
       {}
     end
+    def healthz_details
+      @healthz_invoked = true
+      {}
+    end
   end
 
 end
@@ -65,6 +73,14 @@ class NodeTests
 
   def self.create_node
     NodeTester.new(BaseTests::Options.default({:node_id => NodeTester::ID}))
+  end
+
+  def self.create_error_node
+    NodeErrorTester.new(BaseTests::Options.default({:node_id => NodeTester::ID}))
+  end
+
+  def self.create_error_provisioner
+    MockErrorProvisioner.new
   end
 
   def self.create_provisioner
@@ -120,6 +136,7 @@ class NodeTests
   end
 
   class MockProvisioner
+    include VCAP::Services::Internal
     attr_accessor :got_announcement
     attr_accessor :got_provision_response
     def initialize
@@ -137,32 +154,166 @@ class NodeTests
       }
     end
     def send_provision_request
-      @nats.request("#{NodeTester::SERVICE_NAME}.provision.#{NodeTester::ID}", "{}") {
+      req = ProvisionRequest.new
+      req.plan = "free"
+      @nats.request("#{NodeTester::SERVICE_NAME}.provision.#{NodeTester::ID}", req.encode) {
         @got_provision_response = true
       }
     end
     def send_unprovision_request
-      @nats.request("#{NodeTester::SERVICE_NAME}.unprovision.#{NodeTester::ID}", "{}") {
+      req = UnprovisionRequest.new
+      req.name = "fake"
+      req.bindings = []
+      @nats.request("#{NodeTester::SERVICE_NAME}.unprovision.#{NodeTester::ID}", req.encode ) {
         @got_unprovision_response = true
       }
     end
     def send_bind_request
-      @nats.request("#{NodeTester::SERVICE_NAME}.bind.#{NodeTester::ID}", "{}") {
+      req = BindRequest.new
+      req.name = "fake"
+      req.bind_opts = {}
+      @nats.request("#{NodeTester::SERVICE_NAME}.bind.#{NodeTester::ID}", req.encode) {
         @got_bind_response = true
       }
     end
     def send_unbind_request
-      @nats.request("#{NodeTester::SERVICE_NAME}.unbind.#{NodeTester::ID}", "{}") {
+      req = UnbindRequest.new
+      req.credentials = {}
+      @nats.request("#{NodeTester::SERVICE_NAME}.unbind.#{NodeTester::ID}", req.encode) {
         @got_unbind_response = true
       }
     end
     def send_restore_request
-      @nats.request("#{NodeTester::SERVICE_NAME}.restore.#{NodeTester::ID}", "{}") {
+      req = RestoreRequest.new
+      req.instance_id = "fake1"
+      req.backup_path = "/tmp"
+      @nats.request("#{NodeTester::SERVICE_NAME}.restore.#{NodeTester::ID}", req.encode) {
         @got_restore_response = true
       }
     end
   end
 
+  # Test Node which raise error
+  class NodeErrorTester < VCAP::Services::Base::Node
+    include VCAP::Services::Base::Error
+    attr_accessor :announcement_invoked
+    attr_accessor :provision_invoked
+    attr_accessor :unprovision_invoked
+    attr_accessor :bind_invoked
+    attr_accessor :unbind_invoked
+    attr_accessor :restore_invoked
+    attr_accessor :provision_times
+    SERVICE_NAME = "Test"
+    ID = "node-error"
+    def initialize(options)
+      super(options)
+      @announcement_invoked = false
+      @provision_invoked = false
+      @unprovision_invoked = false
+      @bind_invoked = false
+      @unbind_invoked = false
+      @restore_invoked = false
+      @provision_times = 0
+      @mutex = Mutex.new
+    end
+    def service_name
+      SERVICE_NAME
+    end
+    def announcement
+      @announcement_invoked = true
+      Hash.new
+    end
+    def provision(plan, credential)
+      @provision_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
+    def unprovision(name, bindings)
+      @unprovision_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
+    def bind(name, bind_opts, credential)
+      @bind_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
+    def unbind(credentials)
+      @unbind_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
+    def restore(isntance_id, backup_path)
+      @restore_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
+  end
+
+  # Provisioner that catch error from node
+  class MockErrorProvisioner < MockProvisioner
+    include VCAP::Services::Internal
+    attr_accessor :got_announcement
+    attr_accessor :got_provision_response
+    attr_accessor :got_unprovision_response
+    attr_accessor :got_bind_response
+    attr_accessor :got_unbind_response
+    attr_accessor :got_restore_response
+    attr_accessor :response
+    def initialize
+      @got_announcement = false
+      @got_provision_response = false
+      @got_unprovision_response = false
+      @got_bind_response = false
+      @got_unbind_response = false
+      @got_restore_response = false
+      @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
+        @nats.subscribe("#{NodeTester::SERVICE_NAME}.announce") {
+          @got_announcement = true
+        }
+        @nats.publish("#{NodeTester::SERVICE_NAME}.discover")
+      }
+      @response = nil
+    end
+    def send_provision_request
+      req = ProvisionRequest.new
+      req.plan = "free"
+      @nats.request("#{NodeTester::SERVICE_NAME}.provision.#{NodeTester::ID}", req.encode) do |msg|
+        @got_provision_response = true
+        @response = msg
+      end
+    end
+    def send_unprovision_request
+      req = UnprovisionRequest.new
+      req.name = "fake"
+      req.bindings = []
+      @nats.request("#{NodeTester::SERVICE_NAME}.unprovision.#{NodeTester::ID}", req.encode ) do |msg|
+        @got_unprovision_response = true
+        @response = msg
+      end
+    end
+    def send_bind_request
+      req = BindRequest.new
+      req.name = "fake"
+      req.bind_opts = {}
+      @nats.request("#{NodeTester::SERVICE_NAME}.bind.#{NodeTester::ID}", req.encode) do |msg|
+        @got_bind_response = true
+        @response = msg
+      end
+    end
+    def send_unbind_request
+      req = UnbindRequest.new
+      req.credentials = {}
+      @nats.request("#{NodeTester::SERVICE_NAME}.unbind.#{NodeTester::ID}", req.encode) do |msg|
+        @got_unbind_response = true
+        @response = msg
+      end
+    end
+    def send_restore_request
+      req = RestoreRequest.new
+      req.instance_id = "fake1"
+      req.backup_path = "/tmp"
+      @nats.request("#{NodeTester::SERVICE_NAME}.restore.#{NodeTester::ID}", req.encode) do |msg|
+        @got_restore_response = true
+        @response = msg
+      end
+    end
+  end
 end
 
 require 'base/provisioner'
@@ -177,17 +328,33 @@ class ProvisionerTests
     MockGateway.new(provisioner)
   end
 
+  def self.create_error_gateway(provisioner)
+    MockErrorGateway.new(provisioner)
+  end
+
   def self.create_node(id, score = 1)
     MockNode.new(id, score)
+  end
+
+  def self.create_error_node(id, score = 1)
+    MockErrorNode.new(id, score)
+  end
+
+  def self.setup_fake_instance(gateway, provisioner, node)
+    instance_id = "fake_instance"
+    gateway.instance_id = instance_id
+    provisioner.prov_svcs[instance_id] = {:credentials => {'node_id' =>node.node_id }}
   end
 
   class ProvisionerTester < VCAP::Services::Base::Provisioner
     attr_accessor :prov_svcs
     attr_accessor :varz_invoked
+    attr_accessor :healthz_invoked
     attr_accessor :prov_svcs
     def initialize(options)
       super(options)
       @varz_invoked = false
+      @healthz_invoked = false
     end
     SERVICE_NAME = "Test"
     def service_name
@@ -201,6 +368,10 @@ class ProvisionerTests
     end
     def varz_details
       @varz_invoked = true
+      super
+    end
+    def healthz_details
+      @healthz_invoked = true
       super
     end
   end
@@ -226,7 +397,8 @@ class ProvisionerTests
       @bind_id = nil
     end
     def send_provision_request
-      @provisioner.provision_service({}, nil) do |res|
+      req = {'plan' => 'free'}
+      @provisioner.provision_service(req, nil) do |res|
         @instance_id = res['response'][:service_id]
         @got_provision_response = res['success']
       end
@@ -237,7 +409,7 @@ class ProvisionerTests
       end
     end
     def send_bind_request
-      @provisioner.bind_instance(@instance_id, nil, nil) do |res|
+      @provisioner.bind_instance(@instance_id, {}, nil) do |res|
         @bind_id = res['response'][:service_id]
         @got_bind_response = res['success']
       end
@@ -253,13 +425,84 @@ class ProvisionerTests
       end
     end
     def send_recover_request
-      @provisioner.recover(@instance_id, nil, [{'service_id' => @instance_id, 'configuration' => {}}]) do |res|
+      # register a fake callback to provisioner which always return true
+      @provisioner.register_update_handle_callback{|handle, &blk| blk.call(true)}
+      @provisioner.recover(@instance_id, "/tmp", [{'service_id' => @instance_id, 'configuration' => {'plan' => 'free'}},{'service_id' => 'fake_uuid', 'configuration' => {}, 'credentials'=>{'name' => @instance_id}}]) do |res|
         @got_recover_response = res['success']
       end
     end
   end
 
+  # Gateway that catch error from node
+  class MockErrorGateway < MockGateway
+    attr_accessor :got_announcement
+    attr_accessor :provision_response
+    attr_accessor :unprovision_response
+    attr_accessor :bind_response
+    attr_accessor :unbind_response
+    attr_accessor :restore_response
+    attr_accessor :recover_response
+    attr_accessor :error_msg
+    attr_accessor :instance_id
+    attr_accessor :bind_id
+    def initialize(provisioner)
+      @provisioner = provisioner
+      @got_announcement = false
+      @provision_response = true
+      @unprovision_response = true
+      @bind_response = true
+      @unbind_response = true
+      @restore_response = true
+      @recover_response = true
+      @error_msg = nil
+      @instance_id = nil
+      @bind_id = nil
+    end
+    def send_provision_request
+      req = {'plan' => 'free'}
+      @provisioner.provision_service(req, nil) do |res|
+        @provision_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+    def send_unprovision_request
+      @provisioner.unprovision_service(@instance_id) do |res|
+        @unprovision_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+    def send_bind_request
+      @provisioner.bind_instance(@instance_id, {}, nil) do |res|
+        @bind_response = res['success']
+        @bind_id = res['response'][:service_id]
+        @bind_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+    def send_unbind_request
+      @provisioner.unbind_instance(@instance_id, @bind_id, nil) do |res|
+        @unbind_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+    def send_restore_request
+      @provisioner.restore_instance(@instance_id, nil) do |res|
+        @restore_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+    def send_recover_request
+      # register a fake callback to provisioner which always return true
+      @provisioner.register_update_handle_callback{|handle, &blk| blk.call(true)}
+      @provisioner.recover(@instance_id, "/tmp", [{'service_id' => @instance_id, 'configuration' => {'plan' => 'free'}},{'service_id' => 'fake_uuid', 'configuration' => {}, 'credentials'=>{'name' => @instance_id}}]) do |res|
+        @recover_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+  end
+
   class MockNode
+    include VCAP::Services::Internal
     attr_accessor :got_unprovision_request
     attr_accessor :got_provision_request
     attr_accessor :got_unbind_request
@@ -279,53 +522,45 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.provision.#{node_id}") { |_, reply|
           @got_provision_request = true
-          response = {
-            'success' => true,
-            'response' => {
+          response = ProvisionResponse.new
+          response.success = true
+          response.credentials = {
               'name' => UUIDTools::UUID.random_create.to_s,
               'node_id' => node_id,
               'username' => UUIDTools::UUID.random_create.to_s,
               'password' => UUIDTools::UUID.random_create.to_s,
             }
-          }
-          @nats.publish(reply, response.to_json)
+          @nats.publish(reply, response.encode)
         }
         @nats.subscribe("#{service_name}.unprovision.#{node_id}") { |msg, reply|
           @got_unprovision_request = true
-          response = {
-            'success' => true,
-            'response' => {}
-          }
-          @nats.publish(reply, response.to_json)
+          response = SimpleResponse.new
+          response.success = true
+          @nats.publish(reply, response.encode)
         }
         @nats.subscribe("#{service_name}.bind.#{node_id}") { |msg, reply|
           @got_bind_request = true
-          response = {
-            'success' => true,
-            'response' => {
+          response = BindResponse.new
+          response.success = true
+          response.credentials = {
               'name' => UUIDTools::UUID.random_create.to_s,
               'node_id' => node_id,
               'username' => UUIDTools::UUID.random_create.to_s,
               'password' => UUIDTools::UUID.random_create.to_s,
             }
-          }
-          @nats.publish(reply, response.to_json)
+          @nats.publish(reply, response.encode)
         }
         @nats.subscribe("#{service_name}.unbind.#{node_id}") { |msg, reply|
           @got_unbind_request = true
-          response = {
-            'success' => true,
-            'response' => {}
-          }
-          @nats.publish(reply, response.to_json)
+          response = SimpleResponse.new
+          response.success = true
+          @nats.publish(reply, response.encode)
         }
         @nats.subscribe("#{service_name}.restore.#{node_id}") { |msg, reply|
           @got_restore_request = true
-          response = {
-            'success' => true,
-            'response' => {}
-          }
-          @nats.publish(reply, response.to_json)
+          response = SimpleResponse.new
+          response.success = true
+          @nats.publish(reply, response.encode)
         }
         announce
       }
@@ -339,6 +574,65 @@ class ProvisionerTests
     def announce(reply=nil)
       a = { :id => node_id, :score => @score }
       @nats.publish(reply||"#{service_name}.announce", a.to_json)
+    end
+  end
+
+  # The node that generates error response
+  class MockErrorNode < MockNode
+    include VCAP::Services::Base::Error
+    attr_accessor :got_unprovision_request
+    attr_accessor :got_provision_request
+    attr_accessor :got_unbind_request
+    attr_accessor :got_bind_request
+    attr_accessor :got_restore_request
+    def initialize(id, score)
+      @id = id
+      @score = score
+      @got_provision_request = false
+      @got_unprovision_request = false
+      @got_bind_request = false
+      @got_unbind_request = false
+      @got_restore_request = false
+      @internal_error = ServiceError.new(ServiceError::INTERNAL_ERROR)
+      @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
+        @nats.subscribe("#{service_name}.discover") { |_, reply|
+          announce(reply)
+        }
+        @nats.subscribe("#{service_name}.provision.#{node_id}") { |_, reply|
+          @got_provision_request = true
+          response = ProvisionResponse.new
+          response.success = false
+          response.error = @internal_error.to_hash
+          @nats.publish(reply, response.encode)
+        }
+        @nats.subscribe("#{service_name}.unprovision.#{node_id}") { |msg, reply|
+          @got_unprovision_request = true
+          @nats.publish(reply, gen_simple_error_response.encode)
+        }
+        @nats.subscribe("#{service_name}.bind.#{node_id}") { |msg, reply|
+          @got_bind_request = true
+          response = BindResponse.new
+          response.success = false
+          response.error = @internal_error.to_hash
+          @nats.publish(reply, response.encode)
+        }
+        @nats.subscribe("#{service_name}.unbind.#{node_id}") { |msg, reply|
+          @got_unbind_request = true
+          @nats.publish(reply, gen_simple_error_response.encode)
+        }
+        @nats.subscribe("#{service_name}.restore.#{node_id}") { |msg, reply|
+          @got_restore_request = true
+          @nats.publish(reply, gen_simple_error_response.encode)
+        }
+        announce
+      }
+    end
+
+    def gen_simple_error_response
+      res = SimpleResponse.new
+      res.success = false
+      res.error = @internal_error.to_hash
+      res
     end
   end
 

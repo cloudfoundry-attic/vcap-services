@@ -7,7 +7,7 @@ rabbit_port: 5672
 mbus: nats://localhost:4222
 index: 0
 log_level: DEBUG
-local_ip: 127.0.0.1
+ip_route: 127.0.0.1
 available_memory: 4096
 max_memory: 16
 node_id: rabbit_node_1
