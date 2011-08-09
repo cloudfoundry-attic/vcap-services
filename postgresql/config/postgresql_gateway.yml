@@ -6,6 +6,10 @@ service:
   description: 'PostgreSQL database service'
   plans: ['free']
   tags: ['postgresql', 'postgresql-9.0', 'relational']
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 host: localhost
 token: "0xdeadbeef"
 log_level: DEBUG

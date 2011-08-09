@@ -6,6 +6,10 @@ service:
   description: 'MongoDB NoSQL store'
   plans: ['free']
   tags: ['mongodb', 'mongodb-1.6', 'nosql']
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 host: localhost
 index: 0
 token: "0xdeadbeef"
