@@ -102,7 +102,7 @@ class VCAP::Services::Mysql::Node
     ProvisionedService.all.each do |service|
       db, user = service.name, service.user
       if not db_list.include?([db, user]) then
-        @logger.error("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
+        @logger.warn("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
         next
       end
     end
@@ -295,7 +295,7 @@ class VCAP::Services::Mysql::Node
       @logger.info("Deleting database: #{name}")
       @connection.query("DROP DATABASE #{name}")
     rescue Mysql::Error => e
-      @logger.fatal("Could not delete database: [#{e.errno}] #{e.error}")
+      @logger.error("Could not delete database: [#{e.errno}] #{e.error}")
     end
   end
 
@@ -305,7 +305,7 @@ class VCAP::Services::Mysql::Node
     @connection.query("DROP USER #{user}@'localhost'")
     kill_user_session(user)
   rescue Mysql::Error => e
-    @logger.fatal("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
+    @logger.error("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
   end
 
   def kill_user_session(user)
