@@ -115,6 +115,7 @@ def get_node_config()
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
     :base_dir => '/tmp/mongo/instances',
+    :mongod_log_dir => '/tmp/mongo/mongod_log',
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db'
   }
   options[:logger].level = Logger::FATAL

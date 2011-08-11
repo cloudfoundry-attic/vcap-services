@@ -6,6 +6,7 @@ base_dir: /var/vcap/services/mongodb/instances
 ip_route: 127.0.0.1
 logging:
   level: debug
+mongod_log_dir: /var/vcap/sys/log/mongodb
 pid: /var/vcap/sys/run/mongodb_node.pid
 available_memory: 4096
 max_memory: 128

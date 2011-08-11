@@ -85,6 +85,7 @@ class VCAP::Services::MongoDB::Node
     FileUtils.mkdir_p(@base_dir)
     @mongod_path = options[:mongod_path]
     @mongorestore_path = options[:mongorestore_path]
+    @mongod_log_dir = options[:mongod_log_dir]
 
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
@@ -221,9 +222,13 @@ class VCAP::Services::MongoDB::Node
 
     provisioned_service.kill(:SIGKILL) if provisioned_service.running?
 
-    dir = File.join(@base_dir, provisioned_service.name)
+    dir = service_dir(provisioned_service.name)
+    log_dir = log_dir(provisioned_service.name)
 
-    EM.defer { FileUtils.rm_rf(dir) }
+    EM.defer do
+      FileUtils.rm_rf(dir)
+      FileUtils.rm_rf(log_dir)
+    end
 
     @available_memory += provisioned_service.memory
     @free_ports << provisioned_service.port
@@ -334,17 +339,20 @@ class VCAP::Services::MongoDB::Node
   def dump_instance(service_credential, binding_credentials, dump_dir)
     @logger.debug("dump_instance :service_credential #{service_credential}, binding_credentials: #{binding_credentials}, dump_dir: #{dump_dir}")
 
-    from_dir = service_dir(service_credential['name'])
+    instance_id = service_credential['name']
+    from_dir = service_dir(instance_id)
+    log_dir = log_dir(instance_id)
     FileUtils.mkdir_p(dump_dir)
 
     provisioned_service = ProvisionedService.get(service_credential['name'])
-    raise "Cannot file service #{service_credential['name']}" if provisioned_service.nil?
+    raise "Cannot file service #{instance_id}" if provisioned_service.nil?
 
     d_file = dump_file(dump_dir)
     File.open(d_file, 'w') do |f|
       Marshal.dump(provisioned_service, f)
     end
     FileUtils.cp_r(File.join(from_dir, '.'), dump_dir)
+    FileUtils.cp_r(log_dir, dump_dir)
     true
   rescue => e
     @logger.warn(e)
@@ -354,10 +362,12 @@ class VCAP::Services::MongoDB::Node
   def import_instance(service_credential, binding_credentials, dump_dir, plan)
     @logger.debug("import_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}, dump_dir: #{dump_dir}, plan: #{plan}")
 
-    to_dir = service_dir(service_credential['name'])
+    instance_id = service_credential['name']
+    to_dir = service_dir(instance_id)
     FileUtils.rm_rf(to_dir)
     FileUtils.mkdir_p(to_dir)
     FileUtils.cp_r(File.join(dump_dir, '.'), to_dir)
+    FileUtils.cp_r(File.join(dump_dir, instance_id), @mongod_log_dir)
     true
   rescue => e
     @logger.warn(e)
@@ -495,16 +505,18 @@ class VCAP::Services::MongoDB::Node
 
       port = provisioned_service.port
       password = provisioned_service.password
-      dir = service_dir(provisioned_service.name)
+      instance_id = provisioned_service.name
+      dir = service_dir(instance_id)
       data_dir = data_dir(dir)
-      log_file = log_file(dir)
+      log_file = log_file(instance_id)
+      log_dir = log_dir(instance_id)
 
       config = @config_template.result(binding)
       config_path = File.join(dir, "mongodb.conf")
 
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
-      FileUtils.rm_f(log_file)
+      FileUtils.mkdir_p(log_dir)
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
@@ -637,8 +649,12 @@ class VCAP::Services::MongoDB::Node
     File.join(to_dir, 'dump_file')
   end
 
-  def log_file(base_dir)
-    File.join(base_dir, 'log')
+  def log_file(instance_id)
+    File.join(log_dir(instance_id), 'mongodb.log')
+  end
+
+  def log_dir(instance_id)
+    File.join(@mongod_log_dir, instance_id)
   end
 
   def data_dir(base_dir)
@@ -653,8 +669,7 @@ class VCAP::Services::MongoDB::Node
   def record_service_log(service_id)
     @logger.warn(" *** BEGIN mongodb log - instance: #{service_id}")
     @logger.warn("")
-    base_dir = service_dir(service_id)
-    file = File.new(log_file(base_dir), 'r')
+    file = File.new(log_file(instance_id), 'r')
     while (line = file.gets)
       @logger.warn(line.chomp!)
     end
