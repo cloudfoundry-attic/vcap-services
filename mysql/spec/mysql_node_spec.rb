@@ -139,6 +139,29 @@ describe "Mysql server node" do
     end
   end
 
+  it "should able to handle orphan instances when enforce storage quota." do
+    begin
+      # forge an orphan instance, which is not exist in mysql
+      klass = VCAP::Services::Mysql::Node::ProvisionedService
+      DataMapper.setup(:default, @opts[:local_db])
+      DataMapper::auto_upgrade!
+      service = klass.new
+      service.name = 'test-'+ UUIDTools::UUID.random_create.to_s
+      service.user = "test"
+      service.password= "test"
+      service.plan= "free"
+      if not service.save
+        raise "Failed to forge orphan instance: #{service.errors.inspect}"
+      end
+      EM.run do
+        expect { @node.enforce_storage_quota }.should_not raise_error
+        EM.stop
+      end
+    ensure
+      service.destroy
+    end
+  end
+
   it "should not create db or send response if receive a malformed request" do
     EM.run do
       db_num = @node.connection.query("show databases;").num_rows()

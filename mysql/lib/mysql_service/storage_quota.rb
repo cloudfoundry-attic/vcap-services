@@ -78,6 +78,8 @@ class VCAP::Services::Mysql::Node
     ProvisionedService.all.each do |service|
       db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
       size = sizes[db]
+      # ignore the orphan instance
+      next if size.nil?
 
       if (size >= @max_db_size) and not quota_exceeded then
         revoke_write_access(db, service)
