@@ -79,6 +79,7 @@ class VCAP::Services::Base::Gateway
              :ip_route => config[:ip_route],
              :mbus => config[:mbus],
              :node_timeout => config[:node_timeout] || 2,
+             :z_interval => config[:z_interval],
              :allow_over_provisioning => config[:allow_over_provisioning]
            )
       sg = VCAP::Services::AsynchronousServiceGateway.new(

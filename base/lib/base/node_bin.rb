@@ -53,6 +53,7 @@ class VCAP::Services::Base::NodeBin
       :base_dir => parse_property(config, "base_dir", String),
       :ip_route => parse_property(config, "ip_route", String, :optional => true),
       :node_id => parse_property(config, "node_id", String),
+      :z_interval => parse_property(config, "z_interval", Integer, :optional => true),
       :mbus => parse_property(config, "mbus", String),
       :local_db => parse_property(config, "local_db", String),
       :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),

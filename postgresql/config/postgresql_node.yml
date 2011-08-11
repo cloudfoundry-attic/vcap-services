@@ -17,3 +17,5 @@ postgresql:
   user: vcap
   pass: vcap
   database: postgres
+
+# z_interval: 30

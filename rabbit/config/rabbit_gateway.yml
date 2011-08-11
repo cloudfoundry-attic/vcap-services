@@ -14,3 +14,4 @@ logging:
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/rabbit_gateway.pid
 # allow_over_provision: false
+# z_interval: 30
