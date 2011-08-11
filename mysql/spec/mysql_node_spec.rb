@@ -256,7 +256,7 @@ describe "Mysql server node" do
   end
 
   it "should kill long transaction" do
-    if @opts[:max_long_tx] > 0
+    if @opts[:max_long_tx] > 0 and (@node.check_innodb_plugin)
       EM.run do
         opts = @opts.dup
         # reduce max_long_tx to accelerate test
@@ -268,12 +268,14 @@ describe "Mysql server node" do
         conn.query("insert into a value(10)")
         conn.query("begin")
         conn.query("select * from a for update")
-        EM.add_timer(opts[:max_long_tx]*2) {
+        EM.add_timer(opts[:max_long_tx] * 5) {
           expect {conn.query("select * from a for update")}.should raise_error(Mysql::Error, /interrupted/)
           conn.close
           EM.stop
         }
       end
+    else
+      pending "long transaction killer is disabled."
     end
   end
 

@@ -62,7 +62,11 @@ class VCAP::Services::Mysql::Node
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f/2) {kill_long_queries} if @max_long_query > 0
-    EM.add_periodic_timer(@max_long_tx.to_f/2) {kill_long_transaction} if @max_long_tx > 0
+    if (@max_long_tx > 0) and (check_innodb_plugin)
+      EM.add_periodic_timer(@max_long_tx.to_f/2) {kill_long_transaction}
+    else
+      @logger.info("long transaction killer is disabled.")
+    end
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
 
     @base_dir = options[:base_dir]
@@ -106,6 +110,12 @@ class VCAP::Services::Mysql::Node
         next
       end
     end
+  end
+
+  # check whether mysql has required innodb plugin installed.
+  def check_innodb_plugin()
+    res = @connection.query("show tables from information_schema like 'INNODB_TRX'")
+    return true if res.num_rows > 0
   end
 
   def storage_for_service(provisioned_service)
