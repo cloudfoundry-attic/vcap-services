@@ -455,7 +455,6 @@ class VCAP::Services::Mysql::Node
   end
 
   def varz_details()
-    @logger.debug("Generate varz.")
     varz = {}
     # how many queries served since startup
     varz[:queries_since_startup] = get_queries_status
@@ -519,14 +518,12 @@ class VCAP::Services::Mysql::Node
   end
 
   def get_queries_status()
-    @logger.debug("Get mysql query status.")
     result = @connection.query("SHOW STATUS WHERE Variable_name ='QUERIES'")
     return 0 if result.num_rows == 0
     return result.fetch_row[1].to_i
   end
 
   def get_qps()
-    @logger.debug("Calculate queries per seconds.")
     queries = get_queries_status
     ts = Time.now.to_i
     delta_t = (ts - @qps_last_updated).to_f
@@ -537,7 +534,6 @@ class VCAP::Services::Mysql::Node
   end
 
   def get_instance_status()
-    @logger.debug("Get database instance status.")
     all_dbs =[]
     result = @connection.query('show databases')
     result.each {|db| all_dbs << db[0]}
