@@ -13,7 +13,7 @@ gem "thin"
 gem "sinatra"
 gem "amqp"
 
-gem 'vcap_common', :path => '../../common'
+gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', :require => ['vcap/logging']
 
 group :test do
