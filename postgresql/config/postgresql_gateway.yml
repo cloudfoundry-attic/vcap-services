@@ -3,10 +3,14 @@
 service:
   name: postgresql
   version: "9.0"
-  description: 'PostgreSQL database service'
+  description: 'PostgreSQL database service (vFabric)'
   plans: ['free']
   tags: ['postgresql', 'postgresql-9.0', 'relational']
 ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 token: "0xdeadbeef"
 logging:
   level: debug

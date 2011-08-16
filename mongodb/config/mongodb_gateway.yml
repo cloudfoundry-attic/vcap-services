@@ -7,6 +7,10 @@ service:
   plans: ['free']
   tags: ['mongodb', 'mongodb-1.6', 'nosql']
 ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 index: 0
 token: "0xdeadbeef"
 mbus: nats://localhost:4222

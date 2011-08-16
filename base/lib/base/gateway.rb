@@ -82,6 +82,7 @@ class VCAP::Services::Base::Gateway
              :allow_over_provisioning => config[:allow_over_provisioning]
            )
       sg = VCAP::Services::AsynchronousServiceGateway.new(
+             :proxy => config[:proxy],
              :service => config[:service],
              :token   => config[:token],
              :logger  => logger,
