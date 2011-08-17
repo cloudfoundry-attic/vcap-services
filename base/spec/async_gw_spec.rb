@@ -105,6 +105,17 @@ describe AsyncGatewayTests do
     gateway.recover_http_code.should == 200
   end
 
+  it "should not serve request when handle is not fetched" do
+    gateway = nil
+    EM.run do
+      # We don't start cc here, so gateway will fail to fetch handles
+      Do.at(0) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(2) { gateway.send_provision_request }
+      Do.at(3) { gateway.stop ; EM.stop }
+    end
+    gateway.provision_http_code.should == 503
+  end
+
   it "should be able to return error when provision failed" do
     cc = nil
     gateway = nil

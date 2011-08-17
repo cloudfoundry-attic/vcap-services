@@ -46,7 +46,8 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @provisioner  = opts[:provisioner]
     @hb_interval  = opts[:heartbeat_interval] || 60
     @handles_uri = "#{@cld_ctrl_uri}/services/v1/offerings/#{@service[:label]}/handles"
-    @handle_fetch_interval = opts[:handle_fetch_interval] || 60
+    @handle_fetch_interval = opts[:handle_fetch_interval] || 1
+    @handle_fetched = false
     @svc_json     = {
       :label  => @service[:label],
       :url    => @service[:url],
@@ -82,6 +83,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     # Add any necessary handles we don't know about
     update_callback = Proc.new do |resp|
       @provisioner.update_handles(resp.handles)
+      @handle_fetched = true
       EM.cancel_timer(@fetch_handle_timer)
     end
     @fetch_handle_timer = EM.add_periodic_timer(@handle_fetch_interval) { fetch_handles(&update_callback) }
@@ -100,6 +102,10 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     end
     unless auth_token && (auth_token == @token)
       error_msg = ServiceError.new(ServiceError::NOT_AUTHORIZED).to_hash
+      abort_request(error_msg)
+    end
+    unless @handle_fetched
+      error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
       abort_request(error_msg)
     end
     content_type :json
