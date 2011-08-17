@@ -415,7 +415,8 @@ class VCAP::Services::MongoDB::Node
     service_credential['host'] = @local_ip
     service_credential['hostname'] = @local_ip
 
-    binding_credentials.each_value do |v|
+    binding_credentials.each_value do |value|
+      v = value["credentials"]
       v['port'] = port
       v['host'] = @local_ip
       v['hostname'] = @local_ip

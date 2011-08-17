@@ -429,13 +429,12 @@ class VCAP::Services::Mysql::Node
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
-    bind(name, nil, prov_cred)
-    binding_creds_hash.each do |k, v|
+    prov_cred = bind(name, nil, prov_cred)
+    binding_creds_hash.each_value do |v|
       cred = v["credentials"]
       binding_opts = v["binding_options"]
-      bind(name, binding_opts, cred)
+      v["credentials"] = bind(name, binding_opts, cred)
     end
-    # Mysql don't need to modify binding info
     return [prov_cred, binding_creds_hash]
   rescue => e
     @logger.warn(e)
