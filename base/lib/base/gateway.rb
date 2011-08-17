@@ -69,6 +69,7 @@ class VCAP::Services::Base::Gateway
     config[:service][:label] = "#{config[:service][:name]}-#{config[:service][:version]}"
     config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
     cloud_controller_uri = config[:cloud_controller_uri] || default_cloud_controller_uri
+    node_timeout = config[:node_timeout] || 5
 
     # Go!
     EM.run do
@@ -78,7 +79,7 @@ class VCAP::Services::Base::Gateway
              :version  => config[:service][:version],
              :ip_route => config[:ip_route],
              :mbus => config[:mbus],
-             :node_timeout => config[:node_timeout] || 2,
+             :node_timeout => node_timeout,
              :z_interval => config[:z_interval],
              :allow_over_provisioning => config[:allow_over_provisioning]
            )
@@ -88,6 +89,7 @@ class VCAP::Services::Base::Gateway
              :token   => config[:token],
              :logger  => logger,
              :provisioner => sp,
+             :node_timeout => node_timeout,
              :cloud_controller_uri => cloud_controller_uri
            )
       Thin::Server.start(config[:host], config[:port], sg)

@@ -45,6 +45,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @offering_uri = "#{@cld_ctrl_uri}/services/v1/offerings"
     @provisioner  = opts[:provisioner]
     @hb_interval  = opts[:heartbeat_interval] || 60
+    @node_timeout = opts[:node_timeout]
     @handles_uri = "#{@cld_ctrl_uri}/services/v1/offerings/#{@service[:label]}/handles"
     @handle_fetch_interval = opts[:handle_fetch_interval] || 1
     @handle_fetched = false
@@ -290,7 +291,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       end
     end
 
-    def async_mode(timeout=10)
+    def async_mode(timeout=@node_timeout)
       request.env['__async_timer'] = EM.add_timer(timeout) do
         @logger.warn("Service Unavailable")
         error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
