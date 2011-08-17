@@ -3,7 +3,7 @@
 service:
   name: postgresql
   version: "9.0"
-  description: 'PostgreSQL database service (vFabric)'
+  description: 'PostgreSQL database service'
   plans: ['free']
   tags: ['postgresql', 'postgresql-9.0', 'relational']
 #proxy:
