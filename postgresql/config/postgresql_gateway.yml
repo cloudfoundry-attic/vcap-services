@@ -6,13 +6,14 @@ service:
   description: 'PostgreSQL database service'
   plans: ['free']
   tags: ['postgresql', 'postgresql-9.0', 'relational']
+ip_route: localhost
 #proxy:
 #   host: proxy
 #   port: 8080
 #   keepalive: true
-host: localhost
 token: "0xdeadbeef"
-log_level: DEBUG
+logging:
+  level: debug
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/postgresql_service.pid
 node_timeout: 2

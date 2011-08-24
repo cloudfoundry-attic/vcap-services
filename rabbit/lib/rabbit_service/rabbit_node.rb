@@ -235,11 +235,11 @@ class VCAP::Services::Rabbit::Node
   end
 
   def save_instance(instance)
-    raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
+    raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.inspect) unless instance.save
   end
 
   def destroy_instance(instance)
-    raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.pretty_inspect) unless instance.destroy
+    raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.destroy
   end
 
   def get_instance(instance_id)

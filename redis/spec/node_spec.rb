@@ -51,7 +51,7 @@ describe VCAP::Services::Redis::Node do
   end
 
   after :all do
-    %x[rm -f #{@local_db_file}]
+    FileUtils.rm_f(@local_db_file)
   end
 
   describe 'Node.initialize' do
@@ -371,8 +371,21 @@ describe VCAP::Services::Redis::Node do
       @restore_result.should == {}
     end
 
+    it "should restore from an empty dump file" do
+      restore_dir = "/tmp/restore/redis_empty"
+      FileUtils.mkdir_p(restore_dir)
+      FileUtils.touch(File.join(restore_dir, "dump.rdb"))
+      restore_result = @node.restore(@credentials2["name"], restore_dir)
+      sleep 1
+      Redis.new({:port => @credentials2["port"], :password => @credentials2["password"]}).get("test_key").should be_nil
+    end
+
     it "should raise exception if the instance is not existed" do
       expect {@node.restore("non-existed", @restore_dir)}.should raise_error(VCAP::Services::Redis::RedisError)
+    end
+
+    it "should raise exception if the dumped file is not existed" do
+      expect {@node.restore(@credentials2["name"], "/tmp/restore")}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 

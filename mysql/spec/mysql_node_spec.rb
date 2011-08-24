@@ -95,15 +95,71 @@ describe "Mysql server node" do
       conn.query("CREATE TABLE test(id INT)")
       conn.query("INSERT INTO test VALUE(10)")
       conn.query("INSERT INTO test VALUE(20)")
-      table_size = @node.db_size(@db["name"])
+      table_size = @node.dbs_size[@db["name"]]
       table_size.should > 0
       # should also calculate index size
       conn.query("CREATE INDEX id_index on test(id)")
-      all_size = @node.db_size(@db["name"])
+      all_size = @node.dbs_size[@db["name"]]
       all_size.should > table_size
       EM.stop
     end
+  end
 
+  it "should enforce database size quota" do
+    EM.run do
+      opts = @opts.dup
+      # reduce storage quota to 4KB.
+      opts[:max_db_size] = 4.0/1024
+      node = VCAP::Services::Mysql::Node.new(opts)
+      binding = node.bind(@db["name"],  @default_opts)
+      @test_dbs[@db] << binding
+      conn = connect_to_mysql(binding)
+      conn.query("create table test(data text)")
+      c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
+      content = (0..5000).map{ c[rand(c.size)] }.join
+      conn.query("insert into test value('#{content}')")
+      EM.add_timer(3) do
+        expect {conn.ping()}.should raise_error
+        conn.close
+        conn = connect_to_mysql(binding)
+        # write privilege should be rovoked.
+        expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql::Error, /INSERT command denied/)
+        conn2 = connect_to_mysql(@db)
+        expect{ conn2.query("insert into test value('test')")}.should raise_error(Mysql::Error, /INSERT command denied/)
+        conn.query("delete from test")
+        EM.add_timer(3) do
+          expect {conn.ping()}.should raise_error
+          conn.close
+          conn = connect_to_mysql(binding)
+          # write privilege should restore
+          expect{ conn.query("insert into test value('test')")}.should_not raise_error
+          EM.stop
+        end
+      end
+    end
+  end
+
+  it "should able to handle orphan instances when enforce storage quota." do
+    begin
+      # forge an orphan instance, which is not exist in mysql
+      klass = VCAP::Services::Mysql::Node::ProvisionedService
+      DataMapper.setup(:default, @opts[:local_db])
+      DataMapper::auto_upgrade!
+      service = klass.new
+      service.name = 'test-'+ UUIDTools::UUID.random_create.to_s
+      service.user = "test"
+      service.password= "test"
+      service.plan= "free"
+      if not service.save
+        raise "Failed to forge orphan instance: #{service.errors.inspect}"
+      end
+      EM.run do
+        expect { @node.enforce_storage_quota }.should_not raise_error
+        EM.stop
+      end
+    ensure
+      service.destroy
+    end
   end
 
   it "should not create db or send response if receive a malformed request" do

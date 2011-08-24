@@ -14,6 +14,7 @@ gem "thin"
 gem "sinatra"
 
 gem 'vcap_common', :path => '../../common'
+gem 'vcap_logging', :require => ['vcap/logging']
 
 group :test do
   gem "rake"

@@ -6,14 +6,15 @@ service:
   description: 'Redis key-value store service'
   plans: ['free']
   tags: ['redis', 'redis-2.2', 'key-value', 'nosql']
+ip_route: localhost
 #proxy:
 #   host: proxy
 #   port: 8080
 #   keepalive: true
-host: localhost
 index: 0
 token: "0xdeadbeef"
-log_level: DEBUG
+logging:
+  level: debug
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/redis_service.pid
 # allow_over_provisioning: false

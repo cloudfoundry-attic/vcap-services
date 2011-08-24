@@ -199,12 +199,12 @@ class VCAP::Services::Postgresql::Node
     provisionedservice.bindusers << binduser
     if create_database(provisionedservice) then
       if not binduser.save
-        @logger.error("Could not save entry: #{binduser.errors.pretty_inspect}")
+        @logger.error("Could not save entry: #{binduser.errors.inspect}")
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       if not provisionedservice.save
         binduser.destroy
-        @logger.error("Could not save entry: #{provisionedservice.errors.pretty_inspect}")
+        @logger.error("Could not save entry: #{provisionedservice.errors.inspect}")
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       response = gen_credential(provisionedservice.name, binduser.user, binduser.password)
@@ -234,11 +234,11 @@ class VCAP::Services::Postgresql::Node
 
     provisionedservice.bindusers.all.each do |binduser|
       if not binduser.destroy
-        @logger.error("Could not delete entry: #{binduser.errors.pretty_inspect}")
+        @logger.error("Could not delete entry: #{binduser.errors.inspect}")
       end
     end
     if not provisionedservice.destroy
-      @logger.error("Could not delete entry: #{provisionedservice.errors.pretty_inspect}")
+      @logger.error("Could not delete entry: #{provisionedservice.errors.inspect}")
     end
     @logger.info("Successfully fulfilled unprovision request: #{name}")
     true
@@ -275,12 +275,12 @@ class VCAP::Services::Postgresql::Node
 
       provisionedservice.bindusers << binduser
       if not binduser.save
-        @logger.error("Could not save entry: #{binduser.errors.pretty_inspect}")
+        @logger.error("Could not save entry: #{binduser.errors.inspect}")
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       if not provisionedservice.save
         binduser.destroy
-        @logger.error("Could not save entry: #{provisionedservice.errors.pretty_inspect}")
+        @logger.error("Could not save entry: #{provisionedservice.errors.inspect}")
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
 
@@ -305,7 +305,7 @@ class VCAP::Services::Postgresql::Node
     if unbinduser != nil then
       delete_database_user(unbinduser,name)
       if not unbinduser.destroy
-        @logger.error("Could not delete entry: #{unbinduser.errors.pretty_inspect}")
+        @logger.error("Could not delete entry: #{unbinduser.errors.inspect}")
       end
     else
       @logger.warn("Node database inconsistent!!! user <#{user}> not in PostgreSQL.")
@@ -320,7 +320,7 @@ class VCAP::Services::Postgresql::Node
       start = Time.now
       user = bindusers[0].user
       sys_user = bindusers[0].sys_user
-      @logger.info("Creating: #{provisionedservice.pretty_inspect}")
+      @logger.info("Creating: #{provisionedservice.inspect}")
       @connection.query("CREATE DATABASE #{name}")
       @connection.query("REVOKE ALL ON DATABASE #{name} FROM PUBLIC")
       if not create_database_user(name, bindusers[0], false) then
@@ -329,7 +329,7 @@ class VCAP::Services::Postgresql::Node
       storage = storage_for_service(provisionedservice)
       raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if @available_storage < storage
       @available_storage -= storage
-      @logger.info("Done creating #{provisionedservice.pretty_inspect}. Took #{Time.now - start}.")
+      @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
     rescue PGError => e
       @logger.error("Could not create database: #{e}")

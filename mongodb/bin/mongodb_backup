@@ -2,146 +2,54 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/backup'
 
-require "rubygems"
-require "optparse"
-
-PROG_NAME = 'mongodb_backup'
-
-options = {}
-opt_parser = OptionParser.new do |opts|
-  opts.banner = "Usage: #{PROG_NAME} [options]"
-  opts.on("-c", "--config FILE", "Config file location") do
-    |file| options[:config] = file
-  end
-  opts.on("-t", "--tolerant",    "Tolerant mode") do
-    options[:tolerant] = true
-  end
-  opts.on("-h", "--help",        "Help") do
-    puts opts
-    exit
-  end
-end.parse!
-
-config_file = options[:config]
-config_file ||= File.expand_path("../../config/mongodb_backup.yml", __FILE__)
-
-$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
-require "bundler/setup"
+$:.unshift(File.expand_path("../../lib", __FILE__))
 require "mongodb_service/mongodb_node"
-require "yaml"
-require "fileutils"
-require "timeout"
 
 include VCAP::Services::MongoDB
+class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
 
-begin
-  config = YAML.load_file(config_file)
-rescue => e
-  puts "Could not read configuration file: #{e}"
-  exit 1
-end
-
-# TODO  we really should abstract this to common
-def get_dump_path(nfs_base, service_name, name)
-  name.gsub!(/^(mongodb|redis|mysql)-/, '')
-  [nfs_base, 'backups', service_name, name[0,2], name[2,2], name[4,2], name, Time.new.to_i.to_s].join('/')
-end
-
-def echo(output, err=false)
-  puts output
-  if err
-    @logger.error(output) unless @logger.nil?
-  else
-    @logger.info(output) unless @logger.nil?
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'mongodb_backup.yml')
   end
-end
 
-@logger = Logger.new(config["log_file"] || STDOUT, "daily")
-@logger.level = case (config["log_level"] || "INFO")
-  when "DEBUG" then Logger::DEBUG
-  when "INFO" then Logger::INFO
-  when "WARN" then Logger::WARN
-  when "ERROR" then Logger::ERROR
-  when "FATAL" then Logger::FATAL
-  else Logger::UNKNOWN
-end
 
-# Simple version of system with timeout support
-# It's called simple because it doesn't handle SIGINT and SIGQUIT
-# in a standard POSIX way. But it should be enough in this case.
-def timeout_system(timeout, *args)
-  pid = fork
-  if pid
-    # parent process
-    success = false
-    begin
-      success = Timeout::timeout(timeout) do
-        Process.waitpid(pid)
-        $? == 0
-      end
-    rescue Timeout::Error
-      Process.detach(pid)
-      Process.kill("KILL", pid)
+  def backup_db
+    # make sure local_db exists
+    unless File.exist? @config['local_db'].split(':')[1]
+      echo "Could not find local_db: #{@config['local_db']}",true
+      exit 1
     end
-    success
-  else
-    # child process
-    exec(*args)
+
+    mongodump_path = @config['mongodump_path'] || 'mongodump'
+    cmd_timeout = @config['timeout'].to_f
+
+    DataMapper.setup(:default, @config['local_db'])
+    DataMapper::auto_upgrade!
+
+    provisioned_service = Node::ProvisionedService.all
+    provisioned_service.each do |service|
+      user = service.admin
+      pass = service.adminpass
+      port = service.port
+
+      path = get_dump_path(service.name)
+
+      # Run mongodump
+      command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
+      res = CMDHandle.execute( command,cmd_timeout)
+      echo "#{command} result: #{res}", !res
+
+      # Delete system.user.bson
+      command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
+      res = CMDHandle.execute( command,cmd_timeout)
+      echo "#{command} result: #{res}", !res
+    end
+    echo "Backup Done!"
   end
 end
 
-# check if backup process is already running
-cmds = %x[ps ax -o args=].split(/\n/)
-count = 0
-cmds.each do |cmd|
-  if cmd.index(__FILE__) != nil
-    @logger.info cmd
-    count += 1
-  end
-end
-@logger.info "backup process count: " + count.to_s
-if count > 2
-  @logger.info "backup is running, exit"
-  exit
-end
+VCAP::Services::MongoDB::Backup.new.start
 
-# make sure the backup base dir is mounted
-if !options[:tolerant] && %x[mount | awk '{print $3}'].split(/\n/).index(config["backup_base_dir"]) == nil
-  @logger.error config["backup_base_dir"] + " is not mounted, exit"
-  exit 1
-end
-
-# make sure local_db exists
-unless File.exist? config['local_db'].split(':')[1]
-  echo "Could not find local_db: #{config['local_db']}"
-  exit 1
-end
-
-mongodump_path = config['mongodump_path'] || 'mongodump'
-cmd_timeout = config['timeout'].to_f
-
-DataMapper.setup(:default, config['local_db'])
-DataMapper::auto_upgrade!
-
-provisioned_service = Node::ProvisionedService.all
-provisioned_service.each do |service|
-  user = service.admin
-  pass = service.adminpass
-  port = service.port
-
-  path = get_dump_path(config['backup_base_dir'], config['service_name'], service.name)
-
-  # Run mongodump
-  command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
-  res = timeout_system(cmd_timeout, command)
-  echo "#{command} result: #{res}", !res
-
-  # Delete system.user.bson
-  command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
-  res = timeout_system(cmd_timeout, command)
-  echo "#{command} result: #{res}", !res
-end
-echo "Backup Done!"
-exit 0

@@ -50,8 +50,8 @@ class VCAP::Services::Postgresql::Node
     service.quota_exceeded = false
     service.save
     rescue => e
-      @logger.warn("PostgreSQL Node exception: #{e}\n" +
-                    e.backtrace.join("\n"))
+      @logger.warn("PostgreSQL Node exception: #{e} " +
+                    e.backtrace.join("|"))
   end
 
   def do_grant_query(db_connection,user,sys_user)
@@ -96,8 +96,8 @@ class VCAP::Services::Postgresql::Node
     service.quota_exceeded = true
     service.save
     rescue => e
-      @logger.warn("PostgreSQL Node exception: #{e}\n" +
-                    e.backtrace.join("\n"))
+      @logger.warn("PostgreSQL Node exception: #{e} " +
+                    e.backtrace.join("|"))
   end
 
   def do_revoke_query(db_connection, user, sys_user)
@@ -139,8 +139,8 @@ class VCAP::Services::Postgresql::Node
       end
     end
     rescue => e
-      @logger.warn("PostgreSQL Node exception: #{e}\n" +
-                    e.backtrace.join("\n"))
+      @logger.warn("PostgreSQL Node exception: #{e} " +
+                    e.backtrace.join("|"))
   end
 
 end
