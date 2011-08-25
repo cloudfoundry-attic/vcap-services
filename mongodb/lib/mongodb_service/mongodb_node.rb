@@ -669,7 +669,7 @@ class VCAP::Services::MongoDB::Node
   def record_service_log(service_id)
     @logger.warn(" *** BEGIN mongodb log - instance: #{service_id}")
     @logger.warn("")
-    file = File.new(log_file(instance_id), 'r')
+    file = File.new(log_file(service_id), 'r')
     while (line = file.gets)
       @logger.warn(line.chomp!)
     end
