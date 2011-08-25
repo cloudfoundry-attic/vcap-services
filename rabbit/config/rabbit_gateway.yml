@@ -6,10 +6,15 @@ service:
   description: 'RabbitMQ message queue'
   plans: ['free']
   tags: ['rabbitmq', 'rabitmq-2.4', 'message-queue', 'amqp']
-host: localhost
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 index: 0
 token: "0xdeadbeef"
-log_level: DEBUG
+logging:
+  level: debug
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/rabbit_gateway.pid
 # allow_over_provision: false

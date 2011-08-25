@@ -6,10 +6,15 @@ service:
   description: 'MongoDB NoSQL store'
   plans: ['free']
   tags: ['mongodb', 'mongodb-1.6', 'nosql']
-host: localhost
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 index: 0
 token: "0xdeadbeef"
 mbus: nats://localhost:4222
-log_level: DEBUG
+logging:
+  level: debug
 pid: /var/vcap/sys/run/mongodb_service.pid
 # allow_over_provisioning: false

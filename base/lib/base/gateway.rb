@@ -4,12 +4,14 @@ require 'bundler/setup'
 
 require 'optparse'
 require 'logger'
+require 'logging'
 require 'net/http'
 require 'thin'
 require 'yaml'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'vcap/common'
+require 'vcap/logging'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'asynchronous_service_gateway'
@@ -52,15 +54,9 @@ class VCAP::Services::Base::Gateway
       exit
     end
 
-    logger = Logger.new(config[:log_file] || STDOUT, "daily")
-    logger.level = case (config[:log_level] || "INFO")
-                   when "DEBUG" then Logger::DEBUG
-                   when "INFO" then Logger::INFO
-                   when "WARN" then Logger::WARN
-                   when "ERROR" then Logger::ERROR
-                   when "FATAL" then Logger::FATAL
-                   else Logger::UNKNOWN
-                   end
+    VCAP::Logging.setup_from_config(config[:logging])
+    # Use the current running binary name for logger identity name, since service gateway only has one instance now.
+    logger = VCAP::Logging.logger(File.basename($0))
     config[:logger] = logger
 
     if config[:pid]
@@ -68,7 +64,7 @@ class VCAP::Services::Base::Gateway
       pf.unlink_at_exit
     end
 
-    config[:host] = VCAP.local_ip(config[:host])
+    config[:host] = VCAP.local_ip(config[:ip_route])
     config[:port] ||= VCAP.grab_ephemeral_port
     config[:service][:label] = "#{config[:service][:name]}-#{config[:service][:version]}"
     config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
@@ -80,12 +76,13 @@ class VCAP::Services::Base::Gateway
              :logger   => logger,
              :index    => config[:index],
              :version  => config[:service][:version],
-             :local_ip => config[:host],
+             :ip_route => config[:ip_route],
              :mbus => config[:mbus],
              :node_timeout => config[:node_timeout] || 2,
              :allow_over_provisioning => config[:allow_over_provisioning]
            )
       sg = VCAP::Services::AsynchronousServiceGateway.new(
+             :proxy => config[:proxy],
              :service => config[:service],
              :token   => config[:token],
              :logger  => logger,

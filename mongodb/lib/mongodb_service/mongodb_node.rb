@@ -5,6 +5,7 @@ require "logger"
 require "pp"
 require "set"
 require "mongo"
+require "timeout"
 
 require "datamapper"
 require "nats/client"
@@ -58,10 +59,23 @@ class VCAP::Services::MongoDB::Node
       VCAP.process_running? pid
     end
 
-    def kill(sig = :SIGTERM)
-      wait_thread = Process.detach(pid)
+    def kill(sig=:SIGTERM)
+      @wait_thread = Process.detach(pid)
       Process.kill(sig, pid) if running?
-      wait_thread.join if wait_thread
+    end
+
+    def wait_killed(timeout=5, interval=0.2)
+      begin
+        Timeout::timeout(timeout) do
+          @wait_thread.join if @wait_thread
+          while running? do
+            sleep interval
+          end
+        end
+      rescue Timeout::Error
+        return false
+      end
+      true
     end
   end
 
@@ -89,7 +103,7 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.all.each do |provisioned_service|
       @free_ports.delete(provisioned_service.port)
       if provisioned_service.listening?
-        @logger.info("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
+        @logger.warn("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
         @available_memory -= (provisioned_service.memory || @max_memory)
         next
       end
@@ -113,7 +127,9 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.all.each { |provisioned_service|
       @logger.debug("Try to terminate mongod pid:#{provisioned_service.pid}")
       provisioned_service.kill(:SIGTERM)
-      @logger.debug("mongod pid:#{provisioned_service.pid} terminated")
+      provisioned_service.wait_killed ?
+        @logger.debug("mongod pid:#{provisioned_service.pid} terminated") :
+        @logger.warn("Timeout to terminate mongod pid:#{provisioned_service.pid}")
     }
   end
 
@@ -145,7 +161,7 @@ class VCAP::Services::MongoDB::Node
 
     unless provisioned_service.save
       cleanup_service(provisioned_service)
-      raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
+      raise "Could not save entry: #{provisioned_service.errors.inspect}"
     end
 
     begin
@@ -157,17 +173,18 @@ class VCAP::Services::MongoDB::Node
 
       mongodb_add_admin({
         :port      => provisioned_service.port,
-        :username  => [provisioned_service.admin, username],
-        :password  => [provisioned_service.adminpass, password],
-        :db        => provisioned_service.db,
+        :username  => provisioned_service.admin,
+        :password  => provisioned_service.adminpass,
         :times     => 10
       })
-      mongodb_add_admin({
+
+      mongodb_add_user({
         :port      => provisioned_service.port,
-        :username  => [provisioned_service.admin],
-        :password  => [provisioned_service.adminpass],
-        :db        => 'admin',
-        :times     => 3
+        :admin     => provisioned_service.admin,
+        :adminpass => provisioned_service.adminpass,
+        :db        => provisioned_service.db,
+        :username  => username,
+        :password  => password
       })
 
     rescue => e
@@ -200,9 +217,9 @@ class VCAP::Services::MongoDB::Node
 
   def cleanup_service(provisioned_service)
     @logger.debug("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
-    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
+    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
 
-    provisioned_service.kill if provisioned_service.running?
+    provisioned_service.kill(:SIGKILL) if provisioned_service.running?
 
     dir = File.join(@base_dir, provisioned_service.name)
 
@@ -282,8 +299,8 @@ class VCAP::Services::MongoDB::Node
 
     # Drop original collections
     conn = Mongo::Connection.new('127.0.0.1', port)
+    conn.db('admin').authenticate(username, password)
     db = conn.db(database)
-    db.authenticate(username, password)
     db.collection_names.each do |name|
       if name != 'system.users' && name != 'system.indexes'
         db[name].drop
@@ -377,7 +394,7 @@ class VCAP::Services::MongoDB::Node
 
     unless provisioned_service.save
       provisioned_service.kill
-      raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
+      raise "Could not save entry: #{provisioned_service.errors.inspect}"
     end
 
     # Update credentials for the new credential
@@ -452,7 +469,7 @@ class VCAP::Services::MongoDB::Node
 
   def get_healthz(instance)
     conn = Mongo::Connection.new(@local_ip, instance.port)
-    auth = conn.db(instance.db).authenticate(instance.admin, instance.adminpass)
+    auth = conn.db('admin').authenticate(instance.admin, instance.adminpass)
     auth ? "ok" : "fail"
   rescue => e
     "fail"
@@ -461,7 +478,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def start_instance(provisioned_service)
-    @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
+    @logger.debug("Starting: #{provisioned_service.inspect}")
 
     memory = @max_memory
 
@@ -546,12 +563,9 @@ class VCAP::Services::MongoDB::Node
     t.times do
       begin
         conn = Mongo::Connection.new('127.0.0.1', options[:port])
-        db = conn.db(options[:db])
-        options[:username].each_index do |i|
-          user = db.add_user(options[:username][i], options[:password][i])
-          raise "user not added" if user.nil?
-          @logger.debug("user #{options[:username][i]} added in db #{options[:db]}")
-        end
+        user = conn.db('admin').add_user(options[:username], options[:password])
+        raise "user not added" if user.nil?
+        @logger.debug("user #{options[:username]} added in db #{options[:db]}")
         return true
       rescue => e
         @logger.warn("Failed add user #{options[:username]}: #{e.message}")
@@ -567,8 +581,8 @@ class VCAP::Services::MongoDB::Node
   def mongodb_add_user(options)
     @logger.debug("add user in port: #{options[:port]}, db: #{options[:db]}")
     conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     db = conn.db(options[:db])
-    auth = db.authenticate(options[:admin], options[:adminpass])
     db.add_user(options[:username], options[:password])
     @logger.debug("user #{options[:username]} added")
   ensure
@@ -578,8 +592,8 @@ class VCAP::Services::MongoDB::Node
   def mongodb_remove_user(options)
     @logger.debug("remove user in port: #{options[:port]}, db: #{options[:db]}")
     conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     db = conn.db(options[:db])
-    auth = db.authenticate(options[:admin], options[:adminpass])
     db.remove_user(options[:username])
     @logger.debug("user #{options[:username]} removed")
   ensure
@@ -602,7 +616,7 @@ class VCAP::Services::MongoDB::Node
 
   def mongodb_db_stats(options)
     conn = Mongo::Connection.new('127.0.0.1', options[:port])
-    auth = conn.db(options[:db]).authenticate(options[:admin], options[:adminpass])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     conn.db(options[:db]).stats()
   rescue => e
     @logger.warn("Failed mongodb_db_stats: #{e.message}, options: #{options}")

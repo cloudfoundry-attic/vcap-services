@@ -156,11 +156,20 @@ class VCAP::Services::Redis::Node
 
   def restore(instance_id, backup_dir)
     instance = get_instance(instance_id)
-    stop_instance(instance) if instance.running?
-    sleep 1
     dump_file = File.join(backup_dir, "dump.rdb")
-    instance.pid = start_instance(instance, dump_file)
-    save_instance(instance)
+    if File.exists?(dump_file)
+      if File.new(dump_file).size > 0
+        stop_instance(instance) if instance.running?
+        sleep 1
+        instance.pid = start_instance(instance, dump_file)
+        save_instance(instance)
+      else
+        redis = Redis.new({:port => instance.port, :password => instance.password})
+        redis.flushall
+      end
+    else
+      raise RedisError.new(RedisError::REDIS_RESTORE_FILE_NOT_FOUND, dump_file)
+    end
     {}
   end
 
@@ -268,7 +277,7 @@ class VCAP::Services::Redis::Node
     ProvisionedService.all.each do |instance|
       @free_ports.delete(instance.port)
       if instance.listening?
-        @logger.info("Service #{instance.name} already running on port #{instance.port}")
+        @logger.warn("Service #{instance.name} already running on port #{instance.port}")
         @available_memory -= (instance.memory || @max_memory)
         next
       end
@@ -288,11 +297,11 @@ class VCAP::Services::Redis::Node
   end
 
   def save_instance(instance)
-    raise RedisError.new(RedisError::REDIS_SAVE_INSTANCE_FAILED, instance.pretty_inspect) unless instance.save
+    raise RedisError.new(RedisError::REDIS_SAVE_INSTANCE_FAILED, instance.inspect) unless instance.save
   end
 
   def destroy_instance(instance)
-    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.pretty_inspect) unless instance.destroy
+    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.destroy
   end
 
   def get_instance(name)
@@ -302,7 +311,7 @@ class VCAP::Services::Redis::Node
   end
 
   def start_instance(instance, db_file = nil)
-    @logger.debug("Starting: #{instance.pretty_inspect} on port #{instance.port}")
+    @logger.debug("Starting: #{instance.inspect} on port #{instance.port}")
 
     pid = fork
     if pid
@@ -339,7 +348,7 @@ class VCAP::Services::Redis::Node
       exec("#{@redis_server_path} #{config_path}")
     end
   rescue => e
-    raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.pretty_inspect)
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
   end
 
   def stop_instance(instance)

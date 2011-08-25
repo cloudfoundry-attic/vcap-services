@@ -135,7 +135,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Attempting to provision instance (label=#{request['label']}, plan=#{request['plan']})")
     subscription = nil
     barrier = VCAP::Services::Base::Barrier.new(:timeout => @node_timeout, :callbacks => @nodes.length) do |responses|
-      @logger.debug("[#{service_description}] Found the following nodes: #{responses.pretty_inspect}")
+      @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
       @node_nats.unsubscribe(subscription)
       unless responses.empty?
         provision_node(request, responses, prov_handle, blk)
@@ -179,7 +179,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
             svc = {:data => prov_req.dup, :service_id => credential['name'], :credentials => credential}
             # FIXME: workaround for inconsistant representation of bind handle and provision handle
             svc_local = {:configuration => prov_req.dup, :service_id => credential['name'], :credentials => credential}
-            @logger.debug("Provisioned #{svc.pretty_inspect}")
+            @logger.debug("Provisioned #{svc.inspect}")
             @prov_svcs[svc[:service_id]] = svc_local
             blk.call(success(svc))
           else
@@ -238,7 +238,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
               :configuration => config,
               :credentials => opts
             }
-            @logger.debug("[#{service_description}] Binded: #{res.pretty_inspect}")
+            @logger.debug("[#{service_description}] Binded: #{res.inspect}")
             @prov_svcs[res[:service_id]] = res
             blk.call(success(res))
           else
