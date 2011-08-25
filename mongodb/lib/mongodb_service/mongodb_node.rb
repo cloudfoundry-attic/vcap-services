@@ -149,6 +149,9 @@ class VCAP::Services::MongoDB::Node
 
     @free_ports.delete(port)
 
+    # Cleanup instance dir if it exists
+    FileUtils.rm_rf(service_dir(name))
+
     provisioned_service           = ProvisionedService.new
     provisioned_service.name      = name
     provisioned_service.port      = port
