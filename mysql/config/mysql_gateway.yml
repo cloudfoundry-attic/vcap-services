@@ -7,6 +7,10 @@ service:
   plans: ['free']
   tags: ['mysql', 'mysql-5.1', 'relational']
 ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 index: 0
 token: "0xdeadbeef"
 logging:

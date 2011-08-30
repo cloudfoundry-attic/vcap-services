@@ -7,6 +7,10 @@ service:
   plans: ['free']
   tags: ['rabbitmq', 'rabitmq-2.4', 'message-queue', 'amqp']
 ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 index: 0
 token: "0xdeadbeef"
 logging:
