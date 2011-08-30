@@ -59,6 +59,7 @@ class VCAP::Services::Mysql::Node
     @mysql_bin = options[:mysql_bin]
 
     @connection = mysql_connect
+    @delete_user_lock = Mutex.new
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f/2) {kill_long_queries} if @max_long_query > 0
@@ -323,9 +324,17 @@ class VCAP::Services::Mysql::Node
 
   def delete_database_user(user)
     @logger.info("Delete user #{user}")
-    @connection.query("DROP USER #{user}")
-    @connection.query("DROP USER #{user}@'localhost'")
-    kill_user_session(user)
+    @delete_user_lock.synchronize do
+      ["%", "localhost"].each do |host|
+        res = @connection.query("SELECT user from mysql.user where user='#{user}' and host='#{host}'")
+        if res.num_rows == 1
+          @connection.query("DROP USER #{user}@'#{host}'")
+        else
+          @logger.warn("Failure to delete non-existent user #{user}")
+        end
+      end
+      kill_user_session(user)
+    end
   rescue Mysql::Error => e
     @logger.error("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
   end
