@@ -176,19 +176,34 @@ class VCAP::Services::MongoDB::Node
       # wait for mongod to start
       sleep 0.5
 
+      # Add super_user in admin table for backend operations
       mongodb_add_admin({
         :port      => provisioned_service.port,
-        :username  => [provisioned_service.admin, username],
-        :password  => [provisioned_service.adminpass, password],
-        :db        => provisioned_service.db,
+        :username  => provisioned_service.admin,
+        :password  => provisioned_service.adminpass,
         :times     => 10
       })
-      mongodb_add_admin({
+
+      # Add super_user in user table. This user is added to keep node backward
+      # compatibile with older version, which depends on this user for backend
+      # operations.
+      mongodb_add_user({
         :port      => provisioned_service.port,
-        :username  => [provisioned_service.admin],
-        :password  => [provisioned_service.adminpass],
-        :db        => 'admin',
-        :times     => 3
+        :admin     => provisioned_service.admin,
+        :adminpass => provisioned_service.adminpass,
+        :db        => provisioned_service.db,
+        :username  => provisioned_service.admin,
+        :password  => provisioned_service.adminpass
+      })
+
+      # Add an end_user
+      mongodb_add_user({
+        :port      => provisioned_service.port,
+        :admin     => provisioned_service.admin,
+        :adminpass => provisioned_service.adminpass,
+        :db        => provisioned_service.db,
+        :username  => username,
+        :password  => password
       })
 
     rescue => e
@@ -307,8 +322,8 @@ class VCAP::Services::MongoDB::Node
 
     # Drop original collections
     conn = Mongo::Connection.new('127.0.0.1', port)
+    conn.db('admin').authenticate(username, password)
     db = conn.db(database)
-    db.authenticate(username, password)
     db.collection_names.each do |name|
       if name != 'system.users' && name != 'system.indexes'
         db[name].drop
@@ -483,7 +498,7 @@ class VCAP::Services::MongoDB::Node
 
   def get_healthz(instance)
     conn = Mongo::Connection.new(@local_ip, instance.port)
-    auth = conn.db(instance.db).authenticate(instance.admin, instance.adminpass)
+    auth = conn.db('admin').authenticate(instance.admin, instance.adminpass)
     auth ? "ok" : "fail"
   rescue => e
     "fail"
@@ -579,12 +594,9 @@ class VCAP::Services::MongoDB::Node
     t.times do
       begin
         conn = Mongo::Connection.new('127.0.0.1', options[:port])
-        db = conn.db(options[:db])
-        options[:username].each_index do |i|
-          user = db.add_user(options[:username][i], options[:password][i])
-          raise "user not added" if user.nil?
-          @logger.debug("user #{options[:username][i]} added in db #{options[:db]}")
-        end
+        user = conn.db('admin').add_user(options[:username], options[:password])
+        raise "user not added" if user.nil?
+        @logger.debug("user #{options[:username]} added in db #{options[:db]}")
         return true
       rescue => e
         @logger.error("Failed add user #{options[:username]}: #{e.message}")
@@ -600,8 +612,8 @@ class VCAP::Services::MongoDB::Node
   def mongodb_add_user(options)
     @logger.debug("add user in port: #{options[:port]}, db: #{options[:db]}")
     conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     db = conn.db(options[:db])
-    auth = db.authenticate(options[:admin], options[:adminpass])
     db.add_user(options[:username], options[:password])
     @logger.debug("user #{options[:username]} added")
   ensure
@@ -611,8 +623,8 @@ class VCAP::Services::MongoDB::Node
   def mongodb_remove_user(options)
     @logger.debug("remove user in port: #{options[:port]}, db: #{options[:db]}")
     conn = Mongo::Connection.new('127.0.0.1', options[:port])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     db = conn.db(options[:db])
-    auth = db.authenticate(options[:admin], options[:adminpass])
     db.remove_user(options[:username])
     @logger.debug("user #{options[:username]} removed")
   ensure
@@ -635,7 +647,7 @@ class VCAP::Services::MongoDB::Node
 
   def mongodb_db_stats(options)
     conn = Mongo::Connection.new('127.0.0.1', options[:port])
-    auth = conn.db(options[:db]).authenticate(options[:admin], options[:adminpass])
+    auth = conn.db('admin').authenticate(options[:admin], options[:adminpass])
     conn.db(options[:db]).stats()
   rescue => e
     @logger.warn("Failed mongodb_db_stats: #{e.message}, options: #{options}")
