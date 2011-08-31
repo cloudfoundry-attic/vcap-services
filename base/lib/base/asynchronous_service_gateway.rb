@@ -12,6 +12,7 @@ require 'thread'
 $:.unshift(File.expand_path("../../../../../lib", __FILE__))
 require 'json_message'
 require 'services/api'
+require 'services/api/const'
 
 require 'service_error'
 
@@ -36,6 +37,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   def initialize(opts)
     super
+    setup(opts)
+  end
+
+  # setup the environment
+  def setup(opts)
     missing_opts = REQ_OPTS.select {|o| !opts.has_key? o}
     raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
     @service      = opts[:service]
@@ -66,9 +72,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       :url    => @service[:url],
       :active => false
     }.to_json
+
+    token_hdrs = VCAP::Services::Api::GATEWAY_TOKEN_HEADER
     @cc_req_hdrs  = {
-      'Content-Type'         => 'application/json',
-      'X-VCAP-Service-Token' => @token,
+      'Content-Type' => 'application/json',
+      token_hdrs     => @token,
     }
     @proxy_opts = opts[:proxy]
 
@@ -329,7 +337,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
     def async_mode(timeout=@node_timeout)
       request.env['__async_timer'] = EM.add_timer(timeout) do
-        @logger.warn("Service Unavailable")
+        @logger.warn("Request timeout in #{timeout} seconds.")
         error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
         err_body = error_msg['msg'].to_json()
         request.env['async.callback'].call(
