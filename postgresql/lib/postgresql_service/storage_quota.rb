@@ -126,21 +126,22 @@ class VCAP::Services::Postgresql::Node
   # XXX PostgreSQL: NYI.
   def enforce_storage_quota
     Provisionedservice.all.each do |service|
-      db, quota_exceeded = service.name, service.quota_exceeded
-      size = db_size(db)
-      if (size >= @max_db_size) and not quota_exceeded then
-        revoke_write_access(db, service)
-        @logger.info("Storage quota exceeded :" + fmt_db_listing(db, size) +
+      begin
+        db, quota_exceeded = service.name, service.quota_exceeded
+        size = db_size(db)
+        if (size >= @max_db_size) and not quota_exceeded then
+          revoke_write_access(db, service)
+          @logger.info("Storage quota exceeded :" + fmt_db_listing(db, size) +
                     " -- access revoked")
-      elsif (size < @max_db_size) and quota_exceeded then
-        grant_write_access(db, service)
-        @logger.info("Below storage quota:" + fmt_db_listing(db, size) +
+        elsif (size < @max_db_size) and quota_exceeded then
+          grant_write_access(db, service)
+          @logger.info("Below storage quota:" + fmt_db_listing(db, size) +
                     " -- access restored")
+        end
+      rescue => e
+        @logger.warn("PostgreSQL Node exception: #{e} " + e.backtrace.join("|"))
       end
     end
-    rescue => e
-      @logger.warn("PostgreSQL Node exception: #{e} " +
-                    e.backtrace.join("|"))
   end
 
 end
