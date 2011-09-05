@@ -116,7 +116,7 @@ class VCAP::Services::MongoDB::Node
           raise "Couldn't save pid (#{pid})"
         end
       rescue => e
-        @logger.warn("Error starting service #{provisioned_service.name}: #{e}")
+        @logger.error("Error starting service #{provisioned_service.name}: #{e}")
       end
     end
 
@@ -130,7 +130,7 @@ class VCAP::Services::MongoDB::Node
       provisioned_service.kill(:SIGTERM)
       provisioned_service.wait_killed ?
         @logger.debug("mongod pid:#{provisioned_service.pid} terminated") :
-        @logger.warn("Timeout to terminate mongod pid:#{provisioned_service.pid}")
+        @logger.error("Timeout to terminate mongod pid:#{provisioned_service.pid}")
     }
   end
 
@@ -143,6 +143,7 @@ class VCAP::Services::MongoDB::Node
 
 
   def provision(plan, credential = nil)
+    @logger.info("Provision request: plan=#{plan}")
     port = credential && credential['port'] && @free_ports.include?(credential['port']) ? credential['port'] : @free_ports.first
     name = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
     db   = credential && credential['db']   ? credential['db']   : 'db'
@@ -205,7 +206,7 @@ class VCAP::Services::MongoDB::Node
       "username" => username,
       "password" => password
     }
-    @logger.debug("response: #{response}")
+    @logger.debug("Provision response: #{response}")
     return response
   end
 
@@ -214,12 +215,12 @@ class VCAP::Services::MongoDB::Node
     raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     cleanup_service(provisioned_service)
-    @logger.debug("Successfully fulfilled unprovision request: #{name}.")
+    @logger.info("Successfully fulfilled unprovision request: #{name}.")
     true
   end
 
   def cleanup_service(provisioned_service)
-    @logger.debug("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
+    @logger.info("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
     raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
 
     provisioned_service.kill(:SIGKILL) if provisioned_service.running?
@@ -239,7 +240,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def bind(name, bind_opts, credential = nil)
-    @logger.debug("Bind request: name=#{name}, bind_opts=#{bind_opts}")
+    @logger.info("Bind request: name=#{name}, bind_opts=#{bind_opts}")
     bind_opts ||= BIND_OPT
 
     provisioned_service = ProvisionedService.get(name)
@@ -268,12 +269,12 @@ class VCAP::Services::MongoDB::Node
       "db"       => provisioned_service.db
     }
 
-    @logger.debug("response: #{response}")
+    @logger.debug("Bind response: #{response}")
     response
   end
 
   def unbind(credential)
-    @logger.debug("Unbind request: credential=#{credential}")
+    @logger.info("Unbind request: credential=#{credential}")
 
     name = credential['name']
     provisioned_service = ProvisionedService.get(name)
@@ -294,7 +295,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def restore(instance_id, backup_file)
-    @logger.debug("Restore request: instance_id=#{instance_id}, backup_file=#{backup_file}")
+    @logger.info("Restore request: instance_id=#{instance_id}, backup_file=#{backup_file}")
 
     provisioned_service = ProvisionedService.get(instance_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if provisioned_service.nil?
@@ -326,7 +327,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def disable_instance(service_credential, binding_credentials)
-    @logger.debug("disable_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}")
+    @logger.info("disable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
     service_id = service_credential['name']
     provisioned_service = ProvisionedService.get(service_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if provisioned_service.nil?
@@ -339,7 +340,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def dump_instance(service_credential, binding_credentials, dump_dir)
-    @logger.debug("dump_instance :service_credential #{service_credential}, binding_credentials: #{binding_credentials}, dump_dir: #{dump_dir}")
+    @logger.info("dump_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}, dump_dir=#{dump_dir}")
 
     instance_id = service_credential['name']
     from_dir = service_dir(instance_id)
@@ -362,7 +363,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def import_instance(service_credential, binding_credentials, dump_dir, plan)
-    @logger.debug("import_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}, dump_dir: #{dump_dir}, plan: #{plan}")
+    @logger.info("import_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}, dump_dir=#{dump_dir}, plan=#{plan}")
 
     instance_id = service_credential['name']
     to_dir = service_dir(instance_id)
@@ -377,7 +378,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def enable_instance(service_credential, binding_credentials)
-    @logger.debug("enable_instance service_credential: #{service_credential}, binding_credentials: #{binding_credentials}")
+    @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
 
     # Load provisioned_service from dumped file
     stored_service = nil
@@ -491,7 +492,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def start_instance(provisioned_service)
-    @logger.debug("Starting: #{provisioned_service.inspect}")
+    @logger.info("Starting: #{provisioned_service.inspect}")
 
     memory = @max_memory
 
@@ -524,7 +525,7 @@ class VCAP::Services::MongoDB::Node
       File.open(config_path, "w") {|f| f.write(config)}
 
       cmd = "#{@mongod_path} -f #{config_path}"
-      exec(cmd) rescue @logger.warn("exec(#{cmd}) failed!")
+      exec(cmd) rescue @logger.error("exec(#{cmd}) failed!")
     end
   end
 
@@ -586,7 +587,7 @@ class VCAP::Services::MongoDB::Node
         end
         return true
       rescue => e
-        @logger.warn("Failed add user #{options[:username]}: #{e.message}")
+        @logger.error("Failed add user #{options[:username]}: #{e.message}")
         sleep 1
       end
     end
