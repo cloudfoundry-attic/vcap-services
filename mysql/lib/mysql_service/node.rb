@@ -83,14 +83,28 @@ class VCAP::Services::Mysql::Node
       @available_storage -= storage_for_service(provisioned_service)
     end
 
-    @queries_served=0
-    @qps_last_updated=0
+    @queries_served = 0
+    @qps_last_updated = 0
     # initialize qps counter
     get_qps
-    @long_queries_killed=0
-    @long_tx_killed=0
-    @provision_served=0
-    @binding_served=0
+    @long_queries_killed = 0
+    @long_tx_killed = 0
+    @provision_served = 0
+    @binding_served = 0
+  end
+
+  def all_instances_list
+    ProvisionedService.all.map{|s| s.name}
+  end
+
+  def all_bindings_list
+    res = []
+    all_ins_users = ProvisionedService.all.map{|s| s.user}
+    @connection.query('select DISTINCT user.user,db,password from user, db where user.user = db.user and length(user.user) > 0').each do |user,name,password|
+      # Filter out the instances handles
+      res << gen_credential(name,user,password) unless all_ins_users.include?(user)
+    end
+    res
   end
 
   def announcement
@@ -178,7 +192,7 @@ class VCAP::Services::Mysql::Node
       trx_started, id, user, db, info, active_time = trx
       @connection.query("KILL QUERY #{id}")
       @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
-      @long_tx_killed +=1
+      @long_tx_killed += 1
     end
   rescue => e
     @logger.error("Error during kill long transaction: #{e}.")
@@ -246,10 +260,10 @@ class VCAP::Services::Mysql::Node
       binding = Hash.new
       if credential
         binding[:user] = credential["user"]
-        binding[:password ]= credential["password"]
+        binding[:password] = credential["password"]
       else
         binding[:user] = 'u' + generate_credential
-        binding[:password ]= 'p' + generate_credential
+        binding[:password] = 'p' + generate_credential
       end
       binding[:bind_opts] = bind_opts
       create_database_user(name, binding[:user], binding[:password])
@@ -267,11 +281,9 @@ class VCAP::Services::Mysql::Node
     return if credential.nil?
     @logger.debug("Unbind service: #{credential.inspect}")
     name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
-    service = ProvisionedService.get(name)
-    raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
-    res = @connection.query("SELECT * from mysql.user WHERE user='#{user}' AND password=PASSWORD('#{passwd}')")
-    raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.num_rows()<=0
+    res = @connection.query("SELECT * from mysql.user WHERE user='#{user}'")
+    raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.num_rows() <= 0
     delete_database_user(user)
     true
   end
@@ -355,7 +367,7 @@ class VCAP::Services::Mysql::Node
     @connection.query("FLUSH PRIVILEGES")
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     path = File.join(backup_path, "#{name}.sql.gz")
-    cmd ="#{@gzip_bin} -dc #{path}|" +
+    cmd = "#{@gzip_bin} -dc #{path}|" +
       "#{@mysql_bin} -h #{host} -P #{port} -u #{user} --password=#{pass}"
     cmd += " -S #{socket}" unless socket.nil?
     cmd += " #{name}"
@@ -533,7 +545,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def get_instance_status()
-    all_dbs =[]
+    all_dbs = []
     result = @connection.query('show databases')
     result.each {|db| all_dbs << db[0]}
     system_dbs = ['mysql', 'information_schema']
@@ -545,7 +557,7 @@ class VCAP::Services::Mysql::Node
     result = []
     db_with_tables = []
     sizes.each do |i|
-      db= {}
+      db = {}
       name, size = i
       next if system_dbs.include?(name)
       db_with_tables << name

@@ -61,6 +61,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.announce") { |msg|
       on_node_announce(msg)
     }
+    @node_nats.subscribe("#{service_name}.orphan_result") do |msg|
+      on_orphan_result(msg)
+    end
     @node_nats.subscribe("#{service_name}.handles") {|msg, reply| on_query_handles(msg, reply) }
     @node_nats.subscribe("#{service_name}.update_service_handle") {|msg, reply| on_update_service_handle(msg, reply) }
     @node_nats.publish("#{service_name}.discover")
@@ -82,6 +85,81 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       res = Yajl::Encoder.encode(handles)
     end
     @node_nats.publish(reply, res)
+  end
+
+  def on_orphan_result(msg)
+    @logger.debug("[#{service_description}] Received orphan result")
+    response = CheckOrphanResponse.decode(msg)
+    if response.success
+      @orphan_ins_hash.merge!(response.orphan_instances)
+      @orphan_binding_hash.merge!(response.orphan_bindings)
+      oi_count = @orphan_ins_hash.values.reduce(0) {|m,v| m += v.count}
+      ob_count = @orphan_binding_hash.values.reduce(0) {|m,v| m += v.count}
+      @logger.debug("Orphan Instances: #{oi_count};  Orphan Bindings: #{ob_count}")
+    end
+  end
+
+  def check_orphan(handles,&blk)
+    @logger.debug("[#{service_description}] Check if there are orphans")
+    @orphan_ins_hash = {}
+    @orphan_binding_hash = {}
+    req = CheckOrphanRequest.new
+    req.handles = handles
+    @node_nats.publish("#{service_name}.check_orphan",req.encode)
+    blk.call(success)
+  rescue => e
+    @logger.warn(e)
+    blk.call(failure(e))
+  end
+
+  def purge_orphan(orphan_ins_hash,orphan_bind_hash,&blk)
+    @logger.debug("[#{service_description}] Purge orphans for given list")
+    begin
+      orphan_ins_hash.each do |node_id,ins_list|
+        if ob_list = orphan_bind_hash[node_id]
+          orphan_bind_hash.delete(node_id)
+        else
+          ob_list = []
+        end
+        send_purge_orphan_to_node(node_id,ins_list,ob_list,&blk)
+      end
+      orphan_bind_hash.each do |node_id,ob_list|
+        send_purge_orphan_to_node(node_id,[],ob_list,&blk)
+      end
+    rescue => e
+      @logger.warn(e)
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        blk.call(internal_fail)
+      end
+    end
+  end
+
+  def send_purge_orphan_to_node(node_id, ins_list, ob_list,&blk)
+    @logger.debug("[#{service_description}] Purge orphans for #{node_id} instances: #{ins_list.count} bindings: #{ob_list.count}")
+    req = PurgeOrphanRequest.new
+    req.orphan_ins_list = ins_list
+    req.orphan_binding_list = ob_list
+    subscription = nil
+    timer = EM.add_timer(@node_timeout) {
+      @node_nats.unsubscribe(subscription)
+      blk.call(timeout_fail)
+    }
+    subscription =
+      @node_nats.request(
+        "#{service_name}.purge_orphan.#{node_id}", req.encode
+    ) do |msg|
+      @logger.debug("Purge #{node_id} Result: #{msg}")
+      EM.cancel_timer(timer)
+      @node_nats.unsubscribe(subscription)
+      opts = SimpleResponse.decode(msg)
+      if opts.success
+        blk.call(success)
+      else
+        blk.call(wrap_error(opts))
+      end
+    end
   end
 
   def unprovision_service(instance_id, &blk)
@@ -150,7 +228,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def provision_node(request, node_msgs, prov_handle, blk)
-    @logger.debug("[#{service_description}] Provisioning node (label=#{request['label']}, plan=#{request['plan']}, nnodes=#{node_msgs.length})")
+    @logger.debug("[#{service_description}] Provisioning node (label=#{request['label']}, plan=#{request['plan']}, nodes=#{node_msgs.length})")
     nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
     best_node = nodes.max_by { |node| node_score(node) }
     if best_node && ( @allow_over_provisioning || node_score(best_node) > 0 )

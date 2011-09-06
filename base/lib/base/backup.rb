@@ -93,7 +93,7 @@ class VCAP::Services::Base::Backup
   end
 
   def get_dump_path(name,mode=0)
-    name=name.sub(/^(mongodb|redis)-/,'')
+    name = name.sub(/^(mongodb|redis)-/,'')
     case mode
     when 1
       File.join(@config['backup_base_dir'], 'backups', @config['service_name'],name, Time.new.to_i.to_s,@config['node_id'])
@@ -104,7 +104,7 @@ class VCAP::Services::Base::Backup
 
   def check_mount_points
     # make sure the backup base dir is mounted
-    pn=Pathname.new(@config["backup_base_dir"])
+    pn = Pathname.new(@config["backup_base_dir"])
     if !@tolerant && !pn.mountpoint?
       echo @config["backup_base_dir"] + " is not mounted, exit",true
       exit

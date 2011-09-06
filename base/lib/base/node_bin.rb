@@ -56,7 +56,7 @@ class VCAP::Services::Base::NodeBin
       :z_interval => parse_property(config, "z_interval", Integer, :optional => true),
       :mbus => parse_property(config, "mbus", String),
       :local_db => parse_property(config, "local_db", String),
-      :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
+      :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true)
     }
 
     VCAP::Logging.setup_from_config(config["logging"])

@@ -76,13 +76,13 @@ describe "Mysql server node" do
 
   it "should calculate available storage correctly" do
     EM.run do
-      original= @node.available_storage
+      original = @node.available_storage
       db2 = @node.provision(@default_plan)
       @test_dbs[db2] = []
-      current= @node.available_storage
+      current = @node.available_storage
       (original - current).should == @opts[:max_db_size]*1024*1024
       @node.unprovision(db2["name"],[])
-      unprov= @node.available_storage
+      unprov = @node.available_storage
       unprov.should == original
       EM.stop
     end
@@ -148,8 +148,8 @@ describe "Mysql server node" do
       service = klass.new
       service.name = 'test-'+ UUIDTools::UUID.random_create.to_s
       service.user = "test"
-      service.password= "test"
-      service.plan= "free"
+      service.password = "test"
+      service.plan = "free"
       if not service.save
         raise "Failed to forge orphan instance: #{service.errors.inspect}"
       end
@@ -162,13 +162,37 @@ describe "Mysql server node" do
     end
   end
 
+  it "should return correct instances & binding list" do
+    EM.run do
+      before_ins_list = @node.all_instances_list
+      plan = "free"
+      tmp_db = @node.provision(plan)
+      @test_dbs[tmp_db] = []
+      after_ins_list = @node.all_instances_list
+      before_ins_list << tmp_db["name"]
+      (before_ins_list.sort == after_ins_list.sort).should be_true
+
+      before_bind_list = @node.all_bindings_list
+      tmp_credential = @node.bind(tmp_db["name"],  @default_opts)
+      @test_dbs[tmp_db] << tmp_credential
+      after_bind_list = @node.all_bindings_list
+      before_bind_list << tmp_credential
+      a,b = [after_bind_list,before_bind_list].map do |list|
+        list.map{|item| item["username"]}.sort
+      end
+      (a == b).should be_true
+
+      EM.stop
+    end
+  end
+
   it "should not create db or send response if receive a malformed request" do
     EM.run do
       db_num = @node.connection.query("show databases;").num_rows()
       mal_plan = "not-a-plan"
-      db= nil
+      db = nil
       expect {
-        db=@node.provision(mal_plan)
+        db = @node.provision(mal_plan)
       }.should raise_error(MysqlError, /Invalid plan .*/)
       db.should == nil
       db_num.should == @node.connection.query("show databases;").num_rows()
@@ -179,8 +203,8 @@ describe "Mysql server node" do
   it "should support over provisioning" do
     EM.run do
       opts = @opts.dup
-      opts[:available_storage]=10
-      opts[:max_db_size]=20
+      opts[:available_storage] = 10
+      opts[:max_db_size] = 20
       node = VCAP::Services::Mysql::Node.new(opts)
       expect {
         node.provision(@default_plan)
@@ -212,33 +236,10 @@ describe "Mysql server node" do
     end
   end
 
-  it "should return proper error if unbind a not existing credential" do
-    EM.run do
-      # no existing instance
-      expect {
-        @node.unbind({:name => "not-existing"})
-      }.should raise_error(MysqlError,/Mysql configuration .*not found/)
-
-      # no existing credential
-      credential = @node.bind(@db["name"],  @default_opts)
-      credential.should_not == nil
-      @test_dbs[@db] << credential
-      invalid_credential = credential.dup
-      invalid_credential["password"] = 'fake'
-      expect {
-        @node.unbind(invalid_credential)
-      }.should raise_error(MysqlError, /Mysql credential .* not found/)
-
-      # nil input
-      @node.unbind(nil).should == nil
-      EM.stop
-    end
-  end
-
   it "should not be possible to access one database using null or wrong credential" do
     EM.run do
       plan = "free"
-      db2= @node.provision(plan)
+      db2 = @node.provision(plan)
       @test_dbs[db2] = []
       fake_creds = []
       3.times {fake_creds << @db.clone}
@@ -523,7 +524,7 @@ describe "Mysql server node" do
   it "should report instance disk size in varz" do
     EM.run do
       v = @node.varz_details
-      instance = v[:database_status].find {|d| d[:name]==@db["name"]}
+      instance = v[:database_status].find {|d| d[:name] == @db["name"]}
       instance.should_not be_nil
       instance[:size].should >= 0
       EM.stop

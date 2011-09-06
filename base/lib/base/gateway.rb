@@ -90,7 +90,8 @@ class VCAP::Services::Base::Gateway
              :logger  => logger,
              :provisioner => sp,
              :node_timeout => node_timeout,
-             :cloud_controller_uri => cloud_controller_uri
+             :cloud_controller_uri => cloud_controller_uri,
+             :check_orphan_interval => config[:check_orphan_interval] || -1
            )
       Thin::Server.start(config[:host], config[:port], sg)
     end

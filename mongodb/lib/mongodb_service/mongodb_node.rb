@@ -141,6 +141,34 @@ class VCAP::Services::MongoDB::Node
     a
   end
 
+  def all_instances_list
+    ProvisionedService.all.map{|ps| ps["name"]}
+  end
+
+  def all_bindings_list
+    list = []
+    ProvisionedService.all.each do |instance|
+      begin
+        conn = Mongo::Connection.new(@local_ip, instance.port)
+        conn.db('admin').authenticate(instance.admin, instance.adminpass)
+        coll = conn.db(instance.db).collection('system.users')
+        coll.find().each do |binding|
+          credential = {
+            'name' => instance.name,
+            'port' => instance.port,
+            'db' => instance.db,
+            'username' => binding['user']
+          }
+          list << credential if credential['username'] != instance.admin
+        end
+      rescue => e
+        @logger.warn("Failed fetch user list: #{e.message}")
+      ensure
+        conn.close if conn
+      end
+    end
+    list
+  end
 
   def provision(plan, credential = nil)
     @logger.info("Provision request: plan=#{plan}")

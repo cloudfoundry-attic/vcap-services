@@ -48,6 +48,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @node_timeout = opts[:node_timeout]
     @handles_uri = "#{@cld_ctrl_uri}/services/v1/offerings/#{@service[:label]}/handles"
     @handle_fetch_interval = opts[:handle_fetch_interval] || 1
+    @check_orphan_interval = opts[:check_orphan_interval]
     @handle_fetched = false
     @svc_json     = {
       :label  => @service[:label],
@@ -91,6 +92,13 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     end
     @fetch_handle_timer = EM.add_periodic_timer(@handle_fetch_interval) { fetch_handles(&update_callback) }
     EM.next_tick { fetch_handles(&update_callback) }
+
+    if @check_orphan_interval > 0
+      update_callback_for_check_orphan = Proc.new do |resp|
+        @provisioner.check_orphan(resp.handles) {|msg| }
+      end
+      EM.add_periodic_timer(@check_orphan_interval) { fetch_handles(&update_callback_for_check_orphan) }
+    end
 
     # Register update handle callback
     @provisioner.register_update_handle_callback{|handle, &blk| update_service_handle(handle, &blk)}
@@ -230,6 +238,34 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  post '/service/internal/v1/check_orphan' do
+    @logger.info("Request to check orphan")
+    fetch_handles do |resp|
+      @provisioner.check_orphan(resp.handles) do |msg|
+        if msg['success']
+          async_reply
+        else
+          async_reply_error(msg['response'])
+        end
+      end
+    end
+    async_mode
+  end
+
+  delete '/service/internal/v1/purge_orphan' do
+    @logger.info("Purge orphan request")
+    req = Yajl::Parser.parse(request_body)
+    orphan_ins_hash = req["orphan_instances"]
+    orphan_binding_hash = req["orphan_bindings"]
+    @provisioner.purge_orphan(orphan_ins_hash,orphan_binding_hash) do |msg|
+      if msg['success']
+        async_reply
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
 
   #################### Helpers ####################
 
