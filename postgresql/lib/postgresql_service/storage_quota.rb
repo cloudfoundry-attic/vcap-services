@@ -123,7 +123,6 @@ class VCAP::Services::Postgresql::Node
     "<name: '#{db}' size: #{size}>"
   end
 
-  # XXX PostgreSQL: NYI.
   def enforce_storage_quota
     Provisionedservice.all.each do |service|
       begin
