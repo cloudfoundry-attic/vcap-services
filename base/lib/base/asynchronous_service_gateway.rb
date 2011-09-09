@@ -124,10 +124,10 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   # Provisions an instance of the service
   #
   post '/gateway/v1/configurations' do
-    req = Yajl::Parser.parse(request_body)
-    @logger.debug("Provision request for label=#{req['label']} plan=#{req['plan']}")
+    req = VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
+    @logger.debug("Provision request for label=#{req.label} plan=#{req.plan}")
 
-    name, version = VCAP::Services::Api::Util.parse_label(req['label'])
+    name, version = VCAP::Services::Api::Util.parse_label(req.label)
     unless (name == @service[:name]) && (version == @service[:version])
       error_msg = ServiceError.new(ServiceError::UNKNOWN_LABEL).to_hash
       abort_request(error_msg)
@@ -135,7 +135,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
     @provisioner.provision_service(req) do |msg|
       if msg['success']
-        async_reply(VCAP::Services::Api::ProvisionResponse.new(msg['response']).encode)
+        async_reply(VCAP::Services::Api::GatewayProvisionResponse.new(msg['response']).encode)
       else
         async_reply_error(msg['response'])
       end

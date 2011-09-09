@@ -711,15 +711,19 @@ class AsyncGatewayTests
     end
 
     def send_provision_request
-      msg = Yajl::Encoder.encode({
+      msg = VCAP::Services::Api::GatewayProvisionRequest.new(
         :label => @label,
+        :name  => 'service',
+        :email => "foobar@abc.com",
         :plan  => "free"
-      })
+      ).encode
       http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations").post(gen_req(msg))
       http.callback {
         @provision_http_code = http.response_header.status
-        res = Yajl::Parser.parse(http.response)
-        @last_service_id = res['service_id']
+        if @provision_http_code == 200
+          res = VCAP::Services::Api::GatewayProvisionResponse.decode(http.response)
+          @last_service_id = res.service_id
+        end
       }
       http.errback {
         @provision_http_code = -1
@@ -739,16 +743,19 @@ class AsyncGatewayTests
 
     def send_bind_request(service_id = nil)
       service_id ||= @last_service_id
-      msg = Yajl::Encoder.encode({
+      msg = VCAP::Services::Api::GatewayBindRequest.new(
         :service_id => service_id,
         :label => @label,
+        :email => "foobar@abc.com",
         :binding_options => {}
-      })
+      ).encode
       http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations/#{service_id}/handles").post(gen_req(msg))
       http.callback {
         @bind_http_code = http.response_header.status
-        res = Yajl::Parser.parse(http.response)
-        @last_bind_id = res['service_id']
+        if @bind_http_code == 200
+          res = VCAP::Services::Api::GatewayBindResponse.decode(http.response)
+          @last_bind_id = res.service_id
+        end
       }
       http.errback {
         @bind_http_code = -1
