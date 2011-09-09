@@ -30,7 +30,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # Updates our internal state to match that supplied by handles
   # +handles+  An array of config handles
   def update_handles(handles)
-    @logger.debug("Update handles: #{handles.inspect}")
+    @logger.info("[#{service_description}] Updating #{handles.size} handles")
     handles.each do |handle|
       h = handle.deep_dup
       @prov_svcs[h['service_id']] = {
@@ -39,7 +39,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         :service_id => h['service_id']
       }
     end
-    @logger.debug("[#{service_description}] Handles updated prov_svcs: #{@prov_svcs}")
+    @logger.info("[#{service_description}] Handles updated")
   end
 
   def find_all_bindings(name)
