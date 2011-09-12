@@ -11,12 +11,14 @@ require 'service_message'
 
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::Internal
+
+  BARRIER_TIMEOUT = 2
   MASKED_PASSWORD = '********'
 
   def initialize(options)
     super(options)
     @version   = options[:version]
-    @node_timeout = options[:node_timeout] || 2
+    @node_timeout = options[:node_timeout]
     @allow_over_provisioning = options[:allow_over_provisioning]
     @nodes     = {}
     @prov_svcs = {}
@@ -134,7 +136,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def provision_service(request, prov_handle=nil, &blk)
     @logger.debug("[#{service_description}] Attempting to provision instance (label=#{request['label']}, plan=#{request['plan']})")
     subscription = nil
-    barrier = VCAP::Services::Base::Barrier.new(:timeout => @node_timeout, :callbacks => @nodes.length) do |responses|
+    barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => @nodes.length) do |responses|
       @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
       @node_nats.unsubscribe(subscription)
       unless responses.empty?
@@ -368,7 +370,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
             restore_instance(instance_id, backup_path) do |res|
               if res['success']
                 @logger.info("Recover: Success restore instance data.")
-                barrier = VCAP::Services::Base::Barrier.new(:timeout => @node_timeout, :callbacks => binding_handles.length) do |responses|
+                barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => binding_handles.length) do |responses|
                   @logger.debug("Response from barrier: #{responses}.")
                   updated_handles = responses.select{|i| i[0] }
                   if updated_handles.length != binding_handles.length

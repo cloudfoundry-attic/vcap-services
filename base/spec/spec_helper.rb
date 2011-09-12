@@ -20,11 +20,14 @@ class BaseTests
 
     IP_ROUTE = "127.0.0.1"
 
+    NODE_TIMEOUT = 5
+
     def self.default(more=nil)
       options = {
         :logger => LOGGER,
         :ip_route => IP_ROUTE,
         :mbus => NATS_URI,
+        :node_timeout => NODE_TIMEOUT
       }
       more.each { |k,v| options[k] = v } if more
       options
@@ -643,6 +646,7 @@ require 'base/asynchronous_service_gateway'
 class AsyncGatewayTests
   CC_PORT = 34512
   GW_PORT = 34513
+  NODE_TIMEOUT = 5
 
   def self.create_nice_gateway
     MockGateway.new(true)
@@ -650,6 +654,10 @@ class AsyncGatewayTests
 
   def self.create_nasty_gateway
     MockGateway.new(false)
+  end
+
+  def self.create_timeout_gateway(nice, timeout)
+    MockGateway.new(nice, timeout)
   end
 
   def self.create_cloudcontroller
@@ -664,14 +672,22 @@ class AsyncGatewayTests
     attr_accessor :restore_http_code
     attr_accessor :recover_http_code
 
-    def initialize(nice)
+    def initialize(nice, timeout=nil)
       @token = '0xdeadbeef'
       @cc_head = {
         'Content-Type'         => 'application/json',
         'X-VCAP-Service-Token' => @token,
       }
       @label = "service-1.0"
-      sp = nice ? NiceProvisioner.new : NastyProvisioner.new
+      if timeout
+        # Nice timeout provisioner will finish the job in timeout,
+        # while un-nice timeout provisioner won't.
+        sp = nice ?
+          TimeoutProvisioner.new(timeout - 1) :
+          TimeoutProvisioner.new(timeout + 1)
+      else
+        sp = nice ? NiceProvisioner.new : NastyProvisioner.new
+      end
       sg = VCAP::Services::AsynchronousServiceGateway.new(
         :service => {
                       :label => @label,
@@ -683,6 +699,7 @@ class AsyncGatewayTests
                     },
         :token   => @token,
         :provisioner => sp,
+        :node_timeout => timeout || NODE_TIMEOUT,
         :cloud_controller_uri => "http://localhost:#{CC_PORT}"
       )
       @server = Thin::Server.new('localhost', GW_PORT, sg)
@@ -936,6 +953,28 @@ class AsyncGatewayTests
     def recover(instance_id, backup_path, handles, &blk)
       @got_recover_reqeust = true
       blk.call(internal_fail)
+    end
+  end
+
+  # Timeout Provisioner is a simple version of provisioner.
+  # It only support provisioning.
+  class TimeoutProvisioner < MockProvisioner
+    def initialize(timeout)
+      @timeout = timeout
+    end
+
+    def provision_service(request, prov_handle=nil, &blk)
+      @got_provision_request = true
+      EM.add_timer(@timeout) do
+        blk.call(
+          success({
+            :data => {},
+            :service_id => SERV_ID,
+            :credentials => {}
+            }
+          )
+        )
+      end
     end
   end
 end
