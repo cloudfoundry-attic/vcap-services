@@ -1,0 +1,18 @@
+source "http://rubygems.org"
+
+gem 'eventmachine'
+gem 'em-http-request'
+gem 'json'
+gem 'yajl-ruby'
+
+gem 'vcap_common', :path => '../../../../common'
+gem 'vcap_logging', :require => ['vcap/logging']
+
+group :test do
+  gem 'rspec', '>= 2.4.0', :require => nil
+  gem 'rcov'
+  gem 'mocha'
+  gem 'ci_reporter'
+  gem 'sinatra'
+  gem "thin"
+end

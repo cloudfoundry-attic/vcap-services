@@ -2,16 +2,13 @@
 $:.unshift File.join(File.dirname(__FILE__), '..')
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+
 require 'rubygems'
 require 'rspec'
-
-class RedisTests
-  def initialize
-    @has_tests = false
-  end
-
-  def has_tests
-    @has_tests
-  end
-end
-
+require 'bundler/setup'
+require 'nats/client'
+require 'vcap/common'
+require "datamapper"
+require "uri"
+require "redis"

@@ -1,0 +1,69 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/backup'
+
+module VCAP
+  module Services
+    module Redis
+    end
+  end
+end
+
+class VCAP::Services::Redis::Backup < VCAP::Services::Base::Backup
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'redis_backup.yml')
+  end
+
+  # Keep it in mind: check if redis dump file is under writing now, make sure it's closed before copy to nfs
+  # \backups\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+  def backup_db
+    # backup
+    inst_path = @config["service_base_dir"]
+    if File.directory? inst_path
+      dirnames = Dir.entries inst_path
+      dirnames.each do |dirname|
+        next if dirname.to_s.start_with? "." #skip . & ..
+        echo "instance: " + dirname
+        dump_file = "#{inst_path}/#{dirname}/data/dump.rdb"
+        new_dirname_nfs=get_dump_path(dirname)
+        echo "new dir: " + new_dirname_nfs
+        begin
+          FileUtils.mkdir_p new_dirname_nfs
+          if File.exist?(dump_file)
+            cmd = "cp #{dump_file} #{new_dirname_nfs}"
+            if !@config["timeout"]
+              # If no timeout option, set a default value
+              @config["timeout"] = 600
+            end
+            if !CMDHandle.execute(cmd,@config["timeout"])
+              echo "Got errors when doing copy",true
+            end
+          else
+            # Create an empty file to indicate that backup successfully with no dumped data
+            FileUtils.touch(File.join(new_dirname_nfs, "dump.rdb"))
+          end
+        rescue => e
+          if e.is_a?(Timeout::Error)
+            echo "Timeout when doing copy",true
+          else
+            echo "Could not copy dumpfile: #{e}",true
+          end
+          next
+        end
+      end
+    else
+      echo inst_path + " does not exists, exit",true
+      exit
+    end
+
+    echo "backup task complete"
+  end
+end
+VCAP::Services::Redis::Backup.new.start
+
+
+
+

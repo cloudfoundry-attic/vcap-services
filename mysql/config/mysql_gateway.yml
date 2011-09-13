@@ -1,15 +1,21 @@
 ---
-# cloud_controller_uri: api.vcap.me
+#cloud_controller_uri: api.vcap.me
 service:
   name: mysql
   version: "5.1"
   description: 'MySQL database service'
   plans: ['free']
   tags: ['mysql', 'mysql-5.1', 'relational']
-host: localhost
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
 token: "0xdeadbeef"
-log_level: DEBUG
-mysql_mbus: nats://localhost:4222
-service_mbus: nats://localhost:4222
+logging:
+  level: debug
+mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/mysql_service.pid
 node_timeout: 2
+# allow_over_provisioning: false

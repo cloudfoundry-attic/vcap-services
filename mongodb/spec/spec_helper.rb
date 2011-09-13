@@ -1,17 +1,47 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-$:.unshift File.join(File.dirname(__FILE__), '..')
-$:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-$LOAD_PATH.unshift(File.expand_path("../../../", __FILE__))
-$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
 
-require '../../base/spec/spec_helper'
+PWD = File.dirname(__FILE__)
+TMP = '/tmp/mongo'
+
+$:.unshift File.join(PWD, '..')
+$:.unshift File.join(PWD, '..', 'lib')
 
 require "rubygems"
 require "rspec"
 require "socket"
 require "timeout"
+require "mongo"
+require "erb"
+require "mongodb_service/mongodb_node"
+require "fileutils"
 
+# Define constants
 HTTP_PORT = 9865
+
+TEST_COLL    = 'testColl'
+TEST_KEY     = 'test_key'
+TEST_VAL     = 1234
+TEST_VAL_2   = 4321
+
+BACKUP_DIR    = File.join(TMP, 'backup')
+CONFIG_DIR    = File.join(TMP, 'config')
+CONFIG_FILE   = File.join(TMP, 'mongodb_backup.yml')
+TEMPLATE_FILE = File.join(PWD, 'config/mongodb_backup.yml.erb')
+
+FileUtils.mkdir_p(BACKUP_DIR)
+FileUtils.mkdir_p(CONFIG_DIR)
+
+include VCAP::Services::MongoDB
+
+module VCAP
+  module Services
+    module MongoDB
+      class Node
+        attr_reader :available_memory
+      end
+    end
+  end
+end
 
 def is_port_open?(host, port)
   begin
@@ -29,22 +59,28 @@ def is_port_open?(host, port)
   false
 end
 
-def shutdown(mongodb_node)
-    mongodb_node.shutdown
-    EM.stop
+def get_backup_dir(backup_dir)
+  dir = backup_dir
+  # Backup Dir: base_backup/mongodb/ab/cd/ef/uuid/timestamp
+  #             base_backup/<6-more-layers>
+  6.times do
+    dirs = Dir.entries(dir)
+    dirs.delete('.')
+    dirs.delete('..')
+    dir = File.join(dir, dirs[0])
+  end
+  dir
 end
 
+def delete_admin(options)
+  db = Mongo::Connection.new('127.0.0.1', options['port']).db(options['db'])
+  auth = db.authenticate(options['username'], options['password'])
+  db.remove_user('admin')
 
-def symbolize_keys(hash)
-  if hash.is_a? Hash
-    new_hash = {}
-    hash.each do |k, v|
-      new_hash[k.to_sym] = symbolize_keys(v)
-    end
-    new_hash
-  else
-    hash
-  end
+  db = Mongo::Connection.new('127.0.0.1', options['port']).db('admin')
+  service = VCAP::Services::MongoDB::Node::ProvisionedService.get(options['name'])
+  auth = db.authenticate(service.admin, service.adminpass)
+  db.remove_user(service.admin)
 end
 
 def parse_property(hash, key, type, options = {})
@@ -64,12 +100,13 @@ def parse_property(hash, key, type, options = {})
 end
 
 def get_node_config()
-  config_file = File.join(File.dirname(__FILE__), "../config/mongodb_node.yml")
+  config_file = File.join(PWD, "../config/mongodb_node.yml")
   config = YAML.load_file(config_file)
-  mongodb_conf_template = File.join(File.dirname(__FILE__), "../resources/mongodb.conf.erb")
+  mongodb_conf_template = File.join(PWD, "../resources/mongodb.conf.erb")
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :mongod_path => parse_property(config, "mongod_path", String),
+    :mongorestore_path => parse_property(config, "mongorestore_path", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :available_memory => parse_property(config, "available_memory", Integer),
     :node_id => parse_property(config, "node_id", String),
@@ -83,36 +120,3 @@ def get_node_config()
   options[:logger].level = Logger::FATAL
   options
 end
-
-def get_provisioner_config()
-  config_file = File.join(File.dirname(__FILE__), "../config/mongodb_gateway.yml")
-  config = YAML.load_file(config_file)
-  config = symbolize_keys(config)
-  options = {
-    :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    # Following options are for Provisioner
-    :version => config[:service][:version],
-    :local_ip => 'localhost',
-    :mbus => config[:mbus],
-    # Following options are for AsynchronousServiceGateway
-    :service => config[:service],
-    :token => config[:token],
-    :cloud_controller => config[:cloud_controller],
-    # Following options are for Thin
-    :host => 'localhost',
-    :port => HTTP_PORT
-  }
-  options[:logger].level = Logger::FATAL
-  options
-end
-
-def start_server(opts)
-  sp = Provisioner.new(@opts).start()
-  opts = opts.merge({:provisioner => sp})
-  sg = VCAP::Services::AsynchronousServiceGateway.new(opts)
-  Thin::Server.start(opts[:host], opts[:port], sg)
-end
-
-
-
-

@@ -1,0 +1,1 @@
+Before run integration test of services repo. Make sure all components are running properly by running `bin/vcap status` at vcap repo.

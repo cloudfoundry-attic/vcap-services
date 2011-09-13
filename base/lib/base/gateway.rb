@@ -4,16 +4,17 @@ require 'bundler/setup'
 
 require 'optparse'
 require 'logger'
+require 'logging'
 require 'net/http'
 require 'thin'
 require 'yaml'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
-require 'common/asynchronous_service_gateway'
-require 'common/util'
 require 'vcap/common'
+require 'vcap/logging'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
+require 'asynchronous_service_gateway'
 require 'abstract'
 
 module VCAP
@@ -28,6 +29,8 @@ class VCAP::Services::Base::Gateway
 
   abstract :default_config_file
   abstract :provisioner_class
+
+  CC_CONFIG_FILE = File.expand_path("../../../../../cloud_controller/config/cloud_controller.yml", __FILE__)
 
   def start
 
@@ -51,15 +54,9 @@ class VCAP::Services::Base::Gateway
       exit
     end
 
-    logger = Logger.new(config[:log_file] || STDOUT, "daily")
-    logger.level = case (config[:log_level] || "INFO")
-                   when "DEBUG" then Logger::DEBUG
-                   when "INFO" then Logger::INFO
-                   when "WARN" then Logger::WARN
-                   when "ERROR" then Logger::ERROR
-                   when "FATAL" then Logger::FATAL
-                   else Logger::UNKNOWN
-                   end
+    VCAP::Logging.setup_from_config(config[:logging])
+    # Use the current running binary name for logger identity name, since service gateway only has one instance now.
+    logger = VCAP::Logging.logger(File.basename($0))
     config[:logger] = logger
 
     if config[:pid]
@@ -67,7 +64,7 @@ class VCAP::Services::Base::Gateway
       pf.unlink_at_exit
     end
 
-    config[:host] = VCAP.local_ip(config[:host])
+    config[:host] = VCAP.local_ip(config[:ip_route])
     config[:port] ||= VCAP.grab_ephemeral_port
     config[:service][:label] = "#{config[:service][:name]}-#{config[:service][:version]}"
     config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
@@ -86,8 +83,17 @@ class VCAP::Services::Base::Gateway
 
     # Go!
     EM.run do
-      sp = provisioner_class.new(params)
+      sp = provisioner_class.new(
+             :logger   => logger,
+             :index    => config[:index],
+             :version  => config[:service][:version],
+             :ip_route => config[:ip_route],
+             :mbus => config[:mbus],
+             :node_timeout => config[:node_timeout] || 2,
+             :allow_over_provisioning => config[:allow_over_provisioning]
+           )
       sg = VCAP::Services::AsynchronousServiceGateway.new(
+             :proxy => config[:proxy],
              :service => config[:service],
              :token   => config[:token],
              :logger  => logger,
@@ -99,6 +105,19 @@ class VCAP::Services::Base::Gateway
   end
 
   def default_cloud_controller_uri
-    "api.vcap.me"
+    config = YAML.load_file(CC_CONFIG_FILE)
+    config['external_uri'] || "api.vcap.me"
+  end
+
+  def parse_gateway_config(config_file)
+    config = YAML.load_file(config_file)
+    config = VCAP.symbolize_keys(config)
+
+    token = config[:token]
+    raise "Token missing" unless token
+    raise "Token must be a String or Int, #{token.class} given" unless (token.is_a?(Integer) || token.is_a?(String))
+    config[:token] = token.to_s
+
+    config
   end
 end

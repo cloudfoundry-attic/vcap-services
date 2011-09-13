@@ -2,76 +2,54 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/backup'
 
-require "rubygems"
-require "bundler/setup"
-
-$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
+$:.unshift(File.expand_path("../../lib", __FILE__))
 require "mongodb_service/mongodb_node"
-require "yaml"
-require "fileutils"
 
 include VCAP::Services::MongoDB
+class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
 
-# TODO  we really should abstract this to common
-def get_dump_path(nfs_base, name)
-  name.gsub!(/^(mongodb|redis|mysql)-/, '')
-  [nfs_base, name[0,2], name[2,2], name[4,2], name, Time.new.to_i.to_s].join('/')
-end
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'mongodb_backup.yml')
+  end
 
-def echo(output, err=false)
-  puts output
-  if err
-    @logger.error(output) unless @logger.nil?
-  else
-    @logger.info(output) unless @logger.nil?
+
+  def backup_db
+    # make sure local_db exists
+    unless File.exist? @config['local_db'].split(':')[1]
+      echo "Could not find local_db: #{@config['local_db']}",true
+      exit 1
+    end
+
+    mongodump_path = @config['mongodump_path'] || 'mongodump'
+    cmd_timeout = @config['timeout'].to_f
+
+    DataMapper.setup(:default, @config['local_db'])
+    DataMapper::auto_upgrade!
+
+    provisioned_service = Node::ProvisionedService.all
+    provisioned_service.each do |service|
+      user = service.admin
+      pass = service.adminpass
+      port = service.port
+
+      path = get_dump_path(service.name)
+
+      # Run mongodump
+      command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
+      res = CMDHandle.execute( command,cmd_timeout)
+      echo "#{command} result: #{res}", !res
+
+      # Delete system.user.bson
+      command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
+      res = CMDHandle.execute( command,cmd_timeout)
+      echo "#{command} result: #{res}", !res
+    end
+    echo "Backup Done!"
   end
 end
 
-config_file = File.expand_path("../../config/mongodb_backup.yml", __FILE__)
-
-begin
-  config = YAML.load_file(config_file)
-rescue => e
-  puts "Could not read configuration file: #{e}"
-  exit 1
-end
-
-@logger = Logger.new(config["log_file"] || STDOUT, "daily")
-@logger.level = case (config["log_level"] || "INFO")
-  when "DEBUG" then Logger::DEBUG
-  when "INFO" then Logger::INFO
-  when "WARN" then Logger::WARN
-  when "ERROR" then Logger::ERROR
-  when "FATAL" then Logger::FATAL
-  else Logger::UNKNOWN
-end
-
-nfs_base = [config['backup_base_dir'], config['service_name']].join('/')
-FileUtils.mkdir_p nfs_base
-
-unless File.exist? config['local_db'].split(':')[1]
-  echo "Could not find local_db: #{config['local_db']}"
-  exit 1
-end
-
-DataMapper.setup(:default, config['local_db'])
-DataMapper::auto_upgrade!
-
-provisioned_service = Node::ProvisionedService.all
-provisioned_service.each do |service|
-
-  user = service.admin
-  pass = service.adminpass
-  port = service.port
-
-  path = get_dump_path(nfs_base, service.name)
-
-  command = "mongodump -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
-  echo "Running: #{command}"
-  res = Kernel.system(command)
-  echo "result: #{res}", !res
-end
-echo "Backup Done!"
+VCAP::Services::MongoDB::Backup.new.start
 

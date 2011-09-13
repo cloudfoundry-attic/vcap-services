@@ -1,0 +1,7 @@
+source "http://rubygems.org"
+
+gem "nats", '>= 0.4.8'
+gem "eventmachine"
+gem "json"
+gem "em-http-request"
+gem "yajl-ruby"
