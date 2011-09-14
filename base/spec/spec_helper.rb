@@ -652,7 +652,8 @@ class ProvisionerTests
       @bind_id = nil
     end
     def send_provision_request
-      req = {'plan' => 'free'}
+      req = VCAP::Services::Api::GatewayProvisionRequest.new
+      req.plan = "free"
       @provisioner.provision_service(req, nil) do |res|
         @instance_id = res['response'][:service_id]
         @got_provision_response = res['success']
@@ -724,7 +725,8 @@ class ProvisionerTests
       @bind_id = nil
     end
     def send_provision_request
-      req = {'plan' => 'free'}
+      req = VCAP::Services::Api::GatewayProvisionRequest.new
+      req.plan = "free"
       @provisioner.provision_service(req, nil) do |res|
         @provision_response = res['success']
         @error_msg = res['response']

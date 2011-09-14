@@ -212,7 +212,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def provision_service(request, prov_handle=nil, &blk)
-    @logger.debug("[#{service_description}] Attempting to provision instance (label=#{request['label']}, plan=#{request['plan']})")
+    @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     subscription = nil
     barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => @nodes.length) do |responses|
       @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
@@ -228,14 +228,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def provision_node(request, node_msgs, prov_handle, blk)
-    @logger.debug("[#{service_description}] Provisioning node (label=#{request['label']}, plan=#{request['plan']}, nodes=#{node_msgs.length})")
+    @logger.debug("[#{service_description}] Provisioning node (request=#{request.extract}, nnodes=#{node_msgs.length})")
     nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
     best_node = nodes.max_by { |node| node_score(node) }
     if best_node && ( @allow_over_provisioning || node_score(best_node) > 0 )
       best_node = best_node["id"]
       @logger.debug("[#{service_description}] Provisioning on #{best_node}")
       prov_req = ProvisionRequest.new
-      prov_req.plan = request['plan']
+      prov_req.plan = request.plan
       # use old credentials to provision a service if provided.
       prov_req.credentials = prov_handle["credentials"] if prov_handle
       subscription = nil
@@ -430,7 +430,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("Recover instance: #{instance_id} from #{backup_path} with handles #{handles.inspect}.")
     prov_handle, binding_handles = find_instance_handles(instance_id, handles)
     @logger.debug("Provsion handle: #{prov_handle.inspect}. Binding_handles: #{binding_handles.inspect}")
-    request = prov_handle["configuration"]
+    req = prov_handle["configuration"]
+    request = VCAP::Services::Api::GatewayProvisionRequest.new
+    request.plan = req["plan"]
     provision_service(request, prov_handle) do |msg|
       if msg['success']
         updated_prov_handle = msg['response']
