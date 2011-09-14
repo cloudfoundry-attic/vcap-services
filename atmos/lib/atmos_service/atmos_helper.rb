@@ -1,20 +1,21 @@
+# Copyright (c) 2009-2011 VMware, Inc.
 require 'xmlsimple'
 require 'net/http'
 
 class VCAP::Services::Atmos::Helper
 
-  def initialize(aux, logger)
+  def initialize(atmos_config, logger)
     @logger = logger
 
-    @host = aux[:atmos_host]
-    @tenant = aux[:atmos_tenant]
-    @tenantadmin = aux[:atmos_tenantadmin]
-    @tenantpasswd = aux[:atmos_tenantpasswd]
-    @port = aux[:atmos_port]
+    @host = atmos_config[:host]
+    @tenant = atmos_config[:tenant]
+    @tenantadmin = atmos_config[:tenantadmin]
+    @tenantpasswd = atmos_config[:tenantpasswd]
+    @port = atmos_config[:port]
   end
 
 
-  def createSubtenant(name)
+  def create_subtenant(name)
     uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants")
 
     headers = { 'x-atmos-authsource'          =>  'local',
@@ -36,9 +37,9 @@ class VCAP::Services::Atmos::Helper
 
     res = http.request(req)
 
-# Response Body:
-#   <?xml version="1.0" encoding="UTF-8"?>
-#   <subtenantId>2e705c1a08e5412fb7231055d56733e0</subtenantId>
+    # Response Body is like:
+    # <?xml version="1.0" encoding="UTF-8"?>
+    # <subtenantId>2e705c1a08e5412fb7231055d56733e0</subtenantId>
 
     if res.code == "201"
       id = XmlSimple.xml_in(res.body, { 'KeyAttr' => 'subtenantId' })
@@ -47,7 +48,7 @@ class VCAP::Services::Atmos::Helper
     return nil
   end
 
-  def deleteSubtenant(name)
+  def delete_subtenant(name)
     uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants/#{name}")
 
     headers = { 'x-atmos-tenantadmin'         =>  @tenantadmin,
@@ -67,16 +68,15 @@ class VCAP::Services::Atmos::Helper
 
     res = http.request(req)
 
-# Response Body:
-#   <?xml version="1.0" encoding="UTF-8"?>
-#   <deleted>true</deleted>
+    # Response Body is like:
+    # <?xml version="1.0" encoding="UTF-8"?>
+    # <deleted>true</deleted>
 
-    return false unless res.code == "200"
-    return true
+    return res.code == "200"
   end
 
-  def createUser(username, subtenantname)
-    uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants/#{subtenantname}/uids")
+  def create_user(username, subtenant_name)
+    uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants/#{subtenant_name}/uids")
 
     headers = { 'x-atmos-tenantadmin'         =>  @tenantadmin,
                 'x-atmos-tenantadminpassword' =>  @tenantpasswd,
@@ -88,7 +88,7 @@ class VCAP::Services::Atmos::Helper
     req["accept"] = '*/*'
     headers.keys.each {|f| req.add_field(f, headers[f])}
 
-    @logger.debug "create user #{username} under subtenant #{subtenantname} in tenant #{@tenant}"
+    @logger.debug "create user #{username} under subtenant #{subtenant_name} in tenant #{@tenant}"
     @logger.debug uri
 
     http = Net::HTTP.new(uri.host, @port.to_i)
@@ -97,20 +97,19 @@ class VCAP::Services::Atmos::Helper
 
     res = http.request(req)
 
-# Response Body:
-#   <?xml version="1.0" encoding="UTF-8"?>
-#   <sharedSecret>jzpKHy5ee28jMpTiiqkmTa5vdu8=</sharedSecret>
+    # Response Body is like:
+    # <?xml version="1.0" encoding="UTF-8"?>
+    # <sharedSecret>jzpKHy5ee28jMpTiiqkmTa5vdu8=</sharedSecret>
 
     if res.code == "200"
-      sharedSecret = XmlSimple.xml_in(res.body, { 'KeyAttr' => 'sharedSecret' })
-      return sharedSecret
+      shared_secret = XmlSimple.xml_in(res.body, { 'KeyAttr' => 'sharedSecret' })
+      return shared_secret
     end
     return nil
-
   end
 
-  def deleteUser(username, subtenantname)
-    uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants/#{subtenantname}/uids/#{username}")
+  def delete_user(username, subtenant_name)
+    uri = URI.parse("http://#{@host}/sysmgmt/tenants/#{@tenant}/subtenants/#{subtenant_name}/uids/#{username}")
 
     headers = { 'x-atmos-tenantadmin'         =>  @tenantadmin,
                 'x-atmos-tenantadminpassword' =>  @tenantpasswd,
@@ -121,7 +120,7 @@ class VCAP::Services::Atmos::Helper
     req["accept"] = '*/*'
     headers.keys.each {|f| req.add_field(f, headers[f])}
 
-    @logger.debug "delete user #{username} under subtenant #{subtenantname} in tenant #{@tenant}"
+    @logger.debug "delete user #{username} under subtenant #{subtenant_name} in tenant #{@tenant}"
     @logger.debug uri
 
     http = Net::HTTP.new(uri.host, @port.to_i)
@@ -130,12 +129,10 @@ class VCAP::Services::Atmos::Helper
 
     res = http.request(req)
 
-# Response Body:
-#   <?xml version="1.0" encoding="UTF-8"?>
-#   <deleted>true</deleted>
+    # Response Body:
+    # <?xml version="1.0" encoding="UTF-8"?>
+    # <deleted>true</deleted>
 
-    return false unless res.code == "200"
-    return true
+    return res.code == "200"
   end
-
 end

@@ -5,6 +5,7 @@ PATH
       eventmachine (~> 0.12.10)
       logging (>= 1.5.0)
       nats
+      posix-spawn
       thin
       yajl-ruby
 
@@ -71,14 +72,15 @@ GEM
     eventmachine (0.12.10)
     fastercsv (1.5.4)
     json (1.4.6)
-    json_pure (1.5.1)
+    json_pure (1.6.0)
     little-plugger (1.1.2)
-    logging (1.5.0)
+    logging (1.6.1)
       little-plugger (>= 1.1.2)
     nats (0.4.10)
       daemons (>= 1.1.0)
       eventmachine (>= 0.12.10)
       json_pure (>= 1.5.1)
+    posix-spawn (0.3.6)
     rack (1.2.2)
     rake (0.8.7)
     rcov (0.9.9)
@@ -101,8 +103,9 @@ GEM
       rack (>= 1.0.0)
     tilt (1.2.2)
     uuidtools (2.1.2)
+    vcap_logging (0.1.0)
     xml-simple (1.0.15)
-    yajl-ruby (0.8.2)
+    yajl-ruby (0.8.3)
 
 PLATFORMS
   ruby
@@ -122,4 +125,5 @@ DEPENDENCIES
   thin
   uuidtools
   vcap_common!
+  vcap_logging
   xml-simple

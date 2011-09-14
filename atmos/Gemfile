@@ -12,6 +12,7 @@ gem "thin"
 gem "xml-simple"
 
 gem 'vcap_common', :path => '../../common'
+gem 'vcap_logging', :require => ['vcap/logging']
 
 group :test do
   gem "rake"

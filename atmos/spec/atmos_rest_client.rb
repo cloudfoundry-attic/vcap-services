@@ -1,3 +1,4 @@
+# Copyright (c) 2009-2011 VMware, Inc.
 require 'net/http'
 require 'net/https'
 require 'uri'
@@ -29,84 +30,85 @@ class AtmosClient
     @http.verify_mode = OpenSSL::SSL::VERIFY_NONE
   end
 
-  def getObjNS(path='')
+  def get_obj_ns(path='')
     path = '/rest/namespace/'+ path
     req = Net::HTTP::Get.new(path)
-    sendRequest(req)
+    send_request(req)
   end
 
-  def getObj(id)
+  def get_obj(id)
     return unless id
     req = Net::HTTP::Get.new(id)
-    sendRequest(req)
+    send_request(req)
   end
 
-  def createObjNS(path='', content=nil)
+  def create_obj_ns(path='', content=nil)
     path = '/rest/namespace/'+ path
     req = Net::HTTP::Post.new(path)
     req.body = content
-    sendRequest(req)
+    send_request(req)
   end
 
-  def createObj(content=nil)
+  def create_obj(content=nil)
     req = Net::HTTP::Post.new('/rest/objects')
     req.body = content
-    sendRequest(req)
+    send_request(req)
   end
 
-  def deleteObjNS(path='')
+  def delete_obj_ns(path='')
     path = '/rest/namespace/'+ path
     req = Net::HTTP::Delete.new(path)
-    sendRequest(req)
+    send_request(req)
   end
 
-  def deleteObj(id)
+  def delete_obj(id)
     return unless id
     req = Net::HTTP::Delete.new(id)
-    sendRequest(req)
+    send_request(req)
   end
 
 protected
 
-  def sendRequest(req)
-    prepareRequest(req)
+  def send_request(req)
+    prepare_request(req)
     res = @http.start do |http|
       http.request(req)
     end
     return res
   end
 
-  def prepareRequest(request)
+  def prepare_request(request)
     t = Time.now.httpdate
     request[HEADERS[:emc_date]] = t
     request[HEADERS[:date]] = t
-    request[HEADERS[:type]]= 'application/octet-stream'
-    request[HEADERS[:uid]]= "#{@opts[:sid]}/#{@opts[:uid]}"
-    request[HEADERS[:sign]] = genAuthHeader(request)
+    request[HEADERS[:type]] = 'application/octet-stream'
+    request[HEADERS[:uid]] = "#{@opts[:sid]}/#{@opts[:uid]}"
+    request[HEADERS[:sign]] = gen_auth_header(request)
   end
 
-  def genAuthHeader(request)
-    hashString = "#{request.method}\n"+
+  def gen_auth_header(request)
+    hash_string = "#{request.method}\n"+
       "#{request[HEADERS[:type]]}\n" +
       "#{request[HEADERS[:extent]]}\n"+
       "#{request[HEADERS[:date]]}\n"+
       "#{request.path.downcase}\n"
 
-    customArgs = {}
-    request.each_header{ |key, value|
+    custom_args = {}
+    request.each_header do |key, value|
       if key =~ /^x-emc-/
-        customArgs[key] = value
+        custom_args[key] = value
       end
-    }
-    customArgs = customArgs.sort()
-    customHeaders = ""
-    customArgs.each{ |key, value|
-      customHeaders += key + ":" + value.lstrip.rstrip + "\n"
-    }
+    end
+    custom_args = custom_args.sort()
+    custom_headers = ""
+    custom_args.each do |key, value|
+      custom_headers += key + ":" + value.lstrip.rstrip + "\n"
+    end
 
-    customHeaders = customHeaders.chomp()
-    hashString += customHeaders
-    digest = HMAC.digest(OpenSSL::Digest.new('sha1'), Base64.decode64(@opts[:key]), hashString)
+    custom_headers = custom_headers.chomp()
+    hash_string += custom_headers
+    digest = HMAC.digest(OpenSSL::Digest.new('sha1'),
+      Base64.decode64(@opts[:key]), hash_string)
     Base64.encode64(digest.to_s).chomp
   end
 end
