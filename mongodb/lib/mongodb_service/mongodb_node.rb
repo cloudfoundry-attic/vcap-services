@@ -108,18 +108,21 @@ class VCAP::Services::MongoDB::Node
         @available_memory -= (provisioned_service.memory || @max_memory)
         next
       end
+
+      unless service_exist?(provisioned_service)
+        @logger.warn("Service #{provisioned_service.name} in local DB, but not in file system")
+        next
+      end
+
       begin
         pid = start_instance(provisioned_service)
         provisioned_service.pid = pid
-        unless provisioned_service.save
-          provisioned_service.kill
-          raise "Couldn't save pid (#{pid})"
-        end
+        raise "Cannot save provision_service" unless provisioned_service.save
       rescue => e
+        provisioned_service.kill
         @logger.error("Error starting service #{provisioned_service.name}: #{e}")
       end
     end
-
   end
 
   def shutdown
@@ -192,53 +195,44 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
     provisioned_service.db        = db
 
-    unless provisioned_service.save
-      cleanup_service(provisioned_service)
-      raise "Could not save entry: #{provisioned_service.errors.inspect}"
-    end
+    raise "Cannot save provision_service" unless provisioned_service.save
 
-    begin
-      username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
-      password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
+    username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
+    password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
 
-      # wait for mongod to start
-      sleep 0.5
+    # wait for mongod to start
+    sleep 0.5
 
-      # Add super_user in admin table for backend operations
-      mongodb_add_admin({
-        :port      => provisioned_service.port,
-        :username  => provisioned_service.admin,
-        :password  => provisioned_service.adminpass,
-        :times     => 10
-      })
+    # Add super_user in admin table for backend operations
+    mongodb_add_admin({
+      :port      => provisioned_service.port,
+      :username  => provisioned_service.admin,
+      :password  => provisioned_service.adminpass,
+      :times     => 10
+    })
 
-      # Add super_user in user table. This user is added to keep node backward
-      # compatibile with older version, which depends on this user for backend
-      # operations.
-      mongodb_add_user({
-        :port      => provisioned_service.port,
-        :admin     => provisioned_service.admin,
-        :adminpass => provisioned_service.adminpass,
-        :db        => provisioned_service.db,
-        :username  => provisioned_service.admin,
-        :password  => provisioned_service.adminpass
-      })
+    # Add super_user in user table. This user is added to keep node backward
+    # compatibile with older version, which depends on this user for backend
+    # operations.
+    mongodb_add_user({
+      :port      => provisioned_service.port,
+      :admin     => provisioned_service.admin,
+      :adminpass => provisioned_service.adminpass,
+      :db        => provisioned_service.db,
+      :username  => provisioned_service.admin,
+      :password  => provisioned_service.adminpass
+    })
 
-      # Add an end_user
-      mongodb_add_user({
-        :port      => provisioned_service.port,
-        :admin     => provisioned_service.admin,
-        :adminpass => provisioned_service.adminpass,
-        :db        => provisioned_service.db,
-        :username  => username,
-        :password  => password
-      })
+    # Add an end_user
+    mongodb_add_user({
+      :port      => provisioned_service.port,
+      :admin     => provisioned_service.admin,
+      :adminpass => provisioned_service.adminpass,
+      :db        => provisioned_service.db,
+      :username  => username,
+      :password  => password
+    })
 
-    rescue => e
-      record_service_log(provisioned_service.name)
-      cleanup_service(provisioned_service)
-      raise e.to_s + ": Could not save admin user."
-    end
 
     response = {
       "hostname" => @local_ip,
@@ -251,6 +245,11 @@ class VCAP::Services::MongoDB::Node
     }
     @logger.debug("Provision response: #{response}")
     return response
+  rescue => e
+    @logger.error("Error provision instance: #{e}")
+    record_service_log(provisioned_service.name)
+    cleanup_service(provisioned_service)
+    raise e
   end
 
   def unprovision(name, bindings)
@@ -264,7 +263,6 @@ class VCAP::Services::MongoDB::Node
 
   def cleanup_service(provisioned_service)
     @logger.info("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
-    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
 
     provisioned_service.kill(:SIGKILL) if provisioned_service.running?
 
@@ -279,6 +277,7 @@ class VCAP::Services::MongoDB::Node
     @available_memory += provisioned_service.memory
     @free_ports << provisioned_service.port
 
+    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
     true
   end
 
@@ -448,10 +447,7 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.pid       = start_instance(provisioned_service)
     @logger.debug("Provisioned_service: #{provisioned_service}")
 
-    unless provisioned_service.save
-      provisioned_service.kill
-      raise "Could not save entry: #{provisioned_service.errors.inspect}"
-    end
+    raise "Cannot save provisioned_service" unless provisioned_service.save
 
     # Update credentials for the new credential
     service_credential['port'] = port
@@ -468,6 +464,8 @@ class VCAP::Services::MongoDB::Node
     [service_credential, binding_credentials]
   rescue => e
     @logger.warn(e)
+    record_service_log(provisioned_service.name)
+    cleanup_service(provisioned_service)
     nil
   end
 
@@ -707,6 +705,10 @@ class VCAP::Services::MongoDB::Node
 
   def data_dir(base_dir)
     File.join(base_dir, 'data')
+  end
+
+  def service_exist?(provisioned_service)
+    Dir.exists?(service_dir(provisioned_service.name))
   end
 
   def rm_lockfile(service_id)
