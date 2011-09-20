@@ -1,0 +1,23 @@
+source :rubygems
+
+gem "eventmachine"
+gem "em-http-request"
+gem "nats", '>= 0.4.8'
+gem "ruby-hmac"
+gem "uuidtools"
+gem "datamapper", ">= 0.10.2"
+gem "do_sqlite3"
+gem "dm-sqlite-adapter"
+gem "sinatra"
+gem "thin"
+gem "rest-client"
+
+gem 'vcap_common', :path => '../../common'
+gem 'vcap_logging', :require => ['vcap/logging']
+
+group :test do
+  gem "rake"
+  gem "rspec"
+  gem "rcov"
+  gem "ci_reporter"
+end

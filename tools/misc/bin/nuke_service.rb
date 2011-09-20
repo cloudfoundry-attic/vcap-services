@@ -28,9 +28,10 @@ scripted     = false
 cld_ctrl_uri = nil
 
 default_configs = {
-  :mongodb => File.expand_path("../../../mongodb/config/mongodb_gateway.yml", __FILE__),
-  :redis   => File.expand_path("../../../redis/config/redis_gateway.yml", __FILE__),
-  :mysql   => File.expand_path("../../../mysql/config/mysql_gateway.yml", __FILE__),
+  :mongodb => File.expand_path("../../mongodb/config/mongodb_gateway.yml", __FILE__),
+  :redis   => File.expand_path("../../redis/config/redis_gateway.yml", __FILE__),
+  :mysql   => File.expand_path("../../mysql/config/mysql_gateway.yml", __FILE__),
+  :neo4j   => File.expand_path("../../neo4j/config/neo4j_gateway.yml", __FILE__),
 }
 
 OptionParser.new do |opts|
@@ -44,7 +45,7 @@ OptionParser.new do |opts|
     cld_ctrl_uri = opt
   end
 
-  opts.on("-s", "--service ARG", [:redis, :mysql, :mongodb],  "Look for default configs for the supplied service [redis, mysql, mongodb]") do |opt|
+  opts.on("-s", "--service ARG", [:redis, :mysql, :mongodb, :neo4j],  "Look for default configs for the supplied service [redis, mysql, mongodb, neo4j]") do |opt|
     config_file = default_configs[opt]
   end
 
