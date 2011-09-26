@@ -27,11 +27,16 @@ class VCAP::Services::Base::Base
 
   include VCAP::Services::Base::Error
 
+  attr_reader :orphan_ins_hash
+  attr_reader :orphan_binding_hash
+
   def initialize(options)
     @logger = options[:logger]
     @options = options
     @local_ip = VCAP.local_ip(options[:ip_route])
     @logger.info("#{service_description}: Initializing")
+    @orphan_ins_hash = {}
+    @orphan_binding_hash = {}
     @node_nats = NATS.connect(:uri => options[:mbus]) {
       on_connect_node
     }
@@ -54,7 +59,10 @@ class VCAP::Services::Base::Base
   end
 
   def update_varz()
-    varz_details.each { |k,v|
+    vz = varz_details
+    vz[:orphan_instances] = @orphan_ins_hash
+    vz[:orphan_bindings] = @orphan_binding_hash
+    vz.each { |k,v|
       VCAP::Component.varz[k] = v
     }
   end
@@ -71,6 +79,8 @@ class VCAP::Services::Base::Base
   # Subclasses VCAP::Services::Base::{Node,Provisioner} implement the
   # following methods. (Note that actual service Provisioner or Node
   # implementations should NOT need to touch these!)
+
+  # TODO on_connect_node should be on_connect_nats
   abstract :on_connect_node
   abstract :flavor # "Provisioner" or "Node"
   abstract :varz_details

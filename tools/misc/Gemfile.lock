@@ -1,0 +1,20 @@
+GEM
+  remote: http://rubygems.org/
+  specs:
+    daemons (1.1.4)
+    eventmachine (0.12.10)
+    json (1.5.4)
+    json_pure (1.5.4)
+      spruz (~> 0.2.8)
+    nats (0.4.10)
+      daemons (>= 1.1.0)
+      eventmachine (>= 0.12.10)
+      json_pure (>= 1.5.1)
+    spruz (0.2.13)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  json
+  nats (>= 0.4.8)

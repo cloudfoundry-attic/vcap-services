@@ -14,3 +14,4 @@ max_memory: 16
 node_id: rabbit_node_1
 pid: /var/vcap/sys/run/rabbit_node.pid
 migration_nfs: /mnt/appcloud
+# z_interval: 30

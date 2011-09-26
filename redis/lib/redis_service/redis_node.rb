@@ -186,9 +186,9 @@ class VCAP::Services::Redis::Node
   # 3. For old node, it should restore the password,
   #    for new node, nothing need to do, all are done in import_instance.
   def enable_instance(service_credentials, binding_credentials_map = {})
-    if check_password(service_credentials["port"], service_credentials["password"])
+    instance = get_instance(service_credentials["name"])
+    if check_password(instance.port, instance.password)
       # The new node
-      instance = get_instance(service_credentials["name"])
       service_credentials = gen_credentials(instance)
       binding_credentials_map.each do |key, value|
         binding_credentials_map[key]["credentials"] = gen_credentials(instance)

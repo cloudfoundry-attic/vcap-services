@@ -1,0 +1,15 @@
+---
+#cloud_controller_uri: api.vcap.me
+external_uri: service-broker.vcap.me
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
+token: "0xdeadbeef"
+logging:
+  level: debug
+mbus: nats://localhost:4222
+pid: /var/vcap/sys/run/service_broker.pid
+local_db: sqlite3:/var/vcap/services/broker/service_broker.db

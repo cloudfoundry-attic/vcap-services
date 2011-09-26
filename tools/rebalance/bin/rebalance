@@ -1,5 +1,9 @@
 #!/usr/bin/env ruby
+# Copyright (c) 2009-2011 VMware, Inc.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 require "rubygems"
+require "bundler/setup"
 require "nats/client"
 require "yajl"
 require "logger"
@@ -60,7 +64,7 @@ class Runner
       @control = control(@instances.dup) do
         puts "Migration complete."
         # In case NATS stop before message send out.
-        EM.add_timer(2) {NATS.stop}
+        EM.add_timer(2) {EM.stop}
       end
       puts "\nMigration begin."
       @control.call()
@@ -90,6 +94,11 @@ class Runner
       else
         binding_creds << v['credentials'] if v['credentials']['name'] == instance
       end
+    end
+    unless prov_cred
+      puts "Can't find instance #{instance}."
+      @control.call
+      return
     end
     if @options[:check] && prov_cred["node_id"] != @options[:source]
       puts "ERROR: Instance #{instance} not belongs to source node #{@options[:source]}"
@@ -269,7 +278,7 @@ class Runner
   end
 end
 
-NATS.start do
+EM.run do
   runner = Runner.new(ARGV.dup)
   runner.run
 end

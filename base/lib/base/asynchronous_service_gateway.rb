@@ -12,6 +12,7 @@ require 'thread'
 $:.unshift(File.expand_path("../../../../../lib", __FILE__))
 require 'json_message'
 require 'services/api'
+require 'services/api/const'
 
 require 'service_error'
 
@@ -36,6 +37,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   def initialize(opts)
     super
+    setup(opts)
+  end
+
+  # setup the environment
+  def setup(opts)
     missing_opts = REQ_OPTS.select {|o| !opts.has_key? o}
     raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
     @service      = opts[:service]
@@ -45,8 +51,11 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @offering_uri = "#{@cld_ctrl_uri}/services/v1/offerings"
     @provisioner  = opts[:provisioner]
     @hb_interval  = opts[:heartbeat_interval] || 60
+    @node_timeout = opts[:node_timeout]
     @handles_uri = "#{@cld_ctrl_uri}/services/v1/offerings/#{@service[:label]}/handles"
-    @handle_fetch_interval = opts[:handle_fetch_interval] || 60
+    @handle_fetch_interval = opts[:handle_fetch_interval] || 1
+    @check_orphan_interval = opts[:check_orphan_interval]
+    @handle_fetched = false
     @svc_json     = {
       :label  => @service[:label],
       :url    => @service[:url],
@@ -55,16 +64,19 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       :active => true,
       :description  => @service[:description],
       :plan_options => @service[:plan_options],
-      :acls => @service[:acls]
+      :acls => @service[:acls],
+      :timeout => @service[:timeout]
     }.to_json
     @deact_json   = {
       :label  => @service[:label],
       :url    => @service[:url],
       :active => false
     }.to_json
+
+    token_hdrs = VCAP::Services::Api::GATEWAY_TOKEN_HEADER
     @cc_req_hdrs  = {
-      'Content-Type'         => 'application/json',
-      'X-VCAP-Service-Token' => @token,
+      'Content-Type' => 'application/json',
+      token_hdrs     => @token,
     }
     @proxy_opts = opts[:proxy]
 
@@ -83,10 +95,18 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     # Add any necessary handles we don't know about
     update_callback = Proc.new do |resp|
       @provisioner.update_handles(resp.handles)
+      @handle_fetched = true
       EM.cancel_timer(@fetch_handle_timer)
     end
     @fetch_handle_timer = EM.add_periodic_timer(@handle_fetch_interval) { fetch_handles(&update_callback) }
     EM.next_tick { fetch_handles(&update_callback) }
+
+    if @check_orphan_interval > 0
+      update_callback_for_check_orphan = Proc.new do |resp|
+        @provisioner.check_orphan(resp.handles) {|msg| }
+      end
+      EM.add_periodic_timer(@check_orphan_interval) { fetch_handles(&update_callback_for_check_orphan) }
+    end
 
     # Register update handle callback
     @provisioner.register_update_handle_callback{|handle, &blk| update_service_handle(handle, &blk)}
@@ -103,6 +123,10 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       error_msg = ServiceError.new(ServiceError::NOT_AUTHORIZED).to_hash
       abort_request(error_msg)
     end
+    unless @handle_fetched
+      error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
+      abort_request(error_msg)
+    end
     content_type :json
   end
 
@@ -117,10 +141,10 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   # Provisions an instance of the service
   #
   post '/gateway/v1/configurations' do
-    req = Yajl::Parser.parse(request_body)
-    @logger.debug("Provision request for label=#{req['label']} plan=#{req['plan']}")
+    req = VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
+    @logger.debug("Provision request for label=#{req.label} plan=#{req.plan}")
 
-    name, version = VCAP::Services::Api::Util.parse_label(req['label'])
+    name, version = VCAP::Services::Api::Util.parse_label(req.label)
     unless (name == @service[:name]) && (version == @service[:version])
       error_msg = ServiceError.new(ServiceError::UNKNOWN_LABEL).to_hash
       abort_request(error_msg)
@@ -128,7 +152,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
     @provisioner.provision_service(req) do |msg|
       if msg['success']
-        async_reply(VCAP::Services::Api::ProvisionResponse.new(msg['response']).encode)
+        async_reply(VCAP::Services::Api::GatewayProvisionResponse.new(msg['response']).encode)
       else
         async_reply_error(msg['response'])
       end
@@ -222,6 +246,34 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  post '/service/internal/v1/check_orphan' do
+    @logger.info("Request to check orphan")
+    fetch_handles do |resp|
+      @provisioner.check_orphan(resp.handles) do |msg|
+        if msg['success']
+          async_reply
+        else
+          async_reply_error(msg['response'])
+        end
+      end
+    end
+    async_mode
+  end
+
+  delete '/service/internal/v1/purge_orphan' do
+    @logger.info("Purge orphan request")
+    req = Yajl::Parser.parse(request_body)
+    orphan_ins_hash = req["orphan_instances"]
+    orphan_binding_hash = req["orphan_bindings"]
+    @provisioner.purge_orphan(orphan_ins_hash,orphan_binding_hash) do |msg|
+      if msg['success']
+        async_reply
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
 
   #################### Helpers ####################
 
@@ -283,9 +335,9 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       end
     end
 
-    def async_mode(timeout=10)
+    def async_mode(timeout=@node_timeout)
       request.env['__async_timer'] = EM.add_timer(timeout) do
-        @logger.warn("Service Unavailable")
+        @logger.warn("Request timeout in #{timeout} seconds.")
         error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
         err_body = error_msg['msg'].to_json()
         request.env['async.callback'].call(
