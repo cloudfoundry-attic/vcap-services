@@ -230,7 +230,7 @@ class VCAP::Services::Mysql::Node
 
   def unprovision(name, credentials)
     return if name.nil?
-    @logger.debug("Unprovision database:#{name}, bindings: #{credentials.inspect}")
+    @logger.debug("Unprovision database:#{name} and its #{credentials.size} bindings")
     provisioned_service = ProvisionedService.get(name)
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) if provisioned_service.nil?
     # TODO: validate that database files are not lingering

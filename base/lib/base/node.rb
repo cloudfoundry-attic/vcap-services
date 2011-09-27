@@ -249,7 +249,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     oi_list.each do |ins|
       begin
         bindings = ab_list.select {|b| b["name"] == ins}
-        @logger.debug("Unprovision orphan instance #{ins} and its bindings #{bindings.inspect}")
+        @logger.debug("Unprovision orphan instance #{ins} and its #{bindings.size} bindings")
         ret &&= unprovision(ins,bindings)
         # Remove the OBs that are unbinded by unprovision
         ob_list.delete_if do |ob|
