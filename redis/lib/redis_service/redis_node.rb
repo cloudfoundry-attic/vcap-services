@@ -65,6 +65,7 @@ class VCAP::Services::Redis::Node
     options[:port_range].each {|port| @free_ports << port}
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
+    @redis_log_dir = options[:redis_log_dir]
   end
 
   def pre_send_announcement
@@ -326,9 +327,10 @@ class VCAP::Services::Redis::Node
       memory = instance.memory
       port = instance.port
       password = instance.password
-      dir = File.join(@base_dir, instance.name)
+      dir = instance_dir(instance.name)
       data_dir = File.join(dir, "data")
-      log_file = File.join(dir, "log")
+      log_dir = instance_log_dir(instance.name)
+      log_file = File.join(log_dir, "redis.log")
       swap_file = File.join(dir, "redis.swap")
       vm_max_memory = (memory * 0.7).round
       vm_pages = (@max_swap * 1024 * 1024 / 32).round # swap in bytes / size of page (32 bytes)
@@ -338,10 +340,10 @@ class VCAP::Services::Redis::Node
 
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
+      FileUtils.mkdir_p(log_dir)
       if db_file
         FileUtils.cp(db_file, data_dir)
       end
-      FileUtils.rm_f(log_file)
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
@@ -353,8 +355,10 @@ class VCAP::Services::Redis::Node
 
   def stop_instance(instance)
     stop_redis_server(instance)
-    dir = File.join(@base_dir, instance.name)
-    EM.defer {FileUtils.rm_rf(dir)}
+    EM.defer do
+      FileUtils.rm_rf(instance_dir(instance.name))
+      FileUtils.rm_rf(instance_log_dir(instance.name))
+    end
   end
 
   def cleanup_instance(instance)
@@ -526,6 +530,14 @@ class VCAP::Services::Redis::Node
       redis.quit if redis
     rescue => e
     end
+  end
+
+  def instance_dir(instance_id)
+    File.join(@base_dir, instance_id)
+  end
+
+  def instance_log_dir(instance_id)
+    File.join(@redis_log_dir, instance_id)
   end
 
 end

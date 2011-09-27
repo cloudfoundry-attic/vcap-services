@@ -33,7 +33,9 @@ describe VCAP::Services::Redis::Node do
       :local_db => "sqlite3:" + @local_db_file,
       :port_range => Range.new(5000, 25000),
       :mbus => "nats://localhost:4222",
+      :redis_log_dir => "/tmp/redis_log"
     }
+    FileUtils.mkdir_p(@options[:redis_log_dir])
 
     EM.run do
       @node = VCAP::Services::Redis::Node.new(@options)
@@ -52,6 +54,7 @@ describe VCAP::Services::Redis::Node do
 
   after :all do
     FileUtils.rm_f(@local_db_file)
+    FileUtils.rm_f(@options[:redis_log_dir])
   end
 
   describe 'Node.initialize' do
