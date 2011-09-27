@@ -100,7 +100,7 @@ GEM
       posix-spawn
       thin
       yajl-ruby
-    vcap_logging (0.1.0)
+    vcap_logging (0.1.2)
     yajl-ruby (0.8.2)
 
 PLATFORMS
