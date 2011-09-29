@@ -427,7 +427,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # 2) restore instance use backup file
   # 3) re-bind bindings use old credential
   def recover(instance_id, backup_path, handles, &blk)
-    @logger.debug("Recover instance: #{instance_id} from #{backup_path} with handles #{handles.inspect}.")
+    @logger.debug("Recover instance: #{instance_id} from #{backup_path} with #{handles.size} handles.")
     prov_handle, binding_handles = find_instance_handles(instance_id, handles)
     @logger.debug("Provsion handle: #{prov_handle.inspect}. Binding_handles: #{binding_handles.inspect}")
     req = prov_handle["configuration"]

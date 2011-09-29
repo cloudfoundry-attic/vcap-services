@@ -220,7 +220,7 @@ class VCAP::Services::Postgresql::Node
 
   def unprovision(name, credentials)
     return if name.nil?
-    @logger.info("Unprovision database:#{name}, bindings: #{credentials.inspect}")
+    @logger.info("Unprovision database:#{name} and its #{credentials.size} bindings")
     provisionedservice = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) if provisionedservice.nil?
     # Delete all bindings, ignore not_found error since we are unprovision
