@@ -47,11 +47,16 @@ class VCAP::Services::Base::Base
       :index => options[:index] || 0,
       :config => options
     )
+
     z_interval = options[:z_interval] || 30
-    EM.add_timer(5) { update_varz } # give service a chance to wake up
-    EM.add_periodic_timer(z_interval) { update_varz }
-    EM.add_timer(5) { update_healthz } # give service a chance to wake up
-    EM.add_periodic_timer(z_interval) { update_healthz }
+    EM.add_periodic_timer(z_interval) do
+      EM.defer { update_varz; update_healthz }
+    end
+
+    # Defer 5 seconds to give service a change to wake up
+    EM.add_timer(5) do
+      EM.defer { update_varz; update_healthz }
+    end
   end
 
   def service_description()
