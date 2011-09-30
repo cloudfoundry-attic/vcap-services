@@ -10,10 +10,10 @@ require 'pathname'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'vcap/logging'
+require 'vcap/common'
 
 $:.unshift File.dirname(__FILE__)
 require 'abstract'
-
 
 module VCAP
   module Services
@@ -30,8 +30,22 @@ class VCAP::Services::Base::Backup
   abstract :default_config_file
   abstract :backup_db
 
+  def initialize
+    @run_lock = Mutex.new
+    @shutdown = false
+    trap("TERM") { exit_fun }
+    trap("INT") { exit_fun }
+  end
+
   def script_file
     $0
+  end
+
+  def exit_fun
+    @shutdown = true
+    Thread.new do
+      @run_lock.synchronize { exit }
+    end
   end
 
   def single_app(&blk)
@@ -65,6 +79,12 @@ class VCAP::Services::Base::Backup
       # Use running binary name for logger identity name.
       @logger = VCAP::Logging.logger(File.basename(script_file))
 
+      # Make pidfile
+      if @config["pid"]
+        pf = VCAP::PidFile.new(@config["pid"])
+        pf.unlink_at_exit
+      end
+
       puts "Check mount points"
       check_mount_points
 
@@ -84,12 +104,13 @@ class VCAP::Services::Base::Backup
       end
 
       puts "Run backup task"
-      backup_db
+      @run_lock.synchronize { backup_db }
       puts "#{File.basename(script_file)} task is completed"
-
     end
   rescue => e
     puts "Error: #{e.message}\n #{e.backtrace}"
+  rescue Interrupt => it
+    echo "Backup is interrupted!"
   end
 
   def get_dump_path(name,mode=0)

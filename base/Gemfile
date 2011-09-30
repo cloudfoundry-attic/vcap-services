@@ -13,6 +13,7 @@ gem "sinatra"
 gem "thin"
 
 gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
+gem 'vcap_logging', :require => ['vcap/logging']
 
 group :test do
   gem "rake"

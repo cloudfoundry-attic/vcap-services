@@ -15,12 +15,11 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
     File.join(File.dirname(__FILE__), '..', 'config', 'mongodb_backup.yml')
   end
 
-
   def backup_db
     # make sure local_db exists
     unless File.exist? @config['local_db'].split(':')[1]
       echo "Could not find local_db: #{@config['local_db']}",true
-      exit 1
+      return 1
     end
 
     mongodump_path = @config['mongodump_path'] || 'mongodump'
@@ -46,8 +45,12 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
       res = CMDHandle.execute( command,cmd_timeout)
       echo "#{command} result: #{res}", !res
+
+      if @shutdown
+        raise Interrupt, "Interrupted"
+      end
     end
-    echo "Backup Done!"
+    0
   end
 end
 
