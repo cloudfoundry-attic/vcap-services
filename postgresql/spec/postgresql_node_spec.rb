@@ -34,6 +34,8 @@ describe "Postgresql server node" do
 
   before :all do
     @opts = getNodeTestConfig
+    # easy to test max db connections
+    @opts[:max_db_conns] = 1
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
@@ -69,6 +71,26 @@ describe "Postgresql server node" do
       @db.should be_instance_of Hash
       conn = connect_to_postgresql(@db)
       expect {conn.query("SELECT 1")}.should_not raise_error
+      conn.close if conn
+      EM.stop
+    end
+  end
+
+  it "should limit max connection to the database" do
+    EM.run do
+      conn = connect_to_postgresql(@db)
+      expect {conn.query("SELECT 1")}.should_not raise_error
+      expect {connect_to_postgresql(@db)}.should raise_error(PGError, /too many connections for database .*/)
+      conn.close if conn
+      EM.stop
+    end
+  end
+
+  it "should prevent user from altering db property" do
+    EM.run do
+      conn = connect_to_postgresql(@db)
+      expect {conn.query("alter database #{@db["name"]} WITH CONNECTION LIMIT 1000")}.should raise_error(PGError, /must be owner of database .*/)
+      conn.close if conn
       EM.stop
     end
   end
@@ -100,6 +122,7 @@ describe "Postgresql server node" do
       conn.query("CREATE INDEX id_index on test(id)")
       all_size = @node.db_size(@db["name"])
       all_size.should > table_size
+      conn.close if conn
       EM.stop
     end
 
@@ -135,10 +158,10 @@ describe "Postgresql server node" do
     EM.run do
       conn = connect_to_postgresql(@db)
       expect {conn.query("SELECT 1")}.should_not raise_error
+      conn.close if conn
       msg = Yajl::Encoder.encode(@db)
       @node.unprovision(@db["name"], [])
       expect {connect_to_postgresql(@db)}.should raise_error
-      error = nil
       EM.stop
     end
   end
@@ -211,6 +234,7 @@ describe "Postgresql server node" do
       conn.query("select * from a for update")
       EM.add_timer(@opts[:max_long_tx]*2) {
         expect {conn.query("select * from a for update")}.should raise_error
+        conn.close if conn
         EM.stop
       }
     end
@@ -228,6 +252,7 @@ describe "Postgresql server node" do
       @test_dbs[@db] << binding
       conn = connect_to_postgresql(binding)
       expect {conn.query("Select 1")}.should_not raise_error
+      conn.close if conn
       EM.stop
     end
   end
@@ -254,6 +279,7 @@ describe "Postgresql server node" do
       expect {connect_to_postgresql(binding)}.should raise_error
       # old session should be killed
       expect {conn.query("SELECT 1")}.should raise_error
+      conn.close if conn
       EM.stop
     end
   end
@@ -262,11 +288,10 @@ describe "Postgresql server node" do
     EM.run do
       @default_opts = "default"
       bindings = []
-      3.times { bindings << @node.bind(@db["name"], @default_opts)}
+      3.times {bindings << @node.bind(@db["name"], @default_opts)}
       @test_dbs[@db] = bindings
-      conn = nil
       @node.unprovision(@db["name"], bindings)
-      bindings.each { |binding| expect {connect_to_postgresql(binding)}.should raise_error }
+      bindings.each {|binding| expect {connect_to_postgresql(binding)}.should raise_error}
       EM.stop
     end
   end
