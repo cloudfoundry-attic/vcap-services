@@ -240,7 +240,6 @@ class NodeTests
     NodeCheckOrphanFull.new(BaseTests::Options.default({:node_id => TEST_NODE_ID}))
   end
 
-
   def self.create_error_provisioner
     MockErrorProvisioner.new
   end
@@ -263,6 +262,7 @@ class NodeTests
     ID = "node-1"
     def initialize(options)
       super(options)
+      @ready = true
       @announcement_invoked = false
       @provision_invoked = false
       @unprovision_invoked = false
@@ -276,6 +276,12 @@ class NodeTests
     end
     def service_name
       SERVICE_NAME
+    end
+    def set_ready(r)
+      @ready = r
+    end
+    def node_ready?
+      @ready
     end
     def announcement
       @announcement_invoked = true
