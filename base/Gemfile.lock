@@ -108,7 +108,7 @@ DEPENDENCIES
   eventmachine
   eventmachine_httpserver
   json
-  nats (>= 0.4.8)
+  nats (>= 0.4.10)
   rake
   rcov
   rspec

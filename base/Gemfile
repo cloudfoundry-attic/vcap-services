@@ -1,6 +1,6 @@
 source "http://rubygems.org"
 
-gem "nats", '>= 0.4.8'
+gem "nats", '>= 0.4.10'
 gem "datamapper", ">= 0.10.2"
 gem "do_sqlite3", :require => nil
 gem "eventmachine"

@@ -77,7 +77,7 @@ GEM
     logging (1.6.0)
       little-plugger (>= 1.1.2)
     mime-types (1.16)
-    nats (0.4.8)
+    nats (0.4.10)
       daemons (>= 1.1.0)
       eventmachine (>= 0.12.10)
       json_pure (>= 1.5.1)
@@ -118,7 +118,7 @@ DEPENDENCIES
   do_sqlite3
   em-http-request
   eventmachine
-  nats (>= 0.4.8)
+  nats (>= 0.4.10)
   rake
   rcov
   rest-client

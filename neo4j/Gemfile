@@ -2,7 +2,7 @@ source :rubygems
 
 gem "eventmachine"
 gem "em-http-request"
-gem "nats", '>= 0.4.8'
+gem "nats", '>= 0.4.10'
 gem "ruby-hmac"
 gem "uuidtools"
 gem "datamapper", ">= 0.10.2"

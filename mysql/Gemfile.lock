@@ -66,7 +66,7 @@ GEM
     logging (1.5.0)
       little-plugger (>= 1.1.2)
     mysql (2.8.1)
-    nats (0.4.8)
+    nats (0.4.10)
       daemons (>= 1.1.0)
       eventmachine (>= 0.12.10)
       json_pure (>= 1.5.1)
@@ -115,7 +115,7 @@ DEPENDENCIES
   eventmachine
   json
   mysql
-  nats (>= 0.4.8)
+  nats (>= 0.4.10)
   rake
   rcov
   rspec

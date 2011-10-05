@@ -37,6 +37,14 @@ class VCAP::Services::Base::Base
     @logger.info("#{service_description}: Initializing")
     @orphan_ins_hash = {}
     @orphan_binding_hash = {}
+    NATS.on_error do |e|
+      if e.kind_of? NATS::ConnectError
+        @logger.error("EXITING! NATS connection failed: #{e}")
+        exit
+      else
+        @logger.error("NATS problem, #{e}")
+      end
+    end
     @node_nats = NATS.connect(:uri => options[:mbus]) {
       on_connect_node
     }

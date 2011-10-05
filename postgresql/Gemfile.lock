@@ -65,7 +65,7 @@ GEM
     little-plugger (1.1.2)
     logging (1.5.0)
       little-plugger (>= 1.1.2)
-    nats (0.4.8)
+    nats (0.4.10)
       daemons (>= 1.1.0)
       eventmachine (>= 0.12.10)
       json_pure (>= 1.5.1)
@@ -114,7 +114,7 @@ DEPENDENCIES
   em-http-request
   eventmachine
   json
-  nats (>= 0.4.8)
+  nats (>= 0.4.10)
   pg
   rake
   rcov
