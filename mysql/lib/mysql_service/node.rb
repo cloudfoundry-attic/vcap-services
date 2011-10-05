@@ -158,12 +158,24 @@ class VCAP::Services::Mysql::Node
     exit
   end
 
+  def node_ready?()
+    @connection && connection_exception.nil?
+  end
+
+  def connection_exception()
+    @connection.ping
+    return nil
+  rescue Mysql::Error => exception
+    return exception
+  end
+
   #keep connection alive, and check db liveness
   def mysql_keep_alive
-    @connection.ping()
-  rescue Mysql::Error => e
-    @logger.error("MySQL connection lost: [#{e.errno}] #{e.error}")
-    @connection = mysql_connect
+    exception = connection_exception
+    if exception
+      @logger.error("MySQL connection lost: [#{exception.errno}] #{exception.error}")
+      @connection = mysql_connect
+    end
   end
 
   def kill_long_queries
@@ -214,7 +226,7 @@ class VCAP::Services::Mysql::Node
     end
     provisioned_service.plan = plan
 
-    create_database(provisioned_service)
+    raise "Could not create database" unless create_database(provisioned_service)
 
     if not provisioned_service.save
       @logger.error("Could not save entry: #{provisioned_service.errors.inspect}")
@@ -267,7 +279,13 @@ class VCAP::Services::Mysql::Node
         binding[:password] = 'p' + generate_credential
       end
       binding[:bind_opts] = bind_opts
-      create_database_user(name, binding[:user], binding[:password])
+
+      begin
+        create_database_user(name, binding[:user], binding[:password])
+      rescue Mysql::Error => e
+        raise "Could not create database user: [#{e.errno}] #{e.error}"
+      end
+
       response = gen_credential(name, binding[:user], binding[:password])
       @logger.debug("Bind response: #{response.inspect}")
       @binding_served += 1
@@ -299,8 +317,10 @@ class VCAP::Services::Mysql::Node
       storage = storage_for_service(provisioned_service)
       @available_storage -= storage
       @logger.debug("Done creating #{provisioned_service.inspect}. Took #{Time.now - start}.")
+      return true
     rescue Mysql::Error => e
       @logger.warn("Could not create database: [#{e.errno}] #{e.error}")
+      return false
     end
   end
 

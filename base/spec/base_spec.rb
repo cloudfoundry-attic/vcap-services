@@ -83,6 +83,18 @@ describe NodeTests do
     provisioner.got_announcement.should be_true
   end
 
+  it "should not announce if not ready" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start provisioner then node
+      Do.at(0) { node = NodeTests.create_node; node.set_ready(false) }
+      Do.at(1) { provisioner = NodeTests.create_provisioner }
+      Do.at(2) { EM.stop }
+    end
+    provisioner.got_announcement.should be_false
+  end
+
   it "should support concurrent provision" do
     node = nil
     provisioner = nil
