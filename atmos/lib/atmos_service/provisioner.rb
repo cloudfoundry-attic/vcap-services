@@ -24,7 +24,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
 
   def initialize(options)
     super(options)
-    @atmos_config = get_atmos_config
+    @atmos_config = options[:atmos] || get_atmos_config
     @logger.debug "atmos_config: #{@atmos_config.inspect}"
 
     @host = @atmos_config[:host]

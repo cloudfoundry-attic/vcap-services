@@ -90,7 +90,8 @@ class VCAP::Services::Base::Gateway
              :ip_route => config[:ip_route],
              :mbus => config[:mbus],
              :node_timeout => config[:node_timeout] || 2,
-             :allow_over_provisioning => config[:allow_over_provisioning]
+             :allow_over_provisioning => config[:allow_over_provisioning],
+             :atmos => config[:atmos]
            )
       sg = VCAP::Services::AsynchronousServiceGateway.new(
              :proxy => config[:proxy],
