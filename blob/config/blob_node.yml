@@ -1,0 +1,19 @@
+---
+local_db: sqlite3:/var/vcap/services/blob/blob_node.db
+mbus: nats://localhost:4222
+index: 0
+base_dir: /var/vcap/services/blob/instances
+ip_route: 127.0.0.1
+logging:
+  level: debug
+blobd_log_dir: /var/vcap/sys/service-log/blob
+pid: /var/vcap/sys/run/blob_node.pid
+available_memory: 4096
+max_memory: 128
+node_id: blob_node_1
+nodejs_path: node
+blobd_path: /var/vcap/packages/blob/bin
+port_range:
+  first: 45001
+  last: 65000
+#z_interval: 30
