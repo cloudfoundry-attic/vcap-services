@@ -25,11 +25,11 @@ hash-max-zipmap-entries 64
 hash-max-zipmap-value 512
 activerehashing yes
 
-#rename-command CONFIG ""
+rename-command CONFIG <%= config_command %>
 rename-command MONITOR ""
 rename-command SAVE ""
 rename-command BGSAVE ""
-#rename-command SHUTDOWN ""
+rename-command SHUTDOWN <%= shutdown_command %>
 rename-command BGREWRITEAOF ""
 rename-command SLAVEOF ""
 rename-command DEBUG ""
