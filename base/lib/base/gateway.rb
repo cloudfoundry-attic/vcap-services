@@ -32,8 +32,7 @@ class VCAP::Services::Base::Gateway
 
   CC_CONFIG_FILE = File.expand_path("../../../../../cloud_controller/config/cloud_controller.yml", __FILE__)
 
-  def start
-
+  def parse_config
     config_file = default_config_file
 
     OptionParser.new do |opts|
@@ -48,27 +47,40 @@ class VCAP::Services::Base::Gateway
     end.parse!
 
     begin
-      config = parse_gateway_config(config_file)
+      @config = parse_gateway_config(config_file)
     rescue => e
       puts "Couldn't read config file: #{e}"
       exit
     end
+  end
 
-    VCAP::Logging.setup_from_config(config[:logging])
+  def setup_vcap_logging
+    VCAP::Logging.setup_from_config(@config[:logging])
     # Use the current running binary name for logger identity name, since service gateway only has one instance now.
     logger = VCAP::Logging.logger(File.basename($0))
-    config[:logger] = logger
+    @config[:logger] = logger
+  end
 
-    if config[:pid]
-      pf = VCAP::PidFile.new(config[:pid])
+  def setup_pid
+    if @config[:pid]
+      pf = VCAP::PidFile.new(@config[:pid])
       pf.unlink_at_exit
     end
+  end
 
-    config[:host] = VCAP.local_ip(config[:ip_route])
-    config[:port] ||= VCAP.grab_ephemeral_port
-    config[:service][:label] = "#{config[:service][:name]}-#{config[:service][:version]}"
-    config[:service][:url]   = "http://#{config[:host]}:#{config[:port]}"
-    cloud_controller_uri = config[:cloud_controller_uri] || default_cloud_controller_uri
+  def start
+    parse_config
+
+    setup_vcap_logging
+
+    setup_pid
+
+    @config[:host] = VCAP.local_ip(@config[:ip_route])
+    @config[:port] ||= VCAP.grab_ephemeral_port
+    @config[:service][:label] = "#{@config[:service][:name]}-#{@config[:service][:version]}"
+    @config[:service][:url]   = "http://#{@config[:host]}:#{@config[:port]}"
+    node_timeout = @config[:node_timeout] || 5
+    cloud_controller_uri = @config[:cloud_controller_uri] || default_cloud_controller_uri
 
     params = {
       :logger   => logger,
@@ -84,25 +96,32 @@ class VCAP::Services::Base::Gateway
     # Go!
     EM.run do
       sp = provisioner_class.new(
-             :logger   => logger,
-             :index    => config[:index],
-             :version  => config[:service][:version],
-             :ip_route => config[:ip_route],
-             :mbus => config[:mbus],
-             :node_timeout => config[:node_timeout] || 2,
-             :allow_over_provisioning => config[:allow_over_provisioning],
+             :logger   => @config[:logger],
+             :index    => @config[:index],
+             :version  => @config[:service][:version],
+             :ip_route => @config[:ip_route],
+             :mbus => @config[:mbus],
+             :node_timeout => node_timeout,
+             :z_interval => @config[:z_interval],
+             :allow_over_provisioning => @config[:allow_over_provisioning],
              :atmos => config[:atmos]
            )
-      sg = VCAP::Services::AsynchronousServiceGateway.new(
-             :proxy => config[:proxy],
-             :service => config[:service],
-             :token   => config[:token],
-             :logger  => logger,
+      sg = async_gateway_class.new(
+             :proxy   => @config[:proxy],
+             :service => @config[:service],
+             :token   => @config[:token],
+             :logger  => @config[:logger],
              :provisioner => sp,
-             :cloud_controller_uri => cloud_controller_uri
+             :node_timeout => node_timeout,
+             :cloud_controller_uri => cloud_controller_uri,
+             :check_orphan_interval => @config[:check_orphan_interval] || -1
            )
-      Thin::Server.start(config[:host], config[:port], sg)
+      Thin::Server.start(@config[:host], @config[:port], sg)
     end
+  end
+
+  def async_gateway_class
+    VCAP::Services::AsynchronousServiceGateway
   end
 
   def default_cloud_controller_uri

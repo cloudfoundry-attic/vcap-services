@@ -18,3 +18,4 @@ logging:
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/redis_service.pid
 # allow_over_provisioning: false
+# z_interval: 30

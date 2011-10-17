@@ -1,0 +1,25 @@
+source "http://rubygems.org"
+
+gem "nats", '>= 0.4.8'
+gem "datamapper", ">= 0.10.2"
+gem "do_sqlite3", :require => nil
+gem "dm-sqlite-adapter"
+gem "dm-types"
+gem "eventmachine"
+gem "em-http-request"
+gem "json"
+gem "uuidtools"
+gem "thin"
+gem "sinatra"
+
+gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
+gem 'vcap_logging', :require => ['vcap/logging']
+
+group :test do
+  gem "rake"
+  gem "rspec"
+  gem "rack-test"
+  gem "rcov"
+  gem "ci_reporter"
+end
+

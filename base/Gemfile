@@ -12,7 +12,7 @@ gem "em-http-request"
 gem "sinatra"
 gem "thin"
 
-gem 'vcap_common', :path => '../../common'
+gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
 
 group :test do
   gem "rake"

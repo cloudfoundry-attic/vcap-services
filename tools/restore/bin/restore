@@ -40,7 +40,7 @@ OptionParser.new do |opts|
   opts.on("-i", "--instance_id [ID]", "Service instance id") {|id| config["instance_id"] = id}
   opts.on("-k", "--token [TOKEN]", "Gateway API access token") {|token| config["token"] = token}
   opts.on("-m", "--mode [MODE]", "Restore mode, it should be restore or recover") {|mode| config["mode"] = mode}
-  opts.on("-t", "--timeout [TIMEOUT]", Integer, "Gateway API response timeout") {|timemout| config["timeout"] = timeout}
+  opts.on("-t", "--timeout [TIMEOUT]", Integer, "Gateway API response timeout") {|timeout| config["timeout"] = timeout}
   opts.on("-c", "--config CONFIG", "Configuration File") {|opt| config_file = opt}
   opts.on("-h", "--help", "Help") do
     puts opts
@@ -88,6 +88,8 @@ end
 @is_successful = false
 def send_request(config)
   req = {
+    # Should set timeout explicitly since the default value is 10s.
+    :timeout => config["timeout"].to_i,
     :head => {
       "Content-Type" => config["content_type"],
       "X-VCAP-Service-Token" => config["token"],

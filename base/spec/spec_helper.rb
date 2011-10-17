@@ -9,6 +9,156 @@ require 'logger'
 require 'base/base'
 require 'base/service_message'
 require 'base/service_error'
+TEST_NODE_ID = "node-1"
+TEST_PURGE_INS_HASH =
+{
+    "#{TEST_NODE_ID}" => [
+      "n1_orphan_1",
+      "n1_orphan_2"
+    ],
+    "#{TEST_NODE_ID}2" => [
+      "n2_orphan_1",
+      "n2_orphan_2"
+    ]
+}
+TEST_PURGE_BIND_HASH =
+{
+  "#{TEST_NODE_ID}"  => [
+    {#binding to orphan instance
+      "name"     => "n1_orphan_1",
+      "hostname" => "127.0.0.1",
+      "host"     => "127.0.0.1",
+      "port"     => 3306,
+      "user"     => "n1_orphan_user_1",
+      "username" => "n1_orphan_user_1",
+      "password" => "*"
+    },
+    {#binding to orphan instance
+      "name"     => "n1_orphan_1",
+      "hostname" => "127.0.0.1",
+      "host"     => "127.0.0.1",
+      "port"     => 3306,
+      "user"     => "n1_orphan_user_2",
+      "username" => "n1_orphan_user_2",
+      "password" => "*"
+    }
+  ],
+  "#{TEST_NODE_ID}2" => [
+    {#binding to orphan instance
+      "name"     => "n2_orphan_1",
+      "hostname" => "127.0.0.2",
+      "host"     => "127.0.0.2",
+      "port"     => 3306,
+      "user"     => "n2_orphan_user_1",
+      "username" => "n2_orphan_user_1",
+      "password" => "*"
+    },
+    {#orphan binding
+      "name"     => "n2_orphan_3",
+      "hostname" => "127.0.0.2",
+      "host"     => "127.0.0.2",
+      "port"     => 3306,
+      "user"     => "n2_orphan_user_3",
+      "username" => "n2_orphan_user_3",
+      "password" => "*"
+    }
+  ]
+}
+
+TEST_CHECK_INS_LIST = ["id_for_normal_ins","id_for_orphan_ins"]
+TEST_CHECK_BIND_LIST =
+[
+  {
+    "name"     => "id_for_normal_ins",
+    "hostname" => "127.0.0.1",
+    "host"     => "127.0.0.1",
+    "port"     => 3306,
+    "user"     => "username_for_normal_binding",
+    "username" => "username_for_normal_binding",
+    "password" => "pl9bMF25hwtlS"
+  },
+  {
+    "name"     => "id_for_unknown_ins",
+    "hostname" => "127.0.0.1",
+    "host"     => "127.0.0.1",
+    "port"     => 3306,
+    "user"     => "username_for_orphan_binding",
+    "username" => "username_for_orphan_binding",
+    "password" => "pUFwntBqZojMo"
+  }
+]
+
+TEST_CHECK_HANDLES =
+[
+  {
+    "service_id"    => "id_for_normal_ins",
+    "configuration" => {
+      "plan" => "free"
+    },
+    "credentials"   => {
+      "name"     => "id_for_normal_ins",
+      "hostname" => "127.0.0.1",
+      "host"     => "127.0.0.1",
+      "port"     => 3306,
+      "user"     => "umLImcKDtRtID",
+      "username" => "umLImcKDtRtID",
+      "password" => "p1ZivmGDSJXSC",
+      "node_id"  => "#{TEST_NODE_ID}"
+    }
+  },
+  {
+    "service_id"    => "id_for_other_node_ins",
+    "configuration" => {
+      "plan" => "free"
+    },
+    "credentials"   => {
+      "name"     => "id_for_other_node_ins",
+      "hostname" => "127.0.0.2",
+      "host"     => "127.0.0.2",
+      "port"     => 3306,
+      "user"     => "ffffxWPUcNxS4",
+      "username" => "ffffxWPUcNxS4",
+      "password" => "ffffg73QpVDSV",
+      "node_id"  => "#{TEST_NODE_ID+'2'}"
+    }
+  },
+  {
+    "service_id"    => "aad74831-3f53-4119-8f3f-8d34645aaf5d",
+    "configuration" => {
+      "plan" => "free",
+      "data" => {
+        "binding_options" => {}
+      }
+    },
+    "credentials"   => {
+      "name"     => "id_for_normal_ins",
+      "hostname" => "127.0.0.1",
+      "host"     => "127.0.0.1",
+      "port"     => 3306,
+      "user"     => "username_for_normal_binding",
+      "username" => "username_for_normal_binding",
+      "password" => "pl9bMF25hwtlS"
+    }
+  },
+  {
+    "service_id"    => "ffffffff-ce97-4cf8-afa8-a85a63d379b5",
+    "configuration" => {
+      "plan" => "free",
+      "data" => {
+        "binding_options" => {}
+      }
+    },
+    "credentials"   => {
+      "name"     => "id_for_other_node_ins",
+      "hostname" => "127.0.0.2",
+      "host"     => "127.0.0.2",
+      "port"     => 3306,
+      "user"     => "username_for_other_node_binding",
+      "username" => "username_for_other_node_binding",
+      "password" => "ffffntBqZojMo"
+    }
+  }
+]
 
 class BaseTests
 
@@ -20,11 +170,14 @@ class BaseTests
 
     IP_ROUTE = "127.0.0.1"
 
+    NODE_TIMEOUT = 5
+
     def self.default(more=nil)
       options = {
         :logger => LOGGER,
         :ip_route => IP_ROUTE,
         :mbus => NATS_URI,
+        :node_timeout => NODE_TIMEOUT
       }
       more.each { |k,v| options[k] = v } if more
       options
@@ -79,6 +232,14 @@ class NodeTests
     NodeErrorTester.new(BaseTests::Options.default({:node_id => NodeTester::ID}))
   end
 
+  def self.create_check_orphan_empty_node
+    NodeCheckOrphanEmpty.new(BaseTests::Options.default({:node_id => TEST_NODE_ID}))
+  end
+
+  def self.create_check_orphan_full_node
+    NodeCheckOrphanFull.new(BaseTests::Options.default({:node_id => TEST_NODE_ID}))
+  end
+
   def self.create_error_provisioner
     MockErrorProvisioner.new
   end
@@ -95,10 +256,13 @@ class NodeTests
     attr_accessor :unbind_invoked
     attr_accessor :restore_invoked
     attr_accessor :provision_times
+    attr_reader :unprovision_count
+    attr_reader :unbind_count
     SERVICE_NAME = "Test"
     ID = "node-1"
     def initialize(options)
       super(options)
+      @ready = true
       @announcement_invoked = false
       @provision_invoked = false
       @unprovision_invoked = false
@@ -107,9 +271,17 @@ class NodeTests
       @restore_invoked = false
       @provision_times = 0
       @mutex = Mutex.new
+      @unprovision_count = 0
+      @unbind_count = 0
     end
     def service_name
       SERVICE_NAME
+    end
+    def set_ready(r)
+      @ready = r
+    end
+    def node_ready?
+      @ready
     end
     def announcement
       @announcement_invoked = true
@@ -123,15 +295,33 @@ class NodeTests
     end
     def unprovision(name, bindings)
       @unprovision_invoked = true
+      @mutex.synchronize{ @unprovision_count += 1 }
     end
     def bind(name, bind_opts, credential)
       @bind_invoked = true
     end
     def unbind(credentials)
       @unbind_invoked = true
+      @mutex.synchronize{ @unbind_count += 1 }
     end
     def restore(isntance_id, backup_path)
       @restore_invoked = true
+    end
+  end
+
+  NodeCheckOrphanEmpty = NodeTester
+
+  class NodeCheckOrphanFull < NodeCheckOrphanEmpty
+    def initialize(options)
+      super(options)
+    end
+
+    def all_instances_list
+      TEST_CHECK_INS_LIST
+    end
+
+    def all_bindings_list
+      TEST_CHECK_BIND_LIST
     end
   end
 
@@ -139,6 +329,10 @@ class NodeTests
     include VCAP::Services::Internal
     attr_accessor :got_announcement
     attr_accessor :got_provision_response
+    attr_accessor :got_check_orphan_response
+    attr_accessor :got_purge_orphan_response
+    attr_accessor :orphan_ins_hash
+    attr_accessor :orphan_binding_hash
     def initialize
       @got_announcement = false
       @got_provision_response = false
@@ -146,10 +340,21 @@ class NodeTests
       @got_bind_response = false
       @got_unbind_response = false
       @got_restore_response = false
+      @got_check_orphan_response = false
+      @got_purge_orphan_response = false
+      @orphan_ins_hash = {}
+      @orphan_binding_hash = {}
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{NodeTester::SERVICE_NAME}.announce") {
           @got_announcement = true
         }
+        @nats.subscribe("#{NodeTester::SERVICE_NAME}.orphan_result") do |msg|
+          response = CheckOrphanResponse.decode(msg)
+          @orphan_ins_hash.merge!(response.orphan_instances)
+          @orphan_binding_hash.merge!(response.orphan_bindings)
+          @got_check_orphan_response = true
+        end
+
         @nats.publish("#{NodeTester::SERVICE_NAME}.discover")
       }
     end
@@ -191,6 +396,19 @@ class NodeTests
         @got_restore_response = true
       }
     end
+    def send_check_orphan_request
+      req = CheckOrphanRequest.new
+      req.handles = TEST_CHECK_HANDLES
+      @nats.publish("#{NodeTester::SERVICE_NAME}.check_orphan", req.encode)
+    end
+    def send_purge_orphan_request
+      req = PurgeOrphanRequest.new
+      req.orphan_ins_list = TEST_PURGE_INS_HASH[TEST_NODE_ID]
+      req.orphan_binding_list = TEST_PURGE_BIND_HASH[TEST_NODE_ID]
+      @nats.request("#{NodeTester::SERVICE_NAME}.purge_orphan.#{NodeTester::ID}", req.encode) {
+        @got_purge_orphan_response = true
+      }
+    end
   end
 
   # Test Node which raise error
@@ -202,6 +420,8 @@ class NodeTests
     attr_accessor :bind_invoked
     attr_accessor :unbind_invoked
     attr_accessor :restore_invoked
+    attr_accessor :check_orphan_invoked
+    attr_accessor :purge_orphan_invoked
     attr_accessor :provision_times
     SERVICE_NAME = "Test"
     ID = "node-error"
@@ -213,6 +433,8 @@ class NodeTests
       @bind_invoked = false
       @unbind_invoked = false
       @restore_invoked = false
+      @check_orphan_invoked = false
+      @purge_orphan_invoked = false
       @provision_times = 0
       @mutex = Mutex.new
     end
@@ -243,6 +465,14 @@ class NodeTests
       @restore_invoked = true
       raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
     end
+    def check_orphan(handles)
+      @check_orphan_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
+    def purge_orphan(oi_list,ob_list)
+      @purge_orphan_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
   end
 
   # Provisioner that catch error from node
@@ -254,6 +484,7 @@ class NodeTests
     attr_accessor :got_bind_response
     attr_accessor :got_unbind_response
     attr_accessor :got_restore_response
+    attr_accessor :got_check_orphan_response
     attr_accessor :response
     def initialize
       @got_announcement = false
@@ -262,10 +493,16 @@ class NodeTests
       @got_bind_response = false
       @got_unbind_response = false
       @got_restore_response = false
+      @got_check_orphan_response = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{NodeTester::SERVICE_NAME}.announce") {
           @got_announcement = true
         }
+        @nats.subscribe("#{NodeTester::SERVICE_NAME}.orphan_result") do |msg|
+          res = CheckOrphanResponse.decode(msg)
+          @response = res.error
+          @got_check_orphan_response = true
+        end
         @nats.publish("#{NodeTester::SERVICE_NAME}.discover")
       }
       @response = nil
@@ -313,6 +550,20 @@ class NodeTests
         @response = msg
       end
     end
+    def send_check_orphan_request
+      req = CheckOrphanRequest.new
+      req.handles = TEST_CHECK_HANDLES
+      @nats.publish("#{NodeTester::SERVICE_NAME}.check_orphan", req.encode)
+    end
+    def send_purge_orphan_request
+      req = PurgeOrphanRequest.new
+      req.orphan_ins_list = TEST_PURGE_INS_HASH[TEST_NODE_ID]
+      req.orphan_binding_list = TEST_PURGE_BIND_HASH[TEST_NODE_ID]
+      @nats.request("#{NodeTester::SERVICE_NAME}.purge_orphan.#{NodeTester::ID}", req.encode) do |msg|
+        @got_unbind_response = true
+        @response = msg
+      end
+    end
   end
 end
 
@@ -351,10 +602,12 @@ class ProvisionerTests
     attr_accessor :varz_invoked
     attr_accessor :healthz_invoked
     attr_accessor :prov_svcs
+    attr_reader   :check_orphan_invoked
     def initialize(options)
       super(options)
       @varz_invoked = false
       @healthz_invoked = false
+      @check_orphan_invoked = false
     end
     SERVICE_NAME = "Test"
     def service_name
@@ -374,6 +627,10 @@ class ProvisionerTests
       @healthz_invoked = true
       super
     end
+    def on_orphan_result(msg)
+      @check_orphan_invoked = true
+      super(msg)
+    end
   end
 
   class MockGateway
@@ -384,6 +641,8 @@ class ProvisionerTests
     attr_accessor :got_unbind_response
     attr_accessor :got_restore_response
     attr_accessor :got_recover_response
+    attr_reader :got_purge_orphan_response
+    attr_reader :got_check_orphan_response
     def initialize(provisioner)
       @provisioner = provisioner
       @got_announcement = false
@@ -393,11 +652,14 @@ class ProvisionerTests
       @got_unbind_response = false
       @got_restore_response = false
       @got_recover_response = false
+      @got_purge_orphan_response = false
+      @got_check_orphan_response = false
       @instance_id = nil
       @bind_id = nil
     end
     def send_provision_request
-      req = {'plan' => 'free'}
+      req = VCAP::Services::Api::GatewayProvisionRequest.new
+      req.plan = "free"
       @provisioner.provision_service(req, nil) do |res|
         @instance_id = res['response'][:service_id]
         @got_provision_response = res['success']
@@ -427,8 +689,18 @@ class ProvisionerTests
     def send_recover_request
       # register a fake callback to provisioner which always return true
       @provisioner.register_update_handle_callback{|handle, &blk| blk.call(true)}
-      @provisioner.recover(@instance_id, "/tmp", [{'service_id' => @instance_id, 'configuration' => {'plan' => 'free'}},{'service_id' => 'fake_uuid', 'configuration' => {}, 'credentials'=>{'name' => @instance_id}}]) do |res|
+      @provisioner.recover(@instance_id, "/tmp", [{'service_id' => @instance_id, 'configuration' => {'plan' => 'free'}},{'service_id' => 'fake_uuid', 'configuration' => {}, 'credentials' => {'name' => @instance_id}}]) do |res|
         @got_recover_response = res['success']
+      end
+    end
+    def send_check_orphan_request
+      @provisioner.check_orphan(TEST_CHECK_HANDLES) do |res|
+        @got_check_orphan_response = res["success"]
+      end
+    end
+    def send_purge_orphan_request
+      @provisioner.purge_orphan(TEST_PURGE_INS_HASH,TEST_PURGE_BIND_HASH) do |res|
+        @got_purge_orphan_response = res['success']
       end
     end
   end
@@ -459,7 +731,8 @@ class ProvisionerTests
       @bind_id = nil
     end
     def send_provision_request
-      req = {'plan' => 'free'}
+      req = VCAP::Services::Api::GatewayProvisionRequest.new
+      req.plan = "free"
       @provisioner.provision_service(req, nil) do |res|
         @provision_response = res['success']
         @error_msg = res['response']
@@ -494,8 +767,13 @@ class ProvisionerTests
     def send_recover_request
       # register a fake callback to provisioner which always return true
       @provisioner.register_update_handle_callback{|handle, &blk| blk.call(true)}
-      @provisioner.recover(@instance_id, "/tmp", [{'service_id' => @instance_id, 'configuration' => {'plan' => 'free'}},{'service_id' => 'fake_uuid', 'configuration' => {}, 'credentials'=>{'name' => @instance_id}}]) do |res|
+      @provisioner.recover(@instance_id, "/tmp", [{'service_id' => @instance_id, 'configuration' => {'plan' => 'free'}},{'service_id' => 'fake_uuid', 'configuration' => {}, 'credentials' => {'name' => @instance_id}}]) do |res|
         @recover_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+    def send_purge_orphan_request
+      @provisioner.purge_orphan(TEST_PURGE_INS_HASH,TEST_PURGE_BIND_HASH) do |res|
         @error_msg = res['response']
       end
     end
@@ -508,6 +786,8 @@ class ProvisionerTests
     attr_accessor :got_unbind_request
     attr_accessor :got_bind_request
     attr_accessor :got_restore_request
+    attr_reader :got_check_orphan_request
+    attr_reader :got_purge_orphan_request
     def initialize(id, score)
       @id = id
       @score = score
@@ -516,6 +796,8 @@ class ProvisionerTests
       @got_bind_request = false
       @got_unbind_request = false
       @got_restore_request = false
+      @got_check_orphan_request = false
+      @got_purge_orphan_request = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{service_name}.discover") { |_, reply|
           announce(reply)
@@ -562,6 +844,22 @@ class ProvisionerTests
           response.success = true
           @nats.publish(reply, response.encode)
         }
+        @nats.subscribe("#{service_name}.check_orphan") do |msg, reply|
+          @got_check_orphan_request = true
+          response = CheckOrphanResponse.new
+          response.orphan_instances = {}
+          response.orphan_bindings = {}
+          response.orphan_instances["#{node_id}"] = (1..@id).to_a
+          response.orphan_bindings["#{node_id}"] = (1..@id).to_a
+          response.success = true
+          @nats.publish("#{service_name}.orphan_result", response.encode)
+        end
+        @nats.subscribe("#{service_name}.purge_orphan.#{node_id}") do |msg, reply|
+          @got_purge_orphan_request = true
+          response = SimpleResponse.new
+          response.success = true
+          @nats.publish(reply,response.encode)
+        end
         announce
       }
     end
@@ -593,6 +891,8 @@ class ProvisionerTests
       @got_bind_request = false
       @got_unbind_request = false
       @got_restore_request = false
+      @got_check_orphan_request = false
+      @got_purge_orphan_request = false
       @internal_error = ServiceError.new(ServiceError::INTERNAL_ERROR)
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{service_name}.discover") { |_, reply|
@@ -624,6 +924,17 @@ class ProvisionerTests
           @got_restore_request = true
           @nats.publish(reply, gen_simple_error_response.encode)
         }
+        @nats.subscribe("#{service_name}.check_orphan") do |msg, reply|
+          @got_check_orphan_request = true
+          response = CheckOrphanResponse.new
+          response.success = false
+          response.error = @internal_error.to_hash
+          @nats.publish("#{service_name}.orphan_result", response.encode)
+        end
+        @nats.subscribe("#{service_name}.purge_orphan.#{node_id}") do |msg, reply|
+          @got_purge_orphan_request = true
+          @nats.publish(reply,gen_simple_error_response.encode)
+        end
         announce
       }
     end
@@ -643,6 +954,7 @@ require 'base/asynchronous_service_gateway'
 class AsyncGatewayTests
   CC_PORT = 34512
   GW_PORT = 34513
+  NODE_TIMEOUT = 5
 
   def self.create_nice_gateway
     MockGateway.new(true)
@@ -650,6 +962,14 @@ class AsyncGatewayTests
 
   def self.create_nasty_gateway
     MockGateway.new(false)
+  end
+
+  def self.create_check_orphan_gateway(nice,check_interval)
+    MockGateway.new(nice, nil, check_interval)
+  end
+
+  def self.create_timeout_gateway(nice, timeout)
+    MockGateway.new(nice, timeout)
   end
 
   def self.create_cloudcontroller
@@ -663,15 +983,25 @@ class AsyncGatewayTests
     attr_accessor :unbind_http_code
     attr_accessor :restore_http_code
     attr_accessor :recover_http_code
+    attr_reader   :purge_orphan_http_code
+    attr_reader   :check_orphan_http_code
 
-    def initialize(nice)
+    def initialize(nice, timeout=nil, check_interval=-1)
       @token = '0xdeadbeef'
       @cc_head = {
         'Content-Type'         => 'application/json',
         'X-VCAP-Service-Token' => @token,
       }
       @label = "service-1.0"
-      sp = nice ? NiceProvisioner.new : NastyProvisioner.new
+      if timeout
+        # Nice timeout provisioner will finish the job in timeout,
+        # while un-nice timeout provisioner won't.
+        @sp = nice ?
+          TimeoutProvisioner.new(timeout - 1) :
+          TimeoutProvisioner.new(timeout + 1)
+      else
+        @sp = nice ? NiceProvisioner.new : NastyProvisioner.new
+      end
       sg = VCAP::Services::AsynchronousServiceGateway.new(
         :service => {
                       :label => @label,
@@ -682,8 +1012,10 @@ class AsyncGatewayTests
                       :tags => ['nosql']
                     },
         :token   => @token,
-        :provisioner => sp,
-        :cloud_controller_uri => "http://localhost:#{CC_PORT}"
+        :provisioner => @sp,
+        :node_timeout => timeout || NODE_TIMEOUT,
+        :cloud_controller_uri => "http://localhost:#{CC_PORT}",
+        :check_orphan_interval => check_interval
       )
       @server = Thin::Server.new('localhost', GW_PORT, sg)
       @provision_http_code = 0
@@ -692,6 +1024,8 @@ class AsyncGatewayTests
       @unbind_http_code = 0
       @restore_http_code = 0
       @recover_http_code = 0
+      @purge_orphan_http_code = 0
+      @check_orphan_http_code = 0
       @last_service_id = nil
       @last_bind_id = nil
     end
@@ -710,16 +1044,24 @@ class AsyncGatewayTests
       req
     end
 
+    def check_orphan_invoked
+      @sp.check_orphan_invoked
+    end
+
     def send_provision_request
-      msg = Yajl::Encoder.encode({
+      msg = VCAP::Services::Api::GatewayProvisionRequest.new(
         :label => @label,
+        :name  => 'service',
+        :email => "foobar@abc.com",
         :plan  => "free"
-      })
+      ).encode
       http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations").post(gen_req(msg))
       http.callback {
         @provision_http_code = http.response_header.status
-        res = Yajl::Parser.parse(http.response)
-        @last_service_id = res['service_id']
+        if @provision_http_code == 200
+          res = VCAP::Services::Api::GatewayProvisionResponse.decode(http.response)
+          @last_service_id = res.service_id
+        end
       }
       http.errback {
         @provision_http_code = -1
@@ -739,16 +1081,19 @@ class AsyncGatewayTests
 
     def send_bind_request(service_id = nil)
       service_id ||= @last_service_id
-      msg = Yajl::Encoder.encode({
+      msg = VCAP::Services::Api::GatewayBindRequest.new(
         :service_id => service_id,
         :label => @label,
+        :email => "foobar@abc.com",
         :binding_options => {}
-      })
+      ).encode
       http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations/#{service_id}/handles").post(gen_req(msg))
       http.callback {
         @bind_http_code = http.response_header.status
-        res = Yajl::Parser.parse(http.response)
-        @last_bind_id = res['service_id']
+        if @bind_http_code == 200
+          res = VCAP::Services::Api::GatewayBindResponse.decode(http.response)
+          @last_bind_id = res.service_id
+        end
       }
       http.errback {
         @bind_http_code = -1
@@ -801,6 +1146,31 @@ class AsyncGatewayTests
         @recover_http_code = -1
       }
     end
+
+    def send_purge_orphan_request
+      msg = Yajl::Encoder.encode({
+        :orphan_instances => TEST_PURGE_INS_HASH,
+        :orphan_bindings => TEST_PURGE_BIND_HASH
+      })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/purge_orphan").delete(gen_req(msg))
+      http.callback {
+        @purge_orphan_http_code = http.response_header.status
+      }
+      http.errback {
+        @purge_orphan_http_code = -1
+      }
+    end
+    def send_check_orphan_request
+      msg = Yajl::Encoder.encode({
+      })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/check_orphan").post(gen_req(msg))
+      http.callback {
+        @check_orphan_http_code = http.response_header.status
+      }
+      http.errback {
+        @check_orphan_http_code = -1
+      }
+    end
   end
 
   class MockCloudController
@@ -849,6 +1219,8 @@ class AsyncGatewayTests
     attr_accessor :got_unbind_request
     attr_accessor :got_restore_request
     attr_accessor :got_recover_request
+    attr_reader   :purge_orphan_invoked
+    attr_reader   :check_orphan_invoked
 
     def initialize
       @got_provision_request = false
@@ -857,6 +1229,8 @@ class AsyncGatewayTests
       @got_unbind_request = false
       @got_restore_request = false
       @got_recover_request = false
+      @purge_orphan_invoked = false
+      @check_orphan_invoked = false
     end
 
     def register_update_handle_callback
@@ -866,6 +1240,7 @@ class AsyncGatewayTests
     def update_handles(handles)
       # Do nothing
     end
+
   end
 
   class NiceProvisioner < MockProvisioner
@@ -896,6 +1271,17 @@ class AsyncGatewayTests
 
     def recover(instance_id, backup_path, handles, &blk)
       @got_recover_reqeust = true
+      blk.call(success(true))
+    end
+
+
+    def purge_orphan(orphan_ins_hash,orphan_binding_hash,&blk)
+      @purge_orphan_invoked = true
+      blk.call(success(true))
+    end
+
+    def check_orphan(handles,&blk)
+      @check_orphan_invoked = true
       blk.call(success(true))
     end
   end
@@ -929,6 +1315,37 @@ class AsyncGatewayTests
     def recover(instance_id, backup_path, handles, &blk)
       @got_recover_reqeust = true
       blk.call(internal_fail)
+    end
+
+    def purge_orphan(orphan_ins_hash,orphan_binding_hash,&blk)
+      @purge_orphan_invoked = true
+      blk.call(internal_fail)
+    end
+    def check_orphan(handles,&blk)
+      @check_orphan_invoked = true
+      blk.call(internal_fail)
+    end
+  end
+
+  # Timeout Provisioner is a simple version of provisioner.
+  # It only support provisioning.
+  class TimeoutProvisioner < MockProvisioner
+    def initialize(timeout)
+      @timeout = timeout
+    end
+
+    def provision_service(request, prov_handle=nil, &blk)
+      @got_provision_request = true
+      EM.add_timer(@timeout) do
+        blk.call(
+          success({
+            :data => {},
+            :service_id => SERV_ID,
+            :credentials => {}
+            }
+          )
+        )
+      end
     end
   end
 end

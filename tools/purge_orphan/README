@@ -1,0 +1,10 @@
+This tool is used for orphan service instances & bindings related issues. Currently, it can make request to service gateway to check orphans and purge orphans.
+
+This tool reads options from a config file. Use "-c" to specify the config file; the default config file is "config/default.yml".
+
+The service gateway can be configured to check orphan periodically. It's disabled by default, however. It also can be run on demand by this command:
+    bin/purge_orphan.rb -k
+This command will scan for orphans and write the updated status to varz of the service gateway and nodes.
+
+The report of varz in json format can be input as the request to purge the orphans. Run command like this:
+    bin/purge_orphan.rb sample.json

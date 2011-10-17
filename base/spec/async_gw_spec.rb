@@ -25,6 +25,68 @@ module Do
 end
 
 describe AsyncGatewayTests do
+
+  it "should invoke check_orphan in check_orphan_interval time" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_check_orphan_gateway(true, 5); gateway.start }
+      Do.at(12) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.check_orphan_invoked.should be_true
+  end
+
+  it "should be able to purge_orphan" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(2) { gateway.send_purge_orphan_request}
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.purge_orphan_http_code.should == 200
+  end
+
+  it "should be able to return error when purge_orphan failed" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nasty_gateway ; gateway.start }
+      Do.at(2) { gateway.send_purge_orphan_request}
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.purge_orphan_http_code.should == 500
+  end
+
+  it "should be able to check_orphan" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(2) { gateway.send_check_orphan_request}
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.check_orphan_invoked.should be_true
+    gateway.check_orphan_http_code.should == 200
+  end
+
+  it "should be able to return error when check_orphan failed" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nasty_gateway ; gateway.start }
+      Do.at(2) { gateway.send_check_orphan_request}
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.check_orphan_invoked.should be_true
+    gateway.check_orphan_http_code.should == 500
+  end
+
   it "should be able to provision" do
     cc = nil
     gateway = nil
@@ -103,6 +165,41 @@ describe AsyncGatewayTests do
       Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
     end
     gateway.recover_http_code.should == 200
+  end
+
+  it "should not serve request when handle is not fetched" do
+    gateway = nil
+    EM.run do
+      # We don't start cc here, so gateway will fail to fetch handles
+      Do.at(0) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(2) { gateway.send_provision_request }
+      Do.at(3) { gateway.stop ; EM.stop }
+    end
+    gateway.provision_http_code.should == 503
+  end
+
+  it "should work if provisioner finishes within timeout" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_timeout_gateway(true, 3) ; gateway.start }
+      Do.at(2) { gateway.send_provision_request }
+      Do.at(13) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.provision_http_code.should == 200
+  end
+
+  it "should be able to report timeout if provisioner cannot finish within timeout" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_timeout_gateway(false, 3) ; gateway.start }
+      Do.at(2) { gateway.send_provision_request }
+      Do.at(13) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.provision_http_code.should == 503
   end
 
   it "should be able to return error when provision failed" do

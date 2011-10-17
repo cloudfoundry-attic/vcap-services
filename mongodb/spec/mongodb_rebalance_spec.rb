@@ -43,13 +43,20 @@ describe "mongodb rebalance" do
   end
 
   it "should be able to disable instance" do
-    res = @node.disable_instance(@resp, {'' => @bind_resp})
+    res = @node.disable_instance(
+            @resp,
+            { '' => { 'credentials' => @bind_resp } },
+          )
     res.should == true
     is_port_open?('127.0.0.1', @resp['port']).should be_false
   end
 
   it "should be able to dump instance" do
-    res = @node.dump_instance(@resp, {'' => @bind_resp}, DUMP_DIR)
+    res = @node.dump_instance(
+            @resp,
+            { '' => { 'credentials' => @bind_resp } },
+            DUMP_DIR
+          )
     res.should == true
     File.directory?(DUMP_DIR).should be_true
     Dir.entries(DUMP_DIR).size.should > 2
@@ -67,7 +74,12 @@ describe "mongodb rebalance" do
   it "should be able to import instance" do
     EM.run do
       EM.add_timer(1) do
-        res = @node.import_instance(@resp, {'' => @bind_resp}, DUMP_DIR, 'free')
+        res = @node.import_instance(
+                @resp,
+                { '' => { 'credentials' => @bind_resp } },
+                DUMP_DIR,
+                'free'
+              )
         res.should == true
         EM.stop
       end
@@ -77,7 +89,10 @@ describe "mongodb rebalance" do
   it "should be able to enable instance" do
     EM.run do
       EM.add_timer(1) do
-        res = @node.enable_instance(@resp, {''=>@bind_resp})
+        res = @node.enable_instance(
+                @resp,
+                { '' => { 'credentials' => @bind_resp } }
+              )
         res.should_not be_nil
         EM.stop
       end

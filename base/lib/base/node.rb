@@ -53,6 +53,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.cleanup_nfs.#{@node_id}") { |msg, reply|
       on_cleanup_nfs(msg, reply)
     }
+    #Purge orphan
+    @node_nats.subscribe("#{service_name}.check_orphan") { |msg, reply|
+      on_check_orphan(msg, reply)
+    }
+    @node_nats.subscribe("#{service_name}.purge_orphan.#{@node_id}") { |msg, reply|
+      on_purge_orphan(msg, reply)
+    }
     pre_send_announcement
     send_node_announcement
     EM.add_periodic_timer(30) {
@@ -181,6 +188,108 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.warn(e)
   end
 
+  def on_check_orphan(msg, reply)
+    @logger.debug("#{service_description}: handles for checking orphan " )
+    response = CheckOrphanResponse.new
+    request = CheckOrphanRequest.decode(msg)
+    check_orphan(request.handles)
+    response.orphan_instances = @orphan_ins_hash
+    response.orphan_bindings = @orphan_binding_hash
+    response.success = true
+  rescue => e
+    @logger.warn("Exception at on_check_orphan #{e}")
+    response.success = false
+    response.error = e
+  ensure
+    @node_nats.publish("#{service_name}.orphan_result", response.encode) if response
+  end
+
+  def check_orphan(handles)
+    raise ServiceError.new(ServiceError::NOT_FOUND, "No handles for checking orphan") if handles.nil?
+
+    live_ins_list = all_instances_list
+    orphan_ins_hash = {}
+    oi_list = []
+    live_ins_list.each do |name|
+      oi_list << name unless handles.index {|h| h["credentials"]["node_id"] == @node_id && h["service_id"] == name }
+    end
+
+    live_bind_list = all_bindings_list
+    orphan_binding_hash = {}
+    ob_list = []
+    live_bind_list.each do |credential|
+      ob_list << credential unless handles.index{|h| h["credentials"]["name"] == credential["name"] && h["credentials"]["username"] == credential["username"]}
+    end
+
+    @logger.debug("Orphan Instances: #{oi_list.count};  Orphan Bindings: #{ob_list.count}")
+    orphan_ins_hash["#{@node_id}"] = oi_list
+    orphan_binding_hash["#{@node_id}"] = ob_list
+    @orphan_ins_hash = orphan_ins_hash
+    @orphan_binding_hash = orphan_binding_hash
+  end
+
+  def on_purge_orphan(msg, reply)
+    @logger.debug("#{service_description}: Message for purging orphan " )
+    response = SimpleResponse.new
+    request = PurgeOrphanRequest.decode(msg)
+    result = purge_orphan(request.orphan_ins_list,request.orphan_binding_list)
+    if result
+      @node_nats.publish(reply, encode_success(response))
+    else
+      @node_nats.publish(reply, encode_failure(response))
+    end
+  rescue => e
+    @logger.warn(e)
+    @node_nats.publish(reply, encode_failure(response, e))
+  end
+
+  def purge_orphan(oi_list,ob_list)
+    ret = true
+    ab_list = all_bindings_list
+    oi_list.each do |ins|
+      begin
+        bindings = ab_list.select {|b| b["name"] == ins}
+        @logger.debug("Unprovision orphan instance #{ins} and its bindings #{bindings.inspect}")
+        ret &&= unprovision(ins,bindings)
+        # Remove the OBs that are unbinded by unprovision
+        ob_list.delete_if do |ob|
+          bindings.index do |binding|
+            binding["username"] == ob["username"]
+          end
+        end
+      rescue => e
+        @logger.debug("Error on purge orphan instance #{ins}: #{e}")
+      end
+    end
+
+    ob_list.each do |credential|
+      begin
+        @logger.debug("Unbind orphan binding #{credential}")
+        ret &&= unbind(credential)
+      rescue => e
+        @logger.debug("Error on purge orphan binding #{credential}: #{e}")
+      end
+    end
+    ret
+  end
+
+  # Subclass must overwrite this method to enable check orphan instance feature.
+  # Otherwise it will not check orphan instance
+  # The return value should be a list of instance name(handle["service_id"]).
+  def all_instances_list
+    []
+  end
+
+  # Subclass must overwrite this method to enable check orphan binding feature.
+  # Otherwise it will not check orphan bindings
+  # The return value should be a list of binding credentials
+  # Binding credential will be the argument for unbind method
+  # And it should have at least username & name property for base code
+  # to find the orphans
+  def all_bindings_list
+    []
+  end
+
   # Get the tmp folder for migration
   def get_migration_folder(instance)
     File.join(@migration_nfs, 'migration', service_name, instance)
@@ -206,12 +315,23 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   end
 
   def send_node_announcement(reply = nil)
+    unless node_ready?
+      @logger.debug("#{service_description}: Not ready to send announcement")
+      return
+    end
     @logger.debug("#{service_description}: Sending announcement for #{reply || "everyone"}")
     a = announcement
     a[:id] = @node_id
     @node_nats.publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
   rescue
     @logger.warn(e)
+  end
+
+  def node_ready?()
+    # Service Node subclasses can override this method if they depend
+    # on some external service in order to operate; for example, MySQL
+    # and Postgresql require a connection to the underlying server.
+    true
   end
 
   def varz_details()
