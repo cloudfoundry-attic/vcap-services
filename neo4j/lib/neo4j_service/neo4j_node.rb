@@ -5,7 +5,6 @@ require "logger"
 require "pp"
 require "set"
 
-require "datamapper"
 require "nats/client"
 require "uuidtools"
 
@@ -18,6 +17,7 @@ require 'uri'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require "datamapper_l"
 
 module VCAP
   module Services

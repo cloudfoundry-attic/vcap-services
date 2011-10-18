@@ -7,7 +7,6 @@ require "set"
 require "mongo"
 require "timeout"
 
-require "datamapper"
 require "nats/client"
 require "uuidtools"
 
@@ -17,6 +16,7 @@ require "mongodb_service/common"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require "datamapper_l"
 
 module VCAP
   module Services
