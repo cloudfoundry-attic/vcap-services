@@ -561,7 +561,6 @@ class VCAP::Services::MongoDB::Node
 
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
-      FileUtils.rm_rf(log_dir)
       FileUtils.mkdir_p(log_dir)
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
