@@ -34,6 +34,10 @@ class VCAP::Services::MongoDB::Node
   # FIXME only support rw currently
   BIND_OPT = 'rw'
 
+  # Timeout for mongo client operations, node cannot be blocked on any mongo instances.
+  # Default value is 2 seconds
+  MONGO_TIMEOUT = 2
+
   class ProvisionedService
     include DataMapper::Resource
     property :name,       String,   :key => true
@@ -525,9 +529,11 @@ class VCAP::Services::MongoDB::Node
     @connection_mutex.synchronize do
       conn = @connection_pool[instance.port]
       unless conn and conn.connected?
-        conn = Mongo::Connection.new('127.0.0.1', instance.port)
-        auth = conn.db('admin').authenticate(instance.admin, instance.adminpass)
-        raise "Authentication failed, name: #{instance.name}" unless auth
+        Timeout::timeout(MONGO_TIMEOUT) do
+          conn = Mongo::Connection.new('127.0.0.1', instance.port)
+          auth = conn.db('admin').authenticate(instance.admin, instance.adminpass)
+          raise "Authentication failed, name: #{instance.name}" unless auth
+        end
         @connection_pool[instance.port] = conn
         @logger.debug("Connected to #{instance.name}, port No: #{instance.port}")
       end
@@ -655,20 +661,27 @@ class VCAP::Services::MongoDB::Node
 
   def mongodb_add_user(instance, username, password, bind_opts=nil)
     conn = connect_and_auth(instance)
-    conn.db(instance.db).add_user(username, password)
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn.db(instance.db).add_user(username, password)
+    end
   end
 
   def mongodb_remove_user(instance, username)
     conn = connect_and_auth(instance)
-    conn.db(instance.db).remove_user(username)
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn.db(instance.db).remove_user(username)
+    end
   end
 
   def mongodb_overall_stats(instance)
     conn = connect_and_auth(instance)
-    # The following command is not documented in mongo's official doc.
-    # But it works like calling db.serverStatus from client. And 10gen support has
-    # confirmed it's safe to call it in such way.
-    conn.db('admin').command({:serverStatus => 1})
+
+    Timeout::timeout(MONGO_TIMEOUT) do
+      # The following command is not documented in mongo's official doc.
+      # But it works like calling db.serverStatus from client. And 10gen support has
+      # confirmed it's safe to call it in such way.
+      conn.db('admin').command({:serverStatus => 1})
+    end
   rescue => e
     warning = "Failed mongodb_overall_stats: #{e.message}, instance: #{instance.name}"
     @logger.warn(warning)
@@ -677,7 +690,9 @@ class VCAP::Services::MongoDB::Node
 
   def mongodb_db_stats(instance)
     conn = connect_and_auth(instance)
-    conn.db(instance.db).stats()
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn.db(instance.db).stats()
+    end
   rescue => e
     warning = "Failed mongodb_db_stats: #{e.message}, instance: #{instance.name}"
     @logger.warn(warning)
