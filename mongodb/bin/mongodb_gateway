@@ -18,7 +18,8 @@ class VCAP::Services::MongoDB::Gateway < VCAP::Services::Base::Gateway
   end
 
   def default_config_file
-    File.join(File.dirname(__FILE__), '..', 'config', 'mongodb_gateway.yml')
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+    File.join(config_base_dir, 'mongodb_gateway.yml')
   end
 
 end
