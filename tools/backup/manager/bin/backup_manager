@@ -61,9 +61,9 @@ logger = VCAP::Logging.logger(File.basename($0))
 
 DEFAULT_ROTATION_MAX_DAYS = 7
 rotation = parse_property(config, "rotation", Hash, :optional => true) || Hash.new
-rotation||={}
-rotation=rotation.inject({}){|m,(k,v)| m[k.to_sym]=v;m}
-rotation[:max_days]||=DEFAULT_ROTATION_MAX_DAYS
+rotation ||= {}
+rotation = rotation.inject({}){|m,(k,v)| m[k.to_sym] = v;m}
+rotation[:max_days] ||= DEFAULT_ROTATION_MAX_DAYS
 
 DEFAULT_WAKEUP_INTERVAL = 60*60 # one hour
 

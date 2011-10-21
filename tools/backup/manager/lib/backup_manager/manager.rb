@@ -22,13 +22,29 @@ class VCAP::Services::Backup::Manager
       VCAP::Services::Backup::Rotator.new(self, options[:rotation])
     ]
     @enable = options[:enable]
+    @shutdown = false
+    @run_lock = Mutex.new
   end
 
   attr_reader :root
   attr_reader :logger
 
+  def exit_fun
+    @logger.info("Terminating the application")
+    @shutdown = true
+    Thread.new do
+      @run_lock.synchronize { exit }
+    end
+  end
+
+  def shutdown?
+    @shutdown
+  end
+
   def start
     @logger.info("#{self.class}: Starting")
+    trap("TERM"){ exit_fun }
+    trap("INT"){ exit_fun }
     if @daemon
       pid = fork
       if pid
@@ -53,16 +69,20 @@ class VCAP::Services::Backup::Manager
 
   def run
     if @enable
-      begin
-        @logger.info("#{self.class}: Running")
-        @tasks.each { |task|
-          unless task.run
-            @logger.warn("#{self.class}: #{task.class} failed")
+      @run_lock.synchronize do
+        begin
+          @logger.info("#{self.class}: Running")
+          @tasks.each do |task|
+            unless task.run
+              @logger.warn("#{self.class}: #{task.class} failed")
+            end
           end
-        }
-      rescue => x
-        # tasks should catch their own exceptions, but just in case...
-        @logger.error("#{self.class}: Exception while running: #{x.to_s}")
+        rescue => x
+          # tasks should catch their own exceptions, but just in case...
+          @logger.error("#{self.class}: Exception while running: #{x.to_s}")
+        rescue Interrupt
+          @logger.info("#{self.class}: Task is interrupted")
+        end
       end
     else
       @logger.info("#{self.class}: Not enabled")
