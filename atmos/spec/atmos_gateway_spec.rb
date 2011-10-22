@@ -19,7 +19,7 @@ describe VCAP::Services::Atmos::Provisioner do
     @logger = @config[:logger]
     @logger.debug @config
 
-    @atmos_helper = Helper.new(@config[:atmos], @logger)
+    @atmos_helper = Helper.new(@config[:additional_options][:atmos], @logger)
   end
 
   it "should successfully new VCAP::Services::Atmos::Provisioner instance" do
@@ -60,8 +60,8 @@ describe VCAP::Services::Atmos::Provisioner do
       shared_secret = @atmos_helper.create_user(@token, @subtenant_name_p1)
       @logger.debug "token: " + @token + ", shared_secret: " + shared_secret
       shared_secret.should_not be_nil
-      host = @config[:atmos][:host]
-      port = @config[:atmos][:port]
+      host = @config[:additional_options][:atmos][:host]
+      port = @config[:additional_options][:atmos][:port]
 
       opts = {
         :url => "http://" + host + ":" + port,
@@ -114,8 +114,8 @@ describe VCAP::Services::Atmos::Provisioner do
       shared_secret1.should_not be_nil
       shared_secret2.should_not be_nil
 
-      host = @config[:atmos][:host]
-      port = @config[:atmos][:port]
+      host = @config[:additional_options][:atmos][:host]
+      port = @config[:additional_options][:atmos][:port]
 
       opts = {
         :url => "http://" + host + ":" + port,
@@ -158,8 +158,8 @@ describe VCAP::Services::Atmos::Provisioner do
     it "should prevent null credential from login" do
       subtenant_id = @atmos_helper.create_subtenant(@subtenant_name)
       subtenant_id.should_not be_nil
-      host = @config[:atmos][:host]
-      port = @config[:atmos][:port]
+      host = @config[:additional_options][:atmos][:host]
+      port = @config[:additional_options][:atmos][:port]
 
       opts = {
         :url => "http://" + host + ":" + port,

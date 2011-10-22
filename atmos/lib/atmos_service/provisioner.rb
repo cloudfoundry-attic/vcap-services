@@ -24,7 +24,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
 
   def initialize(options)
     super(options)
-    @atmos_config = options[:atmos] || get_atmos_config
+    @atmos_config = options[:additional_options][:atmos] || get_atmos_config
     @logger.debug "atmos_config: #{@atmos_config.inspect}"
 
     @host = @atmos_config[:host]
@@ -34,7 +34,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
   end
 
   def provision_service(request, prov_handle=nil, &blk)
-    @logger.debug("[#{service_description}: trying to create subtenant, (label=#{request['label']}, name=#{request['name']}, plan=#{request['plan']})")
+    @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     st_name = UUIDTools::UUID.random_create.to_s
     st_id = @atmos_helper.create_subtenant(st_name)
 
@@ -66,7 +66,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
   end
 
   def unprovision_service(instance_id, &blk)
-    @logger.debug("[#{service_description}: trying to delete subtenant, (instance id=#{instance_id}")
+    @logger.debug("[#{service_description}] Attempting to unprovision instance (instance id=#{instance_id}")
     begin
       success = @atmos_helper.delete_subtenant(instance_id)
       if success
@@ -86,7 +86,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
   end
 
   def bind_instance(instance_id, binding_options, bind_handle=nil, &blk)
-    @logger.debug("try to bind service: #{instance_id}")
+    @logger.debug("attempting to bind service: #{instance_id}")
     if instance_id.nil?
       @logger.warn("#{instance_id} is null!")
       blk.call(internal_fail)
@@ -120,6 +120,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
   end
 
   def unbind_instance(instance_id, handle_id, binding_options, &blk)
+    @logger.debug("attempting to unbind service: #{instance_id}")
     begin
       raise "instance_id cannot be nil" if instance_id.nil?
       svc = @prov_svcs[handle_id]

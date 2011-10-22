@@ -82,17 +82,6 @@ class VCAP::Services::Base::Gateway
     node_timeout = @config[:node_timeout] || 5
     cloud_controller_uri = @config[:cloud_controller_uri] || default_cloud_controller_uri
 
-    params = {
-      :logger   => logger,
-      :version  => config[:service][:version],
-      :local_ip => config[:host],
-      :mbus => config[:mbus],
-      :node_timeout => config[:node_timeout] || 2
-    }
-    if config.has_key?(:aux)
-      params[:aux] = config[:aux]
-    end
-
     # Go!
     EM.run do
       sp = provisioner_class.new(
@@ -104,7 +93,7 @@ class VCAP::Services::Base::Gateway
              :node_timeout => node_timeout,
              :z_interval => @config[:z_interval],
              :allow_over_provisioning => @config[:allow_over_provisioning],
-             :atmos => config[:atmos]
+             :additional_options => additional_options
            )
       sg = async_gateway_class.new(
              :proxy   => @config[:proxy],
@@ -139,5 +128,9 @@ class VCAP::Services::Base::Gateway
     config[:token] = token.to_s
 
     config
+  end
+
+  def additional_options
+    {}
   end
 end

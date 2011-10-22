@@ -22,6 +22,9 @@ class VCAP::Services::Atmos::Gateway < VCAP::Services::Base::Gateway
     File.join(File.dirname(__FILE__), '..', 'config', 'atmos_gateway.yml')
   end
 
+  def additional_options
+    {:atmos => @config[:atmos]}
+  end
 end
 
 VCAP::Services::Atmos::Gateway.new.start

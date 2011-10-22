@@ -66,13 +66,13 @@ def get_provisioner_config()
     # Following options are for Thin
     :host => 'localhost',
     :port => HTTP_PORT,
-    :atmos => {
+    :additional_options => {:atmos => {
       :host => ENV['VCAP_ATMOS_HOST'],
       :port => ENV['VCAP_ATMOS_PORT'] || "443",
       :tenant => ENV['VCAP_ATMOS_TENANT'],
       :tenantadmin => ENV['VCAP_ATMOS_TENANT_ADMIN'],
       :tenantpasswd => ENV['VCAP_ATMOS_TENANT_PASSWD']
-    }
+    }}
   }
 
   options[:logger].level = Logger::DEBUG
