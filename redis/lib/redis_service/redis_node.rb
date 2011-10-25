@@ -91,6 +91,7 @@ class VCAP::Services::Redis::Node
     @redis_log_dir = options[:redis_log_dir]
     @config_command_name = @options[:command_rename_prefix] + "-config"
     @shutdown_command_name = @options[:command_rename_prefix] + "-shutdown"
+    @max_clients = @options[:max_clients] || 500
   end
 
   def pre_send_announcement
@@ -361,6 +362,7 @@ class VCAP::Services::Redis::Node
       vm_pages = (@max_swap * 1024 * 1024 / 32).round # swap in bytes / size of page (32 bytes)
       config_command = @config_command_name
       shutdown_command = @shutdown_command_name
+      maxclients = @max_clients
 
       config = @config_template.result(Kernel.binding)
       config_path = File.join(dir, "redis.conf")
