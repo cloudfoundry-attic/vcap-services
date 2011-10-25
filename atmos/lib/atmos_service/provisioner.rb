@@ -5,10 +5,12 @@ require "base/provisioner"
 require "atmos_service/common"
 require "uuidtools"
 require "atmos_helper"
+require "atmos_error"
 
 class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
 
   include VCAP::Services::Atmos::Common
+  include VCAP::Services::Atmos
 
   ATMOS_CONFIG_FILE = File.expand_path("../../../config/atmos_gateway.yml", __FILE__)
 
@@ -35,34 +37,38 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
 
   def provision_service(request, prov_handle=nil, &blk)
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
-    st_name = UUIDTools::UUID.random_create.to_s
-    st_id = @atmos_helper.create_subtenant(st_name)
+    begin
+      st_name = UUIDTools::UUID.random_create.to_s
+      st_id = @atmos_helper.create_subtenant(st_name)
 
-    if st_id.nil?
-      raise "atmos create subtenant error"
+      # should we create subtenant admin rather than uid here?
+      token = UUIDTools::UUID.random_create.to_s
+      shared_secret = @atmos_helper.create_user(token, st_name)
+
+      svc = {
+        :data => {:subtenant_name => st_name, :subtenant_id => st_id, :host => @host},
+        :service_id => st_name,
+        :credentials => {:host => @host, :port => @port, :token => token,
+          :shared_secret => shared_secret, :subtenant_id => st_id}
+      }
+      @logger.debug("Service provisioned: #{svc.inspect}")
+      @prov_svcs[svc[:service_id]] = svc
+      blk.call(success(svc))
+    rescue => e
+      # roll back work
+      @logger.warn 'provision error, trying to roll back if necessary'
+      begin
+        @atmos_helper.delete_subtenant(st_name) if st_id
+      rescue => e1
+        @logger.info 'roll back error'
+      end
+      if e.instance_of? AtmosError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
     end
-
-    # should we create subtenant admin rather than uid here?
-    token = UUIDTools::UUID.random_create.to_s
-    shared_secret = @atmos_helper.create_user(token, st_name)
-
-    if shared_secret.nil?
-      @atmos_helper.delete_subtenant(st_name)
-      raise "atmos create user error"
-    end
-
-    svc = {
-      :data => {:subtenant_name => st_name, :subtenant_id => st_id, :host => @host},
-      :service_id => st_name,
-      :credentials => {:host => @host, :port => @port, :token => token,
-        :shared_secret => shared_secret, :subtenant_id => st_id}
-    }
-    @logger.debug("Service provisioned: #{svc.inspect}")
-    @prov_svcs[svc[:service_id]] = svc
-    blk.call(success(svc))
-  rescue => e
-    @logger.warn(e)
-    blk.call(internal_fail)
   end
 
   def unprovision_service(instance_id, &blk)
@@ -80,8 +86,12 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       end
       blk.call(success())
     rescue => e
-      @logger.warn(e)
-      blk.call(internal_fail)
+      if e.instance_of? AtmosError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
     end
   end
 
@@ -100,10 +110,6 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       token = UUIDTools::UUID.random_create.to_s
       shared_secret = @atmos_helper.create_user(token, instance_id)
 
-      if shared_secret.nil?
-        raise "atmos create user error"
-      end
-
       res = {
         :service_id => token,
         :configuration => svc[:data],
@@ -114,8 +120,12 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       @prov_svcs[res[:service_id]] = res
       blk.call(success(res))
     rescue => e
-      @logger.warn(e)
-      blk.call(internal_fail)
+      if e.instance_of? AtmosError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
     end
   end
 
@@ -132,10 +142,13 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       @prov_svcs.delete(handle_id) if success
       blk.call(success())
     rescue => e
-      @logger.warn(e)
-      blk.call(internal_fail)
+      if e.instance_of? AtmosError
+        blk.call(failure(e))
+      else
+        @logger.warn(e)
+        blk.call(internal_fail)
+      end
     end
   end
 
 end
-

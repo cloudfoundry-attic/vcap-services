@@ -1,8 +1,11 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require 'xmlsimple'
 require 'net/http'
+require 'atmos_error'
 
 class VCAP::Services::Atmos::Helper
+
+  include VCAP::Services::Atmos
 
   def initialize(atmos_config, logger)
     @logger = logger
@@ -45,7 +48,7 @@ class VCAP::Services::Atmos::Helper
       id = XmlSimple.xml_in(res.body, { 'KeyAttr' => 'subtenantId' })
       return id
     end
-    return nil
+    raise AtmosError.new(AtmosError::ATMOS_BACKEND_ERROR_CREATE_SUBTENAT, res.code)
   end
 
   def delete_subtenant(name)
@@ -72,7 +75,8 @@ class VCAP::Services::Atmos::Helper
     # <?xml version="1.0" encoding="UTF-8"?>
     # <deleted>true</deleted>
 
-    return res.code == "200"
+    raise AtmosError.new(AtmosError::ATMOS_BACKEND_ERROR_DELETE_SUBTENAT, res.code) unless res.code == "200"
+    true
   end
 
   def create_user(username, subtenant_name)
@@ -105,7 +109,7 @@ class VCAP::Services::Atmos::Helper
       shared_secret = XmlSimple.xml_in(res.body, { 'KeyAttr' => 'sharedSecret' })
       return shared_secret
     end
-    return nil
+    raise AtmosError.new(AtmosError::ATMOS_BACKEND_ERROR_CREATE_USER, res.code)
   end
 
   def delete_user(username, subtenant_name)
@@ -133,6 +137,7 @@ class VCAP::Services::Atmos::Helper
     # <?xml version="1.0" encoding="UTF-8"?>
     # <deleted>true</deleted>
 
-    return res.code == "200"
+    raise AtmosError.new(AtmosError::ATMOS_BACKEND_ERROR_DELETE_USER, res.code) unless res.code == "200"
+    true
   end
 end
