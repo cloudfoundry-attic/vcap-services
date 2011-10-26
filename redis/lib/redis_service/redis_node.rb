@@ -92,6 +92,9 @@ class VCAP::Services::Redis::Node
     @config_command_name = @options[:command_rename_prefix] + "-config"
     @shutdown_command_name = @options[:command_rename_prefix] + "-shutdown"
     @max_clients = @options[:max_clients] || 500
+    # Timeout for redis client operations, node cannot be blocked on any redis instances.
+    # Default value is 2 seconds.
+    @redis_timeout = @options[:redis_timeout] || 2
   end
 
   def pre_send_announcement
@@ -191,8 +194,10 @@ class VCAP::Services::Redis::Node
         instance.pid = start_instance(instance, dump_file)
         save_instance(instance)
       else
-        redis = Redis.new({:port => instance.port, :password => instance.password})
-        redis.flushall
+        Timeout::timeout(@redis_timeout) do
+          redis = Redis.new({:port => instance.port, :password => instance.password})
+          redis.flushall
+        end
       end
     else
       raise RedisError.new(RedisError::REDIS_RESTORE_FILE_NOT_FOUND, dump_file)
@@ -416,14 +421,18 @@ class VCAP::Services::Redis::Node
   end
 
   def stop_redis_server(instance)
-    redis = Redis.new({:port => instance.port, :password => instance.password})
-    begin
-      redis.shutdown(@shutdown_command_name)
-    rescue RuntimeError => e
-      # It could be a disabled instance
-      redis = Redis.new({:port => instance.port, :password => @disable_password})
-      redis.shutdown(@shutdown_command_name)
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => instance.port, :password => instance.password})
+      begin
+        redis.shutdown(@shutdown_command_name)
+      rescue RuntimeError => e
+        # It could be a disabled instance
+        redis = Redis.new({:port => instance.port, :password => @disable_password})
+        redis.shutdown(@shutdown_command_name)
+      end
     end
+  rescue Timeout::Error => e
+    @logger.warn(e)
   end
 
   def close_fds
@@ -461,8 +470,10 @@ class VCAP::Services::Redis::Node
   end
 
   def check_password(port, password)
-    redis = Redis.new({:port => port})
-    redis.auth(password)
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port})
+      redis.auth(password)
+    end
     true
   rescue => e
     if e.message == "ERR invalid password"
@@ -478,8 +489,12 @@ class VCAP::Services::Redis::Node
   end
 
   def get_info(port, password)
-    redis = Redis.new({:port => port, :password => password})
-    redis.info
+    info = nil
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port, :password => password})
+      info = redis.info
+    end
+    info
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure
@@ -490,8 +505,12 @@ class VCAP::Services::Redis::Node
   end
 
   def get_config(port, password, key)
-    redis = Redis.new({:port => port, :password => password})
-    redis.config(@config_command_name, :get, key)[key]
+    config = nil
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port, :password => password})
+      config = redis.config(@config_command_name, :get, key)[key]
+    end
+    config
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure
@@ -502,8 +521,10 @@ class VCAP::Services::Redis::Node
   end
 
   def set_config(port, password, key, value)
-    redis = Redis.new({:port => port, :password => password})
-    redis.config(@config_command_name, :set, key, value)
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port, :password => password})
+      redis.config(@config_command_name, :set, key, value)
+    end
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure
@@ -541,8 +562,10 @@ class VCAP::Services::Redis::Node
   end
 
   def get_healthz(instance)
-    redis = Redis.new({:port => instance.port, :password => instance.password})
-    redis.echo("")
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => instance.port, :password => instance.password})
+      redis.echo("")
+    end
     "ok"
   rescue => e
     "fail"
