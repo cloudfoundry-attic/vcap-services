@@ -98,14 +98,48 @@ class VCAP::Services::MongoDB::Node
 
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
+    @mutex = Mutex.new
+  end
+
+  def fetch_port(port=nil)
+    @mutex.synchronize do
+      port ||= @free_ports.first
+      raise "port #{port} is already taken!" unless @free_ports.include?(port)
+      @free_ports.delete(port)
+      port
+    end
+  end
+
+  def return_port(port)
+    @mutex.synchronize do
+      @free_ports << port
+    end
+  end
+
+  def delete_port(port)
+    @mutex.synchronize do
+      @free_ports.delete(port)
+    end
+  end
+
+  def inc_memory(memory)
+    @mutex.synchronize do
+      @available_memory += memory
+    end
+  end
+
+  def dec_memory(memory)
+    @mutex.synchronize do
+      @available_memory -= memory
+    end
   end
 
   def pre_send_announcement
     ProvisionedService.all.each do |provisioned_service|
-      @free_ports.delete(provisioned_service.port)
+      delete_port(provisioned_service.port)
       if provisioned_service.listening?
         @logger.warn("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
-        @available_memory -= (provisioned_service.memory || @max_memory)
+        dec_memory(provisioned_service.memory || @max_memory)
         next
       end
 
@@ -175,11 +209,10 @@ class VCAP::Services::MongoDB::Node
 
   def provision(plan, credential = nil)
     @logger.info("Provision request: plan=#{plan}")
-    port = credential && credential['port'] && @free_ports.include?(credential['port']) ? credential['port'] : @free_ports.first
+    port = credential && credential['port'] ? fetch_port(credential['port']) : fetch_port
     name = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
     db   = credential && credential['db']   ? credential['db']   : 'db'
 
-    @free_ports.delete(port)
 
     # Cleanup instance dir if it exists
     FileUtils.rm_rf(service_dir(name))
@@ -274,8 +307,8 @@ class VCAP::Services::MongoDB::Node
       FileUtils.rm_rf(log_dir)
     end
 
-    @available_memory += provisioned_service.memory
-    @free_ports << provisioned_service.port
+    inc_memory(provisioned_service.memory)
+    return_port(provisioned_service.port)
 
     raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
     true
@@ -432,8 +465,7 @@ class VCAP::Services::MongoDB::Node
     raise "Cannot parse dumpfile stored_service in #{d_file}" if stored_service.nil?
 
     # Provision the new instance using dumped instance files
-    port = @free_ports.first
-    @free_ports.delete(port)
+    port = fetch_port
 
     provisioned_service           = ProvisionedService.new
     provisioned_service.name      = stored_service.name
@@ -540,7 +572,7 @@ class VCAP::Services::MongoDB::Node
     pid = fork
     if pid
       @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
-      @available_memory -= memory
+      dec_memory(memory)
       # In parent, detach the child.
       Process.detach(pid)
       pid
