@@ -20,4 +20,5 @@ pid: /var/vcap/sys/run/mysql_service.pid
 node_timeout: 2
 # allow_over_provisioning: false
 # z_interval: 30
-check_orphan_interval: 3600
+# check_orphan_interval: 3600
+# double_check_orphan_interval: 300
