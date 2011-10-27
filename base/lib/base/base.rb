@@ -32,6 +32,8 @@ class VCAP::Services::Base::Base
     @options = options
     @local_ip = VCAP.local_ip(options[:ip_route])
     @logger.info("#{service_description}: Initializing")
+    @nats_lock = Mutex.new
+
     NATS.on_error do |e|
       if e.kind_of? NATS::ConnectError
         @logger.error("EXITING! NATS connection failed: #{e}")
@@ -65,6 +67,12 @@ class VCAP::Services::Base::Base
 
   def service_description()
     return "#{service_name}-#{flavor}"
+  end
+
+  def publish(reply, msg)
+    @nats_lock.synchronize do
+      @node_nats.publish(reply, msg)
+    end
   end
 
   def update_varz()

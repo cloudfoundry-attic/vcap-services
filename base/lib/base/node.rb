@@ -73,10 +73,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     credential['node_id'] = @node_id
     response.credentials = credential
     @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
-    @node_nats.publish(reply, encode_success(response))
+    publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_unprovision(msg, reply)
@@ -87,13 +87,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     bindings = unprovision_req.bindings
     result = unprovision(name, bindings)
     if result
-      @node_nats.publish(reply, encode_success(response))
+      publish(reply, encode_success(response))
     else
-      @node_nats.publish(reply, encode_failure(response))
+      publish(reply, encode_failure(response))
     end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_bind(msg, reply)
@@ -104,10 +104,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     bind_opts = bind_message.bind_opts
     credentials = bind_message.credentials
     response.credentials = bind(name, bind_opts, credentials)
-    @node_nats.publish(reply, encode_success(response))
+    publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_unbind(msg, reply)
@@ -116,13 +116,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     unbind_req = UnbindRequest.decode(msg)
     result = unbind(unbind_req.credentials)
     if result
-      @node_nats.publish(reply, encode_success(response))
+      publish(reply, encode_success(response))
     else
-      @node_nats.publish(reply, encode_failure(response))
+      publish(reply, encode_failure(response))
     end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_restore(msg, reply)
@@ -133,13 +133,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     backup_path = restore_message.backup_path
     result = restore(instance_id, backup_path)
     if result
-      @node_nats.publish(reply, encode_success(response))
+      publish(reply, encode_success(response))
     else
-      @node_nats.publish(reply, encode_failure(response))
+      publish(reply, encode_failure(response))
     end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   # disable and dump instance
@@ -152,7 +152,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     FileUtils.mkdir_p(file_path)
     result = disable_instance(prov_cred, binding_creds)
     result = dump_instance(prov_cred, binding_creds, file_path) if result
-    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+    publish(reply, Yajl::Encoder.encode(result))
   rescue => e
     @logger.warn(e)
   end
@@ -167,7 +167,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     prov_cred, binding_creds_hash = result
     prov_cred['node_id'] = @node_id
     result = [prov_cred, binding_creds_hash]
-    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+    publish(reply, Yajl::Encoder.encode(result))
   rescue => e
     @logger.warn(e)
   end
@@ -179,7 +179,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     prov_cred, binding_creds = request
     instance = prov_cred['name']
     FileUtils.rm_rf(get_migration_folder(instance))
-    @node_nats.publish(reply, Yajl::Encoder.encode(true))
+    publish(reply, Yajl::Encoder.encode(true))
   rescue => e
     @logger.warn(e)
   end
@@ -259,7 +259,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     instance = prov_cred['name']
     file_path = get_migration_folder(instance)
     result = import_instance(prov_cred, binding_creds, file_path, plan)
-    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+    publish(reply, Yajl::Encoder.encode(result))
   rescue => e
     @logger.warn(e)
   end
@@ -279,7 +279,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Sending announcement for #{reply || "everyone"}")
     a = announcement
     a[:id] = @node_id
-    @node_nats.publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
+    publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
   rescue
     @logger.warn(e)
   end
