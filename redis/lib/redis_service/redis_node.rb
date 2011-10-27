@@ -7,6 +7,7 @@ require "pp"
 require "datamapper"
 require "uuidtools"
 require "redis"
+require "thread"
 
 # Redis client library doesn't support renamed command, so we override the functions here.
 class Redis
@@ -81,10 +82,12 @@ class VCAP::Services::Redis::Node
     FileUtils.mkdir_p(@base_dir)
     @redis_server_path = options[:redis_server_path]
     @available_memory = options[:available_memory]
+    @available_memory_mutex = Mutex.new
     @max_memory = options[:max_memory]
     @max_swap = options[:max_swap]
     @config_template = ERB.new(File.read(options[:config_template]))
     @free_ports = Set.new
+    @free_ports_mutex = Mutex.new
     options[:port_range].each {|port| @free_ports << port}
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
@@ -112,9 +115,11 @@ class VCAP::Services::Redis::Node
   end
 
   def announcement
-    a = {
-      :available_memory => @available_memory
-    }
+    @available_memory_mutex.synchronize do
+      a = {
+          :available_memory => @available_memory
+      }
+    end
   end
 
   def provision(plan, credentials = nil, db_file = nil)
@@ -122,26 +127,32 @@ class VCAP::Services::Redis::Node
     instance.plan = plan
     if credentials
       instance.name = credentials["name"]
-      if @free_ports.include?(credentials["port"])
-        @free_ports.delete(credentials["port"])
-        instance.port = credentials["port"]
-      else
+      @free_ports_mutex.synchronize do
+        if @free_ports.include?(credentials["port"])
+          @free_ports.delete(credentials["port"])
+          instance.port = credentials["port"]
+        else
+          port = @free_ports.first
+          @free_ports.delete(port)
+          instance.port = port
+        end
+      end
+      instance.password = credentials["password"]
+    else
+      @free_ports_mutex.synchronize do
         port = @free_ports.first
         @free_ports.delete(port)
         instance.port = port
       end
-      instance.password = credentials["password"]
-    else
-      port = @free_ports.first
-      @free_ports.delete(port)
       instance.name = UUIDTools::UUID.random_create.to_s
-      instance.port = port
       instance.password = UUIDTools::UUID.random_create.to_s
     end
 
     begin
       instance.memory = memory_for_instance(instance)
-      @available_memory -= instance.memory
+      @available_memory_mutex.synchronize do
+        @available_memory -= instance.memory
+      end
     rescue => e
       raise e
     end
@@ -277,7 +288,9 @@ class VCAP::Services::Redis::Node
     varz = {}
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
-    varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    @available_memory_mutex.synchronize do
+      varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    end
     ProvisionedService.all.each do |instance|
       varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
@@ -307,10 +320,14 @@ class VCAP::Services::Redis::Node
 
   def start_provisioned_instances
     ProvisionedService.all.each do |instance|
-      @free_ports.delete(instance.port)
+      @free_ports_mutex.synchronize do
+        @free_ports.delete(instance.port)
+      end
       if instance.listening?
         @logger.warn("Service #{instance.name} already running on port #{instance.port}")
-        @available_memory -= (instance.memory || @max_memory)
+        @available_memory_mutex.synchronize do
+          @available_memory -= (instance.memory || @max_memory)
+        end
         next
       end
       begin
@@ -402,8 +419,12 @@ class VCAP::Services::Redis::Node
     rescue => e
       err_msg << e.message
     end
-    @available_memory += instance.memory
-    @free_ports.add(instance.port)
+    @available_memory_mutex.synchronize do
+      @available_memory += instance.memory
+    end
+    @free_ports_mutex.synchronize do
+      @free_ports.add(instance.port)
+    end
     begin
       destroy_instance(instance)
     rescue => e
