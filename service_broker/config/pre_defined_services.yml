@@ -25,7 +25,7 @@
 #      credentials:
 #        conn: postgresql://xyzhr_rocontacts:secret3@db.xyzcorp.com:5432/xyzpeople_na
 #
-# Pre-defined demo services for mysql, postgresql, sqlfire, oracle and sqlserver
+# Pre-defined demo services for gemfire, rabbitmq, mysql, postgresql, sqlfire, oracle and sqlserver
 #service:
 #  name: demo_service
 #  description: XYZ HR Database
@@ -61,4 +61,16 @@
 #        wildcards: []
 #      credentials:
 #        conn: oracle:thin://xyzhr_admin:secret5@oracle.xyzcorp.com/xyzpeople_na
+#    - name: gemfire
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: gemfire.xyzcorp.com:55221
+#    - name: rabbitmq
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: xyzhr_admin:secret6@rabbitmq.xyzcorp.com/vhost
 #
