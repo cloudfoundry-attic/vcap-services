@@ -296,6 +296,69 @@ describe "Postgresql server node" do
     end
   end
 
+  it "should able to generate varz" do
+    EM.run do
+      varz = @node.varz_details
+      varz.should be_instance_of Hash
+      varz[:pg_version].should be
+      varz[:db_stat].should be_instance_of Array
+      varz[:node_storage_capacity].should > 0
+      varz[:node_storage_used].should >= 0
+      varz[:long_queries_killed].should >= 0
+      varz[:long_transactions_killed].should >= 0
+      varz[:provision_served].should >= 0
+      varz[:binding_served].should >= 0
+      EM.stop
+    end
+  end
+
+  it "should handle postgresql error in varz" do
+    EM.run do
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      # drop connection
+      node.connection.close
+      varz = nil
+      expect {varz = node.varz_details}.should_not raise_error
+      varz.should == {}
+      EM.stop
+    end
+  end
+
+  it "should provide provision/binding served info in varz" do
+    EM.run do
+      v1 = @node.varz_details
+      db = @node.provision(@default_plan)
+      binding = @node.bind(db["name"], [])
+      @test_dbs[db] = [binding]
+      v2 = @node.varz_details
+      (v2[:provision_served] - v1[:provision_served]).should == 1
+      (v2[:binding_served] - v1[:binding_served]).should == 1
+      EM.stop
+    end
+  end
+
+  it "should report instance disk size in varz" do
+    EM.run do
+      v = @node.varz_details
+      instance = v[:db_stat].find {|d| d[:name] == @db["name"]}
+      instance.should_not be_nil
+      instance[:size].should >= 0
+      EM.stop
+    end
+  end
+
+  it "should update node capacity after provision new instance" do
+    EM.run do
+      v1 = @node.varz_details
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      v2 = @node.varz_details
+      (v2[:node_storage_used] - v1[:node_storage_used]).should ==
+        (@opts[:max_db_size] * 1024 * 1024)
+      EM.stop
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin

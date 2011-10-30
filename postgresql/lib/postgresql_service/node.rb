@@ -79,10 +79,15 @@ class VCAP::Services::Postgresql::Node
     check_db_consistency()
 
     @available_storage = options[:available_storage] * 1024 * 1024
+    @node_capacity = @available_storage
     Provisionedservice.all.each do |provisionedservice|
       @available_storage -= storage_for_service(provisionedservice)
     end
 
+    @long_queries_killed = 0
+    @long_tx_killed = 0
+    @provision_served = 0
+    @binding_served = 0
   end
 
   def announcement
@@ -161,6 +166,7 @@ class VCAP::Services::Postgresql::Node
       if (proc["query_start"] != nil and Time.now.to_i - Time::parse(proc["query_start"]).to_i >= @max_long_query) and (proc["current_query"] != "<IDLE>") and (proc["usename"] != @postgresql_config["user"]) then
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{Time.now.to_i - Time::parse(proc['query_start']).to_i} info:#{proc['current_query']}")
+        @long_queries_killed += 1
       end
     end
   rescue PGError => e
@@ -173,6 +179,7 @@ class VCAP::Services::Postgresql::Node
       if (proc["xact_start"] != nil and Time.now.to_i - Time::parse(proc["xact_start"]).to_i >= @max_long_tx) and (proc["usename"] != @postgresql_config["user"]) then
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{Time.now.to_i - Time::parse(proc['xact_start']).to_i}")
+        @long_tx_killed += 1
       end
     end
   rescue PGError => e
@@ -187,7 +194,7 @@ class VCAP::Services::Postgresql::Node
       provisioned_service.name = name
       binduser.user = user
       binduser.password = password
-    else 
+    else
       provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
       binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
@@ -209,6 +216,7 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       response = gen_credential(provisionedservice.name, binduser.user, binduser.password)
+      @provision_served += 1
       return response
     else
       raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
@@ -286,6 +294,7 @@ class VCAP::Services::Postgresql::Node
       end
 
       @logger.info("Bind response: #{response.inspect}")
+      @binding_served += 1
       return response
     rescue => e
       delete_database_user(binduser,name) if binduser
@@ -485,4 +494,51 @@ class VCAP::Services::Postgresql::Node
     return version[0]['version'].scan(reg)[0][0][0]
   end
 
+  def varz_details()
+    varz = {}
+    # pg version
+    varz[:pg_version] = @connection.query('select version()')[0]["version"]
+    # db stat
+    varz[:db_stat] = get_db_stat
+    # node capacity
+    varz[:node_storage_capacity] = @node_capacity
+    varz[:node_storage_used] = @node_capacity - @available_storage
+    # how many long queries and long txs are killed.
+    varz[:long_queries_killed] = @long_queries_killed
+    varz[:long_transactions_killed] = @long_tx_killed
+    # how many provision/binding operations since startup.
+    varz[:provision_served] = @provision_served
+    varz[:binding_served] = @binding_served
+    varz
+  rescue => e
+    @logger.warn("Error during generate varz: #{e}")
+    {}
+  end
+
+  def get_db_stat
+    sys_dbs = ['template0', 'template1', 'postgres']
+    result = []
+    db_stats = @connection.query('select datid, datname from pg_stat_database')
+    db_stats.each do |d|
+      name = d["datname"]
+      oid = d["datid"]
+      next if sys_dbs.include?(name)
+      db = {}
+      # db name
+      db[:name] = name
+      # db max size
+      db[:max_size] = @max_db_size
+      # db actual size
+      sizes = @connection.query("select pg_database_size('#{name}')")
+      db[:size] = sizes[0]['pg_database_size'].to_i
+      # db active connections
+      a_s_ps = @connection.query("select pg_stat_get_db_numbackends(#{oid})")
+      db[:active_server_processes] = a_s_ps[0]['pg_stat_get_db_numbackends'].to_i
+      result << db
+    end
+    result
+  rescue => e
+    @logger.warn("Error during generate varz/db_stat: #{e}")
+    []
+  end
 end
