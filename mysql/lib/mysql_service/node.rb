@@ -250,7 +250,8 @@ class VCAP::Services::Mysql::Node
     begin
       credentials.each{ |credential| unbind(credential)} if credentials
     rescue =>e
-      # ignore
+      # ignore error, only log it
+      @logger.warn("Error found in unbind operation:#{e}")
     end
     delete_database(provisioned_service)
     storage = storage_for_service(provisioned_service)
