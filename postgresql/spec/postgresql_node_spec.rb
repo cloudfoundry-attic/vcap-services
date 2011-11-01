@@ -359,6 +359,55 @@ describe "Postgresql server node" do
     end
   end
 
+  it "should report node status in healthz" do
+    EM.run do
+      healthz = @node.healthz_details()
+      healthz[:self].should == "ok"
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      node.connection.close
+      healthz = node.healthz_details()
+      healthz[:self].should == "fail"
+      EM.stop
+    end
+  end
+
+  it "should close extra postgresql connections after generate healthz" do
+    EM.run do
+      varz = @node.varz_details
+      db_stats = varz[:db_stat]
+      instance = db_stats.find {|d| d[:name] == @db["name"]}
+      instance.should_not be_nil
+      conns_before_healthz = instance[:active_server_processes]
+
+      healthz = @node.healthz_details()
+      healthz.keys.size.should >= 2
+
+      varz = @node.varz_details
+      db_stats = varz[:db_stat]
+      instance = db_stats.find {|d| d[:name] == @db["name"]}
+      instance.should_not be_nil
+      conns_after_healthz = instance[:active_server_processes]
+
+      conns_before_healthz.should == conns_after_healthz
+      EM.stop
+    end
+  end
+
+  it "should report instance status in healthz" do
+    EM.run do
+      healthz = @node.healthz_details()
+      instance = @db['name']
+      healthz[instance.to_sym].should == "ok"
+      conn = @node.connection
+      conn.query("drop database #{instance}")
+      healthz = @node.healthz_details()
+      healthz[instance.to_sym].should == "fail"
+      # restore db so cleanup code doesn't complain.
+      conn.query("create database #{instance}")
+      EM.stop
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin

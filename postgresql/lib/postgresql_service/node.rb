@@ -191,7 +191,7 @@ class VCAP::Services::Postgresql::Node
     binduser = Binduser.new
     if credential
       name, user, password = %w(name user password).map{|key| credential[key]}
-      provisioned_service.name = name
+      provisionedservice.name = name
       binduser.user = user
       binduser.password = password
     else
@@ -540,5 +540,45 @@ class VCAP::Services::Postgresql::Node
   rescue => e
     @logger.warn("Error during generate varz/db_stat: #{e}")
     []
+  end
+
+  def healthz_details()
+    healthz = {:self => "ok"}
+    begin
+      @connection.query('select current_timestamp')
+    rescue => e
+      @logger.warn("Error get current timestamp: #{e}")
+      healthz[:self] = "fail"
+      return healthz
+    end
+    begin
+      Provisionedservice.all.each do |instance|
+        healthz[instance.name.to_sym] = get_instance_healthz(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+      healthz[:self] = "fail"
+    end
+    healthz
+  end
+
+  def get_instance_healthz(instance)
+    res = "ok"
+    host, port = %w{host port}.map { |opt| @postgresql_config[opt] }
+    begin
+      conn = PGconn.connect(host, port, nil, nil, instance.name,
+        instance.bindusers[0].user, instance.bindusers[0].password)
+      conn.query('select current_timestamp')
+    rescue => e
+      @logger.warn("Error get current timestamp: #{e}")
+      res = "fail"
+    ensure
+      begin
+        conn.close if conn
+      rescue => e1
+        #ignore
+      end
+    end
+    res
   end
 end
