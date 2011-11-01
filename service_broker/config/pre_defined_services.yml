@@ -24,3 +24,53 @@
 #        wildcards: ["*@xyzcorp.com"]
 #      credentials:
 #        conn: postgresql://xyzhr_rocontacts:secret3@db.xyzcorp.com:5432/xyzpeople_na
+#
+# Pre-defined demo services for gemfire, rabbitmq, mysql, postgresql, sqlfire, oracle and sqlserver
+#service:
+#  name: demo_service
+#  description: XYZ HR Database
+#  version: "2.0"
+#  options:
+#    - name: mysql
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: mysql://xyzhr:secret@mysql.xyzcorp.com/xyzpeople_na
+#    - name: postgresql
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: postgresql://xyzhr:secret2@postgresql.xyzcorp.com/xyzpeople_na
+#    - name: sqlfire
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: sqlfire://xyzhr_admin:secret3@sqlfire.xyzcorp.com:1527/xyzpeople_na
+#    - name: sqlserver
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: sqlserver://xyzhr_admin:secret4@sqlserver.xyzcorp.com/xyzpeople_na
+#    - name: oracle
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: oracle:thin://xyzhr_admin:secret5@oracle.xyzcorp.com/xyzpeople_na
+#    - name: gemfire
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: gemfire.xyzcorp.com:55221
+#    - name: rabbitmq
+#      acls:
+#        users: [xyzhr_admin@xyzcorp.com]
+#        wildcards: []
+#      credentials:
+#        conn: xyzhr_admin:secret6@rabbitmq.xyzcorp.com/vhost
+#

@@ -315,12 +315,23 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   end
 
   def send_node_announcement(reply = nil)
+    unless node_ready?
+      @logger.debug("#{service_description}: Not ready to send announcement")
+      return
+    end
     @logger.debug("#{service_description}: Sending announcement for #{reply || "everyone"}")
     a = announcement
     a[:id] = @node_id
     @node_nats.publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
   rescue
     @logger.warn(e)
+  end
+
+  def node_ready?()
+    # Service Node subclasses can override this method if they depend
+    # on some external service in order to operate; for example, MySQL
+    # and Postgresql require a connection to the underlying server.
+    true
   end
 
   def varz_details()
