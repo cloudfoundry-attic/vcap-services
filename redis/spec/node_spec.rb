@@ -7,7 +7,7 @@ module VCAP
   module Services
     module Redis
       class Node
-         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports
+         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports, :redis_timeout
          attr_accessor :logger, :local_db
       end
     end
@@ -35,7 +35,7 @@ describe VCAP::Services::Redis::Node do
       :mbus => "nats://localhost:4222",
       :redis_log_dir => "/tmp/redis_log",
       :command_rename_prefix => "protect-command",
-      :max_clients => 10
+      :max_clients => 100
     }
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
@@ -476,6 +476,26 @@ describe VCAP::Services::Redis::Node do
       # Now the new connection will be successful
       Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info
       @node.unprovision(@credentials["name"])
+    end
+  end
+
+  describe "Node.timeout" do
+    it "should raise exception when redis client response time is too long" do
+      credentials = @node.provision(:free)
+      sleep 1
+      class Redis
+        alias :old_info :info
+        def info(cmd = nil)
+          sleep 3
+          old_info(cmd)
+        end
+      end
+      expect {@node.get_info(credentials["port"], credentials["password"])}.should raise_error(VCAP::Services::Redis::RedisError)
+      class Redis
+        alias :info :old_info
+      end
+      @node.get_info(credentials["port"], credentials["password"]).should be
+      @node.unprovision(credentials["name"])
     end
   end
 
