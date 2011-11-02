@@ -99,6 +99,45 @@ describe "Postgresql server node" do
     end
   end
 
+  it "should return correct instances & bindings list" do
+    EM.run do
+      before_ins_list = @node.all_instances_list
+      tmp_db = @node.provision(@default_plan)
+      @test_dbs[tmp_db] = []
+      after_ins_list = @node.all_instances_list
+      before_ins_list << tmp_db["name"]
+      (before_ins_list.sort == after_ins_list.sort).should be_true
+
+      before_bind_list = @node.all_bindings_list
+      tmp_bind = @node.bind(tmp_db["name"],  @default_opts)
+      @test_dbs[tmp_db] << tmp_bind
+      after_bind_list = @node.all_bindings_list
+      before_bind_list << tmp_bind
+      a, b = [after_bind_list, before_bind_list].map do |list|
+        list.map { |item| item["username"] }.sort
+      end
+      (a == b).should be_true
+
+      EM.stop
+    end
+  end
+
+  it "should be able to purge the instance & binding from the all_list" do
+    EM.run do
+      tmp_db = @node.provision(@default_plan)
+      ins_list = @node.all_instances_list
+      tmp_bind = @node.bind(tmp_db["name"], @default_opts)
+      bind_list = @node.all_bindings_list
+      oi = ins_list.find { |ins| ins == tmp_db["name"] }
+      ob = bind_list.find { |bind| bind["name"] == tmp_bind["name"] and bind["username"] == tmp_bind["username"] }
+      oi.should_not be_nil
+      ob.should_not be_nil
+      expect { @node.unbind(ob) }.should_not raise_error
+      expect { @node.unprovision(oi, []) }.should_not raise_error
+      EM.stop
+    end
+  end
+
   it "should calculate available storage correctly" do
     EM.run do
       original= @node.available_storage
@@ -192,11 +231,6 @@ describe "Postgresql server node" do
       credential = @node.bind(@db["name"],  @default_opts)
       credential.should_not == nil
       @test_dbs[@db] << credential
-      invalid_credential = credential.dup
-      invalid_credential["password"] = 'fake'
-      expect {
-        @node.unbind(invalid_credential)
-      }.should raise_error(PostgresqlError, /Postgresql credential .* not found/)
 
       # nil input
       @node.unbind(nil).should == nil

@@ -97,6 +97,24 @@ class VCAP::Services::Postgresql::Node
     a
   end
 
+  def all_instances_list
+    Provisionedservice.all.map{|s| s.name}
+  end
+
+  def all_bindings_list
+    res = []
+    Provisionedservice.all.each do |provisionedservice|
+      provisionedservice.bindusers.all.each do |binduser|
+        res << {
+          "name" => provisionedservice.name,
+          "username" => binduser.user,
+          "user" => binduser.user
+        }
+      end
+    end
+    res
+  end
+
   def check_db_consistency()
     db_list = []
     @connection.query('select datname,datacl from pg_database').each{|message|
@@ -305,11 +323,11 @@ class VCAP::Services::Postgresql::Node
   def unbind(credential)
     return if credential.nil?
     @logger.info("Unbind service: #{credential.inspect}")
-    name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
+    name, user, bind_opts = %w(name user bind_opts).map{|k| credential[k]}
     provisionedservice = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless provisionedservice
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
-    res = @connection.query("SELECT count(*) from pg_authid WHERE rolname='#{user}' AND rolpassword='md5'||MD5('#{passwd}#{user}')")
+    res = @connection.query("SELECT count(*) from pg_authid WHERE rolname='#{user}'")
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CRED_NOT_FOUND, credential.inspect) if res[0]['count'].to_i<=0
     unbinduser = provisionedservice.bindusers.get(user)
     if unbinduser != nil then
