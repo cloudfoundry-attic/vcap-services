@@ -34,8 +34,7 @@ describe "Postgresql server node" do
 
   before :all do
     @opts = getNodeTestConfig
-    # easy to test max db connections
-    @opts[:max_db_conns] = 1
+    @max_db_conns = @opts[:max_db_conns]
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
@@ -78,10 +77,15 @@ describe "Postgresql server node" do
 
   it "should limit max connection to the database" do
     EM.run do
-      conn = connect_to_postgresql(@db)
+      @opts[:max_db_conns] = 1
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      db = node.provision(@default_plan)
+      conn = connect_to_postgresql(db)
       expect {conn.query("SELECT 1")}.should_not raise_error
-      expect {connect_to_postgresql(@db)}.should raise_error(PGError, /too many connections for database .*/)
+      expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
       conn.close if conn
+      node.unprovision(db["name"], [])
+      @opts[:max_db_conns] = @max_db_conns
       EM.stop
     end
   end
@@ -404,6 +408,27 @@ describe "Postgresql server node" do
       healthz[instance.to_sym].should == "fail"
       # restore db so cleanup code doesn't complain.
       conn.query("create database #{instance}")
+      EM.stop
+    end
+  end
+
+  it "should return node not ready if postgresql server is not connected" do
+    EM.run do
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      node.connection.close
+      # keep_alive interval is 15 seconds so it should be ok
+      node.connection_exception.should be_instance_of PGError
+      node.node_ready?.should == false
+      node.send_node_announcement.should == nil
+      EM.stop
+    end
+  end
+
+  it "should keep alive" do
+    EM.run do
+      @node.connection.close
+      @node.postgresql_keep_alive
+      @node.node_ready?.should == true
       EM.stop
     end
   end

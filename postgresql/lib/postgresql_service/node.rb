@@ -154,10 +154,10 @@ class VCAP::Services::Postgresql::Node
 
   #keep connection alive, and check db liveness
   def postgresql_keep_alive
-    @connection.query("select current_timestamp")
-  rescue PGError => e
-    @logger.warn("PostgreSQL connection lost: #{e}") # What is the way to get details of error?  #{e}")
-    @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
+    if connection_exception
+      @logger.warn("PostgreSQL connection lost, trying to keep alive.")
+      @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
+    end
   end
 
   def kill_long_queries
@@ -544,10 +544,8 @@ class VCAP::Services::Postgresql::Node
 
   def healthz_details()
     healthz = {:self => "ok"}
-    begin
-      @connection.query('select current_timestamp')
-    rescue => e
-      @logger.warn("Error get current timestamp: #{e}")
+    if connection_exception
+      @logger.warn("PostgreSQL connection lost, healthz fail.")
       healthz[:self] = "fail"
       return healthz
     end
@@ -580,5 +578,17 @@ class VCAP::Services::Postgresql::Node
       end
     end
     res
+  end
+
+  def node_ready?()
+    @connection && connection_exception.nil?
+  end
+
+  def connection_exception()
+    @connection.query("select current_timestamp")
+    return nil
+  rescue PGError => e
+    @logger.warn("PostgreSQL connection lost: #{e}")
+    return e
   end
 end
