@@ -57,6 +57,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @check_orphan_interval = opts[:check_orphan_interval] || -1
     @double_check_orphan_interval = opts[:double_check_orphan_interval] || 300
     @handle_fetched = false
+    @fetching_handles = false
     @svc_json     = {
       :label  => @service[:label],
       :url    => @service[:url],
@@ -457,13 +458,16 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Fetches canonical state (handles) from the Cloud Controller
   def fetch_handles(&cb)
+    return if @fetching_handles
+
     @logger.info("Fetching handles from cloud controller @ #{@handles_uri}")
+    @fetching_handles = true
 
     req = create_http_request :head => @cc_req_hdrs
-
     http = EM::HttpRequest.new(@handles_uri).get(req)
 
     http.callback do
+      @fetching_handles = false
       if http.response_header.status == 200
         @logger.info("Successfully fetched handles")
         begin
@@ -480,6 +484,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     end
 
     http.errback do
+      @fetching_handles = false
       @logger.error("Failed fetching handles: #{http.error}")
     end
   end
