@@ -254,7 +254,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         provision_node(request, responses, prov_handle, blk)
       end
     end
-    subscription = @node_nats.request("#{service_name}.discover", &barrier.callback)
+    subscription = @node_nats.request("#{service_name}.discover") {|msg| barrier.call(msg)}
   rescue => e
     @logger.warn(e)
     blk.call(internal_fail)
