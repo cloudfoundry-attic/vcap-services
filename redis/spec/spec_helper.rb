@@ -12,3 +12,4 @@ require 'vcap/common'
 require "datamapper"
 require "uri"
 require "redis"
+require "thread"
