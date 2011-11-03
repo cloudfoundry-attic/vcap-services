@@ -88,11 +88,19 @@ class VCAP::Services::Postgresql::Node
     @long_tx_killed = 0
     @provision_served = 0
     @binding_served = 0
+
+    @mutex_available_storage = Mutex.new
+  end
+
+  def get_available_storage
+    @mutex_available_storage.synchronize do
+      return @available_storage
+    end
   end
 
   def announcement
     a = {
-      :available_storage => @available_storage
+      :available_storage => get_available_storage
     }
     a
   end
@@ -206,42 +214,54 @@ class VCAP::Services::Postgresql::Node
 
   def provision(plan, credential=nil)
     provisionedservice = Provisionedservice.new
-    binduser = Binduser.new
-    if credential
-      name, user, password = %w(name user password).map{|key| credential[key]}
-      provisionedservice.name = name
-      binduser.user = user
-      binduser.password = password
-    else
-      provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    end
-    binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    binduser.default_user = true
     provisionedservice.plan = plan
-    provisionedservice.quota_exceeded = false
-    provisionedservice.bindusers << binduser
-    if create_database(provisionedservice) then
-      if not binduser.save
-        @logger.error("Could not save entry: #{binduser.errors.inspect}")
+    storage = storage_for_service(provisionedservice)
+
+    begin
+      @mutex_available_storage.synchronize do
+        @available_storage -= storage
+      end
+
+      binduser = Binduser.new
+      if credential
+        name, user, password = %w(name user password).map{|key| credential[key]}
+        provisionedservice.name = name
+        binduser.user = user
+        binduser.password = password
+      else
+        provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      end
+      binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      binduser.default_user = true
+      provisionedservice.quota_exceeded = false
+      provisionedservice.bindusers << binduser
+      if create_database(provisionedservice) then
+        if not binduser.save
+          @logger.error("Could not save entry: #{binduser.errors.inspect}")
+          raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+        end
+        if not provisionedservice.save
+          binduser.destroy
+          @logger.error("Could not save entry: #{provisionedservice.errors.inspect}")
+          raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+        end
+        response = gen_credential(provisionedservice.name, binduser.user, binduser.password)
+        @provision_served += 1
+        return response
+      else
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
-      if not provisionedservice.save
-        binduser.destroy
-        @logger.error("Could not save entry: #{provisionedservice.errors.inspect}")
-        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+    rescue => e
+      storage = storage_for_service(provisionedservice)
+      @mutex_available_storage.synchronize do
+        @available_storage += storage
       end
-      response = gen_credential(provisionedservice.name, binduser.user, binduser.password)
-      @provision_served += 1
-      return response
-    else
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+      delete_database(provisionedservice) if provisionedservice
+      raise e
     end
-  rescue => e
-    delete_database(provisionedservice) if provisionedservice
-    raise e
   end
 
   def unprovision(name, credentials)
@@ -257,7 +277,6 @@ class VCAP::Services::Postgresql::Node
     end
     delete_database(provisionedservice)
     storage = storage_for_service(provisionedservice)
-    @available_storage += storage
 
     provisionedservice.bindusers.all.each do |binduser|
       if not binduser.destroy
@@ -266,6 +285,11 @@ class VCAP::Services::Postgresql::Node
     end
     if not provisionedservice.destroy
       @logger.error("Could not delete entry: #{provisionedservice.errors.inspect}")
+    else
+      # restore quota only if provisionedservice is deleted from local db
+      @mutex_available_storage.synchronize do
+        @available_storage += storage
+      end
     end
     @logger.info("Successfully fulfilled unprovision request: #{name}")
     true
@@ -343,7 +367,6 @@ class VCAP::Services::Postgresql::Node
 
   def create_database(provisionedservice)
     name, bindusers = [:name, :bindusers].map { |field| provisionedservice.send(field) }
-    origin_available_storage = @available_storage
     begin
       start = Time.now
       user = bindusers[0].user
@@ -356,13 +379,11 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       storage = storage_for_service(provisionedservice)
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if @available_storage < storage
-      @available_storage -= storage
+      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if get_available_storage < storage
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
     rescue PGError => e
       @logger.error("Could not create database: #{e}")
-      @available_storage = origin_available_storage
       false
     end
   end
@@ -519,6 +540,7 @@ class VCAP::Services::Postgresql::Node
     # db stat
     varz[:db_stat] = get_db_stat
     # node capacity
+    # (no need to synchronize @available_storage here since varz is not in critical path)
     varz[:node_storage_capacity] = @node_capacity
     varz[:node_storage_used] = @node_capacity - @available_storage
     # how many long queries and long txs are killed.

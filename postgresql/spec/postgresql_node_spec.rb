@@ -393,6 +393,9 @@ describe "Postgresql server node" do
       v2 = @node.varz_details
       (v2[:node_storage_used] - v1[:node_storage_used]).should ==
         (@opts[:max_db_size] * 1024 * 1024)
+      @node.unprovision(db["name"], [])
+      v3 = @node.varz_details
+      (v3[:node_storage_used] - v1[:node_storage_used]).should == 0
       EM.stop
     end
   end
