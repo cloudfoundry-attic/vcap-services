@@ -583,6 +583,22 @@ describe "Mysql server node" do
     end
   end
 
+  it "should enforce max connection limitation per user account" do
+    EM.run do
+      opts = @opts.dup
+      opts[:max_user_conns] = 1 # easy for testing
+      node = VCAP::Services::Mysql::Node.new(opts)
+      db = node.provision(@default_plan)
+      binding = node.bind(db["name"],  @default_opts)
+      @test_dbs[db] = [binding]
+      expect { conn = connect_to_mysql(db) }.should_not raise_error
+      expect { conn = connect_to_mysql(db) }.should raise_error(Mysql::Error, /exceeded the 'max_user_connections'/)
+      expect { conn = connect_to_mysql(binding) }.should_not raise_error
+      expect { conn = connect_to_mysql(binding) }.should raise_error(Mysql::Error, /exceeded the 'max_user_connections'/)
+      EM.stop
+    end
+  end
+
   after:each do
     @test_dbs.keys.each do |db|
       begin

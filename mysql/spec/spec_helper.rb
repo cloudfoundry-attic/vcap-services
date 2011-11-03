@@ -41,6 +41,7 @@ def getNodeTestConfig()
     :mysql => parse_property(config, "mysql", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
+    :max_user_conns => parse_property(config, "max_user_conns", Integer, :optional => true),
   }
   options
 end
