@@ -54,7 +54,8 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @node_timeout = opts[:node_timeout]
     @handles_uri = "#{@cld_ctrl_uri}/services/v1/offerings/#{@service[:label]}/handles"
     @handle_fetch_interval = opts[:handle_fetch_interval] || 1
-    @check_orphan_interval = opts[:check_orphan_interval]
+    @check_orphan_interval = opts[:check_orphan_interval] || -1
+    @double_check_orphan_interval = opts[:double_check_orphan_interval] || 300
     @handle_fetched = false
     @svc_json     = {
       :label  => @service[:label],
@@ -102,16 +103,28 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     EM.next_tick { fetch_handles(&update_callback) }
 
     if @check_orphan_interval > 0
-      update_callback_for_check_orphan = Proc.new do |resp|
-        @provisioner.check_orphan(resp.handles) {|msg| }
+      handler_check_orphan = Proc.new do |resp|
+        check_orphan(resp.handles,
+                     lambda { @logger.info("Check orphan is requested") },
+                     lambda { |errmsg| @logger.error("Error on requesting to check orphan #{errmsg}") })
       end
-      EM.add_periodic_timer(@check_orphan_interval) { fetch_handles(&update_callback_for_check_orphan) }
+      EM.add_periodic_timer(@check_orphan_interval) { fetch_handles(&handler_check_orphan) }
     end
 
     # Register update handle callback
     @provisioner.register_update_handle_callback{|handle, &blk| update_service_handle(handle, &blk)}
   end
 
+  def check_orphan(handles, callback, errback)
+    @provisioner.check_orphan(handles) do |msg|
+      if msg['success']
+        callback.call
+        EM.add_timer(@double_check_orphan_interval) { fetch_handles{ |rs| @provisioner.double_check_orphan(rs.handles) } }
+      else
+        errback.call(msg['response'])
+      end
+    end
+  end
 
   # Validate the incoming request
   before do
@@ -249,13 +262,9 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
   post '/service/internal/v1/check_orphan' do
     @logger.info("Request to check orphan")
     fetch_handles do |resp|
-      @provisioner.check_orphan(resp.handles) do |msg|
-        if msg['success']
-          async_reply
-        else
-          async_reply_error(msg['response'])
-        end
-      end
+      check_orphan(resp.handles,
+                   lambda { async_reply },
+                   lambda { |errmsg| async_reply_error(errmsg) })
     end
     async_mode
   end

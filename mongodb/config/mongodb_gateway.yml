@@ -19,3 +19,5 @@ logging:
 pid: /var/vcap/sys/run/mongodb_service.pid
 # allow_over_provisioning: false
 # z_interval: 30
+# check_orphan_interval: 3600
+# double_check_orphan_interval: 300
