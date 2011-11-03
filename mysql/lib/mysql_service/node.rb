@@ -545,7 +545,7 @@ class VCAP::Services::Mysql::Node
       conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
       conn.query("SHOW TABLES")
     rescue => e
-      @logger.error("Error get tables of #{instance.name}: #{e}")
+      @logger.warn("Error get tables of #{instance.name}: #{e}")
       res = "fail"
     ensure
       begin
