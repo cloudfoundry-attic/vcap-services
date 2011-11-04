@@ -12,7 +12,7 @@ gem "sinatra"
 gem "thin"
 gem "rest-client"
 
-gem 'vcap_common', :path => '../../common'
+gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', :require => ['vcap/logging']
 
 group :test do
