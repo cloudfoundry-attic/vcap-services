@@ -1,101 +1,38 @@
 #!/usr/bin/env ruby
+# -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 
-require "rubygems"
-require "bundler/setup"
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/node_bin'
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
 require "neo4j_service/neo4j_node"
 
-neo4j_server_conf_template = File.expand_path("../../resources/neo4j-server.properties.erb", __FILE__)
-neo4j_conf_template = File.expand_path("../../resources/neo4j.properties.erb", __FILE__)
-log4j_conf_template = File.expand_path("../../resources/log4j.properties.erb", __FILE__)
-config_file = File.expand_path("../../config/neo4j_node.yml", __FILE__)
+class VCAP::Services::Neo4j::NodeBin < VCAP::Services::Base::NodeBin
 
-OptionParser.new do |opts|
-  opts.banner = "Usage: neo4j_node [options]"
-  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
-    config_file = opt
+  def node_class
+    VCAP::Services::Neo4j::Node
   end
-  opts.on("-h", "--help", "Help") do
-    puts opts
-    exit
+
+  def default_config_file
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+    File.join(config_base_dir, 'neo4j_node.yml')
   end
-end.parse!
 
-def parse_property(hash, key, type, options = {})
-  obj = hash[key]
-  if obj.nil?
-    raise "Missing required option: #{key}" unless options[:optional]
-    nil
-  elsif type == Range
-    raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
-    first, last = obj["first"], obj["last"]
-    raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
-    Range.new(first, last)
-  else
-    raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
-    obj
+  def additional_config(options, config)
+    options[:config_template] = File.expand_path("../../resources/neo4j-server.properties.erb", __FILE__)
+    options[:port_range] = parse_property(config, "port_range", Range)
+    options[:neo4j_path] = parse_property(config, "neo4j_path", String)
+    options[:available_memory] = parse_property(config, "available_memory", Integer)
+    options[:max_memory] = parse_property(config, "max_memory", Integer)
+    options[:neo4j_template] = File.expand_path("../../resources/neo4j.properties.erb", __FILE__)
+    options[:log4j_template] = File.expand_path("../../resources/log4j.properties.erb", __FILE__)
+    options
   end
+
 end
 
-begin
-  config = YAML.load_file(config_file)
-rescue => e
-  puts "Could not read configuration file:  #{e}"
-  exit
-end
-
-logger = Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily")
-logger.level = case (parse_property(config, "log_level", String, :optional => true) || "INFO")
-  when "DEBUG" then Logger::DEBUG
-  when "INFO" then Logger::INFO
-  when "WARN" then Logger::WARN
-  when "ERROR" then Logger::ERROR
-  when "FATAL" then Logger::FATAL
-  else Logger::UNKNOWN
-end
-
-options = {
-  :logger => logger,
-  :base_dir => parse_property(config, "base_dir", String),
-  :neo4j_path => parse_property(config, "neo4j_path", String),
-  :ip_route => parse_property(config, "ip_route", String, :optional => true),
-  :available_memory => parse_property(config, "available_memory", Integer),
-  :node_id => parse_property(config, "node_id", String),
-  :mbus => parse_property(config, "mbus", String),
-  :config_template => neo4j_server_conf_template,
-  :neo4j_template => neo4j_conf_template,
-  :log4j_template => log4j_conf_template,
-  :local_db => parse_property(config, "local_db", String),
-  :port_range => parse_property(config, "port_range", Range),
-  :max_memory => parse_property(config, "max_memory", Integer)
-}
-
-def shutdown(neo4j_node)
-  neo4j_node.shutdown
-  EM.stop
-end
-
-EM.error_handler do |e|
-  logger.fatal("#{e}\n#{e.backtrace.join("\n")}")
-  exit
-end
-
-pid_file = parse_property(config, "pid", String)
-begin
-  FileUtils.mkdir_p(File.dirname(pid_file))
-rescue => e
-  logger.fatal "Can't create pid directory, exiting: #{e}"
-end
-File.open(pid_file, 'w') { |f| f.puts "#{Process.pid}" }
-
-EM.run do
-  neo4j_node = VCAP::Services::Neo4j::Node.new(options)
-  trap("INT") {shutdown(neo4j_node)}
-  trap("TERM") {shutdown(neo4j_node)}
-end
+VCAP::Services::Neo4j::NodeBin.new.start
 
