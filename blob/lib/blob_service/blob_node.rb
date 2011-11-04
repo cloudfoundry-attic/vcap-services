@@ -169,7 +169,7 @@ class VCAP::Services::Blob::Node
           list << credential if credential['username'] != instance.keyid
         }
       rescue => e
-        @logger.warn("Failed fetch user list: #{e.message}")
+        @logger.warn("Failed to fetch user list: #{e.message}")
       end
     end
     list
@@ -177,7 +177,7 @@ class VCAP::Services::Blob::Node
 
   # will be re-used by restore codes; thus credential could be none null
   def provision(plan, credential = nil)
-    @logger.debug("Provision ")
+    @logger.debug("Provision a service instance")
     port   = credential && credential['port'] && @free_ports.include?(credential['port']) ? credential['port'] : @free_ports.first
     @free_ports.delete(port)
     name   = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
@@ -332,7 +332,7 @@ class VCAP::Services::Blob::Node
   end
 
   def start_instance(provisioned_service)
-    @logger.debug("Starting: #{provisioned_service.pretty_inspect}")
+    @logger.debug("Starting instance: #{provisioned_service.pretty_inspect}")
     memory = @max_memory
     pid = fork
     if pid
@@ -354,11 +354,18 @@ class VCAP::Services::Blob::Node
       secretid = provisioned_service.secretid
       config = @config_template.result(binding)
       config_path = File.join(dir, "config.json")
-      FileUtils.mkdir_p(dir) rescue @logger.warn("creation failed")
-      FileUtils.mkdir_p(blob_dir) rescue @logger.warn("creation failed")
-      FileUtils.rm_rf(logdir) rescue @logger.warn("no such folder")
-      FileUtils.mkdir_p(logdir) rescue @logger.warn("creation failed")
-      FileUtils.rm_f(config_path) rescue @logger.warn("deletion falsed")
+      if !(File.exist?(dir))
+        FileUtils.mkdir_p(dir) rescue @logger.warn("Creating service folder for #{provisioned_service.name} failed")
+      end
+      if !(File.exist?(blob_dir))
+        FileUtils.mkdir_p(blob_dir) rescue @logger.warn("Creating blob data folder for #{provisioned_service.name}  failed")
+      end
+      if !(File.exist?(logdir))
+        FileUtils.mkdir_p(logdir) rescue @logger.warn("Creating log folder for #{provisioned_service.name} failed")
+      end
+      if File.exist?(config_path)
+        FileUtils.rm_f(config_path) rescue @logger.warn("Deleting old config file for #{provisioned_service.name} failed")
+      end
       File.open(config_path, "w") {|f| f.write(config)} 
       cmd = "#{@nodejs_path} #{@blobd_path}/server.js -f #{config_path}"
       exec(cmd) rescue @logger.warn("exec(#{cmd}) failed!")
@@ -406,7 +413,7 @@ class VCAP::Services::Blob::Node
     res = Net::HTTP.start(@local_ip, options[:port]) {|http|
       http.send_request('PUT','/~bind',creds, auth_header(options[:admin], options[:adminpass]))
     }
-    raise "Add blobgw user failed" if (res.nil? || res.code != "200")
+    raise "Add blob user #{options[:username]} failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} added")
   end
 
@@ -417,7 +424,7 @@ class VCAP::Services::Blob::Node
     res = Net::HTTP.start(@local_ip, options[:port]) {|http|
       http.send_request('PUT','/~unbind',creds, auth_header(options[:admin], options[:adminpass]))
     }
-    raise "Delete blobgw user failed" if (res.nil? || res.code != "200")
+    raise "Delete blob user #{options[:username]} failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} removed")
   end
 
