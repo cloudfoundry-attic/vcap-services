@@ -196,7 +196,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       request.instances_list = ins_list
       request.bindings_list = bind_list
       request.node_id = @node_id
-      @node_nats.publish("#{service_name}.node_handles", request.encode)
+      publish("#{service_name}.node_handles", request.encode)
     end
   rescue => e
     @logger.warn(e)
