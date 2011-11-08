@@ -83,6 +83,27 @@ module DataMapper
     end
   end
 
+  class Collection
+    alias original_each each
+    alias original_at []
+
+    def each(&block)
+      instances = []
+      LOCK.synchronize do
+        original_each do |instance|
+          instances << instance
+        end
+      end
+      instances.each &block
+    end
+
+    def [](*args)
+      LOCK.synchronize do
+        original_at(*args)
+      end
+    end
+  end
+
   # For auto_upgrade!
   module Migrations
     module SingletonMethods
