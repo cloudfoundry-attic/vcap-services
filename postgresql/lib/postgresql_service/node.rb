@@ -76,13 +76,8 @@ class VCAP::Services::Postgresql::Node
     DataMapper.setup(:default, options[:local_db])
     DataMapper::auto_upgrade!
 
-    check_db_consistency()
-
     @available_storage = options[:available_storage] * 1024 * 1024
     @node_capacity = @available_storage
-    Provisionedservice.all.each do |provisionedservice|
-      @available_storage -= storage_for_service(provisionedservice)
-    end
 
     @long_queries_killed = 0
     @long_tx_killed = 0
@@ -90,6 +85,13 @@ class VCAP::Services::Postgresql::Node
     @binding_served = 0
 
     @mutex_available_storage = Mutex.new
+  end
+
+  def pre_send_announcement
+    Provisionedservice.all.each do |provisionedservice|
+      @available_storage -= storage_for_service(provisionedservice)
+    end
+    check_db_consistency()
   end
 
   def get_available_storage

@@ -78,14 +78,9 @@ class VCAP::Services::Mysql::Node
     DataMapper.setup(:default, options[:local_db])
     DataMapper::auto_upgrade!
 
-    check_db_consistency()
-
     @available_storage = options[:available_storage] * 1024 * 1024
     @available_storage_lock = Mutex.new
     @node_capacity = @available_storage
-    ProvisionedService.all.each do |provisioned_service|
-      @available_storage -= storage_for_service(provisioned_service)
-    end
 
     @queries_served = 0
     @qps_last_updated = 0
@@ -96,6 +91,13 @@ class VCAP::Services::Mysql::Node
     @statistics_lock = Mutex.new
     @provision_served = 0
     @binding_served = 0
+  end
+
+  def pre_send_announcement
+    ProvisionedService.all.each do |provisioned_service|
+      @available_storage -= storage_for_service(provisioned_service)
+    end
+    check_db_consistency
   end
 
   def all_instances_list
