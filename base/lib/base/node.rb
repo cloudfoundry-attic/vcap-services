@@ -54,8 +54,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       on_cleanup_nfs(msg, reply)
     }
     #Orphan
-    @node_nats.subscribe("#{service_name}.check_orphan") { |msg| on_check_orphan(msg) }
-    @node_nats.subscribe("#{service_name}.purge_orphan.#{@node_id}") { |msg| on_purge_orphan(msg) }
+    @node_nats.subscribe("#{service_name}.check_orphan") { |msg| EM.defer { on_check_orphan(msg) } }
+    @node_nats.subscribe("#{service_name}.purge_orphan.#{@node_id}") { |msg| EM.defer { on_purge_orphan(msg) } }
     pre_send_announcement
     send_node_announcement
     EM.add_periodic_timer(30) {
