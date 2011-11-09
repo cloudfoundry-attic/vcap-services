@@ -198,6 +198,8 @@ class VCAP::Services::Blob::Node
 
     raise "Cannot save provision_service" unless provisioned_service.save
 
+    sleep 0.5 # allows some time for the instance to ramp up
+
     response = {
       "host" => @local_ip,
       "port" => provisioned_service.port,
