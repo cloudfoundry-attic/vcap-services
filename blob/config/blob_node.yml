@@ -16,4 +16,5 @@ blobd_path: /var/vcap/packages/blob/bin
 port_range:
   first: 45001
   last: 65000
-#z_interval: 30
+# z_interval: 30
+# max_nats_payload: 1048576
