@@ -93,7 +93,8 @@ class VCAP::Services::Base::Gateway
              :node_timeout => node_timeout,
              :z_interval => @config[:z_interval],
              :allow_over_provisioning => @config[:allow_over_provisioning],
-             :max_nats_payload => @config[:max_nats_payload]
+             :max_nats_payload => @config[:max_nats_payload],
+             :additional_options => additional_options
            )
       sg = async_gateway_class.new(
              :proxy   => @config[:proxy],
@@ -129,5 +130,9 @@ class VCAP::Services::Base::Gateway
     config[:token] = token.to_s
 
     config
+  end
+
+  def additional_options
+    {}
   end
 end
