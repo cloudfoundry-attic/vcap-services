@@ -297,7 +297,7 @@ class VCAP::Services::Redis::Node
     end
     varz
   rescue => e
-    @logger.warn("Error get varz details: #{e}")
+    @logger.warn("Error while getting varz details: #{e}")
     {}
   end
 
@@ -309,7 +309,7 @@ class VCAP::Services::Redis::Node
     end
     healthz
   rescue => e
-    @logger.warn("Error get healthz details: #{e}")
+    @logger.warn("Error while getting healthz details: #{e}")
     {:self => "fail"}
   end
 
