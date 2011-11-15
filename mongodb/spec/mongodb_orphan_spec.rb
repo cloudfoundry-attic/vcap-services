@@ -8,8 +8,6 @@ describe "mongodb_node check & purge orphan" do
       @opts = get_node_config
       @logger = @opts[:logger]
       @node = Node.new(@opts)
-      all_ins = @node.all_instances_list
-      all_ins.each {|name| @node.unprovision(name,[])}
       EM.stop
     end
   end
@@ -24,34 +22,7 @@ describe "mongodb_node check & purge orphan" do
       after_bindings = @node.all_bindings_list
       @node.unprovision(oi["name"],[])
       (after_instances - before_instances).include?(oi["name"]).should be_true
-      (after_bindings - before_bindings).index{|credential| credential["username"] == ob["username"]}.should_not be_nil
-      EM.stop
-    end
-  end
-
-  it "should find out the orphans after check" do
-    EM.run do
-      oi = @node.provision("free")
-      ob = @node.bind(oi["name"],'rw')
-      @node.check_orphan([])
-      @node.orphan_ins_hash.values[0].include?(oi["name"]).should be_true
-      @node.orphan_binding_hash.values[0].index{|credential| credential["username"] == ob["username"]}.should_not be_nil
-      @node.unprovision(oi["name"],[])
-      EM.stop
-    end
-  end
-
-  it "should find out the orphaned binding that attaches to existing instance" do
-    EM.run do
-      oi = @node.provision("free")  # Assume this instance is not orphaned
-      ob = @node.bind(oi["name"],'rw')
-      @node.check_orphan([{
-        "service_id" => oi["name"],
-        "configuration" => {},
-        "credentials" => oi
-      }])
-      @node.orphan_binding_hash.values[0].index{|credential| credential["username"] == ob["username"]}.should_not be_nil
-      @node.unprovision(oi["name"],[])
+      (after_bindings - before_bindings).index { |credential| credential["username"] == ob["username"] }.should_not be_nil
       EM.stop
     end
   end
@@ -61,9 +32,8 @@ describe "mongodb_node check & purge orphan" do
       oi = @node.provision("free")
       ob = @node.bind(oi["name"],'rw')
       @node.purge_orphan([oi["name"]],[ob])
-      @node.check_orphan([])
-      @node.orphan_ins_hash.values[0].include?(oi["name"]).should be_false
-      @node.orphan_binding_hash.values[0].index{|credential| credential["username"] == ob["username"]}.should be_nil
+      @node.all_instances_list.include?(oi["name"]).should be_false
+      @node.all_bindings_list.index { |credential| credential["username"] == ob["username"] }.should be_nil
       EM.stop
     end
   end

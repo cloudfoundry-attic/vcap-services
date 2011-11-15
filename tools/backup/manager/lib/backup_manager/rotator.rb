@@ -25,34 +25,36 @@ class VCAP::Services::Backup::Rotator
   def run
     if Dir.exists?(@manager.root)
       @manager.logger.info("#{self.class}: Running");
-      each_subdirectory(@manager.root) { |service|
+      each_subdirectory(@manager.root) do |service|
         scan(service)
-      }
+      end
     else
       @manager.logger.warn("Root directory for scanning is not existed.")
     end
     true
+  rescue Interrupt
+    raise
   rescue Exception => x
     @manager.logger.error("#{self.class}: Exception while running: #{x.message}, #{x.backtrace.join(', ')}")
     false
   end
   def handle_response(http,name)
-    instances=[]
+    instances = []
     if http.response_header.status == 200
       begin
         resp = VCAP::Services::Api::ListHandlesResponse.decode(http.response)
         resp.handles.each do |h|
           if h['service_id']
-            service_id=h['service_id']
+            service_id = h['service_id']
             #Because some old service_ids may initial with service name,
-            #remove the service name for compatiblity's sake.
+            #remove the service name for compatibility's sake.
             service_id.gsub!(/^(mongodb|redis)-/,'')
-            service_id=String.new(service_id)
+            service_id = String.new(service_id)
             instances << service_id if service_id
           end
         end if resp.handles
-        @serv_ins[name]=instances
-        @manager.logger.debug("Live #{name} instances: #{instances}")
+        @serv_ins[name] = instances
+        @manager.logger.debug("Live #{name} instances: #{instances.size}")
       rescue => e
         @manager.logger.error("Error to parse handle: #{e.message}")
       end
@@ -63,7 +65,7 @@ class VCAP::Services::Backup::Rotator
 
   def request_service_ins_fibered(uri)
     f = Fiber.current
-    http =EM::HttpRequest.new(uri).get(@@req)
+    http = EM::HttpRequest.new(uri).get(@@req)
     http.errback  { f.resume([false,http]) }
     http.callback { f.resume([true,http]) }
     Fiber.yield
@@ -82,15 +84,15 @@ class VCAP::Services::Backup::Rotator
   end
 
   def get_live_service_ins
-    cc_uri=@options[:cloud_controller_uri]||"api.vcap.me"
-    cc_uri="http://#{cc_uri}" if !cc_uri.start_with?("http://")
-    @serv_ins ={}
+    cc_uri = @options[:cloud_controller_uri]||"api.vcap.me"
+    cc_uri = "http://#{cc_uri}" if !cc_uri.start_with?("http://")
+    @serv_ins = {}
     @options[:services].each do |name,svc|
-      version=svc['version']
-      uri="#{cc_uri}/services/v1/offerings/#{name}-#{version}/handles"
-      @@req[:head]['X-VCAP-Service-Token']=svc['token']||'0xdeadbeef'
+      version = svc['version']
+      uri = "#{cc_uri}/services/v1/offerings/#{name}-#{version}/handles"
+      @@req[:head]['X-VCAP-Service-Token'] = svc['token']||'0xdeadbeef'
       if EM.reactor_running?
-        res=request_service_ins_fibered(uri)
+        res = request_service_ins_fibered(uri)
         if res[0]
           handle_response(res[1],name)
         else
@@ -101,11 +103,12 @@ class VCAP::Services::Backup::Rotator
           request_service_ins(uri,name)
         }
       end
-
+      if @manager.shutdown?
+        raise Interrupt, "Interrupted"
+      end
     end if @options[:services]
   rescue => e
     @manager.logger.error "Failed to get_live_service_ins #{e.message}"
-    {}
   end
 
 
@@ -113,9 +116,9 @@ class VCAP::Services::Backup::Rotator
   def scan(service)
     @manager.logger.info("#{self.class}: Scanning #{service}");
     get_live_service_ins
-    mysql_extra_prunes=[]
-    mysql_extra_saves=[]
-    ins_list=@serv_ins[File.basename(service)]
+    mysql_extra_prunes = []
+    mysql_extra_saves = []
+    ins_list = @serv_ins[File.basename(service)]
     # we are expecting the directory structure to look like this
     # root/service/ab/cd/ef/abcdef.../timestamp/data
     each_subdirectory(service) { |ab|
@@ -123,13 +126,13 @@ class VCAP::Services::Backup::Rotator
         each_subdirectory(cd) { |ef|
           each_subdirectory(ef) { |guid|
             if ins_list && !ins_list.include?(File.basename(guid))
-              if 'mysql'==File.basename(service)
-                mysql_extra_prunes|=Dir.entries(guid).delete_if{|x| dotty(x)}
+              if 'mysql' == File.basename(service)
+                mysql_extra_prunes |= Dir.entries(guid).delete_if{|x| dotty(x)}
               end
               prune(guid)
             else
-              if 'mysql'==File.basename(service)
-                mysql_extra_saves|=Dir.entries(guid).delete_if{|x| dotty(x)}
+              if 'mysql' == File.basename(service)
+                mysql_extra_saves |= Dir.entries(guid).delete_if{|x| dotty(x)}
               end
               rotate(guid)
             end
@@ -140,7 +143,7 @@ class VCAP::Services::Backup::Rotator
     # special case: for mysql we should take care of system data
     # $root/mysql/{information_schema|mysql}/timestamp
     if service == File.join(@manager.root, "mysql")
-      mysql_extra_prunes-=mysql_extra_saves
+      mysql_extra_prunes -= mysql_extra_saves
       mysql_extra_prunes.each do |p|
         prune(File.join(service,"information_schema",p))
         prune(File.join(service,"mysql",p))
@@ -148,6 +151,8 @@ class VCAP::Services::Backup::Rotator
       rotate(File.join(service, "information_schema"))
       rotate(File.join(service, "mysql"))
     end
+  rescue Interrupt
+    raise
   rescue Exception => x
     @manager.logger.error("#{self.class}: Exception while running: #{x.message}, #{x.backtrace.join(', ')}")
   end
@@ -184,7 +189,7 @@ class VCAP::Services::Backup::Rotator
 
   def prune_all(backups)
     ancient = n_midnights_ago(@options[:max_days])
-    latest_time=backups.keys.max
+    latest_time = backups.keys.max
     if latest_time && latest_time<ancient
       #if no backup has been taken place in max_days, then retain
       #the latest one and prune all others
@@ -201,7 +206,7 @@ class VCAP::Services::Backup::Rotator
         newest = bucket.max
         bucket.each { |timestamp|
           path = backups[timestamp]
-          if timestamp==newest && timestamp>=ancient
+          if timestamp == newest && timestamp >= ancient
             retain(path, timestamp)
           else
             prune(path, timestamp)
@@ -223,7 +228,7 @@ class VCAP::Services::Backup::Rotator
     buckets = []
     (0 .. maxdays).each { |i|
       buckets << backups.keys.select { |timestamp|
-        timestamp < n_midnights_ago(i) && (i==maxdays || timestamp >= n_midnights_ago(i+1))
+        timestamp < n_midnights_ago(i) && (i == maxdays || timestamp >= n_midnights_ago(i+1))
       }
     }
     buckets
@@ -242,6 +247,9 @@ class VCAP::Services::Backup::Rotator
 
   def retain(path, timestamp)
     @manager.logger.debug("Retaining #{path} from #{Time.at(timestamp)}")
+    if @manager.shutdown?
+      raise Interrupt, "Interrupted"
+    end
   end
 
   def prune(path, timestamp=nil )
@@ -260,6 +268,10 @@ class VCAP::Services::Backup::Rotator
     end
   rescue => x
     @manager.logger.error("Could not prune #{path}: #{x.to_s}")
+  ensure
+    if @manager.shutdown?
+      raise Interrupt, "Interrupted"
+    end
   end
 
   def rmdashr(path)
@@ -285,7 +297,7 @@ class VCAP::Services::Backup::Rotator
   end
 
   def dotty(s)
-    s=='.' || s=='..'
+    s == '.' || s == '..'
   end
 
   def empty(path)

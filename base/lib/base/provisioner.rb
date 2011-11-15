@@ -22,11 +22,21 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @allow_over_provisioning = options[:allow_over_provisioning]
     @nodes     = {}
     @prov_svcs = {}
+    @handles_for_check_orphan = {}
+    @orphan_mutex = Mutex.new
+    reset_orphan_stat
     EM.add_periodic_timer(60) { process_nodes }
   end
 
   def flavor
     'Provisioner'
+  end
+
+  def reset_orphan_stat
+    @staging_orphan_instances = {}
+    @staging_orphan_bindings = {}
+    @final_orphan_instances = {}
+    @final_orphan_bindings = {}
   end
 
   # Updates our internal state to match that supplied by handles
@@ -61,9 +71,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.announce") { |msg|
       on_node_announce(msg)
     }
-    @node_nats.subscribe("#{service_name}.orphan_result") do |msg|
-      on_orphan_result(msg)
-    end
+    @node_nats.subscribe("#{service_name}.node_handles") { |msg| on_node_handles(msg) }
     @node_nats.subscribe("#{service_name}.handles") {|msg, reply| on_query_handles(msg, reply) }
     @node_nats.subscribe("#{service_name}.update_service_handle") {|msg, reply| on_update_service_handle(msg, reply) }
     @node_nats.publish("#{service_name}.discover")
@@ -87,78 +95,103 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.publish(reply, res)
   end
 
-  def on_orphan_result(msg)
-    @logger.debug("[#{service_description}] Received orphan result")
-    response = CheckOrphanResponse.decode(msg)
-    if response.success
-      @orphan_ins_hash.merge!(response.orphan_instances)
-      @orphan_binding_hash.merge!(response.orphan_bindings)
-      oi_count = @orphan_ins_hash.values.reduce(0) {|m,v| m += v.count}
-      ob_count = @orphan_binding_hash.values.reduce(0) {|m,v| m += v.count}
-      @logger.debug("Orphan Instances: #{oi_count};  Orphan Bindings: #{ob_count}")
+  def on_node_handles(msg)
+    @logger.debug("[#{service_description}] Received node handles")
+    response = NodeHandlesReport.decode(msg)
+    nid = response.node_id
+    @orphan_mutex.synchronize do
+      response.instances_list.each do |ins|
+        @staging_orphan_instances[nid] ||= []
+        @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
+      end
+      response.bindings_list.each do |bind|
+        @staging_orphan_bindings[nid] ||= []
+        @staging_orphan_bindings[nid] << bind unless @handles_for_check_orphan.index do |h|
+          h["credentials"]["name"] == bind["name"] and h["credentials"]["username"] == bind["username"]
+        end
+      end
+      oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
+      ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
+      @logger.debug("Staging Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
     end
+  rescue => e
+    @logger.warn(e)
   end
 
-  def check_orphan(handles,&blk)
+  def check_orphan(handles, &blk)
     @logger.debug("[#{service_description}] Check if there are orphans")
-    @orphan_ins_hash = {}
-    @orphan_binding_hash = {}
-    req = CheckOrphanRequest.new
-    req.handles = handles
-    @node_nats.publish("#{service_name}.check_orphan",req.encode)
+    reset_orphan_stat
+    @handles_for_check_orphan = handles.deep_dup
+    @node_nats.publish("#{service_name}.check_orphan","Send Me Handles")
     blk.call(success)
   rescue => e
     @logger.warn(e)
-    blk.call(failure(e))
-  end
-
-  def purge_orphan(orphan_ins_hash,orphan_bind_hash,&blk)
-    @logger.debug("[#{service_description}] Purge orphans for given list")
-    begin
-      orphan_ins_hash.each do |node_id,ins_list|
-        if ob_list = orphan_bind_hash[node_id]
-          orphan_bind_hash.delete(node_id)
-        else
-          ob_list = []
-        end
-        send_purge_orphan_to_node(node_id,ins_list,ob_list,&blk)
-      end
-      orphan_bind_hash.each do |node_id,ob_list|
-        send_purge_orphan_to_node(node_id,[],ob_list,&blk)
-      end
-    rescue => e
-      @logger.warn(e)
-      if e.instance_of? ServiceError
-        blk.call(failure(e))
-      else
-        blk.call(internal_fail)
-      end
+    if e.instance_of? ServiceError
+      blk.call(failure(e))
+    else
+      blk.call(internal_fail)
     end
   end
 
-  def send_purge_orphan_to_node(node_id, ins_list, ob_list,&blk)
-    @logger.debug("[#{service_description}] Purge orphans for #{node_id} instances: #{ins_list.count} bindings: #{ob_list.count}")
-    req = PurgeOrphanRequest.new
-    req.orphan_ins_list = ins_list
-    req.orphan_binding_list = ob_list
-    subscription = nil
-    timer = EM.add_timer(@node_timeout) {
-      @node_nats.unsubscribe(subscription)
-      blk.call(timeout_fail)
-    }
-    subscription =
-      @node_nats.request(
-        "#{service_name}.purge_orphan.#{node_id}", req.encode
-    ) do |msg|
-      @logger.debug("Purge #{node_id} Result: #{msg}")
-      EM.cancel_timer(timer)
-      @node_nats.unsubscribe(subscription)
-      opts = SimpleResponse.decode(msg)
-      if opts.success
-        blk.call(success)
-      else
-        blk.call(wrap_error(opts))
+  def double_check_orphan(handles)
+    @logger.debug("[#{service_description}] Double check the orphan result")
+    @orphan_mutex.synchronize do
+      @staging_orphan_instances.each do |nid, oi_list|
+        oi_list.each do |oi|
+          @final_orphan_instances[nid] ||= []
+          @final_orphan_instances[nid] << oi unless handles.index { |h| h["service_id"] == oi }
+        end
       end
+      @staging_orphan_bindings.each do |nid, ob_list|
+        ob_list.each do |ob|
+          @final_orphan_bindings[nid] ||= []
+          @final_orphan_bindings[nid] << ob unless handles.index do |h|
+            h["credentials"]["name"] == ob["name"] and h["credentials"]["username"] == ob["username"]
+          end
+        end
+      end
+      oi_count = @final_orphan_instances.values.reduce(0) { |m, v| m += v.count }
+      ob_count = @final_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
+      @logger.debug("Final Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
+    end
+  rescue => e
+    @logger.warn(e)
+    if e.instance_of? ServiceError
+      blk.call(failure(e))
+    else
+      blk.call(internal_fail)
+    end
+  end
+
+  def purge_orphan(orphan_ins_hash,orphan_bind_hash, &blk)
+    @logger.debug("[#{service_description}] Purge orphans for given list")
+    handles_size = @max_nats_payload - 200
+
+    send_purge_orphan_request = Proc.new do |node_id, i_list, b_list|
+      group_handles_in_json(i_list, b_list, handles_size) do |ins_list, bind_list|
+        @logger.debug("[#{service_description}] Purge orphans for #{node_id} instances: #{ins_list.count} bindings: #{bind_list.count}")
+        req = PurgeOrphanRequest.new
+        req.orphan_ins_list = ins_list
+        req.orphan_binding_list = bind_list
+        @node_nats.publish("#{service_name}.purge_orphan.#{node_id}", req.encode)
+      end
+    end
+
+    orphan_ins_hash.each do |nid, oi_list|
+      ob_list = orphan_bind_hash.delete(nid) || []
+      send_purge_orphan_request.call(nid, oi_list, ob_list)
+    end
+
+    orphan_bind_hash.each do |nid, ob_list|
+      send_purge_orphan_request.call(nid, [], ob_list)
+    end
+    blk.call(success)
+  rescue => e
+    @logger.warn(e)
+    if e.instance_of? ServiceError
+      blk.call(failure(e))
+    else
+      blk.call(internal_fail)
     end
   end
 
@@ -221,7 +254,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         provision_node(request, responses, prov_handle, blk)
       end
     end
-    subscription = @node_nats.request("#{service_name}.discover", &barrier.callback)
+    subscription = @node_nats.request("#{service_name}.discover") {|msg| barrier.call(msg)}
   rescue => e
     @logger.warn(e)
     blk.call(internal_fail)
@@ -427,7 +460,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # 2) restore instance use backup file
   # 3) re-bind bindings use old credential
   def recover(instance_id, backup_path, handles, &blk)
-    @logger.debug("Recover instance: #{instance_id} from #{backup_path} with handles #{handles.inspect}.")
+    @logger.debug("Recover instance: #{instance_id} from #{backup_path} with #{handles.size} handles.")
     prov_handle, binding_handles = find_instance_handles(instance_id, handles)
     @logger.debug("Provsion handle: #{prov_handle.inspect}. Binding_handles: #{binding_handles.inspect}")
     req = prov_handle["configuration"]
@@ -547,9 +580,20 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       v[:credentials]['password'] &&= MASKED_PASSWORD
     end
 
+    orphan_instances = @final_orphan_instances.deep_dup
+    orphan_bindings = @final_orphan_bindings.deep_dup
+    orphan_bindings.each do |k, list|
+      list.each do |v|
+        v['pass'] &&= MASKED_PASSWORD
+        v['password'] &&= MASKED_PASSWORD
+      end
+    end
+
     varz = {
       :nodes => @nodes,
-      :prov_svcs => svcs
+      :prov_svcs => svcs,
+      :orphan_instances => orphan_instances,
+      :orphan_bindings => orphan_bindings
     }
     return varz
   rescue => e

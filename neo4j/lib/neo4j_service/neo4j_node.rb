@@ -5,7 +5,6 @@ require "logger"
 require "pp"
 require "set"
 
-require "datamapper"
 require "nats/client"
 require "uuidtools"
 
@@ -18,6 +17,7 @@ require 'uri'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require "datamapper_l"
 
 module VCAP
   module Services
@@ -81,14 +81,51 @@ class VCAP::Services::Neo4j::Node
 
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
+    @mutex = Mutex.new
+  end
 
+  def fetch_port(port=nil)
+    @mutex.synchronize do
+      port ||= @free_ports.first
+      raise "port #{port} is already taken!" unless @free_ports.include?(port)
+      @free_ports.delete(port)
+      port
+    end
+  end
+
+  def return_port(port)
+    @mutex.synchronize do
+      @free_ports << port
+    end
+  end
+
+  def delete_port(port)
+    @mutex.synchronize do
+      @free_ports.delete(port)
+    end
+  end
+
+  def inc_memory(memory)
+    @mutex.synchronize do
+      @available_memory += memory
+    end
+  end
+
+  def dec_memory(memory)
+    @mutex.synchronize do
+      @available_memory -= memory
+    end
+  end
+
+  def pre_send_announcement
     ProvisionedService.all.each do |provisioned_service|
-      @free_ports.delete(provisioned_service.port)
+      delete_port(provisioned_service.port)
       if provisioned_service.listening?
         @logger.info("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
-        @available_memory -= (provisioned_service.memory || @max_memory)
+        dec_memory(provisioned_service.memory || @max_memory)
         next
       end
+
       begin
         pid = start_instance(provisioned_service)
         provisioned_service.pid = pid
@@ -97,7 +134,7 @@ class VCAP::Services::Neo4j::Node
           raise "Couldn't save pid (#{pid})"
         end
       rescue => e
-        @logger.warn("Error starting service #{provisioned_service.name}: #{e}")
+        @logger.error("Error starting service #{provisioned_service.name}: #{e}")
       end
     end
 
@@ -108,8 +145,6 @@ class VCAP::Services::Neo4j::Node
     @logger.info("Shutting down instances..")
     ProvisionedService.all.each do |service|
       @logger.info("Shutting down #{service}")
-    end
-    ProvisionedService.all.each do |service|
       stop_service(service)
     end
   end
@@ -135,16 +170,14 @@ class VCAP::Services::Neo4j::Node
     a
   end
 
-
   def provision(plan, credentials=nil)
-    port = @free_ports.first
-    @free_ports.delete(port)
+    port = fetch_port
 
     provisioned_service             = ProvisionedService.new
     if credentials
       provisioned_service.name      = credentials["name"]
       provisioned_service.username  = credentials["username"]
-      provisioned_service.password  = credentials["username"]
+      provisioned_service.password  = credentials["password"]
     else
       provisioned_service.name      = "neo4j-#{UUIDTools::UUID.random_create.to_s}"
       provisioned_service.username  = UUIDTools::UUID.random_create.to_s
@@ -195,8 +228,8 @@ class VCAP::Services::Neo4j::Node
 
     EM.defer { FileUtils.rm_rf(dir) }
 
-    @available_memory += provisioned_service.memory
-    @free_ports << provisioned_service.port
+    inc_memory(provisioned_service.memory)
+    return_port(provisioned_service.port)
 
     true
   rescue => e
@@ -221,6 +254,7 @@ class VCAP::Services::Neo4j::Node
     ro = bind_opts == "ro"
     r = RestClient.post "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/add-user-#{ro ? 'ro' : 'rw'}","user=#{username}:#{password}"
     raise "Failed to add user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
+
     response = {
       "hostname" => @local_ip,
       "host"     => @local_ip,
@@ -246,6 +280,7 @@ class VCAP::Services::Neo4j::Node
     password = credentials['password']
     r = RestClient.post "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/remove-user", "user=#{username}:#{password}"
     raise "Failed to remove user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
+
     @logger.debug("Successfully unbound #{credentials}")
     true
   rescue => e
@@ -294,16 +329,15 @@ class VCAP::Services::Neo4j::Node
     @logger.info("Calling #{init_script} start")
 
     out = `cd #{dir} && #{init_script} start`
-    started = $?
-    @logger.send(started ? :error : :debug, "Init finished, started = #{started}: #{out}")
+    status = $?
+    @logger.send(status.success? ? :debug : :error, "Init finished, status = #{status}: #{out}")
+    dec_memory(memory) if status.success?
 
     pidfile = File.join(dir,"data","neo4j-service.pid")
 
     pid = `[ -f #{pidfile} ] && cat #{pidfile}`
-    started = $?
-
-    @logger.send(started ? :error : :debug, "Service #{name} running with pid #{pid} #{started}")
-    @available_memory -= memory if started
+    status = $?
+    @logger.send(status.success? ? :debug : :error, "Service #{name} running with pid #{pid} #{status}")
 
     return pid.to_i
   end

@@ -31,10 +31,11 @@ describe AsyncGatewayTests do
     gateway = nil
     EM.run do
       Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
-      Do.at(1) { gateway = AsyncGatewayTests.create_check_orphan_gateway(true, 5); gateway.start }
-      Do.at(12) { cc.stop ; gateway.stop ; EM.stop }
+      Do.at(1) { gateway = AsyncGatewayTests.create_check_orphan_gateway(true, 5, 3); gateway.start }
+      Do.at(20) { cc.stop ; gateway.stop ; EM.stop }
     end
     gateway.check_orphan_invoked.should be_true
+    gateway.double_check_orphan_invoked.should be_true
   end
 
   it "should be able to purge_orphan" do
@@ -66,11 +67,12 @@ describe AsyncGatewayTests do
     gateway = nil
     EM.run do
       Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
-      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_check_orphan_gateway(true, 10, 3); gateway.start }
       Do.at(2) { gateway.send_check_orphan_request}
-      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+      Do.at(10) { cc.stop ; gateway.stop ; EM.stop }
     end
     gateway.check_orphan_invoked.should be_true
+    gateway.double_check_orphan_invoked.should be_true
     gateway.check_orphan_http_code.should == 200
   end
 
@@ -81,9 +83,10 @@ describe AsyncGatewayTests do
       Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
       Do.at(1) { gateway = AsyncGatewayTests.create_nasty_gateway ; gateway.start }
       Do.at(2) { gateway.send_check_orphan_request}
-      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+      Do.at(10) { cc.stop ; gateway.stop ; EM.stop }
     end
     gateway.check_orphan_invoked.should be_true
+    gateway.double_check_orphan_invoked.should be_false
     gateway.check_orphan_http_code.should == 500
   end
 

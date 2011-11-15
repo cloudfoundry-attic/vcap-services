@@ -18,3 +18,5 @@ mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/postgresql_service.pid
 node_timeout: 2
 # z_interval: 30
+# check_orphan_interval: 3600
+# double_check_orphan_interval: 300

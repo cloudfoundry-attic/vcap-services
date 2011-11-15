@@ -28,7 +28,7 @@ class VCAP::Services::Redis::Backup < VCAP::Services::Base::Backup
         next if dirname.to_s.start_with? "." #skip . & ..
         echo "instance: " + dirname
         dump_file = "#{inst_path}/#{dirname}/data/dump.rdb"
-        new_dirname_nfs=get_dump_path(dirname)
+        new_dirname_nfs = get_dump_path(dirname)
         echo "new dir: " + new_dirname_nfs
         begin
           FileUtils.mkdir_p new_dirname_nfs
@@ -52,14 +52,17 @@ class VCAP::Services::Redis::Backup < VCAP::Services::Base::Backup
             echo "Could not copy dumpfile: #{e}",true
           end
           next
+        ensure
+          if @shutdown
+            raise Interrupt, "Interrupted"
+          end
         end
       end
     else
       echo inst_path + " does not exists, exit",true
-      exit
+      return 1
     end
-
-    echo "backup task complete"
+    0
   end
 end
 VCAP::Services::Redis::Backup.new.start

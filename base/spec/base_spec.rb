@@ -234,48 +234,60 @@ describe NodeTests do
     provisioner.response.should =~ /Service unavailable/
   end
 
-  it "should support check_orphan" do
+  it "should support check_orphan when no handles" do
     node = nil
     provisioner = nil
     EM.run do
       # start node then provisioner
-      Do.at(0) { node = NodeTests.create_check_orphan_full_node }
+      Do.at(0) { node = NodeTests.create_node}
       Do.at(1) { provisioner = NodeTests.create_provisioner }
       Do.at(2) { provisioner.send_check_orphan_request }
       Do.at(5) { EM.stop }
     end
-    node.orphan_ins_hash[TEST_NODE_ID].count.should == 1
-    node.orphan_binding_hash[TEST_NODE_ID].count.should == 1
-    provisioner.orphan_ins_hash[TEST_NODE_ID].count.should == 1
-    provisioner.orphan_binding_hash[TEST_NODE_ID].count.should == 1
+    provisioner.ins_hash[TEST_NODE_ID].count.should == 0
+    provisioner.bind_hash[TEST_NODE_ID].count.should == 0
   end
 
-  it "should handle error in check_orphan" do
+  it "should support check_orphan when node has massive instances" do
     node = nil
     provisioner = nil
     EM.run do
       # start node then provisioner
-      Do.at(0) { node = NodeTests.create_error_node }
-      Do.at(1) { provisioner = NodeTests.create_error_provisioner }
-      Do.at(2) { provisioner.send_check_orphan_request }
-      Do.at(5) { EM.stop }
-    end
-    node.check_orphan_invoked.should be_true
-    provisioner.response.should =~ /Service unavailable/
-  end
-
-  it "should not detect any orphan if node does not provide instances & bindings" do
-    node = nil
-    provisioner = nil
-    EM.run do
-      # start node then provisioner
-      Do.at(0) { node = NodeTests.create_check_orphan_empty_node }
+      Do.at(0) { node = NodeTests.create_node(1024 * 128, 1024)}
       Do.at(1) { provisioner = NodeTests.create_provisioner }
       Do.at(2) { provisioner.send_check_orphan_request }
-      Do.at(5) { EM.stop }
+      Do.at(30) { EM.stop }
     end
-    node.orphan_ins_hash[TEST_NODE_ID].count.should == 0
-    node.orphan_binding_hash[TEST_NODE_ID].count.should == 0
+    provisioner.ins_hash[TEST_NODE_ID].count.should == 1024 * 128
+    provisioner.bind_hash[TEST_NODE_ID].count.should == 1024
+  end
+
+  it "should support check_orphan when node has massive bindings" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_node(1024, 1024 * 64)}
+      Do.at(1) { provisioner = NodeTests.create_provisioner }
+      Do.at(2) { provisioner.send_check_orphan_request }
+      Do.at(30) { EM.stop }
+    end
+    provisioner.ins_hash[TEST_NODE_ID].count.should == 1024
+    provisioner.bind_hash[TEST_NODE_ID].count.should == 1024 * 64
+  end
+
+  it "should support check_orphan when node has massive handles" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_node(1024 * 128, 1024 * 16)}
+      Do.at(1) { provisioner = NodeTests.create_provisioner }
+      Do.at(2) { provisioner.send_check_orphan_request }
+      Do.at(45) { EM.stop }
+    end
+    provisioner.ins_hash[TEST_NODE_ID].count.should == 1024 * 128
+    provisioner.bind_hash[TEST_NODE_ID].count.should == 1024 * 16
   end
 
   it "should support purge_orphan" do
@@ -290,23 +302,7 @@ describe NodeTests do
     end
     node.unprovision_count.should == 2
     node.unbind_count.should == 2
-    provisioner.got_purge_orphan_response.should be_true
   end
-
-  it "should handle error in purge_orphan" do
-    node = nil
-    provisioner = nil
-    EM.run do
-      # start node then provisioner
-      Do.at(0) { node = NodeTests.create_error_node }
-      Do.at(1) { provisioner = NodeTests.create_error_provisioner }
-      Do.at(2) { provisioner.send_purge_orphan_request }
-      Do.at(5) { EM.stop }
-    end
-    node.purge_orphan_invoked.should be_true
-    provisioner.response.should =~ /Service unavailable/
-  end
-
 end
 
 describe ProvisionerTests do
@@ -648,16 +644,20 @@ describe ProvisionerTests do
     EM.run do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
       Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-      Do.at(2) { node = ProvisionerTests.create_node(1) }
-      Do.at(3) { node = ProvisionerTests.create_node(2) }
+      Do.at(2) { node = ProvisionerTests.create_node(2) }
+      Do.at(3) { node = ProvisionerTests.create_node(3) }
       Do.at(4) { gateway.send_check_orphan_request }
-      Do.at(5) { EM.stop }
+      Do.at(8) { gateway.send_double_check_orphan_request }
+      Do.at(10) { EM.stop }
     end
-    provisioner.check_orphan_invoked.should be_true
-    provisioner.orphan_ins_hash["node-1"].count.should == 1
-    provisioner.orphan_ins_hash["node-2"].count.should == 2
-    provisioner.orphan_binding_hash["node-1"].count.should == 1
-    provisioner.orphan_binding_hash["node-2"].count.should == 2
+    provisioner.staging_orphan_instances["node-2"].count.should == 2
+    provisioner.staging_orphan_instances["node-3"].count.should == 2
+    provisioner.final_orphan_instances["node-2"].count.should == 1
+    provisioner.final_orphan_instances["node-3"].count.should == 2
+    provisioner.staging_orphan_bindings["node-2"].count.should == 1
+    provisioner.staging_orphan_bindings["node-3"].count.should == 2
+    provisioner.final_orphan_bindings["node-2"].count.should == 1
+    provisioner.final_orphan_bindings["node-3"].count.should == 2
   end
 
   it "should handle error in check orphan" do
@@ -672,42 +672,25 @@ describe ProvisionerTests do
       Do.at(4) { EM.stop }
     end
     node.got_check_orphan_request.should be_true
-    provisioner.orphan_ins_hash["node-1"].should be_nil
-    provisioner.orphan_binding_hash["node-1"].should be_nil
+    provisioner.staging_orphan_instances["node-1"].should be_nil
+    provisioner.final_orphan_instances["node-1"].should be_nil
   end
 
-  it "should support purge orphan" do
+  it "should support purging massive orphans" do
     provisioner = nil
     gateway = nil
     node = nil
     node2 = nil
     EM.run do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
-      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner, 1024 * 128, 1024 * 16) }
       Do.at(2) { node = ProvisionerTests.create_node(1) }
-      Do.at(3) { node2 = ProvisionerTests.create_node(12) }
       Do.at(4) { gateway.send_purge_orphan_request }
-      Do.at(5) { EM.stop }
+      Do.at(60) { EM.stop }
     end
     node.got_purge_orphan_request.should be_true
-    node2.got_purge_orphan_request.should be_true
     gateway.got_purge_orphan_response.should be_true
-    #TODO do some check
-  end
-
-  it "should handle error in purge orphan" do
-    provisioner = nil
-    gateway = nil
-    node = nil
-    EM.run do
-      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
-      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
-      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-      Do.at(3) { gateway.send_purge_orphan_request}
-      Do.at(4) { EM.stop }
-    end
-    node.got_purge_orphan_request.should be_true
-    gateway.got_purge_orphan_response.should be_false
-    gateway.error_msg['status'].should == 500
+    node.purge_ins_list.count.should == 1024 * 128
+    node.purge_bind_list.count.should == 1024 * 16
   end
 end

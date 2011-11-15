@@ -15,6 +15,7 @@ node_id: mysql_node_1
 max_db_size: 20
 max_long_query: 3
 max_long_tx: 30
+max_user_conns: 20
 migration_nfs: /mnt/migration
 mysql:
   host: localhost
@@ -23,3 +24,4 @@ mysql:
   pass: root
 
 # z_interval: 30
+# max_nats_payload: 1048576

@@ -48,21 +48,10 @@ module VCAP::Services::Internal
     required :backup_path
   end
 
-  class CheckOrphanRequest < ServiceMessage
-    required :handles
-  end
-
-  class CheckOrphanResponse < ServiceMessage
-    required :success
-    optional :error
-    # A hash for orphan instances
-    # Key: the id of the node with orphans
-    # Value: orphan instances list
-    optional :orphan_instances
-    # A hash for orphan bindings
-    # Key: the id of the node with orphans
-    # Value: orphan bindings list
-    optional :orphan_bindings
+  class NodeHandlesReport < ServiceMessage
+    required :instances_list
+    required :bindings_list
+    required :node_id
   end
 
   class PurgeOrphanRequest < ServiceMessage

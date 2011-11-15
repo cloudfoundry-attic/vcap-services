@@ -1,6 +1,7 @@
 service_name: redis
 backup_base_dir: /mnt/appcloud
 service_base_dir: /var/vcap/services/redis/instances
+pid: /var/vcap/sys/run/redis_backup.pid
 timeout: 600
 logging:
   level: debug

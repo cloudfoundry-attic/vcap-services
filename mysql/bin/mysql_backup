@@ -36,9 +36,10 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
       :compress_cmd => @config["compress_cmd"],
     }
 
-    missing_opts = opts.keys.select{|key| opts[key]==nil}
+    missing_opts = opts.keys.select{|key| opts[key] == nil}
     unless missing_opts.empty?
-      abort "Missing required configuration items #{missing_opts.inspect}"
+      echo "Missing required configuration items #{missing_opts.inspect}",true
+      return 1
     end
     # Optional socket config
     opts[:socket] = @config["mysql"]["socket"]
@@ -50,7 +51,7 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     result = conn.query("show databases;")
     dbs = []
     result.each {|db| dbs << db[0] }
-    current_time= Time.now
+    current_time = Time.now
 
     echo "Begin backup at #{current_time}"
     success, failed, ignored = [0,0,0]
@@ -65,12 +66,17 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
         ignored += 1
       else
       end
+
+      if @shutdown
+        raise Interrupt, "Interrupted"
+      end
     end
     echo "Backup begins at #{current_time} complete. Success: #{success}. Failed #{failed}. Ignored #{ignored}."
+    0
   end
 
   def exe_backup_db(opts)
-    backup_cmd, compress_cmd, name, ts=
+    backup_cmd, compress_cmd, name, ts =
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
     if IGNORE_DB.include?(name)
       echo "Ignore backup database #{name}."
@@ -78,11 +84,11 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     elsif SYSTEM_DB.include?(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<node_id>\<service specific data>
-      full_path=get_dump_path(name,1)
+      full_path = get_dump_path(name,1)
     else
       # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
       # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-      full_path=get_dump_path(name)
+      full_path = get_dump_path(name)
     end
     opts.merge!({:full_path => full_path})
     # options substitution
@@ -98,7 +104,7 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     end
     t1 = Time.now
     FileUtils.mkdir_p(full_path) unless File.exists?(full_path)
-    res=CMDHandle.execute("#{backup_cmd};#{compress_cmd}", opts[:timeout].to_i, on_err)
+    res = CMDHandle.execute("#{backup_cmd};#{compress_cmd}", opts[:timeout].to_i, on_err)
     t2 = Time.now
     echo "Backup for db #{name} complete in #{t2-t1} seconds."
     return res ? 0:1

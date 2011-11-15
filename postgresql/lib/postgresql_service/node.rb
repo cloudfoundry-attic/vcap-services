@@ -3,13 +3,13 @@ require "erb"
 require "fileutils"
 require "logger"
 require "pp"
-require "datamapper"
 require "uuidtools"
 require "pg"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
 require 'base/service_error'
+require "datamapper_l"
 
 module VCAP
   module Services
@@ -76,20 +76,53 @@ class VCAP::Services::Postgresql::Node
     DataMapper.setup(:default, options[:local_db])
     DataMapper::auto_upgrade!
 
-    check_db_consistency()
-
     @available_storage = options[:available_storage] * 1024 * 1024
+    @node_capacity = @available_storage
+
+    @long_queries_killed = 0
+    @long_tx_killed = 0
+    @provision_served = 0
+    @binding_served = 0
+
+    @mutex_available_storage = Mutex.new
+  end
+
+  def pre_send_announcement
     Provisionedservice.all.each do |provisionedservice|
       @available_storage -= storage_for_service(provisionedservice)
     end
+    check_db_consistency()
+  end
 
+  def get_available_storage
+    @mutex_available_storage.synchronize do
+      return @available_storage
+    end
   end
 
   def announcement
     a = {
-      :available_storage => @available_storage
+      :available_storage => get_available_storage
     }
     a
+  end
+
+  def all_instances_list
+    Provisionedservice.all.map{|s| s.name}
+  end
+
+  def all_bindings_list
+    res = []
+    Provisionedservice.all.each do |provisionedservice|
+      provisionedservice.bindusers.all.each do |binduser|
+        res << {
+          "name" => provisionedservice.name,
+          "username" => binduser.user,
+          "user" => binduser.user
+        }
+      end
+    end
+    res
   end
 
   def check_db_consistency()
@@ -149,10 +182,10 @@ class VCAP::Services::Postgresql::Node
 
   #keep connection alive, and check db liveness
   def postgresql_keep_alive
-    @connection.query("select current_timestamp")
-  rescue PGError => e
-    @logger.warn("PostgreSQL connection lost: #{e}") # What is the way to get details of error?  #{e}")
-    @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
+    if connection_exception
+      @logger.warn("PostgreSQL connection lost, trying to keep alive.")
+      @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
+    end
   end
 
   def kill_long_queries
@@ -161,6 +194,7 @@ class VCAP::Services::Postgresql::Node
       if (proc["query_start"] != nil and Time.now.to_i - Time::parse(proc["query_start"]).to_i >= @max_long_query) and (proc["current_query"] != "<IDLE>") and (proc["usename"] != @postgresql_config["user"]) then
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{Time.now.to_i - Time::parse(proc['query_start']).to_i} info:#{proc['current_query']}")
+        @long_queries_killed += 1
       end
     end
   rescue PGError => e
@@ -173,6 +207,7 @@ class VCAP::Services::Postgresql::Node
       if (proc["xact_start"] != nil and Time.now.to_i - Time::parse(proc["xact_start"]).to_i >= @max_long_tx) and (proc["usename"] != @postgresql_config["user"]) then
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{Time.now.to_i - Time::parse(proc['xact_start']).to_i}")
+        @long_tx_killed += 1
       end
     end
   rescue PGError => e
@@ -181,46 +216,59 @@ class VCAP::Services::Postgresql::Node
 
   def provision(plan, credential=nil)
     provisionedservice = Provisionedservice.new
-    binduser = Binduser.new
-    if credential
-      name, user, password = %w(name user password).map{|key| credential[key]}
-      provisioned_service.name = name
-      binduser.user = user
-      binduser.password = password
-    else 
-      provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-      binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    end
-    binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-    binduser.default_user = true
     provisionedservice.plan = plan
-    provisionedservice.quota_exceeded = false
-    provisionedservice.bindusers << binduser
-    if create_database(provisionedservice) then
-      if not binduser.save
-        @logger.error("Could not save entry: #{binduser.errors.inspect}")
+    storage = storage_for_service(provisionedservice)
+
+    begin
+      @mutex_available_storage.synchronize do
+        @available_storage -= storage
+      end
+
+      binduser = Binduser.new
+      if credential
+        name, user, password = %w(name user password).map{|key| credential[key]}
+        provisionedservice.name = name
+        binduser.user = user
+        binduser.password = password
+      else
+        provisionedservice.name = "d-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        binduser.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+        binduser.password = "p-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      end
+      binduser.sys_user = "su-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      binduser.sys_password = "sp-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+      binduser.default_user = true
+      provisionedservice.quota_exceeded = false
+      provisionedservice.bindusers << binduser
+      if create_database(provisionedservice) then
+        if not binduser.save
+          @logger.error("Could not save entry: #{binduser.errors.inspect}")
+          raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+        end
+        if not provisionedservice.save
+          binduser.destroy
+          @logger.error("Could not save entry: #{provisionedservice.errors.inspect}")
+          raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+        end
+        response = gen_credential(provisionedservice.name, binduser.user, binduser.password)
+        @provision_served += 1
+        return response
+      else
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
-      if not provisionedservice.save
-        binduser.destroy
-        @logger.error("Could not save entry: #{provisionedservice.errors.inspect}")
-        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+    rescue => e
+      storage = storage_for_service(provisionedservice)
+      @mutex_available_storage.synchronize do
+        @available_storage += storage
       end
-      response = gen_credential(provisionedservice.name, binduser.user, binduser.password)
-      return response
-    else
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+      delete_database(provisionedservice) if provisionedservice
+      raise e
     end
-  rescue => e
-    delete_database(provisionedservice) if provisionedservice
-    raise e
   end
 
   def unprovision(name, credentials)
     return if name.nil?
-    @logger.info("Unprovision database:#{name}, bindings: #{credentials.inspect}")
+    @logger.info("Unprovision database:#{name} and its #{credentials.size} bindings")
     provisionedservice = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) if provisionedservice.nil?
     # Delete all bindings, ignore not_found error since we are unprovision
@@ -231,7 +279,6 @@ class VCAP::Services::Postgresql::Node
     end
     delete_database(provisionedservice)
     storage = storage_for_service(provisionedservice)
-    @available_storage += storage
 
     provisionedservice.bindusers.all.each do |binduser|
       if not binduser.destroy
@@ -240,6 +287,11 @@ class VCAP::Services::Postgresql::Node
     end
     if not provisionedservice.destroy
       @logger.error("Could not delete entry: #{provisionedservice.errors.inspect}")
+    else
+      # restore quota only if provisionedservice is deleted from local db
+      @mutex_available_storage.synchronize do
+        @available_storage += storage
+      end
     end
     @logger.info("Successfully fulfilled unprovision request: #{name}")
     true
@@ -286,6 +338,7 @@ class VCAP::Services::Postgresql::Node
       end
 
       @logger.info("Bind response: #{response.inspect}")
+      @binding_served += 1
       return response
     rescue => e
       delete_database_user(binduser,name) if binduser
@@ -296,11 +349,11 @@ class VCAP::Services::Postgresql::Node
   def unbind(credential)
     return if credential.nil?
     @logger.info("Unbind service: #{credential.inspect}")
-    name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
+    name, user, bind_opts = %w(name user bind_opts).map{|k| credential[k]}
     provisionedservice = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless provisionedservice
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
-    res = @connection.query("SELECT count(*) from pg_authid WHERE rolname='#{user}' AND rolpassword='md5'||MD5('#{passwd}#{user}')")
+    res = @connection.query("SELECT count(*) from pg_authid WHERE rolname='#{user}'")
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CRED_NOT_FOUND, credential.inspect) if res[0]['count'].to_i<=0
     unbinduser = provisionedservice.bindusers.get(user)
     if unbinduser != nil then
@@ -316,7 +369,6 @@ class VCAP::Services::Postgresql::Node
 
   def create_database(provisionedservice)
     name, bindusers = [:name, :bindusers].map { |field| provisionedservice.send(field) }
-    origin_available_storage = @available_storage
     begin
       start = Time.now
       user = bindusers[0].user
@@ -329,13 +381,11 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       storage = storage_for_service(provisionedservice)
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if @available_storage < storage
-      @available_storage -= storage
+      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if get_available_storage < storage
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
     rescue PGError => e
       @logger.error("Could not create database: #{e}")
-      @available_storage = origin_available_storage
       false
     end
   end
@@ -485,4 +535,102 @@ class VCAP::Services::Postgresql::Node
     return version[0]['version'].scan(reg)[0][0][0]
   end
 
+  def varz_details()
+    varz = {}
+    # pg version
+    varz[:pg_version] = @connection.query('select version()')[0]["version"]
+    # db stat
+    varz[:db_stat] = get_db_stat
+    # node capacity
+    # (no need to synchronize @available_storage here since varz is not in critical path)
+    varz[:node_storage_capacity] = @node_capacity
+    varz[:node_storage_used] = @node_capacity - @available_storage
+    # how many long queries and long txs are killed.
+    varz[:long_queries_killed] = @long_queries_killed
+    varz[:long_transactions_killed] = @long_tx_killed
+    # how many provision/binding operations since startup.
+    varz[:provision_served] = @provision_served
+    varz[:binding_served] = @binding_served
+    varz
+  rescue => e
+    @logger.warn("Error during generate varz: #{e}")
+    {}
+  end
+
+  def get_db_stat
+    sys_dbs = ['template0', 'template1', 'postgres']
+    result = []
+    db_stats = @connection.query('select datid, datname from pg_stat_database')
+    db_stats.each do |d|
+      name = d["datname"]
+      oid = d["datid"]
+      next if sys_dbs.include?(name)
+      db = {}
+      # db name
+      db[:name] = name
+      # db max size
+      db[:max_size] = @max_db_size
+      # db actual size
+      sizes = @connection.query("select pg_database_size('#{name}')")
+      db[:size] = sizes[0]['pg_database_size'].to_i
+      # db active connections
+      a_s_ps = @connection.query("select pg_stat_get_db_numbackends(#{oid})")
+      db[:active_server_processes] = a_s_ps[0]['pg_stat_get_db_numbackends'].to_i
+      result << db
+    end
+    result
+  rescue => e
+    @logger.warn("Error during generate varz/db_stat: #{e}")
+    []
+  end
+
+  def healthz_details()
+    healthz = {:self => "ok"}
+    if connection_exception
+      @logger.warn("PostgreSQL connection lost, healthz fail.")
+      healthz[:self] = "fail"
+      return healthz
+    end
+    begin
+      Provisionedservice.all.each do |instance|
+        healthz[instance.name.to_sym] = get_instance_healthz(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+      healthz[:self] = "fail"
+    end
+    healthz
+  end
+
+  def get_instance_healthz(instance)
+    res = "ok"
+    host, port = %w{host port}.map { |opt| @postgresql_config[opt] }
+    begin
+      conn = PGconn.connect(host, port, nil, nil, instance.name,
+        instance.bindusers[0].user, instance.bindusers[0].password)
+      conn.query('select current_timestamp')
+    rescue => e
+      @logger.warn("Error get current timestamp: #{e}")
+      res = "fail"
+    ensure
+      begin
+        conn.close if conn
+      rescue => e1
+        #ignore
+      end
+    end
+    res
+  end
+
+  def node_ready?()
+    @connection && connection_exception.nil?
+  end
+
+  def connection_exception()
+    @connection.query("select current_timestamp")
+    return nil
+  rescue PGError => e
+    @logger.warn("PostgreSQL connection lost: #{e}")
+    return e
+  end
 end

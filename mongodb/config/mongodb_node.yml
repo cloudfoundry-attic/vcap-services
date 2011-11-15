@@ -18,3 +18,4 @@ port_range:
   last: 45000
 migration_nfs: /mnt/migration
 # z_interval: 30
+# max_nats_payload: 1048576
