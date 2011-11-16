@@ -31,7 +31,6 @@ require "mysql_service/mysql_error"
 class VCAP::Services::Mysql::Node
 
   KEEP_ALIVE_INTERVAL = 15
-  LONG_QUERY_INTERVAL = 1
   STORAGE_QUOTA_INTERVAL = 1
 
   include VCAP::Services::Mysql::Util
