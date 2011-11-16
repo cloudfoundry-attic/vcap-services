@@ -27,16 +27,21 @@ class VCAP::Services::Base::Base
 
   include VCAP::Services::Base::Error
 
-  attr_reader :orphan_ins_hash
-  attr_reader :orphan_binding_hash
-
   def initialize(options)
     @logger = options[:logger]
     @options = options
     @local_ip = VCAP.local_ip(options[:ip_route])
     @logger.info("#{service_description}: Initializing")
-    @orphan_ins_hash = {}
-    @orphan_binding_hash = {}
+    @nats_lock = Mutex.new
+
+    NATS.on_error do |e|
+      if e.kind_of? NATS::ConnectError
+        @logger.error("EXITING! NATS connection failed: #{e}")
+        exit
+      else
+        @logger.error("NATS problem, #{e}")
+      end
+    end
     @node_nats = NATS.connect(:uri => options[:mbus]) {
       on_connect_node
     }
@@ -47,21 +52,31 @@ class VCAP::Services::Base::Base
       :index => options[:index] || 0,
       :config => options
     )
+
     z_interval = options[:z_interval] || 30
-    EM.add_timer(5) { update_varz } # give service a chance to wake up
-    EM.add_periodic_timer(z_interval) { update_varz }
-    EM.add_timer(5) { update_healthz } # give service a chance to wake up
-    EM.add_periodic_timer(z_interval) { update_healthz }
+    @max_nats_payload = options[:max_nats_payload] || 1024 * 1024
+    EM.add_periodic_timer(z_interval) do
+      EM.defer { update_varz; update_healthz }
+    end
+
+    # Defer 5 seconds to give service a change to wake up
+    EM.add_timer(5) do
+      EM.defer { update_varz; update_healthz }
+    end
   end
 
   def service_description()
     return "#{service_name}-#{flavor}"
   end
 
+  def publish(reply, msg)
+    @nats_lock.synchronize do
+      @node_nats.publish(reply, msg)
+    end
+  end
+
   def update_varz()
     vz = varz_details
-    vz[:orphan_instances] = @orphan_ins_hash
-    vz[:orphan_bindings] = @orphan_binding_hash
     vz.each { |k,v|
       VCAP::Component.varz[k] = v
     }
@@ -74,6 +89,51 @@ class VCAP::Services::Base::Base
   def shutdown()
     @logger.info("#{service_description}: Shutting down")
     @node_nats.close
+  end
+
+  def group_handles_in_json(instances_list, bindings_list, size_limit)
+    while instances_list.count > 0 or bindings_list.count > 0
+      ins_list = []
+      bind_list = []
+      send_len = 0
+      idx_ins = 0
+      idx_bind = 0
+
+      instances_list.each do |ins|
+        len = ins.to_json.size + 1
+        if send_len + len < size_limit
+          send_len += len
+          idx_ins += 1
+          ins_list << ins
+        else
+          break
+        end
+      end
+      instances_list.slice!(0, idx_ins) if idx_ins > 0
+
+      bindings_list.each do |bind|
+        len = bind.to_json.size + 1
+        if send_len + len < size_limit
+          send_len += len
+          idx_bind += 1
+          bind_list << bind
+        else
+          break
+        end
+      end
+      bindings_list.slice!(0, idx_bind) if idx_bind > 0
+
+      # Generally, the size_limit is far more bigger than the length
+      # of any handles. If there's a huge handle or the size_limit is too
+      # small that the size_limit can't contain one handle the in one batch,
+      # we have to break the loop if no handle can be stuffed into batch.
+      if ins_list.count == 0 and bind_list.count == 0
+        @logger.warn("NATS message limit #{size_limit} is too small.")
+        break
+      else
+        yield ins_list, bind_list
+      end
+    end
   end
 
   # Subclasses VCAP::Services::Base::{Node,Provisioner} implement the

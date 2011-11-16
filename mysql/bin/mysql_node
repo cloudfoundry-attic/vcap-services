@@ -17,7 +17,8 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def default_config_file
-    File.join(File.dirname(__FILE__), '..', 'config', 'mysql_node.yml')
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+    File.join(config_base_dir, 'mysql_node.yml')
   end
 
   def additional_config(options, config)
@@ -28,6 +29,7 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
     options[:max_long_query] = parse_property(config, "max_long_query", Integer)
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
+    options[:max_user_conns] = parse_property(config, "max_user_conns", Integer, :optional => true)
     options[:mysql] = parse_property(config, "mysql", Hash)
     options[:socket] = parse_property(config, "socket", String, :optional => true)
     options

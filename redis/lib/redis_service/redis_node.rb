@@ -4,12 +4,36 @@ require "fileutils"
 require "logger"
 require "pp"
 
-require "datamapper"
 require "uuidtools"
 require "redis"
+require "thread"
+
+# Redis client library doesn't support renamed command, so we override the functions here.
+class Redis
+  def config(config_command_name, action, *args)
+    synchronize do
+      reply = @client.call [config_command_name.to_sym, action, *args]
+
+      if reply.kind_of?(Array) && action == :get
+        Hash[*reply]
+      else
+        reply
+      end
+    end
+  end
+
+  def shutdown(shutdown_command_name)
+    synchronize do
+      @client.call [shutdown_command_name.to_sym]
+    end
+  rescue Errno::ECONNREFUSED => e
+    # Since the shutdown is successful, it will raise this connect refused exception by redis client library.
+  end
+end
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require "datamapper_l"
 
 module VCAP
   module Services
@@ -58,13 +82,22 @@ class VCAP::Services::Redis::Node
     FileUtils.mkdir_p(@base_dir)
     @redis_server_path = options[:redis_server_path]
     @available_memory = options[:available_memory]
+    @available_memory_mutex = Mutex.new
     @max_memory = options[:max_memory]
     @max_swap = options[:max_swap]
     @config_template = ERB.new(File.read(options[:config_template]))
     @free_ports = Set.new
+    @free_ports_mutex = Mutex.new
     options[:port_range].each {|port| @free_ports << port}
     @local_db = options[:local_db]
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
+    @redis_log_dir = options[:redis_log_dir]
+    @config_command_name = @options[:command_rename_prefix] + "-config"
+    @shutdown_command_name = @options[:command_rename_prefix] + "-shutdown"
+    @max_clients = @options[:max_clients] || 500
+    # Timeout for redis client operations, node cannot be blocked on any redis instances.
+    # Default value is 2 seconds.
+    @redis_timeout = @options[:redis_timeout] || 2
   end
 
   def pre_send_announcement
@@ -82,9 +115,11 @@ class VCAP::Services::Redis::Node
   end
 
   def announcement
-    a = {
-      :available_memory => @available_memory
-    }
+    @available_memory_mutex.synchronize do
+      a = {
+          :available_memory => @available_memory
+      }
+    end
   end
 
   def provision(plan, credentials = nil, db_file = nil)
@@ -92,26 +127,32 @@ class VCAP::Services::Redis::Node
     instance.plan = plan
     if credentials
       instance.name = credentials["name"]
-      if @free_ports.include?(credentials["port"])
-        @free_ports.delete(credentials["port"])
-        instance.port = credentials["port"]
-      else
+      @free_ports_mutex.synchronize do
+        if @free_ports.include?(credentials["port"])
+          @free_ports.delete(credentials["port"])
+          instance.port = credentials["port"]
+        else
+          port = @free_ports.first
+          @free_ports.delete(port)
+          instance.port = port
+        end
+      end
+      instance.password = credentials["password"]
+    else
+      @free_ports_mutex.synchronize do
         port = @free_ports.first
         @free_ports.delete(port)
         instance.port = port
       end
-      instance.password = credentials["password"]
-    else
-      port = @free_ports.first
-      @free_ports.delete(port)
       instance.name = UUIDTools::UUID.random_create.to_s
-      instance.port = port
       instance.password = UUIDTools::UUID.random_create.to_s
     end
 
     begin
       instance.memory = memory_for_instance(instance)
-      @available_memory -= instance.memory
+      @available_memory_mutex.synchronize do
+        @available_memory -= instance.memory
+      end
     rescue => e
       raise e
     end
@@ -164,8 +205,10 @@ class VCAP::Services::Redis::Node
         instance.pid = start_instance(instance, dump_file)
         save_instance(instance)
       else
-        redis = Redis.new({:port => instance.port, :password => instance.password})
-        redis.flushall
+        Timeout::timeout(@redis_timeout) do
+          redis = Redis.new({:port => instance.port, :password => instance.password})
+          redis.flushall
+        end
       end
     else
       raise RedisError.new(RedisError::REDIS_RESTORE_FILE_NOT_FOUND, dump_file)
@@ -245,14 +288,16 @@ class VCAP::Services::Redis::Node
     varz = {}
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
-    varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    @available_memory_mutex.synchronize do
+      varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    end
     ProvisionedService.all.each do |instance|
       varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
     end
     varz
   rescue => e
-    @logger.warn("Error get varz details: #{e}")
+    @logger.warn("Error while getting varz details: #{e}")
     {}
   end
 
@@ -264,7 +309,7 @@ class VCAP::Services::Redis::Node
     end
     healthz
   rescue => e
-    @logger.warn("Error get healthz details: #{e}")
+    @logger.warn("Error while getting healthz details: #{e}")
     {:self => "fail"}
   end
 
@@ -275,10 +320,14 @@ class VCAP::Services::Redis::Node
 
   def start_provisioned_instances
     ProvisionedService.all.each do |instance|
-      @free_ports.delete(instance.port)
+      @free_ports_mutex.synchronize do
+        @free_ports.delete(instance.port)
+      end
       if instance.listening?
         @logger.warn("Service #{instance.name} already running on port #{instance.port}")
-        @available_memory -= (instance.memory || @max_memory)
+        @available_memory_mutex.synchronize do
+          @available_memory -= (instance.memory || @max_memory)
+        end
         next
       end
       begin
@@ -326,22 +375,26 @@ class VCAP::Services::Redis::Node
       memory = instance.memory
       port = instance.port
       password = instance.password
-      dir = File.join(@base_dir, instance.name)
+      dir = instance_dir(instance.name)
       data_dir = File.join(dir, "data")
-      log_file = File.join(dir, "log")
+      log_dir = instance_log_dir(instance.name)
+      log_file = File.join(log_dir, "redis.log")
       swap_file = File.join(dir, "redis.swap")
       vm_max_memory = (memory * 0.7).round
       vm_pages = (@max_swap * 1024 * 1024 / 32).round # swap in bytes / size of page (32 bytes)
+      config_command = @config_command_name
+      shutdown_command = @shutdown_command_name
+      maxclients = @max_clients
 
       config = @config_template.result(Kernel.binding)
       config_path = File.join(dir, "redis.conf")
 
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
+      FileUtils.mkdir_p(log_dir)
       if db_file
         FileUtils.cp(db_file, data_dir)
       end
-      FileUtils.rm_f(log_file)
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
@@ -353,8 +406,10 @@ class VCAP::Services::Redis::Node
 
   def stop_instance(instance)
     stop_redis_server(instance)
-    dir = File.join(@base_dir, instance.name)
-    EM.defer {FileUtils.rm_rf(dir)}
+    EM.defer do
+      FileUtils.rm_rf(instance_dir(instance.name))
+      FileUtils.rm_rf(instance_log_dir(instance.name))
+    end
   end
 
   def cleanup_instance(instance)
@@ -364,8 +419,12 @@ class VCAP::Services::Redis::Node
     rescue => e
       err_msg << e.message
     end
-    @available_memory += instance.memory
-    @free_ports.add(instance.port)
+    @available_memory_mutex.synchronize do
+      @available_memory += instance.memory
+    end
+    @free_ports_mutex.synchronize do
+      @free_ports.add(instance.port)
+    end
     begin
       destroy_instance(instance)
     rescue => e
@@ -383,22 +442,18 @@ class VCAP::Services::Redis::Node
   end
 
   def stop_redis_server(instance)
-    redis = Redis.new({:port => instance.port, :password => instance.password})
-    begin
-      redis.shutdown
-    rescue => e
-      if e.class == Errno::ECONNREFUSED
-        # FIXME: it will raise exception even if shutdown successfully,
-        # should be a redis ruby binding bug. Here just ignore it.
-      elsif e.class == RuntimeError
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => instance.port, :password => instance.password})
+      begin
+        redis.shutdown(@shutdown_command_name)
+      rescue RuntimeError => e
         # It could be a disabled instance
         redis = Redis.new({:port => instance.port, :password => @disable_password})
-        begin
-          redis.shutdown
-        rescue => e
-        end
+        redis.shutdown(@shutdown_command_name)
       end
     end
+  rescue Timeout::Error => e
+    @logger.warn(e)
   end
 
   def close_fds
@@ -436,8 +491,10 @@ class VCAP::Services::Redis::Node
   end
 
   def check_password(port, password)
-    redis = Redis.new({:port => port})
-    redis.auth(password)
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port})
+      redis.auth(password)
+    end
     true
   rescue => e
     if e.message == "ERR invalid password"
@@ -453,8 +510,12 @@ class VCAP::Services::Redis::Node
   end
 
   def get_info(port, password)
-    redis = Redis.new({:port => port, :password => password})
-    redis.info
+    info = nil
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port, :password => password})
+      info = redis.info
+    end
+    info
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure
@@ -465,8 +526,12 @@ class VCAP::Services::Redis::Node
   end
 
   def get_config(port, password, key)
-    redis = Redis.new({:port => port, :password => password})
-    redis.config(:get, key)[key]
+    config = nil
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port, :password => password})
+      config = redis.config(@config_command_name, :get, key)[key]
+    end
+    config
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure
@@ -477,8 +542,10 @@ class VCAP::Services::Redis::Node
   end
 
   def set_config(port, password, key, value)
-    redis = Redis.new({:port => port, :password => password})
-    redis.config(:set, key, value)
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => port, :password => password})
+      redis.config(@config_command_name, :set, key, value)
+    end
   rescue => e
     raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
   ensure
@@ -516,8 +583,10 @@ class VCAP::Services::Redis::Node
   end
 
   def get_healthz(instance)
-    redis = Redis.new({:port => instance.port, :password => instance.password})
-    redis.echo("")
+    Timeout::timeout(@redis_timeout) do
+      redis = Redis.new({:port => instance.port, :password => instance.password})
+      redis.echo("")
+    end
     "ok"
   rescue => e
     "fail"
@@ -526,6 +595,14 @@ class VCAP::Services::Redis::Node
       redis.quit if redis
     rescue => e
     end
+  end
+
+  def instance_dir(instance_id)
+    File.join(@base_dir, instance_id)
+  end
+
+  def instance_log_dir(instance_id)
+    File.join(@redis_log_dir, instance_id)
   end
 
 end

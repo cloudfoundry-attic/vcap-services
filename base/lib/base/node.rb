@@ -53,13 +53,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.cleanup_nfs.#{@node_id}") { |msg, reply|
       on_cleanup_nfs(msg, reply)
     }
-    #Purge orphan
-    @node_nats.subscribe("#{service_name}.check_orphan") { |msg, reply|
-      on_check_orphan(msg, reply)
-    }
-    @node_nats.subscribe("#{service_name}.purge_orphan.#{@node_id}") { |msg, reply|
-      on_purge_orphan(msg, reply)
-    }
+    #Orphan
+    @node_nats.subscribe("#{service_name}.check_orphan") { |msg| EM.defer { on_check_orphan(msg) } }
+    @node_nats.subscribe("#{service_name}.purge_orphan.#{@node_id}") { |msg| EM.defer { on_purge_orphan(msg) } }
     pre_send_announcement
     send_node_announcement
     EM.add_periodic_timer(30) {
@@ -77,10 +73,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     credential['node_id'] = @node_id
     response.credentials = credential
     @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
-    @node_nats.publish(reply, encode_success(response))
+    publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_unprovision(msg, reply)
@@ -91,13 +87,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     bindings = unprovision_req.bindings
     result = unprovision(name, bindings)
     if result
-      @node_nats.publish(reply, encode_success(response))
+      publish(reply, encode_success(response))
     else
-      @node_nats.publish(reply, encode_failure(response))
+      publish(reply, encode_failure(response))
     end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_bind(msg, reply)
@@ -108,10 +104,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     bind_opts = bind_message.bind_opts
     credentials = bind_message.credentials
     response.credentials = bind(name, bind_opts, credentials)
-    @node_nats.publish(reply, encode_success(response))
+    publish(reply, encode_success(response))
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_unbind(msg, reply)
@@ -120,13 +116,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     unbind_req = UnbindRequest.decode(msg)
     result = unbind(unbind_req.credentials)
     if result
-      @node_nats.publish(reply, encode_success(response))
+      publish(reply, encode_success(response))
     else
-      @node_nats.publish(reply, encode_failure(response))
+      publish(reply, encode_failure(response))
     end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   def on_restore(msg, reply)
@@ -137,13 +133,13 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     backup_path = restore_message.backup_path
     result = restore(instance_id, backup_path)
     if result
-      @node_nats.publish(reply, encode_success(response))
+      publish(reply, encode_success(response))
     else
-      @node_nats.publish(reply, encode_failure(response))
+      publish(reply, encode_failure(response))
     end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+    publish(reply, encode_failure(response, e))
   end
 
   # disable and dump instance
@@ -156,7 +152,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     FileUtils.mkdir_p(file_path)
     result = disable_instance(prov_cred, binding_creds)
     result = dump_instance(prov_cred, binding_creds, file_path) if result
-    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+    publish(reply, Yajl::Encoder.encode(result))
   rescue => e
     @logger.warn(e)
   end
@@ -171,7 +167,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     prov_cred, binding_creds_hash = result
     prov_cred['node_id'] = @node_id
     result = [prov_cred, binding_creds_hash]
-    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+    publish(reply, Yajl::Encoder.encode(result))
   rescue => e
     @logger.warn(e)
   end
@@ -183,80 +179,42 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     prov_cred, binding_creds = request
     instance = prov_cred['name']
     FileUtils.rm_rf(get_migration_folder(instance))
-    @node_nats.publish(reply, Yajl::Encoder.encode(true))
+    publish(reply, Yajl::Encoder.encode(true))
   rescue => e
     @logger.warn(e)
   end
 
-  def on_check_orphan(msg, reply)
-    @logger.debug("#{service_description}: handles for checking orphan " )
-    response = CheckOrphanResponse.new
-    request = CheckOrphanRequest.decode(msg)
-    check_orphan(request.handles)
-    response.orphan_instances = @orphan_ins_hash
-    response.orphan_bindings = @orphan_binding_hash
-    response.success = true
-  rescue => e
-    @logger.warn("Exception at on_check_orphan #{e}")
-    response.success = false
-    response.error = e
-  ensure
-    @node_nats.publish("#{service_name}.orphan_result", response.encode) if response
-  end
-
-  def check_orphan(handles)
-    raise ServiceError.new(ServiceError::NOT_FOUND, "No handles for checking orphan") if handles.nil?
-
+  # Send all handles to gateway to check orphan
+  def on_check_orphan(msg)
+    @logger.debug("#{service_description}: Request to check orphan")
     live_ins_list = all_instances_list
-    orphan_ins_hash = {}
-    oi_list = []
-    live_ins_list.each do |name|
-      oi_list << name unless handles.index {|h| h["credentials"]["node_id"] == @node_id && h["service_id"] == name }
-    end
-
     live_bind_list = all_bindings_list
-    orphan_binding_hash = {}
-    ob_list = []
-    live_bind_list.each do |credential|
-      ob_list << credential unless handles.index{|h| h["credentials"]["name"] == credential["name"] && h["credentials"]["username"] == credential["username"]}
-    end
+    handles_size = @max_nats_payload - 200
 
-    @logger.debug("Orphan Instances: #{oi_list.count};  Orphan Bindings: #{ob_list.count}")
-    orphan_ins_hash["#{@node_id}"] = oi_list
-    orphan_binding_hash["#{@node_id}"] = ob_list
-    @orphan_ins_hash = orphan_ins_hash
-    @orphan_binding_hash = orphan_binding_hash
-  end
-
-  def on_purge_orphan(msg, reply)
-    @logger.debug("#{service_description}: Message for purging orphan " )
-    response = SimpleResponse.new
-    request = PurgeOrphanRequest.decode(msg)
-    result = purge_orphan(request.orphan_ins_list,request.orphan_binding_list)
-    if result
-      @node_nats.publish(reply, encode_success(response))
-    else
-      @node_nats.publish(reply, encode_failure(response))
+    group_handles_in_json(live_ins_list, live_bind_list, handles_size) do |ins_list, bind_list|
+      request = NodeHandlesReport.new
+      request.instances_list = ins_list
+      request.bindings_list = bind_list
+      request.node_id = @node_id
+      publish("#{service_name}.node_handles", request.encode)
     end
   rescue => e
     @logger.warn(e)
-    @node_nats.publish(reply, encode_failure(response, e))
+  end
+
+  def on_purge_orphan(msg)
+    @logger.debug("#{service_description}: Request to purge orphan" )
+    request = PurgeOrphanRequest.decode(msg)
+    purge_orphan(request.orphan_ins_list,request.orphan_binding_list)
+  rescue => e
+    @logger.warn(e)
   end
 
   def purge_orphan(oi_list,ob_list)
-    ret = true
-    ab_list = all_bindings_list
     oi_list.each do |ins|
       begin
-        bindings = ab_list.select {|b| b["name"] == ins}
-        @logger.debug("Unprovision orphan instance #{ins} and its bindings #{bindings.inspect}")
-        ret &&= unprovision(ins,bindings)
-        # Remove the OBs that are unbinded by unprovision
-        ob_list.delete_if do |ob|
-          bindings.index do |binding|
-            binding["username"] == ob["username"]
-          end
-        end
+        @logger.debug("Unprovision orphan instance #{ins}")
+        unprovision(ins,[])
       rescue => e
         @logger.debug("Error on purge orphan instance #{ins}: #{e}")
       end
@@ -265,12 +223,11 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     ob_list.each do |credential|
       begin
         @logger.debug("Unbind orphan binding #{credential}")
-        ret &&= unbind(credential)
+        unbind(credential)
       rescue => e
         @logger.debug("Error on purge orphan binding #{credential}: #{e}")
       end
     end
-    ret
   end
 
   # Subclass must overwrite this method to enable check orphan instance feature.
@@ -302,7 +259,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     instance = prov_cred['name']
     file_path = get_migration_folder(instance)
     result = import_instance(prov_cred, binding_creds, file_path, plan)
-    @node_nats.publish(reply, Yajl::Encoder.encode(result))
+    publish(reply, Yajl::Encoder.encode(result))
   rescue => e
     @logger.warn(e)
   end
@@ -322,7 +279,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Sending announcement for #{reply || "everyone"}")
     a = announcement
     a[:id] = @node_id
-    @node_nats.publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
+    publish(reply || "#{service_name}.announce", Yajl::Encoder.encode(a))
   rescue
     @logger.warn(e)
   end

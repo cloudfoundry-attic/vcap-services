@@ -7,7 +7,7 @@ module VCAP
   module Services
     module Redis
       class Node
-         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports
+         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports, :redis_timeout
          attr_accessor :logger, :local_db
       end
     end
@@ -22,7 +22,7 @@ describe VCAP::Services::Redis::Node do
     @local_db_file = "/tmp/redis_node_" + Time.now.to_i.to_s + ".db"
     @options = {
       :logger => @logger,
-      :base_dir => "/var/vcap/services/redis/instances",
+      :base_dir => "/tmp/services/redis/instances",
       :redis_server_path => "redis-server",
       :local_ip => "127.0.0.1",
       :available_memory => 4096,
@@ -33,7 +33,12 @@ describe VCAP::Services::Redis::Node do
       :local_db => "sqlite3:" + @local_db_file,
       :port_range => Range.new(5000, 25000),
       :mbus => "nats://localhost:4222",
+      :redis_log_dir => "/tmp/redis_log",
+      :command_rename_prefix => "protect-command",
+      :max_clients => 100
     }
+    FileUtils.mkdir_p(@options[:base_dir])
+    FileUtils.mkdir_p(@options[:redis_log_dir])
 
     EM.run do
       @node = VCAP::Services::Redis::Node.new(@options)
@@ -52,6 +57,8 @@ describe VCAP::Services::Redis::Node do
 
   after :all do
     FileUtils.rm_f(@local_db_file)
+    FileUtils.rm_rf(@options[:base_dir])
+    FileUtils.rm_rf(@options[:redis_log_dir])
   end
 
   describe 'Node.initialize' do
@@ -415,7 +422,7 @@ describe VCAP::Services::Redis::Node do
       @node.unbind(@binding_credentials1)
       @node.unbind(@binding_credentials2)
       @node.unprovision(@credentials["name"])
-      FileUtils.rm_rf(@dump_dir)
+      FileUtils.rm_rf("/tmp/migration")
     end
 
     it "should not access redis server after disable the instance" do
@@ -447,6 +454,85 @@ describe VCAP::Services::Redis::Node do
       credentials_list[1].each do |key, value|
         Redis.new({:port => value["credentials"]["port"], :password => value["credentials"]["password"]}).get("test_key").should == "test_value"
       end
+    end
+  end
+
+  describe "Node.max_clients" do
+    it "should limit the maximum number of clients" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      redis = []
+      # Create max_clients connections
+      for i in 1..@options[:max_clients]
+        redis[i] = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+        redis[i].info
+      end
+      # The max_clients + 1 connection will raise exception
+      expect {Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info}.should raise_error(RuntimeError)
+      # Close the max_clients connections
+      for i in 1..@options[:max_clients]
+        redis[i].quit
+      end
+      # Now the new connection will be successful
+      Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info
+      @node.unprovision(@credentials["name"])
+    end
+  end
+
+  describe "Node.timeout" do
+    it "should raise exception when redis client response time is too long" do
+      credentials = @node.provision(:free)
+      sleep 1
+      class Redis
+        alias :old_info :info
+        def info(cmd = nil)
+          sleep 3
+          old_info(cmd)
+        end
+      end
+      expect {@node.get_info(credentials["port"], credentials["password"])}.should raise_error(VCAP::Services::Redis::RedisError)
+      class Redis
+        alias :info :old_info
+      end
+      @node.get_info(credentials["port"], credentials["password"]).should be
+      @node.unprovision(credentials["name"])
+    end
+  end
+
+  describe "Node.thread_safe" do
+    it "should be thread safe in multi-threads call" do
+      old_memory = @node.available_memory
+      old_ports = @node.free_ports.clone
+      semaphore = Mutex.new
+      credentials_list = []
+      threads_num = 10
+      somethreads = (1..threads_num).collect do
+        Thread.new do
+          semaphore.synchronize do
+            credentials_list << @node.provision(:free)
+          end
+        end
+      end
+      somethreads.each {|t| t.join}
+      sleep 2
+      new_memory = @node.available_memory
+      new_ports = @node.free_ports.clone
+      (old_memory - new_memory).should == threads_num * @node.max_memory
+      delta_ports = Set.new
+      credentials_list.each do |credentials|
+        delta_ports << credentials["port"]
+      end
+      (old_ports - new_ports).should == delta_ports
+      VCAP::Services::Redis::Node::ProvisionedService.all.size.should == threads_num
+      somethreads = (1..threads_num).collect do |i|
+        Thread.new do
+          @node.unprovision(credentials_list[i - 1]["name"])
+        end
+      end
+      somethreads.each {|t| t.join}
+      @node.free_ports.should == old_ports
+      @node.available_memory.should == old_memory
+      VCAP::Services::Redis::Node::ProvisionedService.all.size.should == 0
     end
   end
 

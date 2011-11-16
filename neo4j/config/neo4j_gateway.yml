@@ -6,12 +6,20 @@ service:
   description: 'Neo4j NOSQL store'
   plans: ['free']
   tags: ['neo4j', 'neo4j-1.4', 'nosql']
-host: localhost
+  timeout: 20
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
 index: 0
 token: "0xdeadbeef"
 logging:
   level: debug
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/neo4j_service.pid
-node_timeout: 10
+node_timeout: 20
 # allow_over_provisioning: false
+# z_interval: 30
+# check_orphan_interval: 3600
+# double_check_orphan_interval: 300

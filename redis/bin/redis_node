@@ -17,7 +17,8 @@ class VCAP::Services::Redis::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def default_config_file
-    File.join(File.dirname(__FILE__), '..', 'config', 'redis_node.yml')
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+    File.join(config_base_dir, 'redis_node.yml')
   end
 
   def additional_config(options, config)
@@ -27,6 +28,9 @@ class VCAP::Services::Redis::NodeBin < VCAP::Services::Base::NodeBin
     options[:available_memory] = parse_property(config, "available_memory", Integer)
     options[:max_memory] = parse_property(config, "max_memory", Integer)
     options[:max_swap] = parse_property(config, "max_swap", Integer)
+    options[:redis_log_dir] = parse_property(config, "redis_log_dir", String)
+    options[:command_rename_prefix] = parse_property(config, "command_rename_prefix", String)
+    options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options
   end
 

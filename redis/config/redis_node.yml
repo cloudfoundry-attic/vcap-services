@@ -17,3 +17,6 @@ port_range:
   last: 25000
 migration_nfs: /mnt/appcloud
 # z_interval: 30
+redis_log_dir: /var/vcap/sys/log/redis
+command_rename_prefix: protect-command-prefix
+max_clients: 500

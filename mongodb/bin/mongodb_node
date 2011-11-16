@@ -17,7 +17,8 @@ class VCAP::Services::MongoDB::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def default_config_file
-    File.join(File.dirname(__FILE__), '..', 'config', 'mongodb_node.yml')
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+    File.join(config_base_dir, 'mongodb_node.yml')
   end
 
   def additional_config(options, config)

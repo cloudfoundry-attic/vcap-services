@@ -3,14 +3,42 @@ $:.unshift(File.dirname(__FILE__))
 require 'spec_helper'
 
 describe BackupManagerTests do
+  it "should be able to terminated while manager is sleeping" do
+    EM.run do
+      pid = Process.pid
+      manager = BackupManagerTests.create_manager("empty")
+      EM.defer do
+        manager.start rescue nil
+      end
+      EM.add_timer(1) { Process.kill("TERM", pid) }
+      EM.add_timer(5) do
+        manager.exit_invoked.should be_true
+        EM.stop
+      end
+    end
+  end
+
+  it "should be able to terminated while manager is running" do
+    EM.run do
+      pid = Process.pid
+      manager = BackupManagerTests.create_manager("cc_test")
+      EM.defer do
+        manager.start rescue nil
+      end
+      EM.add_timer(4) { Process.kill("TERM", pid) }
+      EM.add_timer(10) do
+        manager.exit_invoked.should be_true
+        EM.stop
+      end
+    end
+  end
 end
 
 describe BackupRotatorTests do
 
   before :all do
     @options = {
-      :max_days => BackupRotatorTests::MAX_DAYS,
-
+      :max_days => BackupRotatorTests::MAX_DAYS
     }
   end
 
@@ -133,19 +161,19 @@ describe BackupRotatorTests do
   it "should prune the backup that CC don't know" do
     EM.run do
 
-      cc=BackupRotatorTests::MockCloudController.new
+      cc = BackupRotatorTests::MockCloudController.new
       cc.start
       EM.add_timer(1) do
         Fiber.new {
           opts = @options.merge({
           :cloud_controller_uri => "localhost:#{BackupRotatorTests::CC_PORT}",
           :services => {
-            'mongodb'=> {'version'=>'1.8','token'=>'0xdeadbeef'},
-            'redis'=> {'version'=>'2.2','token'=>'0xdeadbeef'},
-            'mysql'=> {'version'=>'5.1','token'=>'0xdeadbeef'},
+            'mongodb' => {'version' =>'1.8','token' =>'0xdeadbeef'},
+            'redis' => {'version' =>'2.2','token' =>'0xdeadbeef'},
+            'mysql' => {'version' =>'5.1','token' =>'0xdeadbeef'},
           }
         })
-        rotator=BackupRotatorTests.create_rotator('cc_test',opts)
+        rotator = BackupRotatorTests.create_rotator('cc_test',opts)
         rotator.run.should be_true
         rotator.pruned.length.should == 4
         }.resume
@@ -172,7 +200,7 @@ describe BackupRotatorTests do
     # then we just keep the latest one.
     threshold = rotator.n_midnights_ago(BackupRotatorTests::MAX_DAYS)
     rotator.retained.each { |a|
-      validate_retained(a,threshold).should be_true
+      BackupRotatorTests::validate_retained(a,threshold).should be_true
     }
     # 3. should retain all of today's backups
     midnight = rotator.n_midnights_ago(0)
