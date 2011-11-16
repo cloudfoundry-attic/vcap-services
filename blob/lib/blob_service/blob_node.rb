@@ -12,7 +12,6 @@ require "base64"
 require "yajl"
 require "json"
 
-require "datamapper"
 require "nats/client"
 require "uuidtools"
 
@@ -22,6 +21,7 @@ require "blob_service/common"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
+require "datamapper_l"
 
 module VCAP
   module Services
@@ -33,6 +33,8 @@ module VCAP
 end
 
 class VCAP::Services::Blob::Node
+
+  BLOB_TIMEOUT = 3
 
   include VCAP::Services::Blob::Common
 
@@ -89,6 +91,7 @@ class VCAP::Services::Blob::Node
     @nodejs_path = options[:nodejs_path]
     @blobd_path = options[:blobd_path]
     @blobd_log_dir = options[:blobd_log_dir]
+
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
@@ -231,7 +234,7 @@ class VCAP::Services::Blob::Node
 
     raise "Cannot save provision_service" unless provisioned_service.save
 
-    sleep 0.5 # allows some time for the instance to ramp up
+    sleep 1 # allows some time for the instance to ramp up
 
     response = {
       "host" => @local_ip,
@@ -304,6 +307,11 @@ class VCAP::Services::Blob::Node
     name = credential['name']
     provisioned_service = ProvisionedService.get(name)
     raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
+
+    if provisioned_service.port != credential['port']
+      raise ServiceError.new(ServiceError::HTTP_BAD_REQUEST)
+    end
+
     blobgw_remove_user({
       :port => credential['port'],
       :admin => provisioned_service.keyid,
@@ -357,9 +365,12 @@ class VCAP::Services::Blob::Node
   def get_healthz(instance)
     # ping blob gw
     req = Net::HTTP::Get.new("/")
-    res = Net::HTTP.start(@local_ip, instance.port) {|http|
-      http.request(req)
-    }
+    res = nil
+    Timeout::timeout(BLOB_TIMEOUT) do
+      res = Net::HTTP.start(@local_ip, instance.port) {|http|
+        http.request(req)
+      }
+    end
     res ? "ok" : "fail"
   rescue => e
     @logger.warn("Getting healthz for #{instance.inspect} failed with error #{e}")
@@ -444,10 +455,12 @@ class VCAP::Services::Blob::Node
   def blobgw_add_user(options)
     @logger.debug("add user #{options[:username]} in port: #{options[:port]}")
     creds = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
-    #creds = '{"'+options[:username]+'":"'+options[:password]+'"}'
-    res = Net::HTTP.start(@local_ip, options[:port]) {|http|
-      http.send_request('PUT','/~bind',creds, auth_header(options[:admin], options[:adminpass]))
-    }
+    res = nil
+    Timeout::timeout(BLOB_TIMEOUT) do
+      res = Net::HTTP.start(@local_ip, options[:port]) {|http|
+        http.send_request('PUT','/~bind',creds, auth_header(options[:admin], options[:adminpass]))
+      }
+    end
     raise "Add blob user #{options[:username]} failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} added")
   end
@@ -455,10 +468,12 @@ class VCAP::Services::Blob::Node
   def blobgw_remove_user(options)
     @logger.debug("remove user #{options[:username]} in port: #{options[:port]}")
     creds = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
-    #creds = '{"'+options[:username]+'":"'+options[:password]+'"}'
-    res = Net::HTTP.start(@local_ip, options[:port]) {|http|
-      http.send_request('PUT','/~unbind',creds, auth_header(options[:admin], options[:adminpass]))
-    }
+    res = nil
+    Timeout::timeout(BLOB_TIMEOUT) do
+      res = Net::HTTP.start(@local_ip, options[:port]) {|http|
+        http.send_request('PUT','/~unbind',creds, auth_header(options[:admin], options[:adminpass]))
+      }
+    end
     raise "Delete blob user #{options[:username]} failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} removed")
   end
