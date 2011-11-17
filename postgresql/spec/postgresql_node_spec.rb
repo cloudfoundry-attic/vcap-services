@@ -29,7 +29,7 @@ module VCAP
   end
 end
 
-describe "Postgresql server node" do
+describe "Postgresql node normal cases" do
   include VCAP::Services::Postgresql
 
   before :all do
@@ -38,7 +38,8 @@ describe "Postgresql server node" do
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
-      EM.stop
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
     end
   end
 
@@ -71,21 +72,6 @@ describe "Postgresql server node" do
       conn = connect_to_postgresql(@db)
       expect {conn.query("SELECT 1")}.should_not raise_error
       conn.close if conn
-      EM.stop
-    end
-  end
-
-  it "should limit max connection to the database" do
-    EM.run do
-      @opts[:max_db_conns] = 1
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      db = node.provision(@default_plan)
-      conn = connect_to_postgresql(db)
-      expect {conn.query("SELECT 1")}.should_not raise_error
-      expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
-      conn.close if conn
-      node.unprovision(db["name"], [])
-      @opts[:max_db_conns] = @max_db_conns
       EM.stop
     end
   end
@@ -181,18 +167,6 @@ describe "Postgresql server node" do
       }.should raise_error(PostgresqlError, /Invalid plan .*/)
       db.should == nil
       db_num.should == @node.connection.query("select count(*) from pg_database;")[0]['count']
-      EM.stop
-    end
-  end
-
-  it "should raise error if there is no available storage to provision instance" do
-    EM.run do
-      @opts[:available_storage]=10
-      @opts[:max_db_size]=20
-      @node = VCAP::Services::Postgresql::Node.new(@opts)
-      expect {
-        @node.provision(@default_plan)
-      }.should raise_error(PostgresqlError, /Node disk is full/)
       EM.stop
     end
   end
@@ -350,18 +324,6 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should handle postgresql error in varz" do
-    EM.run do
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      # drop connection
-      node.connection.close
-      varz = nil
-      expect {varz = node.varz_details}.should_not raise_error
-      varz.should == {}
-      EM.stop
-    end
-  end
-
   it "should provide provision/binding served info in varz" do
     EM.run do
       v1 = @node.varz_details
@@ -396,18 +358,6 @@ describe "Postgresql server node" do
       @node.unprovision(db["name"], [])
       v3 = @node.varz_details
       (v3[:node_storage_used] - v1[:node_storage_used]).should == 0
-      EM.stop
-    end
-  end
-
-  it "should report node status in healthz" do
-    EM.run do
-      healthz = @node.healthz_details()
-      healthz[:self].should == "ok"
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      node.connection.close
-      healthz = node.healthz_details()
-      healthz[:self].should == "fail"
       EM.stop
     end
   end
@@ -449,27 +399,6 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should return node not ready if postgresql server is not connected" do
-    EM.run do
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      node.connection.close
-      # keep_alive interval is 15 seconds so it should be ok
-      node.connection_exception.should be_instance_of PGError
-      node.node_ready?.should == false
-      node.send_node_announcement.should == nil
-      EM.stop
-    end
-  end
-
-  it "should keep alive" do
-    EM.run do
-      @node.connection.close
-      @node.postgresql_keep_alive
-      @node.node_ready?.should == true
-      EM.stop
-    end
-  end
-
   after:each do
     @test_dbs.keys.each do |db|
       begin
@@ -480,5 +409,99 @@ describe "Postgresql server node" do
         @node.logger.info("Error during cleanup #{e}")
       end
     end if @test_dbs
+  end
+end
+
+describe "Postgresql node special cases" do
+  include VCAP::Services::Postgresql
+
+  it "should limit max connection to the database" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      opts[:max_db_conns] = 1
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    db = node.provision('free')
+    conn = connect_to_postgresql(db)
+    expect {conn.query("SELECT 1")}.should_not raise_error
+    expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
+    conn.close if conn
+    node.unprovision(db["name"], [])
+  end
+
+  it "should raise error if there is no available storage to provision instance" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      opts[:available_storage] = 10
+      opts[:max_db_size] = 20
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    expect {
+      node.provision('free')
+    }.should raise_error(PostgresqlError, /Node disk is full/)
+  end
+
+  it "should handle postgresql error in varz" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    # drop connection
+    node.connection.close
+    varz = nil
+    expect {varz = node.varz_details}.should_not raise_error
+    varz.should == {}
+  end
+
+  it "should report node status in healthz" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    healthz = node.healthz_details()
+    healthz[:self].should == "ok"
+    node.connection.close
+    healthz = node.healthz_details()
+    healthz[:self].should == "fail"
+  end
+
+  it "should return node not ready if postgresql server is not connected" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    node.connection.close
+    # keep_alive interval is 15 seconds so it should be ok
+    node.connection_exception.should be_instance_of PGError
+    node.node_ready?.should == false
+    node.send_node_announcement.should == nil
+  end
+
+  it "should keep alive" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    node.connection.close
+    node.postgresql_keep_alive
+    node.node_ready?.should == true
   end
 end

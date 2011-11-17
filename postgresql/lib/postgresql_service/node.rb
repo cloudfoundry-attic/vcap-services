@@ -63,18 +63,10 @@ class VCAP::Services::Postgresql::Node
     @max_long_tx = options[:max_long_tx]
     @max_db_conns = options[:max_db_conns]
 
-    @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
-
-    EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
-    EM.add_periodic_timer(LONG_QUERY_INTERVAL) {kill_long_queries}
-    EM.add_periodic_timer(@max_long_tx/2) {kill_long_transaction}
-    EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
-
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
 
-    DataMapper.setup(:default, options[:local_db])
-    DataMapper::auto_upgrade!
+    @local_db = options[:local_db]
 
     @available_storage = options[:available_storage] * 1024 * 1024
     @node_capacity = @available_storage
@@ -88,10 +80,20 @@ class VCAP::Services::Postgresql::Node
   end
 
   def pre_send_announcement
+    DataMapper.setup(:default, @local_db)
+    DataMapper::auto_upgrade!
+
+    @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
+
     Provisionedservice.all.each do |provisionedservice|
       @available_storage -= storage_for_service(provisionedservice)
     end
     check_db_consistency()
+
+    EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
+    EM.add_periodic_timer(LONG_QUERY_INTERVAL) {kill_long_queries}
+    EM.add_periodic_timer(@max_long_tx/2) {kill_long_transaction}
+    EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
   end
 
   def get_available_storage
