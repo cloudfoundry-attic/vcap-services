@@ -284,6 +284,8 @@ class NodeTests
     attr_accessor :provision_times
     attr_reader :unprovision_count
     attr_reader :unbind_count
+    attr_accessor :varz_invoked
+    attr_accessor :healthz_invoked
     SERVICE_NAME = "Test"
     ID = "node-1"
     def initialize(options, ins_count=0, bind_count=0)
@@ -299,6 +301,8 @@ class NodeTests
       @mutex = Mutex.new
       @unprovision_count = 0
       @unbind_count = 0
+      @varz_invoked = false
+      @healthz_invoked = false
       @ins_count = ins_count
       @bind_count = bind_count
     end
@@ -334,6 +338,14 @@ class NodeTests
     end
     def restore(isntance_id, backup_path)
       @restore_invoked = true
+    end
+    def varz_details
+      @varz_invoked = true
+      {}
+    end
+    def healthz_details
+      @healthz_invoked = true
+      {}
     end
 
     def all_instances_list

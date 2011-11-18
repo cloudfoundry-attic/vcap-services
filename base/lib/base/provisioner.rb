@@ -25,6 +25,18 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @handles_for_check_orphan = {}
     @orphan_mutex = Mutex.new
     reset_orphan_stat
+
+    z_interval = options[:z_interval] || 30
+
+    EM.add_periodic_timer(z_interval) do
+      update_varz; update_healthz
+    end
+
+    # Defer 5 seconds to give service a change to wake up
+    EM.add_timer(5) do
+      update_varz; update_healthz
+    end
+
     EM.add_periodic_timer(60) { process_nodes }
   end
 

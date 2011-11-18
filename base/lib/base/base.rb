@@ -53,16 +53,7 @@ class VCAP::Services::Base::Base
       :config => options
     )
 
-    z_interval = options[:z_interval] || 30
     @max_nats_payload = options[:max_nats_payload] || 1024 * 1024
-    EM.add_periodic_timer(z_interval) do
-      EM.defer { update_varz; update_healthz }
-    end
-
-    # Defer 5 seconds to give service a change to wake up
-    EM.add_timer(5) do
-      EM.defer { update_varz; update_healthz }
-    end
   end
 
   def service_description()
