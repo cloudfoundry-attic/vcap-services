@@ -605,15 +605,20 @@ class VCAP::Services::Postgresql::Node
   end
 
   def get_instance_healthz(instance)
-    res = "ok"
+    res = 'ok'
     host, port = %w{host port}.map { |opt| @postgresql_config[opt] }
     begin
-      conn = PGconn.connect(host, port, nil, nil, instance.name,
-        instance.bindusers[0].user, instance.bindusers[0].password)
-      conn.query('select current_timestamp')
+      if instance.bindusers.empty? || instance.bindusers[0].nil?
+        @logger.warn('instance without binding?!')
+        res = 'fail'
+      else
+        conn = PGconn.connect(host, port, nil, nil, instance.name,
+          instance.bindusers[0].user, instance.bindusers[0].password)
+        conn.query('select current_timestamp')
+      end
     rescue => e
       @logger.warn("Error get current timestamp: #{e}")
-      res = "fail"
+      res = 'fail'
     ensure
       begin
         conn.close if conn
