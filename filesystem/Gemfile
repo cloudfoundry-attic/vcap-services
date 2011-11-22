@@ -1,6 +1,6 @@
 source :rubygems
 
-gem "eventmachine"
+gem 'eventmachine',  '~> 0.12.11.cloudfoundry.3'
 gem "em-http-request"
 gem "ruby-hmac"
 gem "uuidtools"
@@ -12,6 +12,7 @@ gem "thin"
 
 gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
+gem 'vcap_services_base'
 
 group :test do
   gem "rake"

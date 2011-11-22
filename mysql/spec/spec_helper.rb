@@ -4,7 +4,9 @@ $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
 require 'rubygems'
 require 'rspec'
-
+require 'bundler/setup'
+require 'vcap_services_base'
+require "mysql_service/util"
 require 'mysql_service/provisioner'
 require 'mysql_service/node'
 

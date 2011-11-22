@@ -8,12 +8,11 @@ require 'json'
 require 'sinatra/base'
 require 'uri'
 require 'thread'
-
-$:.unshift(File.expand_path("../../../../../lib", __FILE__))
 require 'json_message'
 require 'services/api'
 require 'services/api/const'
 
+$:.unshift(File.dirname(__FILE__))
 require 'service_error'
 
 module VCAP

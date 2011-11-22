@@ -7,7 +7,7 @@ gem "sinatra"
 gem "redis"
 gem "rake"
 
-gem 'vcap_common', '~> 0.99'
+gem 'vcap_common'
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
 
 group :test do

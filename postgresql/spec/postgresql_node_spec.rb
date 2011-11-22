@@ -6,9 +6,6 @@ require 'postgresql_service/postgresql_error'
 require 'pg'
 require 'yajl'
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/service_error'
-
 module VCAP
   module Services
     module Postgresql

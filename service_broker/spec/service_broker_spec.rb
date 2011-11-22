@@ -1,6 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift(File.dirname(__FILE__))
-$:.unshift(File.join(File.dirname(__FILE__),'../../base/lib/base'))
 require 'spec_helper'
 require 'service_broker/async_gateway'
 

@@ -3,7 +3,6 @@ require 'time'
 require 'eventmachine'
 require 'em-http'
 require 'json'
-$:.unshift(File.join(File.dirname(__FILE__),"..","..","..","..","..","..","lib"))
 require 'json_message'
 require 'services/api'
 

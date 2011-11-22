@@ -1,7 +1,6 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift File.join(File.dirname(__FILE__), ".")
 
-require "base/provisioner"
 require "filesystem_service/common"
 require "filesystem_service/error"
 require "uuidtools"

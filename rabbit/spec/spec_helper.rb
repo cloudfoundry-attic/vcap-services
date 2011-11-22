@@ -7,6 +7,7 @@ ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 require 'rubygems'
 require 'rspec'
 require 'bundler/setup'
+require "vcap_services_base"
 require 'nats/client'
 require 'vcap/common'
 require "datamapper"

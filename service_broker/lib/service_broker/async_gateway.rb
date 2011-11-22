@@ -1,8 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/asynchronous_service_gateway'
 require 'fiber'
-require 'datamapper_l'
 require 'dm-types'
 require 'nats/client'
 require 'uuidtools'

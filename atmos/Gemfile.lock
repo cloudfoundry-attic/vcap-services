@@ -58,10 +58,11 @@ GEM
       escape_utils
       eventmachine (>= 0.12.9)
     escape_utils (0.2.3)
-    eventmachine (0.12.10)
+    eventmachine (0.12.11.cloudfoundry.3)
+    eventmachine_httpserver (0.2.1)
     fastercsv (1.5.4)
     json (1.4.6)
-    json_pure (1.6.1)
+    json_pure (1.6.3)
     little-plugger (1.1.3)
     logging (1.6.1)
       little-plugger (>= 1.1.2)
@@ -84,7 +85,7 @@ GEM
     ruby-hmac (0.4.0)
     sinatra (1.2.1)
       rack (~> 1.1)
-      tilt (< 2.0, >= 1.2.2)
+      tilt (>= 1.2.2, < 2.0)
     stringex (1.2.1)
     thin (1.2.11)
       daemons (>= 1.0.9)
@@ -92,16 +93,28 @@ GEM
       rack (>= 1.0.0)
     tilt (1.2.2)
     uuidtools (2.1.2)
-    vcap_common (0.99)
-      eventmachine (~> 0.12.10)
+    vcap_common (1.0.2)
+      eventmachine (~> 0.12.11.cloudfoundry.3)
       logging (>= 1.5.0)
-      nats
-      posix-spawn
-      thin
-      yajl-ruby
+      nats (~> 0.4.10)
+      posix-spawn (~> 0.3.6)
+      thin (~> 1.2.11)
+      yajl-ruby (~> 0.8.3)
     vcap_logging (0.1.3)
+    vcap_services_base (0.1.0)
+      datamapper (~> 1.1.0)
+      do_sqlite3 (~> 0.10.3)
+      em-http-request (~> 0.3.0)
+      eventmachine (~> 0.12.11.cloudfoundry.3)
+      eventmachine_httpserver (~> 0.2.1)
+      json (~> 1.4.6)
+      nats (~> 0.4.10)
+      ruby-hmac (~> 0.4.0)
+      uuidtools (~> 2.1.2)
+      vcap_common (~> 1.0.2)
+      vcap_logging (>= 0.1.3)
     xml-simple (1.0.15)
-    yajl-ruby (1.1.0)
+    yajl-ruby (0.8.3)
 
 PLATFORMS
   ruby
@@ -112,7 +125,7 @@ DEPENDENCIES
   dm-sqlite-adapter
   do_sqlite3
   em-http-request
-  eventmachine
+  eventmachine (~> 0.12.11.cloudfoundry.3)
   rake
   rcov
   rspec
@@ -122,4 +135,5 @@ DEPENDENCIES
   uuidtools
   vcap_common
   vcap_logging (>= 0.1.3)
+  vcap_services_base
   xml-simple

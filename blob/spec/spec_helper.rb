@@ -1,5 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 PWD = File.dirname(__FILE__)
 TMP = '/tmp/blob'
 
@@ -7,6 +7,8 @@ $:.unshift File.join(PWD, '..')
 $:.unshift File.join(PWD, '..', 'lib')
 
 require "rubygems"
+require "bundler/setup"
+require "vcap_services_base"
 require "rspec"
 require "socket"
 require "timeout"

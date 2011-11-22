@@ -6,8 +6,6 @@ require 'mysql_service/mysql_error'
 require 'mysql'
 require 'yajl'
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/service_error'
 
 module VCAP
   module Services

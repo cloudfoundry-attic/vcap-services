@@ -1,6 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift File.join(File.dirname(__FILE__), "..", "lib")
-$LOAD_PATH.unshift(File.expand_path("../../../base/lib", __FILE__))
+require 'bundler/setup'
+require 'vcap_services_base'
 
 require File.dirname(__FILE__) + "/spec_helper"
 require "filesystem_service/provisioner"

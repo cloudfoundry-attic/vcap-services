@@ -3,9 +3,6 @@ require 'fileutils'
 require 'redis'
 require 'base64'
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-
-require 'base/provisioner'
 require 'mysql_service/common'
 require 'mysql_service/job/async_job'
 require 'mysql_service/job/snapshot'

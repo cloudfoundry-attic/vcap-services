@@ -3,11 +3,10 @@ $:.unshift File.join(File.dirname(__FILE__), '..')
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 $LOAD_PATH.unshift(File.expand_path("../../../", __FILE__))
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-
-require '../../base/spec/spec_helper'
-
 require "rubygems"
 require "rspec"
+require 'bundler/setup'
+require 'vcap_services_base'
 require "socket"
 require "timeout"
 

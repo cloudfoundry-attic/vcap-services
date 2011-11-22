@@ -4,6 +4,8 @@ $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
 require 'rubygems'
 require 'rspec'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 require 'postgresql_service/util'
 require 'postgresql_service/provisioner'

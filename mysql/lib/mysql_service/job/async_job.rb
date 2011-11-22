@@ -1,9 +1,6 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "resque/job_with_status"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', '..', 'base', 'lib')
-require "base/service_error"
-
 module Resque
   extend self
   # Patch Resque so we can determine queue by input args.

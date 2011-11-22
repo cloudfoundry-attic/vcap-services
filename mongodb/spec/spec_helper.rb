@@ -8,6 +8,8 @@ $:.unshift File.join(PWD, '..', 'lib')
 
 require "rubygems"
 require "rspec"
+require 'bundler/setup'
+require "vcap_services_base"
 require "socket"
 require "timeout"
 require "mongo"

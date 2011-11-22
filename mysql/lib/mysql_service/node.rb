@@ -9,11 +9,6 @@ require "mysql"
 require "open3"
 require "thread"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require 'base/service_error'
-require "datamapper_l"
-
 module VCAP
   module Services
     module Mysql

@@ -2,9 +2,6 @@
 require "resque/job_with_status"
 require "fileutils"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', '..', 'base', 'lib')
-require "base/service_error"
-
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..')
 require "util"
 require "mysql_error"
