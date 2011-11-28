@@ -18,6 +18,17 @@ logging:
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/mysql_service.pid
 node_timeout: 2
+api_extensions:
+  - snapshots
+  - serialization
+  - jobs
+resque:
+  host: localhost
+  port: 6379
+  passwd: redis
+  expire: 86400  # 24 hours, in seconds
+
+upload_temp_dir: /tmp
 # allow_over_provisioning: false
 # z_interval: 30
 # check_orphan_interval: 3600

@@ -1,0 +1,19 @@
+source "http://rubygems.org"
+
+gem "nats", '>= 0.4.10'
+gem "uuidtools"
+gem "thin"
+gem "sinatra"
+gem "redis"
+gem "rake"
+
+gem 'vcap_common', '~> 0.99'
+gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
+
+group :test do
+  gem "rspec"
+  gem "rack-test"
+  gem "rcov"
+  gem "ci_reporter"
+end
+

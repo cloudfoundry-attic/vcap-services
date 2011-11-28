@@ -77,6 +77,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @nodes.delete_if {|_, timestamp| Time.now.to_i - timestamp > 300}
   end
 
+  def pre_send_announcement
+  end
+
   def on_connect_node
     @logger.debug("[#{service_description}] Connected to node mbus..")
     @node_nats.subscribe("#{service_name}.announce") { |msg|
@@ -85,6 +88,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.node_handles") { |msg| on_node_handles(msg) }
     @node_nats.subscribe("#{service_name}.handles") {|msg, reply| on_query_handles(msg, reply) }
     @node_nats.subscribe("#{service_name}.update_service_handle") {|msg, reply| on_update_service_handle(msg, reply) }
+    pre_send_announcement()
     @node_nats.publish("#{service_name}.discover")
   end
 
