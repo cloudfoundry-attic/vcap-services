@@ -371,7 +371,7 @@ class VCAP::Services::Mysql::Node
         if res.num_rows == 1
           @connection.query("DROP USER #{user}@'#{host}'")
         else
-          @logger.warn("Failure to delete non-existent user #{user}")
+          @logger.warn("Failure to delete non-existent user #{user}@'#{host}'")
         end
       end
       kill_user_session(user)
