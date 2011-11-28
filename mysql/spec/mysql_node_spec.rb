@@ -281,6 +281,7 @@ describe "Mysql server node" do
   end
 
   it "should kill long queries" do
+    pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?
     EM.run do
       db = @node.provision(@default_plan)
       @test_dbs[db] = []

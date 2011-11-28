@@ -188,10 +188,10 @@ class VCAP::Services::Mysql::Node
   def kill_long_queries
     process_list = @connection.list_processes
     process_list.each do |proc|
-      thread_id, user, _, db, command, time, _, info = proc
+      thread_id, user, _, db, command, time, state, info = proc
       if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
         @connection.query("KILL QUERY " + thread_id)
-        @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} info:#{info}")
+        @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
         @long_queries_killed += 1
       end
     end
@@ -643,5 +643,10 @@ class VCAP::Services::Mysql::Node
       "username" => user,
       "password" => passwd,
     }
+  end
+
+  def is_percona_server?()
+    res = @connection.query("show variables where variable_name like 'version_comment'")
+    res.num_rows > 0 && res.fetch_row[1] =~ /percona/i
   end
 end
