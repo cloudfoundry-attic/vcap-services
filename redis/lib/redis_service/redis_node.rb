@@ -276,7 +276,7 @@ class VCAP::Services::Redis::Node
     true
   end
 
-  def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
+  def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
     provision(plan, service_credentials, db_file)
   rescue => e

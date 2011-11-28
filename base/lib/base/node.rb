@@ -265,10 +265,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_import_instance(msg, reply)
     @logger.debug("#{service_description}: import instance #{msg} request from #{reply}")
     credentials = Yajl::Parser.parse(msg)
-    plan, prov_cred, binding_creds = credentials
+    plan, prov_cred, binding_creds_hash = credentials
     instance = prov_cred['name']
     file_path = get_migration_folder(instance)
-    result = import_instance(prov_cred, binding_creds, file_path, plan)
+    result = import_instance(prov_cred, binding_creds_hash, file_path, plan)
     publish(reply, Yajl::Encoder.encode(result))
   rescue => e
     @logger.warn(e)

@@ -432,7 +432,7 @@ describe "Mysql server node" do
       @test_dbs[db] = []
       @node.dump_instance(db, nil , '/tmp')
       @node.unprovision(db['name'], [])
-      @node.import_instance(db, [], '/tmp', @default_plan).should == true
+      @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_mysql(db)
       expect { conn.query('select 1')}.should_not raise_error
       EM.stop

@@ -66,6 +66,8 @@ class VCAP::Services::Postgresql::Node
     FileUtils.mkdir_p(@base_dir) if @base_dir
 
     @local_db = options[:local_db]
+    @restore_bin = options[:restore_bin]
+    @dump_bin = options[:dump_bin]
 
     @available_storage = options[:available_storage] * 1024 * 1024
     @node_capacity = @available_storage
@@ -228,6 +230,8 @@ class VCAP::Services::Postgresql::Node
       binduser = Binduser.new
       if credential
         name, user, password = %w(name user password).map{|key| credential[key]}
+        res = Provisionedservice.get(name)
+        return gen_credential(name, res.bindusers[0].user, res.bindusers[0].password) if res
         provisionedservice.name = name
         binduser.user = user
         binduser.password = password
@@ -306,6 +310,8 @@ class VCAP::Services::Postgresql::Node
       raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless provisionedservice
       # create new credential for binding
       if credential
+        binduser = provisionedservice.bindusers.get(credential["user"])
+        return gen_credential(name, binduser.user, binduser.password) if binduser
         new_user = credential["user"]
         new_password = credential["password"]
       else
@@ -375,9 +381,7 @@ class VCAP::Services::Postgresql::Node
       user = bindusers[0].user
       sys_user = bindusers[0].sys_user
       @logger.info("Creating: #{provisionedservice.inspect}")
-      @logger.debug("Maximum connections: #{@max_db_conns}")
-      @connection.query("CREATE DATABASE #{name} WITH CONNECTION LIMIT = #{@max_db_conns}")
-      @connection.query("REVOKE ALL ON DATABASE #{name} FROM PUBLIC")
+      exe_create_database(name)
       if not create_database_user(name, bindusers[0], false) then
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
@@ -388,6 +392,31 @@ class VCAP::Services::Postgresql::Node
     rescue PGError => e
       @logger.error("Could not create database: #{e}")
       false
+    end
+  end
+
+  def exe_create_database(name)
+    @logger.debug("Maximum connections: #{@max_db_conns}")
+    @connection.query("CREATE DATABASE #{name} WITH CONNECTION LIMIT = #{@max_db_conns}")
+    @connection.query("REVOKE ALL ON DATABASE #{name} FROM PUBLIC")
+  end
+
+  def exe_grant_user_priv(db_connection)
+    db_connection.query("grant create on schema public to public")
+    if get_postgres_version(db_connection) == '9'
+      db_connection.query("grant all on all tables in schema public to public")
+      db_connection.query("grant all on all sequences in schema public to public")
+      db_connection.query("grant all on all functions in schema public to public")
+    else
+      querys = db_connection.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
+      querys.each do |query_to_do|
+        p query_to_do['query_to_do'].to_s
+        db_connection.query(query_to_do['query_to_do'].to_s)
+      end
+      querys = db_connection.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
+      querys.each do |query_to_do|
+        db_connection.query(query_to_do['query_to_do'].to_s)
+      end
     end
   end
 
@@ -417,22 +446,7 @@ class VCAP::Services::Postgresql::Node
         if quota_exceeded then
           do_revoke_query(db_connection, user, sys_user)
         else
-          db_connection.query("grant create on schema public to public")
-          if get_postgres_version(db_connection) == '9'
-            db_connection.query("grant all on all tables in schema public to public")
-            db_connection.query("grant all on all sequences in schema public to public")
-            db_connection.query("grant all on all functions in schema public to public")
-          else
-            querys = db_connection.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
-            querys.each do |query_to_do|
-              p query_to_do['query_to_do'].to_s
-              db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-            querys = db_connection.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
-            querys.each do |query_to_do|
-              db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-          end
+          exe_grant_user_priv(db_connection)
         end
       rescue PGError => e
         @logger.error("Could not Initialize user privileges: #{e}")
@@ -448,14 +462,8 @@ class VCAP::Services::Postgresql::Node
   def delete_database(provisionedservice)
     name, bindusers = [:name, :bindusers].map { |field| provisionedservice.send(field) }
     begin
-      @logger.info("Deleting database: #{name}")
-      begin
-        @connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
-      rescue PGError => e
-        @logger.warn("Could not kill database session: #{e}")
-      end
+      exe_drop_database(name)
       default_binduser = bindusers.all(:default_user => true)[0]
-      @connection.query("DROP DATABASE #{name}")
       @connection.query("DROP ROLE IF EXISTS #{default_binduser.user}") if default_binduser
       @connection.query("DROP ROLE IF EXISTS #{default_binduser.sys_user}") if default_binduser
       true
@@ -463,6 +471,16 @@ class VCAP::Services::Postgresql::Node
       @logger.error("Could not delete database: #{e}")
       false
     end
+  end
+
+  def exe_drop_database(name)
+    @logger.info("Deleting database: #{name}")
+    begin
+      @connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
+    rescue PGError => e
+      @logger.warn("Could not kill database session: #{e}")
+    end
+    @connection.query("DROP DATABASE #{name}")
   end
 
   def delete_database_user(binduser,db)
@@ -534,6 +552,164 @@ class VCAP::Services::Postgresql::Node
     version = db_connection.query("select version()")
     reg = /([0-9.]{5})/
     return version[0]['version'].scan(reg)[0][0][0]
+  end
+
+  def block_user_from_db(db_connection, service)
+    name = service.name
+    service.bindusers.all.each do |binduser|
+      db_connection.query("revoke connect on database #{name} from #{binduser.user}")
+      db_connection.query("revoke connect on database #{name} from #{binduser.sys_user}")
+    end
+  end
+
+  def unblock_user_from_db(db_connection, service)
+    name = service.name
+    service.bindusers.all.each do |binduser|
+      db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
+      db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
+    end
+  end
+
+  def bind_all_creds(name, binding_creds_hash)
+    binding_creds_hash.each_value do |v|
+      begin
+        cred = v["credentials"]
+        binding_opts = v["binding_options"]
+        v["credentials"] = bind(name, binding_opts, cred)
+      rescue => e
+        @logger.error("Error on bind_all_creds #{e}")
+      end
+    end
+  end
+
+  # restore a given instance using backup file.
+  def restore(name, backup_path)
+    @logger.debug("Restore db #{name} using backup at #{backup_path}")
+    service = Provisionedservice.get(name)
+    raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless service
+
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
+    block_user_from_db(db_connection, service)
+    db_connection.close
+    exe_drop_database(name)
+    exe_create_database(name)
+
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
+    exe_grant_user_priv(db_connection)
+    unblock_user_from_db(db_connection, service)
+    db_connection.close
+
+    host, user, port =  %w{host user port}.map { |opt| @postgresql_config[opt] }
+    path = File.join(backup_path, "#{name}.dump")
+    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} #{path}"
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
+  rescue => e
+    @logger.error("Error during restore #{e}")
+    nil
+  end
+
+  # kill user session & block all user
+  def disable_instance(prov_cred, binding_creds)
+    @logger.debug("Disable instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
+    service = Provisionedservice.get(name)
+    block_user_from_db(db_connection, service)
+    @connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
+    true
+  rescue => e
+    @logger.error("Error during disable_instance #{e}")
+    nil
+  end
+
+  # Dump db content into given path
+  def dump_instance(prov_cred, binding_creds, dump_file_path)
+    @logger.debug("Dump instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    host, user, password, port =  %w{host user pass port}.map { |opt| @postgresql_config[opt] }
+    dump_file = File.join(dump_file_path, "#{name}.dump")
+    @logger.info("Dump instance #{name} content to #{dump_file}")
+    cmd = "#{@dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      @logger.debug("Unbind user in #{prov_cred["name"]}.")
+      binding_creds << prov_cred
+      binding_creds.each do |cred|
+        unbind(cred)
+      end
+      return true
+    else
+      return nil
+    end
+  rescue => e
+    @logger.error("Error during dump_instance #{e}")
+    nil
+  end
+
+  # Provision and import dump files
+  # Refer to #dump_instance
+  def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
+    @logger.debug("Import instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
+    provision(plan, prov_cred)
+    bind_all_creds(name, binding_creds_hash)
+    name = prov_cred["name"]
+    import_file = File.join(dump_file_path, "#{name}.dump")
+    host, user, password, port =  %w{host user pass port}.map { |opt| @postgresql_config[opt] }
+    @logger.info("Import data from #{import_file} to database #{name}")
+    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} #{import_file}"
+    o, e, s = exe_cmd(cmd)
+    if s.exitstatus == 0
+      return true
+    else
+      return nil
+    end
+  rescue => e
+    @logger.error("Error during import_instance #{e}")
+    nil
+  end
+
+  # This function might run at new node or original node
+  # New node: update credentials
+  # Original node: restore from the migration
+  def enable_instance(prov_cred, binding_creds_hash)
+    @logger.debug("Enable instance #{prov_cred["name"]} request.")
+    name = prov_cred["name"]
+    if prov_cred["hostname"] == @local_ip
+      # Original
+      bind_all_creds(name, binding_creds_hash)
+      db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
+      service = Provisionedservice.get(name)
+      unblock_user_from_db(db_connection, service)
+    else
+      # New
+      prov_cred = gen_credential(name, prov_cred["user"], prov_cred["password"])
+      binding_creds_hash.each_value do |v|
+        v["credentials"] = gen_credential(name, v["credentials"]["username"], v["credentials"]["password"])
+      end
+    end
+    return [prov_cred, binding_creds_hash]
+  rescue => e
+    @logger.error("Error during enable_instance #{e}")
+    []
+  end
+
+  # shell CMD wrapper and logger
+  def exe_cmd(cmd, stdin=nil)
+    @logger.debug("Execute shell cmd:[#{cmd}]")
+    o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
+    if s.exitstatus == 0
+      @logger.info("Execute cmd:[#{cmd}] successd.")
+    else
+      @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
+    end
+    return [o, e, s]
   end
 
   def varz_details()

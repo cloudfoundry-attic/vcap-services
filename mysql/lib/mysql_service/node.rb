@@ -466,7 +466,7 @@ class VCAP::Services::Mysql::Node
 
   # Provision and import dump files
   # Refer to #dump_instance
-  def import_instance(prov_cred, binding_creds, dump_file_path, plan)
+  def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
     @logger.debug("Import instance #{prov_cred["name"]} request.")
     @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
     provision(plan, prov_cred)

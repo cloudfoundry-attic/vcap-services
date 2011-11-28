@@ -197,7 +197,7 @@ class VCAP::Services::Rabbit::Node
   # 2. If permissions are empty, then it's the new node, otherwise the old node.
   # 3. For new node, it need do binding using all binding credentials,
   #    for old node, it should restore all the users permissions.
-  def enable_instance(service_credentials, binding_credentials_map = [])
+  def enable_instance(service_credentials, binding_credentials_map={})
     if get_permissions(service_credentials["vhost"], service_credentials["user"]) != ""
       # The new node
       service_credentials["hostname"] = @local_ip
@@ -225,7 +225,7 @@ class VCAP::Services::Rabbit::Node
     true
   end
 
-  def import_instance(service_credentials, binding_credentials_list, dump_dir, plan)
+  def import_instance(service_credentials, binding_credentials_map, dump_dir, plan)
     provision(plan, service_credentials)
   end
 
