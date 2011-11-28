@@ -555,6 +555,17 @@ describe "Mysql server node" do
     end
   end
 
+  it "should report correct health status when user modify instance password" do
+    EM.run do
+      conn = connect_to_mysql(@db)
+      conn.query("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
+      healthz = @node.healthz_details()
+      healthz[:self].should == "ok"
+      healthz[@db['name'].to_sym].should == "password-modified"
+      EM.stop
+    end
+  end
+
   it "should close extra mysql connections after generate healthz" do
     EM.run do
       res = @node.connection.list_processes

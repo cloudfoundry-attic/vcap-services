@@ -565,9 +565,15 @@ class VCAP::Services::Mysql::Node
 
   def get_instance_healthz(instance)
     res = "ok"
-    host, port, socket = %w{host port socket}.map { |opt| @mysql_config[opt] }
+    host, port, socket, root_user, root_pass = %w{host port socket user pass}.map { |opt| @mysql_config[opt] }
     begin
-      conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
+      begin
+        conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
+      rescue Mysql::Error => e
+        # user had modified instance password, fallback to root account
+        conn = Mysql.real_connect(host, root_user, root_pass, instance.name, port.to_i, socket)
+        res = "password-modified"
+      end
       conn.query("SHOW TABLES")
     rescue => e
       @logger.warn("Error get tables of #{instance.name}: #{e}")
