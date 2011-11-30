@@ -284,6 +284,10 @@ class VCAP::Services::Redis::Node
     nil
   end
 
+  def all_instances_list
+    ProvisionedService.all.map{|ps| ps.name}
+  end
+
   def varz_details
     varz = {}
     varz[:provisioned_instances] = []

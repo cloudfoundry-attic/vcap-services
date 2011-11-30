@@ -499,6 +499,16 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
+  describe "Node.orphan" do
+    it "should return proper instance list" do
+      before_instances = @node.all_instances_list
+      oi = @node.provision("free")
+      after_instances = @node.all_instances_list
+      @node.unprovision(oi["name"])
+      (after_instances - before_instances).include?(oi["name"]).should be_true
+    end
+  end
+
   describe "Node.thread_safe" do
     it "should be thread safe in multi-threads call" do
       old_memory = @node.available_memory
