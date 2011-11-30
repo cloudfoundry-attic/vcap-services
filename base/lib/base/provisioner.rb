@@ -23,7 +23,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @nodes     = {}
     @prov_svcs = {}
     @handles_for_check_orphan = {}
-    @orphan_mutex = Mutex.new
     reset_orphan_stat
     EM.add_periodic_timer(60) { process_nodes }
   end
@@ -99,21 +98,21 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Received node handles")
     response = NodeHandlesReport.decode(msg)
     nid = response.node_id
-    @orphan_mutex.synchronize do
-      response.instances_list.each do |ins|
-        @staging_orphan_instances[nid] ||= []
-        @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
-      end
-      response.bindings_list.each do |bind|
-        @staging_orphan_bindings[nid] ||= []
-        @staging_orphan_bindings[nid] << bind unless @handles_for_check_orphan.index do |h|
-          h["credentials"]["name"] == bind["name"] and h["credentials"]["username"] == bind["username"]
-        end
-      end
-      oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
-      ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
-      @logger.debug("Staging Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
+    response.instances_list.each do |ins|
+      @staging_orphan_instances[nid] ||= []
+      @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
     end
+    response.bindings_list.each do |bind|
+      @staging_orphan_bindings[nid] ||= []
+      @staging_orphan_bindings[nid] << bind unless @handles_for_check_orphan.index do |h|
+        instance = h["credentials"]["name"]
+        username = h["credentials"]["username"] || h["credentials"]["user"]
+        instance == bind["name"] && username == bind["username"]
+      end
+    end
+    oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
+    ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
+    @logger.debug("Staging Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
   rescue => e
     @logger.warn(e)
   end
@@ -135,32 +134,27 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def double_check_orphan(handles)
     @logger.debug("[#{service_description}] Double check the orphan result")
-    @orphan_mutex.synchronize do
-      @staging_orphan_instances.each do |nid, oi_list|
-        oi_list.each do |oi|
-          @final_orphan_instances[nid] ||= []
-          @final_orphan_instances[nid] << oi unless handles.index { |h| h["service_id"] == oi }
-        end
+    @staging_orphan_instances.each do |nid, oi_list|
+      oi_list.each do |oi|
+        @final_orphan_instances[nid] ||= []
+        @final_orphan_instances[nid] << oi unless handles.index { |h| h["service_id"] == oi }
       end
-      @staging_orphan_bindings.each do |nid, ob_list|
-        ob_list.each do |ob|
-          @final_orphan_bindings[nid] ||= []
-          @final_orphan_bindings[nid] << ob unless handles.index do |h|
-            h["credentials"]["name"] == ob["name"] and h["credentials"]["username"] == ob["username"]
-          end
-        end
-      end
-      oi_count = @final_orphan_instances.values.reduce(0) { |m, v| m += v.count }
-      ob_count = @final_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
-      @logger.debug("Final Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
     end
+    @staging_orphan_bindings.each do |nid, ob_list|
+      ob_list.each do |ob|
+        @final_orphan_bindings[nid] ||= []
+        @final_orphan_bindings[nid] << ob unless handles.index do |h|
+          instance = h["credentials"]["name"]
+          username = h["credentials"]["username"] || h["credentials"]["user"]
+          instance == ob["name"] && username == ob["username"]
+        end
+      end
+    end
+    oi_count = @final_orphan_instances.values.reduce(0) { |m, v| m += v.count }
+    ob_count = @final_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
+    @logger.debug("Final Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
   rescue => e
     @logger.warn(e)
-    if e.instance_of? ServiceError
-      blk.call(failure(e))
-    else
-      blk.call(internal_fail)
-    end
   end
 
   def purge_orphan(orphan_ins_hash,orphan_bind_hash, &blk)
