@@ -23,7 +23,8 @@ def connect_to_mysql(options)
 end
 
 def getNodeTestConfig()
-  config_file = File.join(File.dirname(__FILE__), "../config/mysql_node.yml")
+  config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+  config_file = File.join(config_base_dir, 'mysql_node.yml')
   config = YAML.load_file(config_file)
   options = {
     :logger => getLogger,

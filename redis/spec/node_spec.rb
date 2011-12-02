@@ -446,7 +446,7 @@ describe VCAP::Services::Redis::Node do
     it "should import db file from right location after import instance" do
       @node.unprovision(@credentials["name"])
       sleep 1
-      @node.import_instance(@credentials, @binding_credentials_list, @dump_dir, :free)
+      @node.import_instance(@credentials, @binding_credentials_map, @dump_dir, :free)
       sleep 1
       credentials_list = @node.enable_instance(@credentials, @binding_credentials_map)
       credentials_list.size.should == 2
@@ -496,6 +496,16 @@ describe VCAP::Services::Redis::Node do
       end
       @node.get_info(credentials["port"], credentials["password"]).should be
       @node.unprovision(credentials["name"])
+    end
+  end
+
+  describe "Node.orphan" do
+    it "should return proper instance list" do
+      before_instances = @node.all_instances_list
+      oi = @node.provision("free")
+      after_instances = @node.all_instances_list
+      @node.unprovision(oi["name"])
+      (after_instances - before_instances).include?(oi["name"]).should be_true
     end
   end
 

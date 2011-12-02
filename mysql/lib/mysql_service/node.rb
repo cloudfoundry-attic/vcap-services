@@ -188,10 +188,10 @@ class VCAP::Services::Mysql::Node
   def kill_long_queries
     process_list = @connection.list_processes
     process_list.each do |proc|
-      thread_id, user, _, db, command, time, _, info = proc
+      thread_id, user, _, db, command, time, state, info = proc
       if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
         @connection.query("KILL QUERY " + thread_id)
-        @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} info:#{info}")
+        @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
         @long_queries_killed += 1
       end
     end
@@ -371,7 +371,7 @@ class VCAP::Services::Mysql::Node
         if res.num_rows == 1
           @connection.query("DROP USER #{user}@'#{host}'")
         else
-          @logger.warn("Failure to delete non-existent user #{user}")
+          @logger.warn("Failure to delete non-existent user #{user}@'#{host}'")
         end
       end
       kill_user_session(user)
@@ -466,7 +466,7 @@ class VCAP::Services::Mysql::Node
 
   # Provision and import dump files
   # Refer to #dump_instance
-  def import_instance(prov_cred, binding_creds, dump_file_path, plan)
+  def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
     @logger.debug("Import instance #{prov_cred["name"]} request.")
     @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
     provision(plan, prov_cred)
@@ -565,9 +565,15 @@ class VCAP::Services::Mysql::Node
 
   def get_instance_healthz(instance)
     res = "ok"
-    host, port, socket = %w{host port socket}.map { |opt| @mysql_config[opt] }
+    host, port, socket, root_user, root_pass = %w{host port socket user pass}.map { |opt| @mysql_config[opt] }
     begin
-      conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
+      begin
+        conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
+      rescue Mysql::Error => e
+        # user had modified instance password, fallback to root account
+        conn = Mysql.real_connect(host, root_user, root_pass, instance.name, port.to_i, socket)
+        res = "password-modified"
+      end
       conn.query("SHOW TABLES")
     rescue => e
       @logger.warn("Error get tables of #{instance.name}: #{e}")
@@ -637,5 +643,10 @@ class VCAP::Services::Mysql::Node
       "username" => user,
       "password" => passwd,
     }
+  end
+
+  def is_percona_server?()
+    res = @connection.query("show variables where variable_name like 'version_comment'")
+    res.num_rows > 0 && res.fetch_row[1] =~ /percona/i
   end
 end

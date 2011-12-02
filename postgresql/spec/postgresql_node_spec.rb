@@ -66,6 +66,90 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should restore from backup file" do
+    EM.run do
+      tmp_db = @node.provision(@default_plan)
+      @test_dbs[tmp_db] = []
+      conn = connect_to_postgresql(tmp_db)
+      conn.query("create table test1(id int)")
+      host, port, user, password = %w(host port user pass).map{|key| @opts[:postgresql][key]}
+      tmp_file = "/tmp/#{tmp_db['name']}.dump"
+      result = `pg_dump -Fc -h #{host} -p #{port} -U #{user} -f #{tmp_file} #{tmp_db['name']}`
+      conn.query("drop table test1")
+      res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
+      res.count.should == 0
+      conn.query("create table test2(id int)")
+      @node.restore(tmp_db["name"], "/tmp").should == true
+      conn = connect_to_postgresql(tmp_db)
+      res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
+      res.count.should == 1
+      res[0]["tablename"].should == "test1"
+      FileUtils.rm_rf(tmp_file)
+      EM.stop
+    end
+  end
+
+  it "should be able to disable an instance" do
+    EM.run do
+      conn = connect_to_postgresql(@db)
+      bind_cred = @node.bind(@db["name"],  @default_opts)
+      conn2 = connect_to_postgresql(bind_cred)
+      @test_dbs[@db] << bind_cred
+      @node.disable_instance(@db, [bind_cred])
+      expect { conn.query('select 1') }.should raise_error
+      expect { conn2.query('select 1') }.should raise_error
+      expect { connect_to_postgresql(@db) }.should raise_error
+      expect { connect_to_postgresql(bind_cred) }.should raise_error
+      EM.stop
+    end
+  end
+
+  it "should able to dump instance content to file" do
+    EM.run do
+      conn = connect_to_postgresql(@db)
+      conn.query('create table mytesttable(id int)')
+      @node.dump_instance(@db, [], '/tmp').should == true
+      EM.stop
+    end
+  end
+
+  it "should recreate database and user when import instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      @node.dump_instance(db, [], '/tmp')
+      @node.unprovision(db['name'], [])
+      @node.import_instance(db, {}, '/tmp', @default_plan).should == true
+      conn = connect_to_postgresql(db)
+      expect { conn.query('select 1')}.should_not raise_error
+      EM.stop
+    end
+  end
+
+  it "should recreate bindings when enable instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
+      conn = connect_to_postgresql(binding)
+      @node.disable_instance(db, [binding])
+      expect {conn = connect_to_postgresql(binding)}.should raise_error
+      expect {conn = connect_to_postgresql(db)}.should raise_error
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.enable_instance(db, value)
+      result.should be_instance_of Array
+      expect {conn = connect_to_postgresql(binding)}.should_not raise_error
+      expect {conn = connect_to_postgresql(db)}.should_not raise_error
+      EM.stop
+    end
+  end
+
   it "should provision a database with correct credential" do
     EM.run do
       @db.should be_instance_of Hash

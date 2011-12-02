@@ -281,6 +281,7 @@ describe "Mysql server node" do
   end
 
   it "should kill long queries" do
+    pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?
     EM.run do
       db = @node.provision(@default_plan)
       @test_dbs[db] = []
@@ -431,7 +432,7 @@ describe "Mysql server node" do
       @test_dbs[db] = []
       @node.dump_instance(db, nil , '/tmp')
       @node.unprovision(db['name'], [])
-      @node.import_instance(db, [], '/tmp', @default_plan).should == true
+      @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_mysql(db)
       expect { conn.query('select 1')}.should_not raise_error
       EM.stop
@@ -551,6 +552,17 @@ describe "Mysql server node" do
       node.connection.close
       healthz = node.healthz_details()
       healthz[:self].should == "fail"
+      EM.stop
+    end
+  end
+
+  it "should report correct health status when user modify instance password" do
+    EM.run do
+      conn = connect_to_mysql(@db)
+      conn.query("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
+      healthz = @node.healthz_details()
+      healthz[:self].should == "ok"
+      healthz[@db['name'].to_sym].should == "password-modified"
       EM.stop
     end
   end

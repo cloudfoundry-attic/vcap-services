@@ -3,6 +3,7 @@ $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 
 describe "mongodb_node provision" do
+  MAX_CONNECTION = 100
 
   before :all do
     EM.run do
@@ -10,6 +11,7 @@ describe "mongodb_node provision" do
       @logger = @opts[:logger]
       @node = Node.new(@opts)
       @original_memory = @node.available_memory
+      @node.max_clients = MAX_CONNECTION
 
       EM.add_timer(2) { @resp = @node.provision("free") }
       EM.add_timer(4) { EM.stop }
@@ -79,6 +81,55 @@ describe "mongodb_node provision" do
     end
   end
 
+  it "should ensure max connection number is configured in mongod" do
+    EM.run do
+      stats = @node.varz_details
+      current = stats[:running_services][0]['overall']['connections']['current']
+      available = stats[:running_services][0]['overall']['connections']['available']
+
+      MAX_CONNECTION.should == current + available
+
+      EM.stop
+    end
+  end
+
+  it "should enforce no more than max connection to be accepted" do
+    first_conn_refused = false
+    max_conn_refused = false
+    connections = []
+
+    stats = @node.varz_details
+    available = stats[:running_services][0]['overall']['connections']['available']
+    available.times do
+      begin
+        connections << Mongo::Connection.new('localhost', @resp['port'])
+      rescue Mongo::ConnectionFailure => e
+        first_conn_refused = true
+      end
+    end
+
+    # max+1's connection should fail
+    begin
+      connections << Mongo::Connection.new('localhost', @resp['port'])
+    rescue Mongo::ConnectionFailure => e
+      max_conn_refused = true
+    end
+
+    # Close connections
+    connections.each do |c|
+      c.close
+    end
+
+    # Some version of MongoDB might not ensure max connection.
+    # For example, MongoDB 1.8 32bits, when set maxConns = 100, it only accepts
+    # 99 connections.
+    first_conn_refused.should be(false),
+      'Some version of MongoDB might not ensure max connection'
+    max_conn_refused.should == true
+    connections.size.should == available
+  end
+
+
   it "should allow authorized user to access the instance" do
     EM.run do
       begin
@@ -121,32 +172,6 @@ describe "mongodb_node provision" do
     ensure
       conn.close if conn
     end
-  end
-
-  it "should enforce no more than max connection to be accepted" do
-    conn_refused = false
-    connections = []
-
-    # By default, mongodb ensures there're no more than 819 connections
-    # for each instance. But it seems for mongodb-1.8.1-32bit, less than
-    # 819 connections can be created because of the "can't create new
-    # thread, closing connection" error. However, as long as the max number
-    # of 819 is enforced, we are good with it.
-    900.times do
-      begin
-        connections << Mongo::Connection.new('localhost', @resp['port'])
-      rescue Mongo::ConnectionFailure => e
-        conn_refused = true
-      end
-    end
-
-    # Close connections
-    connections.each do |c|
-      c.close
-    end
-
-    connections.size.should <= 819
-    conn_refused.should == true
   end
 
   it "should return error when unprovisioning a non-existed instance" do

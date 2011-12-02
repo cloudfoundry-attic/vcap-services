@@ -169,8 +169,9 @@ class Runner
     # Get plan for given instance
     prov_handle = @handles[instance]
     plan = prov_handle['configuration']['plan']
-    prov_cred, binding_creds = Yajl::Parser.parse(msg)
-    new_msg = Yajl::Encoder.encode([plan, prov_cred, binding_creds])
+    data = gen_enable_instance_data(instance)
+    prov_cred, binding_creds_hash = Yajl::Parser.parse(data)
+    new_msg = Yajl::Encoder.encode([plan, prov_cred, binding_creds_hash])
     nat_request(@channel[:import], instance, data = new_msg) do |response|
       puts "Import instance response #{response}." if @verbose
       begin

@@ -276,12 +276,16 @@ class VCAP::Services::Redis::Node
     true
   end
 
-  def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
+  def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
     provision(plan, service_credentials, db_file)
   rescue => e
     @logger.warn(e)
     nil
+  end
+
+  def all_instances_list
+    ProvisionedService.all.map{|ps| ps.name}
   end
 
   def varz_details
@@ -297,7 +301,7 @@ class VCAP::Services::Redis::Node
     end
     varz
   rescue => e
-    @logger.warn("Error get varz details: #{e}")
+    @logger.warn("Error while getting varz details: #{e}")
     {}
   end
 
@@ -309,7 +313,7 @@ class VCAP::Services::Redis::Node
     end
     healthz
   rescue => e
-    @logger.warn("Error get healthz details: #{e}")
+    @logger.warn("Error while getting healthz details: #{e}")
     {:self => "fail"}
   end
 

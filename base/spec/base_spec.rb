@@ -34,26 +34,6 @@ describe BaseTests do
     base.node_mbus_connected.should be_true
   end
 
-  it "should call varz" do
-    base = nil
-    EM.run do
-      Do.sec(0) { base = BaseTests.create_base }
-      # varz is invoked 5 seconds after base is created
-      Do.sec(6) { EM.stop }
-    end
-    base.varz_invoked.should be_true
-  end
-
-  it "should call healthz" do
-    base = nil
-    EM.run do
-      Do.sec(0) { base = BaseTests.create_base }
-      # healthz is invoked 5 seconds after base is created
-      Do.sec(6) { EM.stop }
-    end
-    base.healthz_invoked.should be_true
-  end
-
 end
 
 describe NodeTests do
@@ -68,6 +48,19 @@ describe NodeTests do
       Do.at(2) { EM.stop }
     end
     provisioner.got_announcement.should be_true
+  end
+
+  it "should call varz/healthz" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start provisioner then node
+      Do.at(0) { provisioner = NodeTests.create_provisioner }
+      Do.at(1) { node = NodeTests.create_node }
+      Do.at(12) { EM.stop }
+    end
+    node.varz_invoked.should be_true
+    node.healthz_invoked.should be_true
   end
 
   it "should announce on request" do

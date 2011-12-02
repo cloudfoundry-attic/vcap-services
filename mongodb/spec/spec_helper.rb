@@ -38,6 +38,7 @@ module VCAP
     module MongoDB
       class Node
         attr_reader :available_memory
+        attr_accessor :max_clients
       end
     end
   end
@@ -114,6 +115,7 @@ def get_node_config()
     :config_template => mongodb_conf_template,
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
+    :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :base_dir => '/tmp/mongo/instances',
     :mongod_log_dir => '/tmp/mongo/mongod_log',
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db'
