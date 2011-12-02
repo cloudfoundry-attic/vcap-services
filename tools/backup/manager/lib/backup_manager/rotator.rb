@@ -25,6 +25,7 @@ class VCAP::Services::Backup::Rotator
   def run
     if Dir.exists?(@manager.root)
       @manager.logger.info("#{self.class}: Running");
+      get_live_service_ins
       each_subdirectory(@manager.root) do |service|
         scan(service)
       end
@@ -115,7 +116,6 @@ class VCAP::Services::Backup::Rotator
 
   def scan(service)
     @manager.logger.info("#{self.class}: Scanning #{service}");
-    get_live_service_ins
     mysql_extra_prunes = []
     mysql_extra_saves = []
     ins_list = @serv_ins[File.basename(service)]
