@@ -22,6 +22,13 @@ class VCAP::Services::Mysql::Gateway < VCAP::Services::Base::Gateway
     File.join(config_base_dir, 'mysql_gateway.yml')
   end
 
+  def additional_options
+    {
+      :resque => @config[:resque],
+      :upload_temp_dir => @config[:upload_temp_dir]
+    }
+  end
 end
 
 VCAP::Services::Mysql::Gateway.new.start
+
