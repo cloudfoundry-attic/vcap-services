@@ -35,6 +35,7 @@ describe "Postgresql node normal cases" do
   before :all do
     @opts = getNodeTestConfig
     @max_db_conns = @opts[:max_db_conns]
+    ENV['PGPASSWORD'] = @opts[:postgresql]['pass']
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
@@ -493,6 +494,11 @@ describe "Postgresql node normal cases" do
         @node.logger.info("Error during cleanup #{e}")
       end
     end if @test_dbs
+  end
+
+  after:all do
+    ENV['PGPASSWORD'] = ''
+    FileUtils.rm_f Dir.glob('/tmp/d*.dump')
   end
 end
 
