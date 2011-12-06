@@ -24,9 +24,7 @@ api_extensions:
   - jobs
 resque:
   host: localhost
-  port: 6379
-  passwd: redis
-  expire: 86400  # 24 hours, in seconds
+  port: 5454
 
 upload_temp_dir: /tmp
 # allow_over_provisioning: false

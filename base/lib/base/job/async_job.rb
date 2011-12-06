@@ -1,6 +1,9 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "resque/job_with_status"
 
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..')
+require "service_error"
+
 module Resque
   extend self
   # Patch Resque so we can determine queue by input args.
@@ -33,6 +36,11 @@ module Resque
   end
 end
 
+module VCAP
+  module Services
+  end
+end
+
 # A thin layer wraps resque-status
 module VCAP::Services::AsyncJob
   include VCAP::Services::Base::Error
@@ -53,7 +61,7 @@ module VCAP::Services::AsyncJob
     job_to_json(res)
   end
 
-  def get_job_ids()
+  def get_all_jobs()
     Resque::Status.status_ids
   end
 

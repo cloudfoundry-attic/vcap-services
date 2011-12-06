@@ -8,8 +8,7 @@ logging:
   level: debug
 redis:
   host: localhost
-  port: 6379
-  password: redis
+  port: 5454
 index: 0
 # optional listen port, required when work with nginx
 #port: 20000

@@ -86,7 +86,7 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
   end
 
   def redis_key(service, service_id)
-    "vcap:serialization:#{service}:token:#{service_id}"
+    "vcap:serialization:#{service}:#{service_id}:token"
   end
 
   def file_path(service, id)

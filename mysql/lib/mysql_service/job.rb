@@ -12,7 +12,5 @@ module VCAP
   end
 end
 
-require "resque/job_with_status"
-require "job/async_job"
-require "job/serialization"
-require "job/snapshot"
+require "job/mysql_serialization"
+require "job/mysql_snapshot"
