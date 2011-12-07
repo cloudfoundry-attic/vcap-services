@@ -449,22 +449,29 @@ describe "Postgresql node normal cases" do
 
   it "should close extra postgresql connections after generate healthz" do
     EM.run do
+      conns_before = {}
+      conns_after = {}
       varz = @node.varz_details
       db_stats = varz[:db_stat]
-      instance = db_stats.find {|d| d[:name] == @db["name"]}
-      instance.should_not be_nil
-      conns_before_healthz = instance[:active_server_processes]
+      db_stats.each do |db|
+        conns_before[db[:name]] = db[:active_server_processes]
+      end
+      self_db = db_stats.find {|d| d[:name] == @db["name"]}
+      self_db.should_not be_nil
 
       healthz = @node.healthz_details()
       healthz.keys.size.should >= 2
 
+      sleep 0.1
       varz = @node.varz_details
       db_stats = varz[:db_stat]
-      instance = db_stats.find {|d| d[:name] == @db["name"]}
-      instance.should_not be_nil
-      conns_after_healthz = instance[:active_server_processes]
+      db_stats.each do |db|
+        conns_after[db[:name]] = db[:active_server_processes]
+      end
 
-      conns_before_healthz.should == conns_after_healthz
+      conns_before.each do |k, v|
+        conns_after[k].should == v
+      end
       EM.stop
     end
   end
