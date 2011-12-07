@@ -94,7 +94,8 @@ class VCAP::Services::Base::Gateway
              :z_interval => @config[:z_interval],
              :allow_over_provisioning => @config[:allow_over_provisioning],
              :max_nats_payload => @config[:max_nats_payload],
-             :additional_options => additional_options
+             :additional_options => additional_options,
+             :status => @config[:status]
            )
       sg = async_gateway_class.new(
              :proxy   => @config[:proxy],
