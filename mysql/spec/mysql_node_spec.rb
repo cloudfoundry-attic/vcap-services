@@ -358,6 +358,18 @@ describe "Mysql server node" do
     end
   end
 
+  it "should not delete user in credential when unbind 'ancient' instances" do
+    EM.run do
+      # Crafting an ancient binding credential which is the same as provision credential
+      ancient_binding = @db.dup
+      expect { connect_to_mysql(ancient_binding) }.should_not raise_error
+      @node.unbind(ancient_binding)
+      # ancient_binding is still valid after unbind
+      expect { connect_to_mysql(ancient_binding) }.should_not raise_error
+      EM.stop
+    end
+  end
+
   it "should delete all bindings if service is unprovisioned" do
     EM.run do
       @default_opts = "default"
@@ -397,16 +409,13 @@ describe "Mysql server node" do
 
   it "should be able to disable an instance" do
     EM.run do
-      conn = connect_to_mysql(@db)
       bind_cred = @node.bind(@db["name"],  @default_opts)
-      conn2 = connect_to_mysql(bind_cred)
+      conn = connect_to_mysql(bind_cred)
       @test_dbs[@db] << bind_cred
       @node.disable_instance(@db, [bind_cred])
       # kill existing session
       expect { conn.query('select 1')}.should raise_error
-      expect { conn2.query('select 1')}.should raise_error
       # delete user
-      expect { connect_to_mysql(@db)}.should raise_error
       expect { connect_to_mysql(bind_cred)}.should raise_error
       EM.stop
     end
@@ -447,7 +456,6 @@ describe "Mysql server node" do
       conn = connect_to_mysql(binding)
       @node.disable_instance(db, [binding])
       expect {conn = connect_to_mysql(binding)}.should raise_error
-      expect {conn = connect_to_mysql(db)}.should raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
@@ -457,7 +465,6 @@ describe "Mysql server node" do
       result = @node.enable_instance(db, value)
       result.should be_instance_of Array
       expect {conn = connect_to_mysql(binding)}.should_not raise_error
-      expect {conn = connect_to_mysql(db)}.should_not raise_error
       EM.stop
     end
   end
