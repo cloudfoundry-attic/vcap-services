@@ -13,7 +13,7 @@ module VCAP
   module Services
     module Postgresql
       class Node
-        attr_reader :connection, :logger, :available_storage
+        attr_reader :connection, :logger, :available_storage, :provision_served, :binding_served
       end
     end
   end
@@ -487,6 +487,28 @@ describe "Postgresql node normal cases" do
       healthz[instance.to_sym].should == "fail"
       # restore db so cleanup code doesn't complain.
       conn.query("create database #{instance}")
+      EM.stop
+    end
+  end
+
+  it "should be thread safe" do
+    EM.run do
+      available_storage = @node.available_storage
+      provision_served = @node.provision_served
+      binding_served = @node.binding_served
+      NUM = 20
+      threads = []
+      NUM.times do
+        threads << Thread.new do
+          db = @node.provision(@default_plan)
+          binding = @node.bind(db["name"], @default_opts)
+          @node.unprovision(db["name"], [binding])
+        end
+      end
+      threads.each {|t| t.join}
+      available_storage.should == @node.available_storage
+      provision_served.should == @node.provision_served - NUM
+      binding_served.should == @node.binding_served - NUM
       EM.stop
     end
   end
