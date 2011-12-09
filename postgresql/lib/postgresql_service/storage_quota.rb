@@ -21,15 +21,23 @@ class VCAP::Services::Postgresql::Node
   #Grant access without checking
   def grant_write_access(db, service)
     name = service.name
-    db_connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],name)
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true)
+    if db_connection.nil?
+      @logger.warn("Unable to grant write access to #{name}")
+      return
+    end
     service.bindusers.all.each do |binduser|
       user = binduser.user
       sys_user = binduser.sys_user
       sys_password = binduser.sys_password
-      db_connection_sys_user = postgresql_connect(@postgresql_config["host"],sys_user,sys_password,@postgresql_config["port"],name)
-      db_connection_sys_user.query("vacuum full")
-      db_connection_sys_user.close
-      do_grant_query(db_connection,user,sys_user)
+      db_connection_sys_user = postgresql_connect(@postgresql_config["host"], sys_user, sys_password, @postgresql_config["port"], name, true)
+      if db_connection_sys_user.nil?
+        @logger.warn("Unable to grant write access to #{name} for #{sys_user}")
+      else
+        db_connection_sys_user.query("vacuum full")
+        db_connection_sys_user.close
+        do_grant_query(db_connection,user,sys_user)
+      end
     end
     db_connection.query("grant create on schema public to public")
     if get_postgres_version(db_connection) == '9'
@@ -49,7 +57,7 @@ class VCAP::Services::Postgresql::Node
     db_connection.close
     service.quota_exceeded = false
     service.save
-    rescue => e
+  rescue => e
       @logger.warn("PostgreSQL Node exception: #{e} " +
                     e.backtrace.join("|"))
   end
@@ -60,7 +68,11 @@ class VCAP::Services::Postgresql::Node
 
   def revoke_write_access(db, service)
     name = service.name
-    db_connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],name)
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true)
+    if db_connection.nil?
+      @logger.warn("Unable to revoke write access on #{name}")
+      return
+    end
     db_connection.query("revoke create on schema public from public CASCADE")
     if get_postgres_version(db_connection) == '9'
       db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from public CASCADE")
@@ -95,7 +107,7 @@ class VCAP::Services::Postgresql::Node
     db_connection.close
     service.quota_exceeded = true
     service.save
-    rescue => e
+  rescue => e
       @logger.warn("PostgreSQL Node exception: #{e} " +
                     e.backtrace.join("|"))
   end

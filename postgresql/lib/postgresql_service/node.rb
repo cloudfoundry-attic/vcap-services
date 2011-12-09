@@ -160,10 +160,10 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
-  def postgresql_connect(host, user, password, port, database)
+  def postgresql_connect(host, user, password, port, database, fail_with_nil = false)
     5.times do
       begin
-        @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database}")
+        @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database} (fail_with_nil: #{fail_with_nil})")
         connect = PGconn.connect(host, port, nil, nil, database, user, password)
         version = get_postgres_version(connect)
         @logger.info("PostgreSQL server version: #{version}")
@@ -174,10 +174,14 @@ class VCAP::Services::Postgresql::Node
         sleep(2)
       end
     end
-
-    @logger.fatal("PostgreSQL connection unrecoverable")
-    shutdown
-    exit
+    if fail_with_nil
+      @logger.warn("PostgreSQL connection unrecoverable")
+      return nil
+    else
+      @logger.fatal("PostgreSQL connection unrecoverable")
+      shutdown
+      exit
+    end
   end
 
   #keep connection alive, and check db liveness
