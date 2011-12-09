@@ -14,6 +14,9 @@ module VCAP
     module Postgresql
       class Node
         attr_reader :connection, :logger, :available_storage
+        def get_service(db)
+          Provisionedservice.first(:name => db['name'])
+        end
       end
     end
   end
@@ -466,6 +469,26 @@ describe "Postgresql server node" do
       @node.connection.close
       @node.postgresql_keep_alive
       @node.node_ready?.should == true
+      EM.stop
+    end
+  end
+
+  it "should survive checking quota of a non-existent instance" do
+    EM.run do
+      # this test verifies that we've fixed a race condition between
+      # the quota-checker and unprovision/unbind
+      db = @node.provision(@default_plan)
+      service = @node.get_service(db)
+      service.should be
+      @node.unprovision(db['name'], [])
+      # we can now simulate the quota-enforcer checking an
+      # unprovisioned instance
+      expect { @node.revoke_write_access(db, service) }.should_not raise_error
+      expect { @node.grant_write_access(db, service) }.should_not raise_error
+      # actually, the bug was not that these methods raised
+      # exceptions, but rather that they called Kernel.exit.  so the
+      # real proof that we've fixed the bug is that this test finishes
+      # at all...
       EM.stop
     end
   end
