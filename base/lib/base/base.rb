@@ -48,7 +48,7 @@ class VCAP::Services::Base::Base
     status_port = status_username = status_password = nil
     if not options[:status].nil?
         status_port = options[:status][:port]
-        status_username = options[:status][:username]
+        status_username = options[:status][:user]
         status_password = options[:status][:password]
     end
     VCAP::Component.register(
