@@ -1,0 +1,16 @@
+---
+cloud_controller_uri: http://api.vcap.me
+service:
+  name: mvstore
+  version: "1.0"
+  description: 'MVStore database'
+  plans: ['free']
+  tags: ['mvstore', 'nosql']
+host: localhost
+index: 0
+token: changemvstoretoken
+mbus: nats://localhost:4222
+pid: /var/vcap/sys/run/mvstore_service.pid
+logging:
+  level: debug
+# allow_over_provisioning: false
