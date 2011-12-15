@@ -525,6 +525,48 @@ describe "Postgresql node normal cases" do
     end if @test_dbs
   end
 
+  it "should enforce database size quota" do
+    node = nil
+    EM.run do
+      opts = @opts.dup
+      # new pg db takes about 5M(~5554180)
+      # reduce storage quota to 6MB.
+      opts[:max_db_size] = 6
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      EM.add_timer(1.1) do
+        node.should_not == nil
+        db = node.provision(@default_plan)
+        @test_dbs[db] = []
+        binding = node.bind(db['name'], @default_opts)
+        EM.add_timer(2) do
+          conn = connect_to_postgresql(binding)
+          conn.query("create table test(data text)")
+          c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
+          # prepare 1M data
+          content = (0..1000000).map{ c[rand(c.size)] }.join
+          conn.query("insert into test values('#{content}')")
+          EM.add_timer(2) do
+            # terminating connection due to administrator command
+            expect {conn.query("select version()").should raise_error(PGError)}
+            conn.close if conn
+            conn = connect_to_postgresql(binding)
+            expect {conn.query("select version()").should_not raise_error}
+            # permission denied for relation test
+            expect {conn.query("insert into test values('1')").should raise_error(PGError)}
+            expect {conn.query("create table test1(data text)").should raise_error(PGError)}
+            conn.query("delete from test")
+            EM.add_timer(2) do
+              # write privilege should restore
+              expect {conn.query("insert into test values('1')").should_not raise_error}
+              expect {conn.query("create table test1(data text)").should_not raise_error}
+              EM.stop
+            end
+          end
+        end
+      end
+    end
+  end
+
   after:all do
     ENV['PGPASSWORD'] = ''
     FileUtils.rm_f Dir.glob('/tmp/d*.dump')
