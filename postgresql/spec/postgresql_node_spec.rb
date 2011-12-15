@@ -297,7 +297,7 @@ describe "Postgresql node normal cases" do
     end
   end
 
-  it "should not be possible to access one database using null or wrong credential" do
+  it "should prevent accessing database with wrong credentials" do
     EM.run do
       plan = "free"
       db2= @node.provision(plan)
@@ -307,9 +307,9 @@ describe "Postgresql node normal cases" do
       # try to login other's db
       fake_creds[0]["name"] = db2["name"]
       # try to login using null credential
-      fake_creds[1]["password"] = nil
+      fake_creds[1]["password"] = db2["password"]
       # try to login using root account
-      fake_creds[2]["user"] = "root"
+      fake_creds[2]["user"] = db2["user"]
       fake_creds.each do |creds|
         puts creds
         expect{connect_to_postgresql(creds)}.should raise_error
@@ -321,19 +321,24 @@ describe "Postgresql node normal cases" do
   it "should kill long transaction" do
     EM.run do
       # reduce max_long_tx to accelerate test
-      @opts[:max_long_tx]=2
-      @node = VCAP::Services::Postgresql::Node.new(@opts)
-      conn = connect_to_postgresql(@db)
-      # prepare a transaction and not commit
-      conn.query("create table a(id int)")
-      conn.query("insert into a values(10)")
-      conn.query("begin")
-      conn.query("select * from a for update")
-      EM.add_timer(@opts[:max_long_tx]*2) {
-        expect {conn.query("select * from a for update")}.should raise_error
-        conn.close if conn
-        EM.stop
-      }
+      opts = @opts.dup
+      opts[:max_long_tx] = 2
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) do
+        db = node.provision('free')
+        conn = connect_to_postgresql(db)
+        # prepare a transaction and not commit
+        conn.query("create table a(id int)")
+        conn.query("insert into a values(10)")
+        conn.query("begin")
+        conn.query("select * from a for update")
+        EM.add_timer(opts[:max_long_tx] * 2) {
+          expect {conn.query("select * from a for update")}.should raise_error
+          conn.close if conn
+          EM.stop
+        }
+      end
     end
   end
 
@@ -513,18 +518,6 @@ describe "Postgresql node normal cases" do
     end
   end
 
-  after:each do
-    @test_dbs.keys.each do |db|
-      begin
-        name = db["name"]
-        @node.unprovision(name, @test_dbs[db])
-        @node.logger.info("Clean up temp database: #{name}")
-      rescue => e
-        @node.logger.info("Error during cleanup #{e}")
-      end
-    end if @test_dbs
-  end
-
   it "should enforce database size quota" do
     node = nil
     EM.run do
@@ -565,6 +558,18 @@ describe "Postgresql node normal cases" do
         end
       end
     end
+  end
+
+  after:each do
+    @test_dbs.keys.each do |db|
+      begin
+        name = db["name"]
+        @node.unprovision(name, @test_dbs[db])
+        @node.logger.info("Clean up temp database: #{name}")
+      rescue => e
+        @node.logger.info("Error during cleanup #{e}")
+      end
+    end if @test_dbs
   end
 
   after:all do
