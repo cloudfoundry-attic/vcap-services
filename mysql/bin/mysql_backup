@@ -8,7 +8,7 @@ require 'bundler/setup'
 require 'vcap_services_base'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
-require 'mysql'
+require 'mysql2'
 
 module VCAP
   module Services
@@ -46,11 +46,10 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     # Optional backup timeout config, default is no timeout
     opts[:timeout] = @config["timeout"] || 0
 
-    conn = Mysql.real_connect(opts[:host], opts[:user], opts[:passwd], 'mysql',
-                              opts[:port].to_i, opts[:socket])
+    conn = Mysql2::Client.new(:host => opts[:host], :username => opts[:user], :password => opts[:passwd], :database => 'mysql', :port => opts[:port].to_i, :socket => opts[:socket])
     result = conn.query("show databases;")
     dbs = []
-    result.each {|db| dbs << db[0] }
+    result.each {|db| dbs << db["Database"] }
     current_time = Time.now
 
     echo "Begin backup at #{current_time}"

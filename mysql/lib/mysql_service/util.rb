@@ -1,5 +1,6 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require "mysql"
+require "mysql2"
+require "monitor"
 
 module VCAP
   module Services
@@ -68,12 +69,11 @@ module VCAP
           mysql_bin = opts[:mysql_bin] || "mysql"
           gzip_bin = opts[:gzip_bin] || "gzip"
 
-          @connection = ::Mysql.real_connect(host, user, password, 'mysql', port.to_i, socket) unless @connection
-          @connection.query("use mysql")
+          @connection = Mysql2::Client.new(:host => host, :username => user, :password => password, :database => 'mysql', :port => port.to_i, :socket => socket) unless @connection
           revoke_privileges(db)
 
           # rebuild database to remove all tables in old db.
-          kill_database_session(db)
+          kill_database_session(@connection, db)
           @connection.query("DROP DATABASE #{db}")
           @connection.query("CREATE DATABASE #{db}")
 
@@ -103,15 +103,113 @@ module VCAP
           @connection.query("FLUSH PRIVILEGES")
         end
 
-        def kill_database_session(database)
+        def kill_database_session(connection, database)
           @logger.info("Kill all sessions connect to db: #{database}")
-          process_list = @connection.list_processes
+          process_list = connection.query("show processlist")
           process_list.each do |proc|
-            thread_id, user, _, db, command, time, _, info = proc
+            thread_id, user, db, command, time, info = proc["Id"], proc["User"], proc["db"], proc["Command"], proc["Time"], proc["Info"]
             if (db == database) and (user != "root")
-              @connection.query("KILL #{thread_id}")
+              connection.query("KILL #{thread_id}")
               @logger.info("Kill session: user:#{user} db:#{db}")
             end
+          end
+        end
+
+        class ConnectionPool
+          def initialize(options)
+            @options = options
+            @timeout = options[:wait_timeout] || 10
+            @size = (options[:pool] && options[:pool].to_i) || 5
+            @connections = []
+            @connections.extend(MonitorMixin)
+            @cond = @connections.new_cond
+            @reserved_connections = {}
+            for i in 1..@size do
+              @connections << Mysql2::Client.new(@options)
+            end
+          end
+
+          def with_connection
+            connection_id = current_connection_id
+            fresh_connection = !@reserved_connections.has_key?(connection_id)
+            yield @reserved_connections[connection_id] ||= checkout
+          ensure
+            release_connection(connection_id) if fresh_connection
+          end
+
+          def connection_exception(conn)
+            conn.ping
+            return nil
+          rescue Mysql2::Error => exception
+            return exception
+          end
+
+          def keep_alive
+            @connections.each do |conn|
+              exception = connection_exception(conn)
+              if exception
+                @logger.error("MySQL connection lost: [#{exception.errno}] #{exception.error}")
+                conn = Mysql2::Client.new(@options)
+              end
+            end
+          end
+
+          def close
+            @connections.each do |conn|
+              conn.close
+            end
+          end
+
+          def shutdown
+            close
+            @connections.clear
+          end
+
+          private
+          def release_connection(with_id)
+            conn = @reserved_connections.delete(with_id)
+            checkin conn if conn
+          end
+
+          def clear_stale_cached_connections!
+            keys = @reserved_connections.keys - Thread.list.find_all { |t|
+              t.alive?
+            }.map { |thread| thread.object_id }
+            keys.each do |key|
+              checkin @reserved_connections[key]
+              @reserved_connections.delete(key)
+            end
+          end
+
+          def checkout
+            @connections.synchronize do
+              loop do
+                conn = @connections.shift
+                return conn if conn
+
+                @cond.wait(@timeout)
+
+                if @connections.empty?
+                  next
+                else
+                  clear_stale_cached_connections!
+                  if @connections.empty?
+                    raise Mysql2::Error, "could not obtain a database connection#{" within #{@timeout} seconds" if @timeout}.  The max pool size is currently #{@size}; consider increasing it."
+                  end
+                end
+              end
+            end
+          end
+
+          def checkin(conn)
+            @connections.synchronize do
+              @connections << conn
+              @cond.signal
+            end
+          end
+
+          def current_connection_id
+            Thread.current.object_id
           end
         end
       end

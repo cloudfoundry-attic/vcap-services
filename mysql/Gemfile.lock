@@ -70,7 +70,7 @@ GEM
     macaddr (1.5.0)
       systemu (>= 2.4.0)
     multi_json (1.0.3)
-    mysql (2.8.1)
+    mysql2 (0.3.10)
     nats (0.4.10)
       daemons (>= 1.1.0)
       eventmachine (>= 0.12.10)
@@ -155,7 +155,7 @@ DEPENDENCIES
   em-http-request
   eventmachine (~> 0.12.11.cloudfoundry.3)
   json
-  mysql
+  mysql2
   nats (>= 0.4.10)
   rake
   rcov

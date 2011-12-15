@@ -7,7 +7,7 @@ gem "dm-sqlite-adapter"
 gem 'eventmachine',  '~> 0.12.11.cloudfoundry.3'
 gem "em-http-request"
 gem "json"
-gem "mysql"
+gem "mysql2"
 gem "uuidtools"
 gem "ruby-hmac", :require => "hmac-sha1"
 gem "thin"

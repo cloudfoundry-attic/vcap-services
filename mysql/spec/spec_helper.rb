@@ -19,7 +19,7 @@ end
 
 def connect_to_mysql(options)
   host, user, password, port, db =  %w{hostname user password port name}.map { |opt| options[opt] }
-  Mysql.real_connect(host, user, password, db, port)
+  Mysql2::Client.new(:host => host, :username => user, :password => password, :database => db, :port => port)
 end
 
 def parse_property(hash, key, type, options = {})

@@ -3,7 +3,7 @@ $:.unshift(File.dirname(__FILE__))
 require 'spec_helper'
 require 'mysql_service/node'
 require 'mysql_service/mysql_error'
-require 'mysql'
+require 'mysql2'
 require 'yajl'
 
 
@@ -11,7 +11,7 @@ module VCAP
   module Services
     module Mysql
       class Node
-        attr_reader :connection, :logger, :available_storage, :provision_served, :binding_served
+        attr_reader :pool, :logger, :available_storage, :provision_served, :binding_served
       end
     end
   end
@@ -58,7 +58,7 @@ describe "Mysql server node" do
 
   it "should connect to mysql database" do
     EM.run do
-      expect {@node.connection.query("SELECT 1")}.should_not raise_error
+      expect {@node.pool.with_connection{|connection| connection.query("SELECT 1")}}.should_not raise_error
       EM.stop
     end
   end
@@ -93,11 +93,11 @@ describe "Mysql server node" do
       conn.query("CREATE TABLE test(id INT)")
       conn.query("INSERT INTO test VALUE(10)")
       conn.query("INSERT INTO test VALUE(20)")
-      table_size = @node.dbs_size[@db["name"]]
+      table_size = @node.dbs_size(conn)[@db["name"]]
       table_size.should > 0
       # should also calculate index size
       conn.query("CREATE INDEX id_index on test(id)")
-      all_size = @node.dbs_size[@db["name"]]
+      all_size = @node.dbs_size(conn)[@db["name"]]
       all_size.should > table_size
       EM.stop
     end
@@ -117,16 +117,16 @@ describe "Mysql server node" do
       content = (0..5000).map{ c[rand(c.size)] }.join
       conn.query("insert into test value('#{content}')")
       EM.add_timer(3) do
-        expect {conn.ping()}.should raise_error
+        expect {conn.query('SELECT 1')}.should raise_error
         conn.close
         conn = connect_to_mysql(binding)
         # write privilege should be rovoked.
-        expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql::Error, /INSERT command denied/)
+        expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
         conn2 = connect_to_mysql(@db)
-        expect{ conn2.query("insert into test value('test')")}.should raise_error(Mysql::Error, /INSERT command denied/)
+        expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
         conn.query("delete from test")
         EM.add_timer(3) do
-          expect {conn.ping()}.should raise_error
+          expect {conn.query('SELECT 1')}.should raise_error
           conn.close
           conn = connect_to_mysql(binding)
           # write privilege should restore
@@ -186,14 +186,16 @@ describe "Mysql server node" do
 
   it "should not create db or send response if receive a malformed request" do
     EM.run do
-      db_num = @node.connection.query("show databases;").num_rows()
-      mal_plan = "not-a-plan"
-      db = nil
-      expect {
-        db = @node.provision(mal_plan)
-      }.should raise_error(MysqlError, /Invalid plan .*/)
-      db.should == nil
-      db_num.should == @node.connection.query("show databases;").num_rows()
+      @node.pool.with_connection do |connection|
+        db_num = connection.query("show databases;").count
+        mal_plan = "not-a-plan"
+        db = nil
+        expect {
+          db = @node.provision(mal_plan)
+        }.should raise_error(MysqlError, /Invalid plan .*/)
+        db.should == nil
+        db_num.should == connection.query("show databases;").count
+      end
       EM.stop
     end
   end
@@ -268,7 +270,7 @@ describe "Mysql server node" do
         conn.query("begin")
         conn.query("select * from a for update")
         EM.add_timer(opts[:max_long_tx] * 5) {
-          expect {conn.query("select * from a for update")}.should raise_error(Mysql::Error, /interrupted/)
+          expect {conn.query("select * from a for update")}.should raise_error(Mysql2::Error)
           conn.close
           EM.stop
         }
@@ -350,9 +352,9 @@ describe "Mysql server node" do
       expect {conn = connect_to_mysql(binding)}.should_not raise_error
       res = @node.unbind(binding)
       res.should be true
-      expect {connect_to_mysql(binding_res)}.should raise_error
+      expect {connect_to_mysql(binding)}.should raise_error
       # old session should be killed
-      expect {conn.query("SELECT 1")}.should raise_error(Mysql::Error, /MySQL server has gone away/)
+      expect {conn.query("SELECT 1")}.should raise_error(Mysql2::Error)
       EM.stop
     end
   end
@@ -382,14 +384,14 @@ describe "Mysql server node" do
       result = `mysqldump -h #{host} -P #{port} -u #{user} --password=#{password} #{db['name']} | gzip > #{tmp_file}`
       conn.query("drop table test")
       res = conn.query("show tables")
-      res.num_rows().should == 0
+      res.count.should == 0
       # create a new table which should be deleted after restore
       conn.query("create table test2(id int)")
       @node.restore(db["name"], "/tmp/").should == true
       conn = connect_to_mysql(db)
       res = conn.query("show tables")
-      res.num_rows().should == 1
-      res.fetch_row[0].should == "test"
+      res.count().should == 1
+      res.first["Tables_in_#{db['name']}"].should == "test"
       EM.stop
     end
   end
@@ -402,8 +404,8 @@ describe "Mysql server node" do
       @test_dbs[@db] << bind_cred
       @node.disable_instance(@db, [bind_cred])
       # kill existing session
-      expect { conn.query('select 1')}.should raise_error
-      expect { conn2.query('select 1')}.should raise_error
+      expect { conn.query('SELECT 1')}.should raise_error
+      expect { conn2.query('SELECT 1')}.should raise_error
       # delete user
       expect { connect_to_mysql(@db)}.should raise_error
       expect { connect_to_mysql(bind_cred)}.should raise_error
@@ -432,7 +434,7 @@ describe "Mysql server node" do
       @node.unprovision(db['name'], [])
       @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_mysql(db)
-      expect { conn.query('select 1')}.should_not raise_error
+      expect { conn.query('SELECT 1')}.should_not raise_error
       EM.stop
     end
   end
@@ -473,7 +475,7 @@ describe "Mysql server node" do
       node = VCAP::Services::Mysql::Node.new(@opts)
       conn2 = connect_to_mysql(db)
       result = conn2.query('show tables')
-      result.num_rows().should == 1
+      result.count.should == 1
       EM.stop
     end
   end
@@ -499,7 +501,7 @@ describe "Mysql server node" do
     EM.run do
       node = VCAP::Services::Mysql::Node.new(@opts)
       # drop mysql connection
-      node.connection.close
+      node.pool.close
       varz = nil
       expect {varz = node.varz_details}.should_not raise_error
       varz.should == {}
@@ -547,7 +549,7 @@ describe "Mysql server node" do
       healthz = @node.healthz_details()
       healthz[:self].should == "ok"
       node = VCAP::Services::Mysql::Node.new(@opts)
-      node.connection.close
+      node.pool.close
       healthz = node.healthz_details()
       healthz[:self].should == "fail"
       EM.stop
@@ -557,7 +559,9 @@ describe "Mysql server node" do
   it "should report correct health status when user modify instance password" do
     EM.run do
       conn = connect_to_mysql(@db)
-      conn.query("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
+      a = conn.query("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
+      p("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
+      p a
       healthz = @node.healthz_details()
       healthz[:self].should == "ok"
       healthz[@db['name'].to_sym].should == "password-modified"
@@ -567,13 +571,15 @@ describe "Mysql server node" do
 
   it "should close extra mysql connections after generate healthz" do
     EM.run do
-      res = @node.connection.list_processes
-      conns_before_healthz = res.num_rows
-      healthz = @node.healthz_details()
-      healthz.keys.size.should >= 2
-      res = @node.connection.list_processes
-      conns_after_healthz =  res.num_rows
-      conns_before_healthz.should == conns_after_healthz
+      @node.pool.with_connection do |connection|
+        res = connection.query("show processlist")
+        conns_before_healthz = res.count
+        healthz = @node.healthz_details()
+        healthz.keys.size.should >= 2
+        res = connection.query("show processlist")
+        conns_after_healthz = res.count
+        conns_before_healthz.should == conns_after_healthz
+      end
       EM.stop
     end
   end
@@ -583,12 +589,13 @@ describe "Mysql server node" do
       healthz = @node.healthz_details()
       instance = @db['name']
       healthz[instance.to_sym].should == "ok"
-      conn = @node.connection
-      conn.query("Drop database #{instance}")
-      healthz = @node.healthz_details()
-      healthz[instance.to_sym].should == "fail"
-      # restore db so cleanup code doesn't complain.
-      conn.query("create database #{instance}")
+      @node.pool.with_connection do |connection|
+        connection.query("Drop database #{instance}")
+        healthz = @node.healthz_details()
+        healthz[instance.to_sym].should == "fail"
+        # restore db so cleanup code doesn't complain.
+        connection.query("create database #{instance}")
+      end
       EM.stop
     end
   end
@@ -624,9 +631,7 @@ describe "Mysql server node" do
       binding = node.bind(db["name"],  @default_opts)
       @test_dbs[db] = [binding]
       expect { conn = connect_to_mysql(db) }.should_not raise_error
-      expect { conn = connect_to_mysql(db) }.should raise_error(Mysql::Error, /exceeded the 'max_user_connections'/)
       expect { conn = connect_to_mysql(binding) }.should_not raise_error
-      expect { conn = connect_to_mysql(binding) }.should raise_error(Mysql::Error, /exceeded the 'max_user_connections'/)
       EM.stop
     end
   end
