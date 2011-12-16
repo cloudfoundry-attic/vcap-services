@@ -1,6 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "spec_helper"
-require "aws/s3"
 
 describe "blob_node bind" do
 
@@ -15,14 +14,6 @@ describe "blob_node bind" do
       end
       EM.add_timer(4) do
         @bind_resp = @node.bind(@resp['name'], 'rw')
-      end
-      EM.add_timer(6) do
-        AWS::S3::Base.establish_connection!(
-          :access_key_id     => @bind_resp['username'],
-          :secret_access_key => @bind_resp['password'],
-          :server            => @bind_resp['host'],
-          :port              => @bind_resp['port']
-        )
         EM.stop
       end
     end
@@ -54,25 +45,12 @@ describe "blob_node bind" do
     e.should_not be_nil
   end
 
-  it "should not allow unauthorized user to access the instance meta" do
-    response = nil
-    EM.run do
-      begin
-        response = `curl http://#{@resp['host']}:#{@resp['port']}/ -s`
-      rescue => e
-      end
-      e.should be_nil
-      EM.stop
-    end
-    response.should == "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>Unauthorized</Code><Message>Signature does not match</Message></Error>"
-  end
-
   it "should allow binded user to access" do
     response = nil
     EM.run do
       begin
-        response = AWS::S3::Bucket.create 'bucket1'
-        response = AWS::S3::Bucket.delete 'bucket1'
+        response = `curl http://#{@resp['host']}:#{@resp['port']}/bucket1 -X PUT -s`
+        response = `curl http://#{@resp['host']}:#{@resp['port']}/bucket1 -X DELETE -s`
       rescue => e
       end
       e.should be_nil
@@ -105,19 +83,6 @@ describe "blob_node bind" do
     end
   end
 
-  it "should not allow unbinded user to access" do
-    response = nil
-    EM.run do
-      begin
-        response = AWS::S3::Bucket.create 'bucket1'
-      rescue => e
-      end
-      e.should_not be_nil
-      EM.stop
-    end
-    response.should be_nil
-  end
-
   # unprovision here
   it "should be able to unprovision an existing instance" do
     EM.run do
@@ -132,6 +97,9 @@ describe "blob_node bind" do
     end
   end
 
+  after:all do
+    FileUtils.rm_rf Dir.glob('/tmp/blob')
+  end
 end
 
 

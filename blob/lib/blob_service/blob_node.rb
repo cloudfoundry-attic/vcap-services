@@ -87,6 +87,7 @@ class VCAP::Services::Blob::Node
     @nodejs_path = options[:nodejs_path]
     @blobd_path = options[:blobd_path]
     @blobd_log_dir = options[:blobd_log_dir]
+    @blobd_auth = options[:blobd_auth] || "basic" #default is basic auth
 
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]

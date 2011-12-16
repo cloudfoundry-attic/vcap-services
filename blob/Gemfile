@@ -10,7 +10,6 @@ gem "do_sqlite3"
 gem "dm-sqlite-adapter"
 gem "sinatra"
 gem "thin"
-gem "aws-s3"
 gem "json"
 gem "yajl-ruby"
 

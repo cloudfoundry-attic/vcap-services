@@ -8,16 +8,11 @@
                 "node_exepath": "<%= @nodejs_path %>",
                 "gc_exepath": "<%= @blobd_path %>/drivers/fs/fs_gc.js",
                 "gcfc_exepath": "<%= @blobd_path %>/drivers/fs/fs_gcfc.js",
-                "gctmp_exepath": "<%= @blobd_path %>/drivers/fs/fs_gctmp.js"
-            }
-        }
-    },
-    {
-        "s3-<%= provisioned_service.name %>": {
-            "type": "s3",
-            "option": {
-                "key": "dummy",
-                "secret": "dummy"
+                "gctmp_exepath": "<%= @blobd_path %>/drivers/fs/fs_gctmp.js",
+                "ec_exepath": "<%= @blobd_path %>/drivers/fs/fs_ec.js",
+                "compactor": true,
+                "quota": 2147483648,
+                "obj_limit": 32768
             }
         }
     }
@@ -28,7 +23,7 @@
   "logfile" : "<%= log_file %>",
   "keyID" : "<%= keyid %>",
   "secretID" : "<%= secretid %>",
-  "auth" : "enabled",
+  "auth" : "<%= @blobd_auth %>",
   "debug" : false,
   "account_file" : "<%= account_file %>",
   "account_api" : true
