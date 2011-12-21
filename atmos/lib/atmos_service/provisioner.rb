@@ -51,8 +51,15 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
         :credentials => {:host => @host, :port => @port, :token => token,
           :shared_secret => shared_secret, :subtenant_id => st_id}
       }
+      # set 'configuration' instead of 'data' to keep local hash consistent
+      svc_local = {
+        :configuration => {"subtenant_name" => st_name, "subtenant_id" => st_id, "host" => @host},
+        :service_id => st_name,
+        :credentials => {"host" => @host, "port" => @port, "token" => token,
+          "shared_secret" => shared_secret, "subtenant_id" => st_id}
+      }
       @logger.debug("Service provisioned: #{svc.inspect}")
-      @prov_svcs[svc[:service_id]] = svc
+      @prov_svcs[svc[:service_id]] = svc_local
       blk.call(success(svc))
     rescue => e
       # roll back work
@@ -105,16 +112,16 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     begin
       svc = @prov_svcs[instance_id]
       raise "#{instance_id} not found!" if svc.nil?
-      @logger.debug("svc[data]: #{svc[:data]}")
+      @logger.debug("svc[configuration]: #{svc[:configuration]}")
 
       token = UUIDTools::UUID.random_create.to_s
       shared_secret = @atmos_helper.create_user(token, instance_id)
 
       res = {
         :service_id => token,
-        :configuration => svc[:data],
+        :configuration => svc[:configuration],
         :credentials => {:host => @host, :port => @port, :token => token,
-          :shared_secret => shared_secret, :subtenant_id => svc[:data][:subtenant_id]}
+          :shared_secret => shared_secret, :subtenant_id => svc[:configuration]["subtenant_id"]}
       }
       @logger.debug("binded: #{res.inspect}")
       @prov_svcs[res[:service_id]] = res
@@ -136,8 +143,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       svc = @prov_svcs[handle_id]
       raise "#{handle_id} not found!" if svc.nil?
 
-      configuration = (svc[:configuration].nil?) ? svc[:data] : svc[:configuration]
-      @logger.debug("svc[configuration]: #{configuration}")
+      @logger.debug("svc[configuration]: #{svc[configuration]}")
       success = @atmos_helper.delete_user(handle_id, instance_id)
       @prov_svcs.delete(handle_id) if success
       blk.call(success())
