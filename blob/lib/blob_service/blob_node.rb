@@ -19,10 +19,6 @@ require 'vcap/common'
 require 'vcap/component'
 require "blob_service/common"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require "datamapper_l"
-
 module VCAP
   module Services
     module Blob
@@ -91,6 +87,7 @@ class VCAP::Services::Blob::Node
     @nodejs_path = options[:nodejs_path]
     @blobd_path = options[:blobd_path]
     @blobd_log_dir = options[:blobd_log_dir]
+    @blobd_auth = options[:blobd_auth] || "basic" #default is basic auth
 
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
@@ -412,7 +409,7 @@ class VCAP::Services::Blob::Node
       if File.exist?(config_path)
         FileUtils.rm_f(config_path) rescue @logger.warn("Deleting old config file for #{provisioned_service.name} failed")
       end
-      File.open(config_path, "w") {|f| f.write(config)} 
+      File.open(config_path, "w") {|f| f.write(config)}
       cmd = "#{@nodejs_path} #{@blobd_path}/server.js -f #{config_path}"
       exec(cmd) rescue @logger.warn("exec(#{cmd}) failed!")
     end

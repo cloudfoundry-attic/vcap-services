@@ -13,6 +13,7 @@ max_memory: 128
 node_id: blob_node_1
 nodejs_path: node
 blobd_path: /var/vcap/packages/blob/bin
+blobd_auth: disabled
 port_range:
   first: 45001
   last: 65000

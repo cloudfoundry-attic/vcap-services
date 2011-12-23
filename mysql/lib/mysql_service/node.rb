@@ -5,14 +5,9 @@ require "logger"
 require "pp"
 
 require "uuidtools"
-require "mysql"
+require "mysql2"
 require "open3"
 require "thread"
-
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require 'base/service_error'
-require "datamapper_l"
 
 module VCAP
   module Services
@@ -31,7 +26,6 @@ require "mysql_service/mysql_error"
 class VCAP::Services::Mysql::Node
 
   KEEP_ALIVE_INTERVAL = 15
-  LONG_QUERY_INTERVAL = 1
   STORAGE_QUOTA_INTERVAL = 1
 
   include VCAP::Services::Mysql::Util
@@ -60,7 +54,7 @@ class VCAP::Services::Mysql::Node
     @gzip_bin = options[:gzip_bin]
     @mysql_bin = options[:mysql_bin]
 
-    @connection = mysql_connect
+    @pool = mysql_connect
     @delete_user_lock = Mutex.new
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
@@ -107,9 +101,11 @@ class VCAP::Services::Mysql::Node
   def all_bindings_list
     res = []
     all_ins_users = ProvisionedService.all.map{|s| s.user}
-    @connection.query('select DISTINCT user.user,db,password from user, db where user.user = db.user and length(user.user) > 0').each do |user,name,password|
-      # Filter out the instances handles
-      res << gen_credential(name,user,password) unless all_ins_users.include?(user)
+    @pool.with_connection do |connection|
+      connection.query('select DISTINCT user.user,db,password from user, db where user.user = db.user and length(user.user) > 0').each do |entry|
+        # Filter out the instances handles
+        res << gen_credential(entry["name"], entry["user"], entry["password"]) unless all_ins_users.include?(entry["user"])
+      end
     end
     res
   end
@@ -125,7 +121,9 @@ class VCAP::Services::Mysql::Node
 
   def check_db_consistency()
     db_list = []
-    @connection.query('select db, user from db').each{|db, user| db_list.push([db, user])}
+    @pool.with_connection do |connection|
+      connection.query('select db, user from db').each{|db, user| db_list.push([db, user])}
+    end
     ProvisionedService.all.each do |service|
       db, user = service.name, service.user
       if not db_list.include?([db, user]) then
@@ -137,8 +135,10 @@ class VCAP::Services::Mysql::Node
 
   # check whether mysql has required innodb plugin installed.
   def check_innodb_plugin()
-    res = @connection.query("show tables from information_schema like 'INNODB_TRX'")
-    return true if res.num_rows > 0
+    @pool.with_connection do |connection|
+      res = connection.query("show tables from information_schema like 'INNODB_TRX'")
+      return true if res.count > 0
+    end
   end
 
   def storage_for_service(provisioned_service)
@@ -154,8 +154,8 @@ class VCAP::Services::Mysql::Node
 
     5.times do
       begin
-        return Mysql.real_connect(host, user, password, 'mysql', port.to_i, socket)
-      rescue Mysql::Error => e
+        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket)
+      rescue Mysql2::Error => e
         @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(5)
       end
@@ -167,36 +167,45 @@ class VCAP::Services::Mysql::Node
   end
 
   def node_ready?()
-    @connection && connection_exception.nil?
+    @pool.with_connection do |connection|
+      return connection_exception(connection).nil?
+    end
   end
 
-  def connection_exception()
-    @connection.ping
-    return nil
-  rescue Mysql::Error => exception
-    return exception
+  def connection_exception(connection)
+    @pool.connection_exception(connection)
   end
 
   #keep connection alive, and check db liveness
   def mysql_keep_alive
-    exception = connection_exception
-    if exception
-      @logger.error("MySQL connection lost: [#{exception.errno}] #{exception.error}")
-      @connection = mysql_connect
+    5.times do
+      begin
+        @pool.keep_alive
+        return
+      rescue Mysql2::Error => e
+        @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
+        sleep(5)
+      end
     end
+
+    @logger.fatal("MySQL connection unrecoverable")
+    shutdown
+    exit
   end
 
   def kill_long_queries
-    process_list = @connection.list_processes
-    process_list.each do |proc|
-      thread_id, user, _, db, command, time, _, info = proc
-      if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
-        @connection.query("KILL QUERY " + thread_id)
-        @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} info:#{info}")
-        @long_queries_killed += 1
+    @pool.with_connection do |connection|
+      process_list = connection.query("show processlist")
+      process_list.each do |proc|
+        thread_id, user, db, command, time, info = proc["Id"], proc["User"], proc["db"], proc["Command"], proc["Time"], proc["Info"]
+        if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
+          connection.query("KILL QUERY #{thread_id}")
+          @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
+          @long_queries_killed += 1
+        end
       end
     end
-  rescue Mysql::Error => e
+  rescue Mysql2::Error => e
     @logger.error("MySQL error: [#{e.errno}] #{e.error}")
   end
 
@@ -208,12 +217,14 @@ class VCAP::Services::Mysql::Node
                 "  WHERE trx_state='RUNNING' and user!='root' " +
                 ") as inner_table " +
                 "WHERE inner_table.active_time > #{@max_long_tx}"
-    result = @connection.query(query_str)
-    result.each do |trx|
-      trx_started, id, user, db, info, active_time = trx
-      @connection.query("KILL QUERY #{id}")
-      @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
-      @long_tx_killed += 1
+    @pool.with_connection do |connection|
+      result = connection.query(query_str)
+      result.each do |trx|
+        trx_started, id, user, db, info, active_time = trx
+        connection.query("KILL QUERY #{id}")
+        @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
+        @long_tx_killed += 1
+      end
     end
   rescue => e
     @logger.error("Error during kill long transaction: #{e}.")
@@ -304,7 +315,7 @@ class VCAP::Services::Mysql::Node
 
       begin
         create_database_user(name, binding[:user], binding[:password])
-      rescue Mysql::Error => e
+      rescue Mysql2::Error => e
         raise "Could not create database user: [#{e.errno}] #{e.error}"
       end
 
@@ -325,8 +336,10 @@ class VCAP::Services::Mysql::Node
     @logger.debug("Unbind service: #{credential.inspect}")
     name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
-    res = @connection.query("SELECT * from mysql.user WHERE user='#{user}'")
-    raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.num_rows() <= 0
+    @pool.with_connection do |connection|
+      res = connection.query("SELECT * from mysql.user WHERE user='#{user}'")
+      raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.count() <= 0
+    end
     delete_database_user(user)
     true
   end
@@ -336,11 +349,13 @@ class VCAP::Services::Mysql::Node
     begin
       start = Time.now
       @logger.debug("Creating: #{provisioned_service.inspect}")
-      @connection.query("CREATE DATABASE #{name}")
+      @pool.with_connection do |connection|
+        connection.query("CREATE DATABASE #{name}")
+      end
       create_database_user(name, user, password)
       @logger.debug("Done creating #{provisioned_service.inspect}. Took #{Time.now - start}.")
       return true
-    rescue Mysql::Error => e
+    rescue Mysql2::Error => e
       @logger.warn("Could not create database: [#{e.errno}] #{e.error}")
       return false
     end
@@ -348,9 +363,11 @@ class VCAP::Services::Mysql::Node
 
   def create_database_user(name, user, password)
       @logger.info("Creating credentials: #{user}/#{password} for database #{name}")
-      @connection.query("GRANT ALL ON #{name}.* to #{user}@'%' IDENTIFIED BY '#{password}' WITH MAX_USER_CONNECTIONS #{@max_user_conns}")
-      @connection.query("GRANT ALL ON #{name}.* to #{user}@'localhost' IDENTIFIED BY '#{password}' WITH MAX_USER_CONNECTIONS #{@max_user_conns}")
-      @connection.query("FLUSH PRIVILEGES")
+      @pool.with_connection do |connection|
+        connection.query("GRANT ALL ON #{name}.* to #{user}@'%' IDENTIFIED BY '#{password}' WITH MAX_USER_CONNECTIONS #{@max_user_conns}")
+        connection.query("GRANT ALL ON #{name}.* to #{user}@'localhost' IDENTIFIED BY '#{password}' WITH MAX_USER_CONNECTIONS #{@max_user_conns}")
+        connection.query("FLUSH PRIVILEGES")
+      end
   end
 
   def delete_database(provisioned_service)
@@ -358,8 +375,10 @@ class VCAP::Services::Mysql::Node
     begin
       delete_database_user(user)
       @logger.info("Deleting database: #{name}")
-      @connection.query("DROP DATABASE #{name}")
-    rescue Mysql::Error => e
+      @pool.with_connection do |connection|
+        connection.query("DROP DATABASE #{name}")
+      end
+    rescue Mysql2::Error => e
       @logger.error("Could not delete database: [#{e.errno}] #{e.error}")
     end
   end
@@ -368,31 +387,35 @@ class VCAP::Services::Mysql::Node
     @logger.info("Delete user #{user}")
     @delete_user_lock.synchronize do
       ["%", "localhost"].each do |host|
-        res = @connection.query("SELECT user from mysql.user where user='#{user}' and host='#{host}'")
-        if res.num_rows == 1
-          @connection.query("DROP USER #{user}@'#{host}'")
-        else
-          @logger.warn("Failure to delete non-existent user #{user}")
+        @pool.with_connection do |connection|
+          res = connection.query("SELECT user from mysql.user where user='#{user}' and host='#{host}'")
+          if res.count == 1
+            connection.query("DROP USER #{user}@'#{host}'")
+          else
+            @logger.warn("Failure to delete non-existent user #{user}@'#{host}'")
+          end
         end
       end
       kill_user_session(user)
     end
-  rescue Mysql::Error => e
+  rescue Mysql2::Error => e
     @logger.error("Could not delete user '#{user}': [#{e.errno}] #{e.error}")
   end
 
   def kill_user_session(user)
     @logger.info("Kill sessions of user: #{user}")
     begin
-      process_list = @connection.list_processes
-      process_list.each do |proc|
-        thread_id, user_, _, db, command, time, _, info = proc
-        if user_ == user then
-          @connection.query("KILL #{thread_id}")
-          @logger.info("Kill session: user:#{user} db:#{db}")
+      @pool.with_connection do |connection|
+        process_list = connection.query("show processlist")
+        process_list.each do |proc|
+          thread_id, user_, db, command, time, info = proc["Id"], proc["User"], proc["db"], proc["Command"], proc["Time"], proc["Info"]
+          if user_ == user then
+            connection.query("KILL #{thread_id}")
+            @logger.info("Kill session: user:#{user} db:#{db}")
+          end
         end
       end
-    rescue Mysql::Error => e
+    rescue Mysql2::Error => e
       # kill session failed error, only log it.
       @logger.error("Could not kill user session.:[#{e.errno}] #{e.error}")
     end
@@ -403,19 +426,21 @@ class VCAP::Services::Mysql::Node
     @logger.debug("Restore db #{name} using backup at #{backup_path}")
     service = ProvisionedService.get(name)
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) unless service
-    # revoke write and lock privileges to prevent race with drop database.
-    @connection.query("UPDATE db SET insert_priv='N', create_priv='N',
-                       update_priv='N', lock_tables_priv='N' WHERE Db='#{name}'")
-    @connection.query("FLUSH PRIVILEGES")
-    kill_database_session(name)
-    # mysql can't delete tables that not in dump file.
-    # recreate the database to prevent leave unclean tables after restore.
-    @connection.query("DROP DATABASE #{name}")
-    @connection.query("CREATE DATABASE #{name}")
-    # restore privileges.
-    @connection.query("UPDATE db SET insert_priv='Y', create_priv='Y',
-                       update_priv='Y', lock_tables_priv='Y' WHERE Db='#{name}'")
-    @connection.query("FLUSH PRIVILEGES")
+    @pool.with_connection do |connection|
+      # revoke write and lock privileges to prevent race with drop database.
+      connection.query("UPDATE db SET insert_priv='N', create_priv='N',
+                         update_priv='N', lock_tables_priv='N' WHERE Db='#{name}'")
+      connection.query("FLUSH PRIVILEGES")
+      kill_database_session(connection, name)
+      # mysql can't delete tables that not in dump file.
+      # recreate the database to prevent leave unclean tables after restore.
+      connection.query("DROP DATABASE #{name}")
+      connection.query("CREATE DATABASE #{name}")
+      # restore privileges.
+      connection.query("UPDATE db SET insert_priv='Y', create_priv='Y',
+                         update_priv='Y', lock_tables_priv='Y' WHERE Db='#{name}'")
+      connection.query("FLUSH PRIVILEGES")
+    end
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     path = File.join(backup_path, "#{name}.sql.gz")
     cmd = "#{@gzip_bin} -dc #{path}|" +
@@ -467,7 +492,7 @@ class VCAP::Services::Mysql::Node
 
   # Provision and import dump files
   # Refer to #dump_instance
-  def import_instance(prov_cred, binding_creds, dump_file_path, plan)
+  def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
     @logger.debug("Import instance #{prov_cred["name"]} request.")
     @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
     provision(plan, prov_cred)
@@ -547,7 +572,9 @@ class VCAP::Services::Mysql::Node
   def healthz_details()
     healthz = {:self => "ok"}
     begin
-      @connection.query("SHOW DATABASES")
+      @pool.with_connection do |connection|
+        connection.query("SHOW DATABASES")
+      end
     rescue => e
       @logger.error("Error get database list: #{e}")
       healthz[:self] = "fail"
@@ -566,9 +593,15 @@ class VCAP::Services::Mysql::Node
 
   def get_instance_healthz(instance)
     res = "ok"
-    host, port, socket = %w{host port socket}.map { |opt| @mysql_config[opt] }
+    host, port, socket, root_user, root_pass = %w{host port socket user pass}.map { |opt| @mysql_config[opt] }
     begin
-      conn = Mysql.real_connect(host, instance.user, instance.password, instance.name, port.to_i, socket)
+      begin
+        conn = Mysql2::Client.new(:host => host, :username => instance.user, :password => instance.password, :database =>instance.name, :port => port.to_i, :socket => socket)
+      rescue Mysql2::Error => e
+        # user had modified instance password, fallback to root account
+        conn = Mysql2::Client.new(:host => host, :username => root_user, :password => root_pass, :database =>instance.name, :port => port.to_i, :socket => socket)
+        res = "password-modified"
+      end
       conn.query("SHOW TABLES")
     rescue => e
       @logger.warn("Error get tables of #{instance.name}: #{e}")
@@ -584,9 +617,11 @@ class VCAP::Services::Mysql::Node
   end
 
   def get_queries_status()
-    result = @connection.query("SHOW STATUS WHERE Variable_name ='QUERIES'")
-    return 0 if result.num_rows == 0
-    return result.fetch_row[1].to_i
+    @pool.with_connection do |connection|
+      result = connection.query("SHOW STATUS WHERE Variable_name ='QUERIES'")
+      return 0 if result.count == 0
+      return result.to_a[0]["Value"].to_i
+    end
   end
 
   def get_qps()
@@ -601,31 +636,33 @@ class VCAP::Services::Mysql::Node
 
   def get_instance_status()
     all_dbs = []
-    result = @connection.query('show databases')
-    result.each {|db| all_dbs << db[0]}
-    system_dbs = ['mysql', 'information_schema']
-    sizes = @connection.query(
-      'SELECT table_schema "name",
-       sum( data_length + index_length ) "size"
-       FROM information_schema.TABLES
-       GROUP BY table_schema')
-    result = []
-    db_with_tables = []
-    sizes.each do |i|
-      db = {}
-      name, size = i
-      next if system_dbs.include?(name)
-      db_with_tables << name
-      db[:name] = name
-      db[:size] = size.to_i
-      db[:max_size] = @max_db_size
-      result << db
+    @pool.with_connection do |connection|
+      result = connection.query('show databases')
+      result.each {|db| all_dbs << db["Database"]}
+      system_dbs = ['mysql', 'information_schema']
+      sizes = connection.query(
+        'SELECT table_schema "name",
+         sum( data_length + index_length ) "size"
+         FROM information_schema.TABLES
+         GROUP BY table_schema')
+      result = []
+      db_with_tables = []
+      sizes.each do |i|
+        db = {}
+        name, size = i["name"], i["size"]
+        next if system_dbs.include?(name)
+        db_with_tables << name
+        db[:name] = name
+        db[:size] = size.to_i
+        db[:max_size] = @max_db_size
+        result << db
+      end
+      # handle empty db without table
+      (all_dbs - db_with_tables - system_dbs ).each do |db|
+        result << {:name => db, :size => 0, :max_size => @max_db_size}
+      end
+      return result
     end
-    # handle empty db without table
-    (all_dbs - db_with_tables - system_dbs ).each do |db|
-      result << {:name => db, :size => 0, :max_size => @max_db_size}
-    end
-    result
   end
 
   def gen_credential(name, user, passwd)
@@ -638,5 +675,12 @@ class VCAP::Services::Mysql::Node
       "username" => user,
       "password" => passwd,
     }
+  end
+
+  def is_percona_server?()
+    @pool.with_connection do |connection|
+      res = connection.query("show variables where variable_name like 'version_comment'")
+      return res.count > 0 && res.to_a[0]["Value"] =~ /percona/i
+    end
   end
 end

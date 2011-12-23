@@ -1,6 +1,6 @@
 source "http://rubygems.org"
 
-gem 'eventmachine'
+gem 'eventmachine',  '~> 0.12.11.cloudfoundry.3'
 gem 'em-http-request'
 gem 'json'
 gem 'yajl-ruby'

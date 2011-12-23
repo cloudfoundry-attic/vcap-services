@@ -3,9 +3,8 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
-
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
-require 'base/node_bin'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
 require "blob_service/blob_node"
@@ -27,6 +26,7 @@ class VCAP::Services::Blob::NodeBin < VCAP::Services::Base::NodeBin
     options[:nodejs_path] = parse_property(config, "nodejs_path", String)
     options[:blobd_log_dir] = parse_property(config, "blobd_log_dir", String)
     options[:blobd_path] = parse_property(config, "blobd_path", String)
+    options[:blobd_auth] = parse_property(config, "blobd_auth", String)
     options[:available_memory] = parse_property(config, "available_memory", Integer)
     options[:max_memory] = parse_property(config, "max_memory", Integer)
     options

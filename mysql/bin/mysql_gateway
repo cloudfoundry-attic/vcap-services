@@ -4,9 +4,8 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path('../../Gemfile', __FILE__)
-
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
-require 'base/gateway'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 require 'mysql_service/provisioner'
@@ -22,6 +21,13 @@ class VCAP::Services::Mysql::Gateway < VCAP::Services::Base::Gateway
     File.join(config_base_dir, 'mysql_gateway.yml')
   end
 
+  def additional_options
+    {
+      :resque => @config[:resque],
+      :upload_temp_dir => @config[:upload_temp_dir]
+    }
+  end
 end
 
 VCAP::Services::Mysql::Gateway.new.start
+

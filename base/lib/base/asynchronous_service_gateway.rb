@@ -8,12 +8,11 @@ require 'json'
 require 'sinatra/base'
 require 'uri'
 require 'thread'
-
-$:.unshift(File.expand_path("../../../../../lib", __FILE__))
 require 'json_message'
 require 'services/api'
 require 'services/api/const'
 
+$:.unshift(File.dirname(__FILE__))
 require 'service_error'
 
 module VCAP
@@ -58,6 +57,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @double_check_orphan_interval = opts[:double_check_orphan_interval] || 300
     @handle_fetched = false
     @fetching_handles = false
+    @api_extensions = opts[:api_extensions] || []
     @svc_json     = {
       :label  => @service[:label],
       :url    => @service[:url],
@@ -67,8 +67,9 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       :description  => @service[:description],
       :plan_options => @service[:plan_options],
       :acls => @service[:acls],
-      :timeout => @service[:timeout]
+      :timeout => @service[:timeout],
     }.to_json
+
     @deact_json   = {
       :label  => @service[:label],
       :url    => @service[:url],
@@ -224,6 +225,132 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  # create a snapshot
+  post "/gateway/v1/configurations/:service_id/snapshots" do
+    not_impl unless @api_extensions.include? "snapshots"
+    service_id = params["service_id"]
+    @logger.info("Create snapshot request for service_id=#{service_id}")
+    @provisioner.create_snapshot(service_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+  # Get snapshot details
+  get "/gateway/v1/configurations/:service_id/snapshots/:snapshot_id" do
+    not_impl unless @api_extensions.include? "snapshots"
+    service_id = params["service_id"]
+    snapshot_id = params["snapshot_id"]
+    @logger.info("Get snapshot_id=#{snapshot_id} request for service_id=#{service_id}")
+    @provisioner.get_snapshot(service_id, snapshot_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Snapshot.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+  # Enumreate snapshot
+  get "/gateway/v1/configurations/:service_id/snapshots" do
+    not_impl unless @api_extensions.include? "snapshots"
+    service_id = params["service_id"]
+    @logger.info("Enumerate snapshots request for service_id=#{service_id}")
+    @provisioner.enumerate_snapshots(service_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::SnapshotList.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+  # Rollback to a snapshot
+  put "/gateway/v1/configurations/:service_id/snapshots/:snapshot_id" do
+    not_impl unless @api_extensions.include? "snapshots"
+    service_id = params["service_id"]
+    snapshot_id = params["snapshot_id"]
+    @logger.info("Rollback service_id=#{service_id} to snapshot_id=#{snapshot_id}")
+    @provisioner.rollback_snapshot(service_id, snapshot_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+  # Get serialized url
+  get "/gateway/v1/configurations/:service_id/serialized/url" do
+    not_impl unless @api_extensions.include? "serialization"
+    service_id = params["service_id"]
+    @logger.info("Get serialized url for service_id=#{service_id}")
+    @provisioner.get_serialized_url(service_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+
+  # Import serialized data from url
+  put "/gateway/v1/configurations/:service_id/serialized/url" do
+    not_impl unless @api_extensions.include? "serialization"
+    req = VCAP::Services::Api::SerializedURL.decode(request_body)
+    service_id = params["service_id"]
+    @logger.info("Import serialized data from url:#{req.url} for service_id=#{service_id}")
+    @provisioner.import_from_url(service_id, req.url) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+  # Import serialized data from request
+  put "/gateway/v1/configurations/:service_id/serialized/data" do
+    not_impl unless @api_extensions.include? "serialization"
+    req = VCAP::Services::Api::SerializedData.decode(request_body)
+    service_id = params["service_id"]
+    @logger.info("Import data from request for service_id=#{service_id}")
+    @provisioner.import_from_data(service_id, req) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+  # Get Job details
+  get "/gateway/v1/configurations/:service_id/jobs/:job_id" do
+    not_impl unless @api_extensions.include? "jobs"
+    service_id = params["service_id"]
+    job_id = params["job_id"]
+    @logger.info("Get job=#{job_id} for service_id=#{service_id}")
+    @provisioner.job_details(service_id, job_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
   # Restore an instance of the service
   #
   post '/service/internal/v1/restore' do
@@ -284,6 +411,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     end
     async_mode
   end
+
 
   #################### Helpers ####################
 
@@ -375,6 +503,10 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     def async_reply_error(error_msg)
       err_body = error_msg['msg'].to_json()
       async_reply_raw(error_msg['status'], {'Content-Type' => Rack::Mime.mime_type('.json')}, err_body)
+    end
+
+    def not_impl
+      halt 501, {'Content-Type' => Rack::Mime.mime_type('.json') }
     end
   end
 

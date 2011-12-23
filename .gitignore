@@ -12,3 +12,4 @@ ci-working-dir
 *.swp
 .rvmrc
 nats-server.pid
+base/pkg

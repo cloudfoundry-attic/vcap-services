@@ -31,10 +31,6 @@ class Redis
   end
 end
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require "datamapper_l"
-
 module VCAP
   module Services
     module Redis
@@ -276,12 +272,16 @@ class VCAP::Services::Redis::Node
     true
   end
 
-  def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
+  def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
     provision(plan, service_credentials, db_file)
   rescue => e
     @logger.warn(e)
     nil
+  end
+
+  def all_instances_list
+    ProvisionedService.all.map{|ps| ps.name}
   end
 
   def varz_details

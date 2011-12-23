@@ -4,6 +4,8 @@ $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
 require 'rubygems'
 require 'rspec'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 require 'postgresql_service/util'
 require 'postgresql_service/provisioner'
@@ -37,7 +39,9 @@ def getNodeTestConfig()
     :postgresql => parse_property(config, "postgresql", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
-    :max_db_conns => parse_property(config, "max_db_conns", Integer)
+    :max_db_conns => parse_property(config, "max_db_conns", Integer),
+    :restore_bin => parse_property(config, "restore_bin", String),
+    :dump_bin => parse_property(config, "dump_bin", String)
   }
   options
 end

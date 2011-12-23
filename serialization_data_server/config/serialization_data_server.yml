@@ -1,0 +1,18 @@
+---
+serialization_base_dir: /var/vcap/services
+pid: /var/vcap/sys/run/serialized_data_server.pid
+mbus: nats://localhost:4222
+ip_route: localhost
+external_uri: dl.vcap.me
+logging:
+  level: debug
+redis:
+  host: localhost
+  port: 5454
+index: 0
+# optional listen port, required when work with nginx
+#port: 20000
+# optional nginx configuration
+#nginx:
+#  nginx_path: /protected
+#  nginx_port: 8080

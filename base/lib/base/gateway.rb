@@ -30,8 +30,6 @@ class VCAP::Services::Base::Gateway
   abstract :default_config_file
   abstract :provisioner_class
 
-  CC_CONFIG_FILE = File.expand_path("../../../../../cloud_controller/config/cloud_controller.yml", __FILE__)
-
   def parse_config
     config_file = default_config_file
 
@@ -80,7 +78,7 @@ class VCAP::Services::Base::Gateway
     @config[:service][:label] = "#{@config[:service][:name]}-#{@config[:service][:version]}"
     @config[:service][:url]   = "http://#{@config[:host]}:#{@config[:port]}"
     node_timeout = @config[:node_timeout] || 5
-    cloud_controller_uri = @config[:cloud_controller_uri] || default_cloud_controller_uri
+    cloud_controller_uri = @config[:cloud_controller_uri] || "api.vcap.me"
 
     # Go!
     EM.run do
@@ -105,7 +103,8 @@ class VCAP::Services::Base::Gateway
              :node_timeout => node_timeout,
              :cloud_controller_uri => cloud_controller_uri,
              :check_orphan_interval => @config[:check_orphan_interval],
-             :double_check_orphan_interval => @config[:double_check_orphan_interval]
+             :double_check_orphan_interval => @config[:double_check_orphan_interval],
+             :api_extensions => @config[:api_extensions],
            )
       Thin::Server.start(@config[:host], @config[:port], sg)
     end
@@ -113,11 +112,6 @@ class VCAP::Services::Base::Gateway
 
   def async_gateway_class
     VCAP::Services::AsynchronousServiceGateway
-  end
-
-  def default_cloud_controller_uri
-    config = YAML.load_file(CC_CONFIG_FILE)
-    config['external_uri'] || "api.vcap.me"
   end
 
   def parse_gateway_config(config_file)

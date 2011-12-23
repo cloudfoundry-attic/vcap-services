@@ -14,10 +14,6 @@ require 'vcap/common'
 require 'vcap/component'
 require "mongodb_service/common"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require "datamapper_l"
-
 module VCAP
   module Services
     module MongoDB
@@ -37,6 +33,9 @@ class VCAP::Services::MongoDB::Node
   # Timeout for mongo client operations, node cannot be blocked on any mongo instances.
   # Default value is 2 seconds
   MONGO_TIMEOUT = 2
+
+  # Max clients' connection number per instance
+  MAX_CLIENTS = 500
 
   class ProvisionedService
     include DataMapper::Resource
@@ -94,6 +93,7 @@ class VCAP::Services::MongoDB::Node
     @total_memory = options[:available_memory]
     @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
+    @max_clients = options[:max_clients] || MAX_CLIENTS
 
     @config_template = ERB.new(File.read(options[:config_template]))
 
@@ -579,6 +579,7 @@ class VCAP::Services::MongoDB::Node
       data_dir = data_dir(dir)
       log_file = log_file(instance_id)
       log_dir = log_dir(instance_id)
+      max_clients = @max_clients
 
       config = @config_template.result(binding)
       config_path = File.join(dir, "mongodb.conf")
