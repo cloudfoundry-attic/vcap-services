@@ -99,7 +99,7 @@ GEM
       nats (~> 0.4.10)
       posix-spawn (~> 0.3.6)
       thin (~> 1.2.11)
-      yajl-ruby (~> 0.8.3)
+      yajl-ruby (~> 1.0.0)
     vcap_logging (0.1.3)
     vcap_services_base (0.1.0)
       datamapper (~> 1.1.0)
@@ -114,7 +114,7 @@ GEM
       vcap_common (~> 1.0.2)
       vcap_logging (>= 0.1.3)
     xml-simple (1.0.15)
-    yajl-ruby (0.8.3)
+    yajl-ruby (1.0.0)
 
 PLATFORMS
   ruby
