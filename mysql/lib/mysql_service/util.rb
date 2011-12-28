@@ -117,43 +117,68 @@ module VCAP
           end
         end
 
+        class Connection
+          attr_reader :conn
+
+          def initialize(opts)
+            @opts = opts
+            @conn = Mysql2::Client.new(@opts)
+          end
+
+          def active?
+            @conn && @conn.ping
+          end
+
+          def reconnect
+            @conn.close if @conn
+            @conn = Mysql2::Client.new(@opts)
+          end
+
+          # Verify the embedded mysql connection. Reconnect if necessary
+          def verify!
+            reconnect unless active?
+            self
+          end
+
+          def close
+            @conn.close
+            @conn = nil
+          end
+        end
+
         class ConnectionPool
+          include Util
           def initialize(options)
             @options = options
             @timeout = options[:wait_timeout] || 10
             @size = (options[:pool] && options[:pool].to_i) || 5
+            @logger = options[:logger] || make_logger
             @connections = []
             @connections.extend(MonitorMixin)
             @cond = @connections.new_cond
             @reserved_connections = {}
             for i in 1..@size do
-              @connections << Mysql2::Client.new(@options)
+              @connections << Connection.new(@options)
             end
           end
 
           def with_connection
             connection_id = current_connection_id
             fresh_connection = !@reserved_connections.has_key?(connection_id)
-            yield @reserved_connections[connection_id] ||= checkout
+            connection = (@reserved_connections[connection_id] ||= checkout)
+            yield connection.conn
           ensure
             release_connection(connection_id) if fresh_connection
           end
 
-          def connection_exception(conn)
-            conn.ping
-            return nil
-          rescue Mysql2::Error => exception
-            return exception
-          end
-
+          # verify all pooled connections
           def keep_alive
-            @connections.each do |conn|
-              exception = connection_exception(conn)
-              if exception
-                @logger.error("MySQL connection lost: [#{exception.errno}] #{exception.error}")
-                conn = Mysql2::Client.new(@options)
+            @connections.synchronize do
+              @connections.each do |conn|
+                conn.verify!
               end
             end
+            true
           end
 
           def close
@@ -165,6 +190,14 @@ module VCAP
           def shutdown
             close
             @connections.clear
+          end
+
+          # Check the connction with mysql
+          def connected?
+            keep_alive
+          rescue => e
+            @logger.warn("Can't connection to mysql: [#{e.errno}] #{e.error}")
+            nil
           end
 
           private
@@ -187,7 +220,7 @@ module VCAP
             @connections.synchronize do
               loop do
                 conn = @connections.shift
-                return conn if conn
+                return conn.verify! if conn
 
                 @cond.wait(@timeout)
 

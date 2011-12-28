@@ -157,7 +157,7 @@ class VCAP::Services::Mysql::Node
 
     5.times do
       begin
-        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket)
+        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger)
       rescue Mysql2::Error => e
         @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(5)
@@ -170,13 +170,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def node_ready?()
-    @pool.with_connection do |connection|
-      return connection_exception(connection).nil?
-    end
-  end
-
-  def connection_exception(connection)
-    @pool.connection_exception(connection)
+    @pool && @pool.connected?
   end
 
   #keep connection alive, and check db liveness
