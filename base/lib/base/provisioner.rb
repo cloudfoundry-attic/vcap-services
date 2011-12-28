@@ -46,7 +46,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def create_redis(opt)
-    redis_client = Redis.new(opt)
+    redis_client = ::Redis.new(opt)
     raise "Can't connect to redis:#{opt.inspect}" unless redis_client
     redis_client
   end

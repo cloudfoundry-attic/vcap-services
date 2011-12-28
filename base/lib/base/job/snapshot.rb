@@ -22,7 +22,7 @@ module VCAP::Services::Snapshot
     # Config the redis using options
     def redis_connect(opts)
       resque = %w(host port password).inject({}){|res, o| res[o.to_sym] = opts[o]; res}
-      @redis = Redis.new(resque)
+      @redis = ::Redis.new(resque)
 
       redis_init
     end

@@ -89,8 +89,8 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
     "vcap:serialization:#{service}:#{service_id}:token"
   end
 
-  def file_path(service, id)
-    File.join(@base_dir, "serialize", service, id[0,2], id[2,2], id[4,2], id, "#{id}.gz")
+  def file_path(service, id, file_name)
+    File.join(@base_dir, "serialize", service, id[0,2], id[2,2], id[4,2], id, file_name)
   end
 
   def nginx_path(service, id)
@@ -104,22 +104,31 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
     service_id = params[:service_id]
     @logger.debug("Get serialized data for service=#{service}, service_id=#{service_id}")
     key = redis_key(service, service_id)
-    result = @redis.get(key)
-    error(404) unless result
-    error(403) unless token == result
-    path = file_path(service, service_id)
-    if (File.exists? path)
-    if @nginx
-      status 200
-      content_type "application/octet-stream"
-      path = nginx_path(service, service_id)
-      @logger.info("Serve file using nginx: #{path}")
-      response["X-Accel-Redirect"] = path
-    else
-      @logger.info("Serve file: #{path}")
-      send_file(path)
+    result = @redis.hget(key, :token)
+    if not result
+      @logger.info("Can't find token for service=#{service}, service_id=#{service_id}")
+      error(404)
     end
+    error(403) unless token == result
+    file_name = @redis.hget(key, :file)
+    if not file_name
+      @logger.error("Can't get serialized filename from redis using key:#{key}.")
+      error(501)
+    end
+    path = file_path(service, service_id, file_name)
+    if (File.exists? path)
+      if @nginx
+        status 200
+        content_type "application/octet-stream"
+        path = nginx_path(service, service_id)
+        @logger.info("Serve file using nginx: #{path}")
+        response["X-Accel-Redirect"] = path
+      else
+        @logger.info("Serve file: #{path}")
+        send_file(path)
+      end
     else
+      @logger.info("Can't find file:#{path}")
       error(404)
     end
   end
