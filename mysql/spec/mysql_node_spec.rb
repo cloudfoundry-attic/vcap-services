@@ -63,6 +63,18 @@ describe "Mysql server node" do
     end
   end
 
+  it "should report inconsistency between mysql and local db" do
+    EM.run do
+      name, user = @db["name"], @db["user"]
+      @node.pool.with_connection do |conn|
+        conn.query("delete from db where db='#{name}' and user='#{user}'")
+      end
+      result = @node.check_db_consistency
+      result.include?([name, user]).should == true
+      EM.stop
+    end
+  end
+
   it "should provison a database with correct credential" do
     EM.run do
       @db.should be_instance_of Hash
@@ -207,7 +219,8 @@ describe "Mysql server node" do
       opts[:max_db_size] = 20
       node = VCAP::Services::Mysql::Node.new(opts)
       expect {
-        node.provision(@default_plan)
+        db = node.provision(@default_plan)
+        @test_dbs[db] = []
       }.should_not raise_error
       EM.stop
     end
@@ -294,26 +307,28 @@ describe "Mysql server node" do
       conn.query('begin')
       # lock table test
       conn.query('select * from test where id = 10 for update')
-      err = nil
       old_counter = node.varz_details[:long_queries_killed]
-      t = Proc.new do
-        EM.add_timer(opts[:max_long_query] * 2){
-          err.should_not == nil
-          err.should =~ /interrupted/
-          # counter should also be updated
-          node.varz_details[:long_queries_killed].should > old_counter
-          EM.stop
-        }
+
+      conn2 = connect_to_mysql(db)
+      err = nil
+      t = Thread.new do
         begin
-          name, host, port, user, pass = %w(name hostname port user password).map{|key| db[key]}
-          # use deadlock to simulate long queries
-          err = %x[echo 'select * from test for update'|#{@opts[:mysql_bin]} -h #{host} -P #{port} -u #{user} --password=#{pass} #{name} 2>&1]
+          # conn2 is blocked by conn, we use lock to simulate long queries
+          conn2.query("select * from test for update")
         rescue => e
           err = e
+        ensure
+          conn2.close
         end
-        conn.close
       end
-      EM.defer(t)
+
+      EM.add_timer(opts[:max_long_query] * 5){
+        err.should_not == nil
+        err.message.should =~ /interrupted/
+        # counter should also be updated
+        node.varz_details[:long_queries_killed].should > old_counter
+        EM.stop
+      }
     end
   end
 
@@ -490,7 +505,8 @@ describe "Mysql server node" do
 
   it "should able to generate varz." do
     EM.run do
-      varz = @node.varz_details
+      node = VCAP::Services::Mysql::Node.new(@opts)
+      varz = node.varz_details
       varz.should be_instance_of Hash
       varz[:queries_since_startup].should >0
       varz[:queries_per_second].should >= 0
@@ -568,8 +584,6 @@ describe "Mysql server node" do
     EM.run do
       conn = connect_to_mysql(@db)
       a = conn.query("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
-      p("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
-      p a
       healthz = @node.healthz_details()
       healthz[:self].should == "ok"
       healthz[@db['name'].to_sym].should == "password-modified"
