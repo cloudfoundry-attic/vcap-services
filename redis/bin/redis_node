@@ -2,8 +2,8 @@
 # -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
-require 'bundler/setup'
-require 'vcap_services_base'
+require "bundler/setup"
+require "vcap_services_base"
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
 require "redis_service/redis_node"
@@ -15,8 +15,8 @@ class VCAP::Services::Redis::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def default_config_file
-    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
-    File.join(config_base_dir, 'redis_node.yml')
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), "..", "config")
+    File.join(config_base_dir, "redis_node.yml")
   end
 
   def additional_config(options, config)

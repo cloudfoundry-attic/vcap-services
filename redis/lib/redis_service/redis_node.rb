@@ -8,29 +8,6 @@ require "uuidtools"
 require "redis"
 require "thread"
 
-# Redis client library doesn't support renamed command, so we override the functions here.
-class Redis
-  def config(config_command_name, action, *args)
-    synchronize do
-      reply = @client.call [config_command_name.to_sym, action, *args]
-
-      if reply.kind_of?(Array) && action == :get
-        Hash[*reply]
-      else
-        reply
-      end
-    end
-  end
-
-  def shutdown(shutdown_command_name)
-    synchronize do
-      @client.call [shutdown_command_name.to_sym]
-    end
-  rescue Errno::ECONNREFUSED => e
-    # Since the shutdown is successful, it will raise this connect refused exception by redis client library.
-  end
-end
-
 module VCAP
   module Services
     module Redis
@@ -42,10 +19,12 @@ end
 
 require "redis_service/common"
 require "redis_service/redis_error"
+require "redis_service/util"
 
 class VCAP::Services::Redis::Node
 
   include VCAP::Services::Redis::Common
+  include VCAP::Services::Redis::Util
   include VCAP::Services::Redis
 
   class ProvisionedService
@@ -59,7 +38,7 @@ class VCAP::Services::Redis::Node
 
     def listening?
       begin
-        TCPSocket.open('localhost', port).close
+        TCPSocket.open("localhost", port).close
         return true
       rescue => e
         return false
@@ -90,6 +69,7 @@ class VCAP::Services::Redis::Node
     @redis_log_dir = options[:redis_log_dir]
     @config_command_name = @options[:command_rename_prefix] + "-config"
     @shutdown_command_name = @options[:command_rename_prefix] + "-shutdown"
+    @save_command_name = @options[:command_rename_prefix] + "-save"
     @max_clients = @options[:max_clients] || 500
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
@@ -244,32 +224,11 @@ class VCAP::Services::Redis::Node
 
   def dump_instance(service_credentials, binding_credentials_list = [], dump_dir)
     FileUtils.mkdir_p(dump_dir)
-    save = get_config(service_credentials["port"], @disable_password, "save")
-    dir = get_config(service_credentials["port"], @disable_password, "dir")
-    set_config(service_credentials["port"], @disable_password, "dir", dump_dir)
-    # This will activate the redis instance to do snapshot in 1 second.
-    set_config(service_credentials["port"], @disable_password, "save", "1 0")
-    # After 2 second, the dump work should start or finish,
-    # if not finish, then check its status each second.
-    sleep 1
-    is_dump_finish = false
-    max_waiting_time = 0
-    while true
-      is_dump_finish = (get_info(service_credentials["port"], @disable_password)["bgsave_in_progress"] == "0")
-      sleep 1
-      if is_dump_finish
-        break
-      end
-      max_waiting_time = max_waiting_time + 1
-      if max_waiting_time > 30
-        return nil
-      end
-    end
-    # Restore snapshot configuration
-    set_config(service_credentials["port"], @disable_password, "save", save)
-    sleep 1
-    set_config(service_credentials["port"], @disable_password, "dir", dir)
-    true
+    instance = ProvisionedService.new
+    instance.name = service_credentials["name"]
+    instance.port = service_credentials["port"]
+    instance.password = @disable_password
+    dump_redis_data(instance, dump_dir)
   end
 
   def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
@@ -384,6 +343,7 @@ class VCAP::Services::Redis::Node
       vm_pages = (@max_swap * 1024 * 1024 / 32).round # swap in bytes / size of page (32 bytes)
       config_command = @config_command_name
       shutdown_command = @shutdown_command_name
+      save_command = @save_command_name
       maxclients = @max_clients
 
       config = @config_template.result(Kernel.binding)
@@ -438,120 +398,6 @@ class VCAP::Services::Redis::Node
       when :free then 16
       else
         raise RedisError.new(RedisError::REDIS_INVALID_PLAN, instance.plan)
-    end
-  end
-
-  def stop_redis_server(instance)
-    Timeout::timeout(@redis_timeout) do
-      redis = Redis.new({:port => instance.port, :password => instance.password})
-      begin
-        redis.shutdown(@shutdown_command_name)
-      rescue RuntimeError => e
-        # It could be a disabled instance
-        redis = Redis.new({:port => instance.port, :password => @disable_password})
-        redis.shutdown(@shutdown_command_name)
-      end
-    end
-  rescue Timeout::Error => e
-    @logger.warn(e)
-  end
-
-  def close_fds
-    3.upto(get_max_open_fd) do |fd|
-      begin
-        IO.for_fd(fd, "r").close
-      rescue
-      end
-    end
-  end
-
-  def get_max_open_fd
-    max = 0
-
-    dir = nil
-    if File.directory?("/proc/self/fd/") # Linux
-      dir = "/proc/self/fd/"
-    elsif File.directory?("/dev/fd/") # Mac
-      dir = "/dev/fd/"
-    end
-
-    if dir
-      Dir.foreach(dir) do |entry|
-        begin
-          pid = Integer(entry)
-          max = pid if pid > max
-        rescue
-        end
-      end
-    else
-      max = 65535
-    end
-
-    max
-  end
-
-  def check_password(port, password)
-    Timeout::timeout(@redis_timeout) do
-      redis = Redis.new({:port => port})
-      redis.auth(password)
-    end
-    true
-  rescue => e
-    if e.message == "ERR invalid password"
-      return false
-    else
-      raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
-    end
-  ensure
-    begin
-      redis.quit if redis
-    rescue => e
-    end
-  end
-
-  def get_info(port, password)
-    info = nil
-    Timeout::timeout(@redis_timeout) do
-      redis = Redis.new({:port => port, :password => password})
-      info = redis.info
-    end
-    info
-  rescue => e
-    raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
-  ensure
-    begin
-      redis.quit if redis
-    rescue => e
-    end
-  end
-
-  def get_config(port, password, key)
-    config = nil
-    Timeout::timeout(@redis_timeout) do
-      redis = Redis.new({:port => port, :password => password})
-      config = redis.config(@config_command_name, :get, key)[key]
-    end
-    config
-  rescue => e
-    raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
-  ensure
-    begin
-      redis.quit if redis
-    rescue => e
-    end
-  end
-
-  def set_config(port, password, key, value)
-    Timeout::timeout(@redis_timeout) do
-      redis = Redis.new({:port => port, :password => password})
-      redis.config(@config_command_name, :set, key, value)
-    end
-  rescue => e
-    raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
-  ensure
-    begin
-      redis.quit if redis
-    rescue => e
     end
   end
 

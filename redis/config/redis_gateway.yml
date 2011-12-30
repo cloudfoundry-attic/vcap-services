@@ -17,5 +17,13 @@ logging:
   level: debug
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/redis_service.pid
+api_extensions:
+  - snapshots
+  - serialization
+  - jobs
+resque:
+  host: localhost
+  port: 5454
+upload_temp_dir: /tmp
 # allow_over_provisioning: false
 # z_interval: 30
