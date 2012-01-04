@@ -1,18 +1,18 @@
 source :rubygems
 
+gem "datamapper", ">= 0.10.2"
+gem "dm-sqlite-adapter"
+gem "do_sqlite3"
 gem "eventmachine"
 gem "em-http-request"
-gem "nats", '>= 0.4.10'
+gem "nats"
 gem "ruby-hmac"
 gem "uuidtools"
-gem "datamapper", ">= 0.10.2"
-gem "do_sqlite3"
-gem "dm-sqlite-adapter"
+gem "rest-client"
 gem "sinatra"
 gem "thin"
-gem "rest-client"
 
-gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
+gem 'vcap_common', '~> 1.0.3', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
 
 group :test do
