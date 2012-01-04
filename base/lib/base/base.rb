@@ -48,7 +48,7 @@ class VCAP::Services::Base::Base
       @node_nats = NATS.connect(:uri => options[:mbus]) {
         on_connect_node
       }
-      status_port = status_username = status_password = nil
+      status_port = status_user = status_password = nil
       if not options[:status].nil?
         status_port = options[:status][:port]
         status_user = options[:status][:user]
