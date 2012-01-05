@@ -1,6 +1,6 @@
 source "http://rubygems.org"
 
-gem "nats", '>= 0.4.8'
+gem "nats", '~> 0.4.22.beta.4'
 gem "eventmachine"
 gem "json"
 gem "em-http-request"

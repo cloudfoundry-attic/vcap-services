@@ -1,18 +1,18 @@
 source "http://rubygems.org"
 
-gem "nats", '>= 0.4.10'
+gem "nats"
 gem "datamapper", ">= 0.10.2"
 gem "do_sqlite3", :require => nil
 gem "dm-sqlite-adapter"
 gem "dm-types"
-gem 'eventmachine',  '~> 0.12.11.cloudfoundry.1'
+gem 'eventmachine'
 gem "em-http-request"
 gem "json"
 gem "uuidtools"
 gem "thin"
 gem "sinatra"
 
-gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
+gem 'vcap_common', '>= 1.0.4', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
 gem "vcap_services_base"
 

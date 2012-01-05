@@ -2,4 +2,4 @@ source "http://rubygems.org"
 
 
 gem "json"
-gem "nats", '>= 0.4.8'
+gem "nats", '~> 0.4.22.beta.4'
