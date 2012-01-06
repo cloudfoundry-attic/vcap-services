@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+# Copyright (c) 2009-2011 VMware, Inc.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
+require 'base/backup'
+
+$:.unshift(File.expand_path("../../lib", __FILE__))
+require "blob_service/blob_node"
+
+include VCAP::Services::Blob
+class VCAP::Services::Blob::Backup < VCAP::Services::Base::Backup
+
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'blob_backup.yml')
+  end
+
+
+  def backup_db
+    # make sure local_db exists
+    unless File.exist? @config['local_db'].split(':')[1]
+      echo "Could not find local_db: #{@config['local_db']}",true
+      exit 1
+    end
+    unless @config['blobdump_path']
+      echo "Could not find blob dump path",true
+      exit 1
+    end
+
+    metadump_path = @config['metadump_path'] || 'mongodump'
+    
+    cmd_timeout = @config['timeout'].to_f
+    DataMapper.setup(:default, @config['local_db'])
+    DataMapper::auto_upgrade!
+
+    provisioned_service = Node::ProvisionedService.all
+    provisioned_service.each do |service|
+      user = service.admin
+      pass = service.adminpass
+      port = service.port
+      meta_port = service.meta_port
+
+      path = get_dump_path(service.name)
+
+      # Run metadump
+      command = "#{metadump_path} -h 127.0.0.1:#{meta_port} -u #{user} -p#{pass} -o #{path}"
+      res = CMDHandle.execute( command,cmd_timeout)
+      echo "#{command} result: #{res}", !res
+
+      # Delete system.user.bson
+      command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
+      res = CMDHandle.execute( command,cmd_timeout)
+      echo "#{command} result: #{res}", !res
+
+      # dump blobs
+      command = "#{blobdump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
+      res = CMDHandle.execute( command,cmd_timeout)
+      echo "#{command} result: #{res}", !res
+     
+    end
+    echo "Backup Done!"
+  end
+end
+
+VCAP::Services::Blob::Backup.new.start

@@ -1,0 +1,9 @@
+service_name: blob
+backup_base_dir: /mnt/nfs/servicebackup/
+local_db: sqlite3:/var/vcap/services/blob/blob_node.db
+service_base_dir: /var/vcap/services/blob/instances/
+blobdump_path: blobdump
+metadump_path: mongodump
+timeout: 600
+logging:
+  level: debug
