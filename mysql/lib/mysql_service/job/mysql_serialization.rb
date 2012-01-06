@@ -41,15 +41,16 @@ module VCAP::Services::Serialization::Mysql
       # Clean up previous data
       cleanup(name)
       FileUtils.mkdir_p(dump_path)
-      dump_file_name = File.join(dump_path, "#{name}.gz")
+      dump_file_name = "#{name}.gz"
+      dump_file_path = File.join(dump_path, dump_file_name)
 
       mysql_conf = @config["mysql"]
-      result = dump_database(name, mysql_conf, dump_file_name, :mysqldump_bin => @config["mysqldump_bin"], :gzip_bin => @config["gzip_bin"])
+      result = dump_database(name, mysql_conf, dump_file_path, :mysqldump_bin => @config["mysqldump_bin"], :gzip_bin => @config["gzip_bin"])
       raise "Failed to execute dump command to #{name}" unless result
 
       token = generate_credential()
       service_name = @config["service_name"]
-      update_download_token(service_name, name, token)
+      update_download_token(service_name, name, dump_file_name, token)
       url = generate_download_url(name, token)
       @logger.info("Download link generated for #{name}: #{url}")
 

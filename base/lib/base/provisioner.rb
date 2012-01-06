@@ -46,7 +46,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def create_redis(opt)
-    redis_client = Redis.new(opt)
+    redis_client = ::Redis.new(opt)
     raise "Can't connect to redis:#{opt.inspect}" unless redis_client
     redis_client
   end
@@ -661,6 +661,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
     File.open(temp_path, "wb+") do |f|
       f.write(Base64.decode64(req.data))
+      f.fsync
     end
     job_id = import_from_data_job.create(:service_id => service_id, :temp_file_path => temp_path, :node_id => find_node(service_id))
     job = get_job(job_id)

@@ -121,16 +121,19 @@ class VCAP::Services::Mysql::Node
 
   def check_db_consistency()
     db_list = []
+    missing_accounts =[]
     @pool.with_connection do |connection|
-      connection.query('select db, user from db').each{|db, user| db_list.push([db, user])}
+      connection.query('select db, user from db').each(:as => :array){|row| db_list.push(row)}
     end
     ProvisionedService.all.each do |service|
-      db, user = service.name, service.user
-      if not db_list.include?([db, user]) then
-        @logger.warn("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
-        next
-      end
+      account = service.name, service.user
+      missing_accounts << account unless db_list.include?(account)
     end
+    missing_accounts.each do |account|
+      db, user = account
+      @logger.warn("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
+    end
+    missing_accounts
   end
 
   # check whether mysql has required innodb plugin installed.
@@ -197,7 +200,7 @@ class VCAP::Services::Mysql::Node
     @pool.with_connection do |connection|
       process_list = connection.query("show processlist")
       process_list.each do |proc|
-        thread_id, user, db, command, time, info = proc["Id"], proc["User"], proc["db"], proc["Command"], proc["Time"], proc["Info"]
+        thread_id, user, db, command, time, info, state = %w(Id User Db Command Time Info State).map{|o| proc[o]}
         if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
           connection.query("KILL QUERY #{thread_id}")
           @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
@@ -220,7 +223,7 @@ class VCAP::Services::Mysql::Node
     @pool.with_connection do |connection|
       result = connection.query(query_str)
       result.each do |trx|
-        trx_started, id, user, db, info, active_time = trx
+        trx_started, id, user, db, info, active_time = %w(trx_started id user db info active_time).map{|o| trx[o]}
         connection.query("KILL QUERY #{id}")
         @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
         @long_tx_killed += 1
@@ -335,6 +338,13 @@ class VCAP::Services::Mysql::Node
     return if credential.nil?
     @logger.debug("Unbind service: #{credential.inspect}")
     name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
+
+    # Special case for 'ancient' instances that don't have new credentials for each Bind operation.
+    # Never delete a user that was created as part of the initial provisioning process.
+    @logger.debug("Begin check ancient credentials.")
+    ProvisionedService.all(:name => name, :user => user).each {|record| @logger.info("Find unbind credential in local database: #{record.inspect}. Skip delete account."); return true}
+    @logger.debug("Ancient credential not found.")
+
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
     @pool.with_connection do |connection|
       res = connection.query("SELECT * from mysql.user WHERE user='#{user}'")

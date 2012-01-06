@@ -26,7 +26,7 @@ activerehashing yes
 
 rename-command CONFIG <%= config_command %>
 rename-command MONITOR ""
-rename-command SAVE ""
+rename-command SAVE <%= save_command %>
 rename-command BGSAVE ""
 rename-command SHUTDOWN <%= shutdown_command %>
 rename-command BGREWRITEAOF ""

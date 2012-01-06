@@ -21,7 +21,7 @@ module VCAP::Services::Serialization
     # Config the redis using options
     def redis_connect(opts)
       resque = %w(host port password).inject({}){|res, o| res[o.to_sym] = opts[o]; res}
-      @redis = Redis.new(resque)
+      @redis = ::Redis.new(resque)
     end
 
     def redis=(redis)
@@ -84,9 +84,11 @@ module VCAP::Services::Serialization
       File.join(@config["serialization_base_dir"], "serialize", @config["service_name"] , name[0,2],name[2,2], name[4,2], name)
     end
 
-    # Update the download token and save it in redis
-    def update_download_token(service, name, token)
-      client.set(redis_key("#{service}:#{name}:token"), token)
+    # Update the download token for a serialized file and save it in redis
+    def update_download_token(service, name, file_name, token)
+      key = "#{service}:#{name}:token"
+      client.hset(redis_key(key), :token, token)
+      client.hset(redis_key(key), :file, file_name)
     end
 
     def parse_config

@@ -48,13 +48,22 @@ class VCAP::Services::Base::Base
       @node_nats = NATS.connect(:uri => options[:mbus]) {
         on_connect_node
       }
+      status_port = status_user = status_password = nil
+      if not options[:status].nil?
+        status_port = options[:status][:port]
+        status_user = options[:status][:user]
+        status_password = options[:status][:password]
+      end
 
       VCAP::Component.register(
         :nats => @node_nats,
         :type => service_description,
         :host => @local_ip,
         :index => options[:index] || 0,
-        :config => options
+        :config => options,
+        :port => status_port,
+        :user => status_user,
+        :password => status_password
       )
     else
       @logger.info("NATS is disabled")

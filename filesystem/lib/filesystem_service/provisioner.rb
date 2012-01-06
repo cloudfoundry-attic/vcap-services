@@ -60,14 +60,12 @@ class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisione
       end
     end
     nid = "gateway"
-    @orphan_mutex.synchronize do
-      instances_list.each do |ins|
-        @staging_orphan_instances[nid] ||= []
-        @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
-      end
-      oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
-      @logger.debug("Staging Orphans: Instances: #{oi_count}")
+    instances_list.each do |ins|
+      @staging_orphan_instances[nid] ||= []
+      @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
     end
+    oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
+    @logger.debug("Staging Orphans: Instances: #{oi_count}")
     blk.call(success)
   rescue => e
     @logger.warn(e)

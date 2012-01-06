@@ -1,0 +1,6 @@
+#!/bin/bash
+path=`dirname $0`
+
+cd $path
+cd ..
+bundle exec rake -r ./lib/redis_service/job.rb resque:work
