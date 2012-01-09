@@ -145,7 +145,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       svc = @prov_svcs[handle_id]
       raise "#{handle_id} not found!" if svc.nil?
 
-      @logger.debug("svc[configuration]: #{svc[configuration]}")
+      @logger.debug("svc[configuration]: #{svc[:configuration]}")
       success = @atmos_helper.delete_user(handle_id, instance_id)
       @prov_svcs.delete(handle_id) if success
       blk.call(success())
