@@ -636,11 +636,6 @@ class VCAP::Services::Postgresql::Node
     cmd = "#{@dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
-      @logger.debug("Unbind user in #{prov_cred["name"]}.")
-      binding_creds << prov_cred
-      binding_creds.each do |cred|
-        unbind(cred)
-      end
       return true
     else
       return nil
@@ -682,7 +677,6 @@ class VCAP::Services::Postgresql::Node
     name = prov_cred["name"]
     if prov_cred["hostname"] == @local_ip
       # Original
-      bind_all_creds(name, binding_creds_hash)
       db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
       service = Provisionedservice.get(name)
       unblock_user_from_db(db_connection, service)
