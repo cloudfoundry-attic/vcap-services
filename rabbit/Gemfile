@@ -4,7 +4,7 @@ gem "nats"
 gem "datamapper", ">= 0.10.2"
 gem "do_sqlite3", :require => nil
 gem "dm-sqlite-adapter"
-gem "eventmachine"
+gem 'eventmachine'
 gem "em-http-request"
 gem "json"
 gem "uuidtools"
@@ -13,8 +13,9 @@ gem "thin"
 gem "sinatra"
 gem "amqp"
 
-gem 'vcap_common', '~> 1.0.3', :require => ['vcap/common', 'vcap/component']
+gem 'vcap_common', '>= 1.0.4', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
+gem "vcap_services_base"
 
 group :test do
   gem "rake"

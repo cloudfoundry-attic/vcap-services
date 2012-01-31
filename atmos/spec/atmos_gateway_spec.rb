@@ -1,13 +1,21 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-$LOAD_PATH.unshift(File.expand_path("../../../base/lib", __FILE__))
-
 require File.dirname(__FILE__) + '/spec_helper'
 require "atmos_service/provisioner"
 require "atmos_service/atmos_helper"
 require "uuidtools"
 
 require "atmos_rest_client"
+
+module VCAP
+  module Services
+    module Atmos
+      class Provisioner
+        attr_reader :prov_svcs
+      end
+    end
+  end
+end
 
 include VCAP::Services::Atmos
 
@@ -24,9 +32,40 @@ describe VCAP::Services::Atmos::Provisioner do
 
   it "should successfully new VCAP::Services::Atmos::Provisioner instance" do
     EM.run do
-      @sg = Provisioner.new(@config)
-      @logger.debug @sg
-      @sg.should_not be_nil
+      sg = Provisioner.new(@config)
+      @logger.debug sg
+      sg.should_not be_nil
+      EM.stop
+    end
+  end
+
+  it "should handle local hash correctly when unprovision" do
+    EM.run do
+      sg = Provisioner.new(@config)
+      sg.should_not be_nil
+      sg.prov_svcs.empty?.should == true
+      #
+      svc_local = {
+        :configuration => {'subtenant_name' => 'st_name', 'subtenant_id' => 'st_id', 'host' => 'host'},
+        :service_id => 'st_name',
+        :credentials => {'host' => 'host', 'port' => 'port', 'token' => 'token',
+          'shared_secret' => 'shared_secret', 'subtenant_id' => 'st_id'}
+      }
+      sg.prov_svcs[svc_local[:service_id]] = svc_local
+      binding_local = {
+        :service_id => 'token',
+        :configuration => svc_local[:configuration],
+        :credentials => {'host' => 'host', 'port' => 'port', 'token' => 'token',
+          'shared_secret' => 'shared_secret', 'subtenant_id' => svc_local[:configuration]['subtenant_id']}
+      }
+      sg.prov_svcs[binding_local[:service_id]] = binding_local
+      sg.prov_svcs.count.should == 2
+      #
+      sg.remove_local_bindings svc_local[:service_id]
+      sg.prov_svcs.count.should == 1
+      sg.prov_svcs.delete svc_local[:service_id]
+      sg.prov_svcs.empty?.should == true
+      #
       EM.stop
     end
   end

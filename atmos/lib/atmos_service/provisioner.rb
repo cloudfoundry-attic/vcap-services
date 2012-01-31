@@ -1,7 +1,6 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift File.join(File.dirname(__FILE__), '.')
 
-require "base/provisioner"
 require "atmos_service/common"
 require "uuidtools"
 require "atmos_helper"
@@ -83,13 +82,10 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     begin
       success = @atmos_helper.delete_subtenant(instance_id)
       if success
-        bindings = find_all_bindings(instance_id)
-        @logger.debug("unprovision service: #{instance_id} ")
+        @logger.debug("service unprovisioned: #{instance_id} ")
+        # clean up local hash
+        remove_local_bindings(instance_id)
         @prov_svcs.delete(instance_id)
-        bindings.each do |b|
-          @logger.debug("delete binded user: #{b[:service_id]} ")
-          @prov_svcs.delete(b[:service_id])
-        end
       end
       blk.call(success())
     rescue => e
@@ -123,8 +119,14 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
         :credentials => {:host => @host, :port => @port, :token => token,
           :shared_secret => shared_secret, :subtenant_id => svc[:configuration]["subtenant_id"]}
       }
+      res_local = {
+        :service_id => token,
+        :configuration => svc[:configuration],
+        :credentials => {'host' => @host, 'port' => @port, 'token' => token,
+          'shared_secret' => shared_secret, 'subtenant_id' => svc[:configuration]["subtenant_id"]}
+      }
       @logger.debug("binded: #{res.inspect}")
-      @prov_svcs[res[:service_id]] = res
+      @prov_svcs[res[:service_id]] = res_local
       blk.call(success(res))
     rescue => e
       if e.instance_of? AtmosError
@@ -143,7 +145,7 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       svc = @prov_svcs[handle_id]
       raise "#{handle_id} not found!" if svc.nil?
 
-      @logger.debug("svc[configuration]: #{svc[configuration]}")
+      @logger.debug("svc[configuration]: #{svc[:configuration]}")
       success = @atmos_helper.delete_user(handle_id, instance_id)
       @prov_svcs.delete(handle_id) if success
       blk.call(success())
@@ -157,4 +159,27 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
     end
   end
 
+  def remove_local_bindings(subtenant_name)
+    @logger.debug "remove_local_bindings with subtenant_name: #{subtenant_name}"
+
+    # get subtenant_id by subtenant_name
+    subtenant_id = nil
+    @prov_svcs.each do |k, v|
+      if v[:service_id] == subtenant_name
+        subtenant_id = v[:credentials]['subtenant_id']
+        @logger.debug "right subtenant_id found: #{subtenant_id}"
+        break
+      end
+    end
+
+    # remove related bindings from local hash
+    if subtenant_id
+      @prov_svcs.each do |k,v|
+        if v[:credentials]['subtenant_id'] == subtenant_id && v[:service_id] != subtenant_name
+          @logger.debug "delete binding with token: #{k}"
+          @prov_svcs.delete(k)
+        end
+      end
+    end
+  end
 end

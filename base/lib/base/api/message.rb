@@ -1,6 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 #
-$:.unshift(File.expand_path("../../../../../../lib", __FILE__))
 $:.unshift(File.expand_path("../..", __FILE__))
 require 'json_message'
 require 'base'

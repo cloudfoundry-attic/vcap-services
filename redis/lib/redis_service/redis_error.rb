@@ -1,6 +1,4 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/service_error'
 
 module VCAP
   module Services
@@ -17,6 +15,7 @@ module VCAP
         REDIS_CONNECT_INSTANCE_FAILED     = [31107, HTTP_INTERNAL, "Could not connect redis instance"]
         REDIS_SET_INSTANCE_PASS_FAILED    = [31108, HTTP_INTERNAL, "Could not set redis instance password"]
         REDIS_RESTORE_FILE_NOT_FOUND      = [31109, HTTP_INTERNAL, "Could not find redis restore data file %s"]
+        REDIS_BAD_SERIALIZED_DATA         = [31110, HTTP_INTERNAL, "File %s can't be verified"]
       end
     end
   end

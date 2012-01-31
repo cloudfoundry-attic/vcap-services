@@ -32,35 +32,42 @@ class VCAP::Services::Base::Base
     @options = options
     @local_ip = VCAP.local_ip(options[:ip_route])
     @logger.info("#{service_description}: Initializing")
-    @nats_lock = Mutex.new
 
-    NATS.on_error do |e|
-      if e.kind_of? NATS::ConnectError
-        @logger.error("EXITING! NATS connection failed: #{e}")
-        exit
-      else
-        @logger.error("NATS problem, #{e}")
+    @node_nats = nil
+    if options[:mbus]
+      @nats_lock = Mutex.new
+
+      NATS.on_error do |e|
+        if e.kind_of? NATS::ConnectError
+          @logger.error("EXITING! NATS connection failed: #{e}")
+          exit
+        else
+          @logger.error("NATS problem, #{e}")
+        end
       end
-    end
-    @node_nats = NATS.connect(:uri => options[:mbus]) {
-      on_connect_node
-    }
-    status_port = status_username = status_password = nil
-    if not options[:status].nil?
+      @node_nats = NATS.connect(:uri => options[:mbus]) {
+        on_connect_node
+      }
+      status_port = status_user = status_password = nil
+      if not options[:status].nil?
         status_port = options[:status][:port]
         status_user = options[:status][:user]
         status_password = options[:status][:password]
+      end
+
+      VCAP::Component.register(
+        :nats => @node_nats,
+        :type => service_description,
+        :host => @local_ip,
+        :index => options[:index] || 0,
+        :config => options,
+        :port => status_port,
+        :user => status_user,
+        :password => status_password
+      )
+    else
+      @logger.info("NATS is disabled")
     end
-    VCAP::Component.register(
-      :nats => @node_nats,
-      :type => service_description,
-      :host => @local_ip,
-      :index => options[:index] || 0,
-      :config => options,
-      :port => status_port,
-      :user => status_user,
-      :password => status_password
-    )
 
     @max_nats_payload = options[:max_nats_payload] || 1024 * 1024
   end
@@ -88,7 +95,7 @@ class VCAP::Services::Base::Base
 
   def shutdown()
     @logger.info("#{service_description}: Shutting down")
-    @node_nats.close
+    @node_nats.close if @node_nats
   end
 
   def group_handles_in_json(instances_list, bindings_list, size_limit)

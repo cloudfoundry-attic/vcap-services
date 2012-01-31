@@ -1,0 +1,99 @@
+#!/usr/bin/env ruby
+# Copyright (c) 2009-2011 VMware, Inc.
+# -*- mode: ruby -*-
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+
+require 'rubygems'
+require 'bundler/setup'
+require 'optparse'
+require 'logger'
+require 'logging'
+require 'thin'
+require 'yaml'
+
+require 'vcap/common'
+require 'vcap/logging'
+
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..')
+require 'lib/server'
+
+module VCAP
+  module Services
+  end
+end
+
+
+module VCAP::Services::Serialization
+
+  def self.start
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+    config_file = File.join(config_base_dir, 'serialization_data_server.yml')
+
+    OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0.split(/\//)[-1]} [options]"
+      opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+        config_file = opt
+      end
+      opts.on("-h", "--help", "Help") do
+        puts opts
+        exit
+      end
+    end.parse!
+
+    begin
+      config = YAML.load_file(config_file)
+    rescue => e
+      puts "Could not read configuration file:  #{e}"
+      exit
+    end
+
+    @config = {
+      :index => parse_property(config, "index", Integer, :optional => true),
+      :ip_route => parse_property(config, "ip_route", String, :optional => true),
+      :serialization_base_dir => parse_property(config, "serialization_base_dir", String),
+      :mbus => parse_property(config, "mbus", String),
+      :external_uri => parse_property(config, "external_uri", String),
+      :port => parse_property(config, "port", Integer, :optional => true),
+      :redis => parse_property(config, "redis", Hash),
+      :nginx => parse_property(config, "nginx", Hash, :optional => true),
+    }
+
+    @config[:host] = VCAP.local_ip(@config[:ip_route])
+    @config[:port] ||= VCAP.grab_ephemeral_port
+
+    VCAP::Logging.setup_from_config(parse_property(config, "logging", Hash))
+    index = @config[:index] || 0
+    logger = VCAP::Logging.logger("#{File.basename($0)}_#{index}")
+    @config[:logger] = logger
+
+    pf = VCAP::PidFile.new(parse_property(config, "pid", String))
+    pf.unlink_at_exit
+
+
+    EM.run do
+      handle = VCAP::Services::Serialization::Server.new(@config)
+      server = Thin::Server.new(@config[:host], @config[:port], handle)
+      server.threaded = true
+      server.start!
+    end
+  end
+
+  def self.parse_property(hash, key, type, options = {})
+    obj = hash[key]
+    if obj.nil?
+      raise "Missing required option: #{key}" unless options[:optional]
+      nil
+    elsif type == Range
+      raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
+      first, last = obj["first"], obj["last"]
+      raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
+      Range.new(first, last)
+    else
+      raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
+      obj
+    end
+  end
+end
+
+VCAP::Services::Serialization.start

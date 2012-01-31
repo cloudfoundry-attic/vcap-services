@@ -1,14 +1,12 @@
 #!/usr/bin/env ruby
 # -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+require "bundler/setup"
+require "vcap_services_base"
 
-ENV["BUNDLE_GEMFILE"] ||= File.expand_path('../../Gemfile', __FILE__)
-
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
-require 'base/gateway'
-
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-require 'redis_service/redis_provisioner'
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "lib")
+require "redis_service/redis_provisioner"
 
 class VCAP::Services::Redis::Gateway < VCAP::Services::Base::Gateway
 
@@ -17,8 +15,15 @@ class VCAP::Services::Redis::Gateway < VCAP::Services::Base::Gateway
   end
 
   def default_config_file
-    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
-    File.join(config_base_dir, 'redis_gateway.yml')
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), "..", "config")
+    File.join(config_base_dir, "redis_gateway.yml")
+  end
+
+  def additional_options
+    {
+      :resque => @config[:resque],
+      :upload_temp_dir => @config[:upload_temp_dir]
+    }
   end
 
 end

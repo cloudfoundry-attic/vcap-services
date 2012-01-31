@@ -6,11 +6,16 @@ require "uuidtools"
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'base/base'
+require 'base/job/async_job'
+require 'base/job/snapshot'
+require 'base/job/serialization'
 require 'barrier'
 require 'service_message'
 
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::Internal
+  include VCAP::Services::AsyncJob
+  include VCAP::Services::Snapshot
 
   BARRIER_TIMEOUT = 2
   MASKED_PASSWORD = '********'
@@ -23,7 +28,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @nodes     = {}
     @prov_svcs = {}
     @handles_for_check_orphan = {}
-    @orphan_mutex = Mutex.new
     reset_orphan_stat
 
     z_interval = options[:z_interval] || 30
@@ -38,6 +42,13 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
 
     EM.add_periodic_timer(60) { process_nodes }
+
+  end
+
+  def create_redis(opt)
+    redis_client = ::Redis.new(opt)
+    raise "Can't connect to redis:#{opt.inspect}" unless redis_client
+    redis_client
   end
 
   def flavor
@@ -78,6 +89,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @nodes.delete_if {|_, timestamp| Time.now.to_i - timestamp > 300}
   end
 
+  def pre_send_announcement
+  end
+
   def on_connect_node
     @logger.debug("[#{service_description}] Connected to node mbus..")
     @node_nats.subscribe("#{service_name}.announce") { |msg|
@@ -86,6 +100,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.subscribe("#{service_name}.node_handles") { |msg| on_node_handles(msg) }
     @node_nats.subscribe("#{service_name}.handles") {|msg, reply| on_query_handles(msg, reply) }
     @node_nats.subscribe("#{service_name}.update_service_handle") {|msg, reply| on_update_service_handle(msg, reply) }
+    pre_send_announcement()
     @node_nats.publish("#{service_name}.discover")
   end
 
@@ -111,21 +126,21 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Received node handles")
     response = NodeHandlesReport.decode(msg)
     nid = response.node_id
-    @orphan_mutex.synchronize do
-      response.instances_list.each do |ins|
-        @staging_orphan_instances[nid] ||= []
-        @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
-      end
-      response.bindings_list.each do |bind|
-        @staging_orphan_bindings[nid] ||= []
-        @staging_orphan_bindings[nid] << bind unless @handles_for_check_orphan.index do |h|
-          h["credentials"]["name"] == bind["name"] and h["credentials"]["username"] == bind["username"]
-        end
-      end
-      oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
-      ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
-      @logger.debug("Staging Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
+    response.instances_list.each do |ins|
+      @staging_orphan_instances[nid] ||= []
+      @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
     end
+    response.bindings_list.each do |bind|
+      @staging_orphan_bindings[nid] ||= []
+      @staging_orphan_bindings[nid] << bind unless @handles_for_check_orphan.index do |h|
+        instance = h["credentials"]["name"]
+        username = h["credentials"]["username"] || h["credentials"]["user"]
+        instance == bind["name"] && username == bind["username"]
+      end
+    end
+    oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
+    ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
+    @logger.debug("Staging Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
   rescue => e
     @logger.warn(e)
   end
@@ -147,32 +162,27 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def double_check_orphan(handles)
     @logger.debug("[#{service_description}] Double check the orphan result")
-    @orphan_mutex.synchronize do
-      @staging_orphan_instances.each do |nid, oi_list|
-        oi_list.each do |oi|
-          @final_orphan_instances[nid] ||= []
-          @final_orphan_instances[nid] << oi unless handles.index { |h| h["service_id"] == oi }
-        end
+    @staging_orphan_instances.each do |nid, oi_list|
+      oi_list.each do |oi|
+        @final_orphan_instances[nid] ||= []
+        @final_orphan_instances[nid] << oi unless handles.index { |h| h["service_id"] == oi }
       end
-      @staging_orphan_bindings.each do |nid, ob_list|
-        ob_list.each do |ob|
-          @final_orphan_bindings[nid] ||= []
-          @final_orphan_bindings[nid] << ob unless handles.index do |h|
-            h["credentials"]["name"] == ob["name"] and h["credentials"]["username"] == ob["username"]
-          end
-        end
-      end
-      oi_count = @final_orphan_instances.values.reduce(0) { |m, v| m += v.count }
-      ob_count = @final_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
-      @logger.debug("Final Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
     end
+    @staging_orphan_bindings.each do |nid, ob_list|
+      ob_list.each do |ob|
+        @final_orphan_bindings[nid] ||= []
+        @final_orphan_bindings[nid] << ob unless handles.index do |h|
+          instance = h["credentials"]["name"]
+          username = h["credentials"]["username"] || h["credentials"]["user"]
+          instance == ob["name"] && username == ob["username"]
+        end
+      end
+    end
+    oi_count = @final_orphan_instances.values.reduce(0) { |m, v| m += v.count }
+    ob_count = @final_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
+    @logger.debug("Final Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
   rescue => e
     @logger.warn(e)
-    if e.instance_of? ServiceError
-      blk.call(failure(e))
-    else
-      blk.call(internal_fail)
-    end
   end
 
   def purge_orphan(orphan_ins_hash,orphan_bind_hash, &blk)
@@ -550,6 +560,116 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     blk.call(internal_fail)
   end
 
+  # Create a create_snapshot job and return the job object.
+  #
+  def create_snapshot(service_id, &blk)
+    @logger.debug("Create snapshot job for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    job_id = create_snapshot_job.create(:service_id => service_id, :node_id =>find_node(service_id))
+    job = get_job(job_id)
+    @logger.info("CreateSnapshotJob created: #{job.inspect}")
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  # Get detail job information by job id.
+  #
+  def job_details(service_id, job_id, &blk)
+    @logger.debug("Get job_id=#{job_id} for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    job = get_job(job_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, job_id) unless job
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  # Get detail snapshot information
+  #
+  def get_snapshot(service_id, snapshot_id, &blk)
+    @logger.debug("Get snapshot_id=#{snapshot_id} for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    blk.call(success(snapshot))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  # Get all snapshots related to an instance
+  #
+  def enumerate_snapshots(service_id, &blk)
+    @logger.debug("Get snapshots for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    snapshots = service_snapshots(service_id)
+    blk.call(success({:snapshots => snapshots}))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  def rollback_snapshot(service_id, snapshot_id, &blk)
+    @logger.debug("Rollback snapshot=#{snapshot_id} for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    job_id = rollback_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id,
+                  :node_id => find_node(service_id))
+    job = get_job(job_id)
+    @logger.info("RoallbackSnapshotJob created: #{job.inspect}")
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  # Generate a url for user to download serialized data.
+  def get_serialized_url(service_id, &blk)
+    @logger.debug("get serialized url for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    job_id = create_serialized_url_job.create(:service_id => service_id, :node_id => find_node(service_id))
+    job = get_job(job_id)
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  #
+  def import_from_url(service_id, url, &blk)
+    @logger.debug("import serialized data from url:#{url} for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    job_id = import_from_url_job.create(:service_id => service_id, :url => url, :node_id => find_node(service_id))
+    job = get_job(job_id)
+    blk.call(success(job))
+  rescue => e
+    wrap_error(e, &blk)
+  end
+
+  def import_from_data(service_id, req, &blk)
+    @logger.debug("import serialized data from request for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    temp_path = File.join(@upload_temp_dir, "#{service_id}.gz")
+    # clean up previous upload
+    FileUtils.rm_rf(temp_path)
+
+    File.open(temp_path, "wb+") do |f|
+      f.write(Base64.decode64(req.data))
+      f.fsync
+    end
+    job_id = import_from_data_job.create(:service_id => service_id, :temp_file_path => temp_path, :node_id => find_node(service_id))
+    job = get_job(job_id)
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
   # convert symbol key to string key
   def hash_sym_key_to_str(hash)
     new_hash = {}
@@ -644,6 +764,25 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     }
   end
 
+  # handle request exception
+  def handle_error(e, &blk)
+    @logger.warn(e)
+    if e.instance_of? ServiceError
+      blk.call(failure(e))
+    else
+      blk.call(internal_fail)
+    end
+  end
+
+  # Find which node the service instance is running on.
+  def find_node(instance_id)
+    svc = @prov_svcs[instance_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
+    node_id = svc[:credentials]["node_id"]
+    raise "Cannot find node_id for #{instance_id}" if node_id.nil?
+    node_id
+  end
+
   # Service Provisioner subclasses must implement the following
   # methods
 
@@ -655,5 +794,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   # service_name() --> string
   # (inhereted from VCAP::Services::Base::Base)
+  #
+
+  # various lifecycle jobs class
+  abstract :create_snapshot_job, :rollback_snapshot_job, :create_serialized_url_job, :import_from_url_job, :import_from_data_job
 
 end

@@ -6,14 +6,11 @@ require 'postgresql_service/postgresql_error'
 require 'pg'
 require 'yajl'
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/service_error'
-
 module VCAP
   module Services
     module Postgresql
       class Node
-        attr_reader :connection, :logger, :available_storage
+        attr_reader :connection, :logger, :available_storage, :provision_served, :binding_served
         def get_service(db)
           Provisionedservice.first(:name => db['name'])
         end
@@ -32,16 +29,18 @@ module VCAP
   end
 end
 
-describe "Postgresql server node" do
+describe "Postgresql node normal cases" do
   include VCAP::Services::Postgresql
 
   before :all do
     @opts = getNodeTestConfig
     @max_db_conns = @opts[:max_db_conns]
+    ENV['PGPASSWORD'] = @opts[:postgresql]['pass']
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
-      EM.stop
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
     end
   end
 
@@ -68,27 +67,96 @@ describe "Postgresql server node" do
     end
   end
 
+  it "should restore from backup file" do
+    EM.run do
+      tmp_db = @node.provision(@default_plan)
+      @test_dbs[tmp_db] = []
+      conn = connect_to_postgresql(tmp_db)
+      conn.query("create table test1(id int)")
+      host, port, user, password = %w(host port user pass).map{|key| @opts[:postgresql][key]}
+      tmp_file = "/tmp/#{tmp_db['name']}.dump"
+      result = `pg_dump -Fc -h #{host} -p #{port} -U #{user} -f #{tmp_file} #{tmp_db['name']}`
+      conn.query("drop table test1")
+      res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
+      res.count.should == 0
+      conn.query("create table test2(id int)")
+      @node.restore(tmp_db["name"], "/tmp").should == true
+      conn = connect_to_postgresql(tmp_db)
+      res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
+      res.count.should == 1
+      res[0]["tablename"].should == "test1"
+      FileUtils.rm_rf(tmp_file)
+      EM.stop
+    end
+  end
+
+  it "should be able to disable an instance" do
+    EM.run do
+      conn = connect_to_postgresql(@db)
+      bind_cred = @node.bind(@db["name"],  @default_opts)
+      conn2 = connect_to_postgresql(bind_cred)
+      @test_dbs[@db] << bind_cred
+      @node.disable_instance(@db, [bind_cred])
+      expect { conn.query('select 1') }.should raise_error
+      expect { conn2.query('select 1') }.should raise_error
+      expect { connect_to_postgresql(@db) }.should raise_error
+      expect { connect_to_postgresql(bind_cred) }.should raise_error
+      EM.stop
+    end
+  end
+
+  it "should able to dump instance content to file" do
+    EM.run do
+      conn = connect_to_postgresql(@db)
+      conn.query('create table mytesttable(id int)')
+      @node.dump_instance(@db, [], '/tmp').should == true
+      EM.stop
+    end
+  end
+
+  it "should recreate database and user when import instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      @node.dump_instance(db, [], '/tmp')
+      @node.unprovision(db['name'], [])
+      @node.import_instance(db, {}, '/tmp', @default_plan).should == true
+      conn = connect_to_postgresql(db)
+      expect { conn.query('select 1')}.should_not raise_error
+      EM.stop
+    end
+  end
+
+  it "should recreate bindings when enable instance" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
+      conn = connect_to_postgresql(binding)
+      @node.disable_instance(db, [binding])
+      expect {conn = connect_to_postgresql(binding)}.should raise_error
+      expect {conn = connect_to_postgresql(db)}.should raise_error
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.enable_instance(db, value)
+      result.should be_instance_of Array
+      expect {conn = connect_to_postgresql(binding)}.should_not raise_error
+      expect {conn = connect_to_postgresql(db)}.should_not raise_error
+      EM.stop
+    end
+  end
+
   it "should provision a database with correct credential" do
     EM.run do
       @db.should be_instance_of Hash
       conn = connect_to_postgresql(@db)
       expect {conn.query("SELECT 1")}.should_not raise_error
       conn.close if conn
-      EM.stop
-    end
-  end
-
-  it "should limit max connection to the database" do
-    EM.run do
-      @opts[:max_db_conns] = 1
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      db = node.provision(@default_plan)
-      conn = connect_to_postgresql(db)
-      expect {conn.query("SELECT 1")}.should_not raise_error
-      expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
-      conn.close if conn
-      node.unprovision(db["name"], [])
-      @opts[:max_db_conns] = @max_db_conns
       EM.stop
     end
   end
@@ -188,18 +256,6 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should raise error if there is no available storage to provision instance" do
-    EM.run do
-      @opts[:available_storage]=10
-      @opts[:max_db_size]=20
-      @node = VCAP::Services::Postgresql::Node.new(@opts)
-      expect {
-        @node.provision(@default_plan)
-      }.should raise_error(PostgresqlError, /Node disk is full/)
-      EM.stop
-    end
-  end
-
   it "should not allow old credential to connect if service is unprovisioned" do
     EM.run do
       conn = connect_to_postgresql(@db)
@@ -241,7 +297,7 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should not be possible to access one database using null or wrong credential" do
+  it "should prevent accessing database with wrong credentials" do
     EM.run do
       plan = "free"
       db2= @node.provision(plan)
@@ -251,9 +307,9 @@ describe "Postgresql server node" do
       # try to login other's db
       fake_creds[0]["name"] = db2["name"]
       # try to login using null credential
-      fake_creds[1]["password"] = nil
+      fake_creds[1]["password"] = db2["password"]
       # try to login using root account
-      fake_creds[2]["user"] = "root"
+      fake_creds[2]["user"] = db2["user"]
       fake_creds.each do |creds|
         puts creds
         expect{connect_to_postgresql(creds)}.should raise_error
@@ -265,19 +321,24 @@ describe "Postgresql server node" do
   it "should kill long transaction" do
     EM.run do
       # reduce max_long_tx to accelerate test
-      @opts[:max_long_tx]=2
-      @node = VCAP::Services::Postgresql::Node.new(@opts)
-      conn = connect_to_postgresql(@db)
-      # prepare a transaction and not commit
-      conn.query("create table a(id int)")
-      conn.query("insert into a values(10)")
-      conn.query("begin")
-      conn.query("select * from a for update")
-      EM.add_timer(@opts[:max_long_tx]*2) {
-        expect {conn.query("select * from a for update")}.should raise_error
-        conn.close if conn
-        EM.stop
-      }
+      opts = @opts.dup
+      opts[:max_long_tx] = 2
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) do
+        db = node.provision('free')
+        conn = connect_to_postgresql(db)
+        # prepare a transaction and not commit
+        conn.query("create table a(id int)")
+        conn.query("insert into a values(10)")
+        conn.query("begin")
+        conn.query("select * from a for update")
+        EM.add_timer(opts[:max_long_tx] * 2) {
+          expect {conn.query("select * from a for update")}.should raise_error
+          conn.close if conn
+          EM.stop
+        }
+      end
     end
   end
 
@@ -353,18 +414,6 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should handle postgresql error in varz" do
-    EM.run do
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      # drop connection
-      node.connection.close
-      varz = nil
-      expect {varz = node.varz_details}.should_not raise_error
-      varz.should == {}
-      EM.stop
-    end
-  end
-
   it "should provide provision/binding served info in varz" do
     EM.run do
       v1 = @node.varz_details
@@ -403,36 +452,31 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should report node status in healthz" do
-    EM.run do
-      healthz = @node.healthz_details()
-      healthz[:self].should == "ok"
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      node.connection.close
-      healthz = node.healthz_details()
-      healthz[:self].should == "fail"
-      EM.stop
-    end
-  end
-
   it "should close extra postgresql connections after generate healthz" do
     EM.run do
+      conns_before = {}
+      conns_after = {}
       varz = @node.varz_details
       db_stats = varz[:db_stat]
-      instance = db_stats.find {|d| d[:name] == @db["name"]}
-      instance.should_not be_nil
-      conns_before_healthz = instance[:active_server_processes]
+      db_stats.each do |db|
+        conns_before[db[:name]] = db[:active_server_processes]
+      end
+      self_db = db_stats.find {|d| d[:name] == @db["name"]}
+      self_db.should_not be_nil
 
       healthz = @node.healthz_details()
       healthz.keys.size.should >= 2
 
+      sleep 0.1
       varz = @node.varz_details
       db_stats = varz[:db_stat]
-      instance = db_stats.find {|d| d[:name] == @db["name"]}
-      instance.should_not be_nil
-      conns_after_healthz = instance[:active_server_processes]
+      db_stats.each do |db|
+        conns_after[db[:name]] = db[:active_server_processes]
+      end
 
-      conns_before_healthz.should == conns_after_healthz
+      conns_before.each do |k, v|
+        conns_after[k].should == v
+      end
       EM.stop
     end
   end
@@ -452,24 +496,67 @@ describe "Postgresql server node" do
     end
   end
 
-  it "should return node not ready if postgresql server is not connected" do
+  it "should be thread safe" do
     EM.run do
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      node.connection.close
-      # keep_alive interval is 15 seconds so it should be ok
-      node.connection_exception.should be_instance_of PGError
-      node.node_ready?.should == false
-      node.send_node_announcement.should == nil
+      available_storage = @node.available_storage
+      provision_served = @node.provision_served
+      binding_served = @node.binding_served
+      NUM = 20
+      threads = []
+      NUM.times do
+        threads << Thread.new do
+          db = @node.provision(@default_plan)
+          binding = @node.bind(db["name"], @default_opts)
+          @node.unprovision(db["name"], [binding])
+        end
+      end
+      threads.each {|t| t.join}
+      available_storage.should == @node.available_storage
+      provision_served.should == @node.provision_served - NUM
+      binding_served.should == @node.binding_served - NUM
       EM.stop
     end
   end
 
-  it "should keep alive" do
+  it "should enforce database size quota" do
+    node = nil
     EM.run do
-      @node.connection.close
-      @node.postgresql_keep_alive
-      @node.node_ready?.should == true
-      EM.stop
+      opts = @opts.dup
+      # new pg db takes about 5M(~5554180)
+      # reduce storage quota to 6MB.
+      opts[:max_db_size] = 6
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      EM.add_timer(1.1) do
+        node.should_not == nil
+        db = node.provision(@default_plan)
+        @test_dbs[db] = []
+        binding = node.bind(db['name'], @default_opts)
+        EM.add_timer(2) do
+          conn = connect_to_postgresql(binding)
+          conn.query("create table test(data text)")
+          c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
+          # prepare 1M data
+          content = (0..1000000).map{ c[rand(c.size)] }.join
+          conn.query("insert into test values('#{content}')")
+          EM.add_timer(2) do
+            # terminating connection due to administrator command
+            expect {conn.query("select version()").should raise_error(PGError)}
+            conn.close if conn
+            conn = connect_to_postgresql(binding)
+            expect {conn.query("select version()").should_not raise_error}
+            # permission denied for relation test
+            expect {conn.query("insert into test values('1')").should raise_error(PGError)}
+            expect {conn.query("create table test1(data text)").should raise_error(PGError)}
+            conn.query("delete from test")
+            EM.add_timer(2) do
+              # write privilege should restore
+              expect {conn.query("insert into test values('1')").should_not raise_error}
+              expect {conn.query("create table test1(data text)").should_not raise_error}
+              EM.stop
+            end
+          end
+        end
+      end
     end
   end
 
@@ -503,5 +590,104 @@ describe "Postgresql server node" do
         @node.logger.info("Error during cleanup #{e}")
       end
     end if @test_dbs
+  end
+
+  after:all do
+    ENV['PGPASSWORD'] = ''
+    FileUtils.rm_f Dir.glob('/tmp/d*.dump')
+  end
+end
+
+describe "Postgresql node special cases" do
+  include VCAP::Services::Postgresql
+
+  it "should limit max connection to the database" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      opts[:max_db_conns] = 1
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    db = node.provision('free')
+    conn = connect_to_postgresql(db)
+    expect {conn.query("SELECT 1")}.should_not raise_error
+    expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
+    conn.close if conn
+    node.unprovision(db["name"], [])
+  end
+
+  it "should raise error if there is no available storage to provision instance" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      opts[:available_storage] = 10
+      opts[:max_db_size] = 20
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    expect {
+      node.provision('free')
+    }.should raise_error(PostgresqlError, /Node disk is full/)
+  end
+
+  it "should handle postgresql error in varz" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    # drop connection
+    node.connection.close
+    varz = nil
+    expect {varz = node.varz_details}.should_not raise_error
+    varz.should == {}
+  end
+
+  it "should report node status in healthz" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    healthz = node.healthz_details()
+    healthz[:self].should == "ok"
+    node.connection.close
+    healthz = node.healthz_details()
+    healthz[:self].should == "fail"
+  end
+
+  it "should return node not ready if postgresql server is not connected" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    node.connection.close
+    # keep_alive interval is 15 seconds so it should be ok
+    node.connection_exception.should be_instance_of PGError
+    node.node_ready?.should == false
+    node.send_node_announcement.should == nil
+  end
+
+  it "should keep alive" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    node.connection.close
+    node.postgresql_keep_alive
+    node.node_ready?.should == true
   end
 end

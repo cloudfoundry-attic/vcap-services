@@ -4,12 +4,12 @@ $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
 require 'rubygems'
 require 'rspec'
-
+require 'bundler/setup'
+require 'vcap_services_base'
 require "mysql_service/util"
 require 'mysql_service/provisioner'
 require 'mysql_service/node'
 
-include VCAP::Services::Mysql::Util
 
 def getLogger()
   logger = Logger.new( STDOUT)
@@ -19,11 +19,35 @@ end
 
 def connect_to_mysql(options)
   host, user, password, port, db =  %w{hostname user password port name}.map { |opt| options[opt] }
-  Mysql.real_connect(host, user, password, db, port)
+  Mysql2::Client.new(:host => host, :username => user, :password => password, :database => db, :port => port)
+end
+
+def connection_pool_klass
+    VCAP::Services::Mysql::Util::ConnectionPool
+end
+
+def parse_property(hash, key, type, options = {})
+  obj = hash[key]
+  if obj.nil?
+    raise "Missing required option: #{key}" unless options[:optional]
+    nil
+  elsif type == Range
+    raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
+    first, last = obj["first"], obj["last"]
+    raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
+    Range.new(first, last)
+  else
+    raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
+    obj
+  end
+end
+
+def config_base_dir
+  ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
 end
 
 def getNodeTestConfig()
-  config_file = File.join(File.dirname(__FILE__), "../config/mysql_node.yml")
+  config_file = File.join(config_base_dir, 'mysql_node.yml')
   config = YAML.load_file(config_file)
   options = {
     :logger => getLogger,
@@ -47,7 +71,7 @@ def getNodeTestConfig()
 end
 
 def getProvisionerTestConfig()
-  config_file = File.join(File.dirname(__FILE__), "../config/mysql_gateway.yml")
+  config_file = File.join(config_base_dir, 'mysql_gateway.yml')
   config = YAML.load_file(config_file)
   config = VCAP.symbolize_keys(config)
   options = {
