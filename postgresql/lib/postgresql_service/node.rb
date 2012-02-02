@@ -81,15 +81,115 @@ class VCAP::Services::Postgresql::Node
 
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
 
+    check_db_consistency()
     Provisionedservice.all.each do |provisionedservice|
       @available_storage -= storage_for_service(provisionedservice)
+      migrate_instance provisionedservice
     end
-    check_db_consistency()
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
     EM.add_periodic_timer(@max_long_tx.to_f / 2) {kill_long_transaction} if @max_long_tx > 0
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
+  end
+
+  # This method performs whatever 'migration' (upgrade/downgrade)
+  # steps are required due to incompatible code changes.  There is no
+  # concept of an instance's "version", so migration code may need to
+  # inspect the instance to determine what migrations are required.
+  def migrate_instance(provisionedservice)
+    # Services-r7 and earlier had a bug whereby database objects were
+    # owned by the users created by bind operations, which caused
+    # various problems (eg these objects were discarded on an 'unbind'
+    # operation, only the original creator of an object could modify
+    # it, etc).  Services-r8 fixes this problem by granting all 'children'
+    # bind users to a 'parent' role, and setting all 'children' bind users'
+    # default connection session to be 'parent' role's configuration parameter.
+    # But this fix only works for newly created users and objects, so we
+    # need to call this object-ownership method to migration 'old' users
+    # and objects. we don't need to worry about calling it more than once
+    # because doing so is harmless.
+    manage_object_ownership(provisionedservice.name)
+  end
+
+  def get_expected_children(name)
+    # children according to Provisionedservice
+    children = Provisionedservice.get(name).bindusers.all(:default_user => false)
+    children = children.map { |child| child.user } + children.map { |child| child.sys_user }
+    children
+  end
+
+  def get_actual_children(connection, name, parent)
+    # children according to postgres itself
+    children = []
+    rows = connection.query("SELECT datacl FROM pg_database WHERE datname='#{name}'")
+    raise "Can't get datacl" if rows.nil? || rows.num_tuples < 1
+    datacl = rows[0]['datacl']
+    # a typical pg_database.datacl value:
+    # {vcap=CTc/vcap,suf4f57864f519412b82ffd0b75d02dcd1=c/vcap,u2e47852f15544536b2f69c0f72052847=c/vcap,su76f8095858e742d1954544c722b277f8=c/vcap,u02b45d2974644895b1b03a92749250b2=c/vcap,su7950e259bbe946328ba4e3540c141f4b=c/vcap,uaf8982bc76324c6e9a09596fa1e57fc3=c/vcap}
+    raise "Datacl is nil/deformed" if datacl.nil? || datacl.length < 2
+    nonchildren = [@postgresql_config["user"], parent.user, parent.sys_user, '']
+    datacl[1,datacl.length-1].split(',').each do |aclitem|
+      child = aclitem.split('=')[0]
+      children << child unless nonchildren.include?(child)
+    end
+    children
+  end
+
+  def get_unruly_children(connection, parent, children)
+    # children which are not in fact children of the parent. (we don't
+    # handle children that somehow have the *wrong* parent, but that
+    # won't happen :-)
+    ruly_children = []
+    query = <<-end_of_query
+      SELECT rolname
+      FROM pg_roles
+      WHERE oid IN (
+        SELECT member
+        FROM pg_auth_members
+        WHERE roleid IN (
+          SELECT oid
+          FROM pg_roles
+          WHERE rolname='#{parent.user}'
+        )
+      );
+    end_of_query
+    unruly_children = children - connection.query(query).map { |row| row['rolname'] }
+    unruly_children
+  end
+
+  def manage_object_ownership(name)
+    # figure out which children *should* exist
+    expected_children = get_expected_children name
+    # optimization: the set of children we need to take action for is
+    # a subset of the expected childen, so if there are no expected
+    # children we can stop right now
+    return if expected_children.empty?
+    # the parent role
+    parent = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    # connect as the system user (not the parent or any of the
+    # children) to ensure we don't have ACL problems
+    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name
+    # figure out which children *actually* exist
+    actual_children = get_actual_children connection, name, parent
+    # log but ignore children that aren't both expected and actually exist
+    children = expected_children & actual_children
+    @logger.warn "Ignoring surplus children #{actual_children-children} in #{name}" unless (actual_children-children).empty?
+    @logger.warn "Ignoring missing children #{expected_children-children} in #{name}" unless (expected_children-children).empty?
+    # if there are no children, then there is nothing to do
+    return if children.empty?
+    # ensure that all children and in fact children of their parents
+    unruly_children = get_unruly_children(connection, parent, children)
+    unless unruly_children.empty?
+      connection.query("GRANT #{parent.user} TO #{unruly_children.join(',')};")
+      @logger.info("New children #{unruly_children} of parent #{parent.user}")
+    end
+    # make all current objects owned by the parent
+    connection.query("REASSIGN OWNED BY #{children.join(',')} TO #{parent.user};")
+  rescue => x
+    @logger.warn("Exception while managing object ownership: #{x}")
+  ensure
+    connection.close if connection
   end
 
   def get_available_storage
@@ -420,6 +520,10 @@ class VCAP::Services::Postgresql::Node
   end
 
   def create_database_user(name, binduser, quota_exceeded)
+    # setup parent as long as it's not the 'default user'
+    parent_binduser = Provisionedservice.get(name).bindusers.all(:default_user => true)[0] unless binduser.default_user
+    parent = parent_binduser.user if parent_binduser
+
     user = binduser.user
     password = binduser.password
     sys_user = binduser.sys_user
@@ -431,7 +535,13 @@ class VCAP::Services::Postgresql::Node
         @logger.warn("Role: #{user} already exists")
       else
         @logger.info("Create role: #{user}/#{password}")
-        @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}'")
+        if parent
+          # set parent role for normal binding users
+          @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}' inherit in role #{parent}")
+          @connection.query("ALTER ROLE #{user} SET ROLE=#{parent}")
+        else
+          @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}'")
+        end
       end
       @logger.info("Create sys_role: #{sys_user}/#{sys_password}")
       @connection.query("CREATE ROLE #{sys_user} LOGIN PASSWORD '#{sys_password}'")
