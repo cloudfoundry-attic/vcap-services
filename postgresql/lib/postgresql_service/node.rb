@@ -140,7 +140,6 @@ class VCAP::Services::Postgresql::Node
     # children which are not in fact children of the parent. (we don't
     # handle children that somehow have the *wrong* parent, but that
     # won't happen :-)
-    ruly_children = []
     query = <<-end_of_query
       SELECT rolname
       FROM pg_roles
@@ -154,8 +153,8 @@ class VCAP::Services::Postgresql::Node
         )
       );
     end_of_query
-    unruly_children = children - connection.query(query).map { |row| row['rolname'] }
-    unruly_children
+    ruly_children = connection.query(query).map { |row| row['rolname'] }
+    children - ruly_children
   end
 
   def manage_object_ownership(name)

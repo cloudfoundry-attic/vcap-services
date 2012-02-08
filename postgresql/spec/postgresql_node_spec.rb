@@ -327,6 +327,7 @@ describe "Postgresql node normal cases" do
       sleep 1
       EM.add_timer(0.1) do
         db = node.provision('free')
+        @test_dbs[db] = []
         conn = connect_to_postgresql(db)
         # prepare a transaction and not commit
         conn.query("create table a(id int)")
@@ -615,6 +616,69 @@ describe "Postgresql node normal cases" do
       expect { conn.query 'drop sequence s' }.should_not raise_error
       expect { conn.query 'drop function f()' }.should_not raise_error
       conn.close if conn
+      EM.stop
+    end
+  end
+
+  it "should get expected children correctly" do
+    EM.run do
+      bind = @node.bind @db['name'], @default_opts
+      children = @node.get_expected_children @db['name']
+      children.index(bind['user']).should_not == nil
+      children.index(@db['user']).should == nil
+      EM.stop
+    end
+  end
+
+  it "should get actual children correctly" do
+    EM.run do
+      # sys_user is not return from provision/bind response
+      # so only set user for parent
+      parent = VCAP::Services::Postgresql::Node::Binduser.new
+      parent.user = @db['user']
+      @db['user'] = @opts[:postgresql]['user']
+      @db['password'] = @opts[:postgresql]['pass']
+      sys_conn = connect_to_postgresql @db
+      user = @node.bind @db['name'], @default_opts
+
+      # this parent does not contain sys_user
+      children = @node.get_actual_children sys_conn, @db['name'], parent
+      sys_conn.close if sys_conn
+      children.index('').should == nil
+      children.index(parent.user).should == nil
+      children.index(@opts[:postgresql]['user']).should == nil
+      children.index(user['user']).should_not == nil
+      # should only have 2 sys_user in children
+      # one for parent and the other for new binding
+      num_sys_user = 0
+      children.each do |child|
+        num_sys_user+=1 if child.index 'su'
+      end
+      num_sys_user.should == 2
+      EM.stop
+    end
+  end
+
+  it "should get unruly children correctly" do
+    EM.run do
+      parent = VCAP::Services::Postgresql::Node::Binduser.new
+      parent.user = @db['user']
+      bind1 = @node.bind @db['name'], @default_opts
+      bind2 = VCAP::Services::Postgresql::Node::Binduser.new
+      bind2.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
+
+      @db['user'] = @opts[:postgresql]['user']
+      @db['password'] = @opts[:postgresql]['pass']
+      sys_conn = connect_to_postgresql @db
+      sys_conn.query "create role #{bind2.user}"
+
+      children = []
+      children << bind1['user']
+      children << bind2['user']
+      unruly_children = @node.get_unruly_children sys_conn, parent, children
+      sys_conn.close if sys_conn
+      unruly_children.index(bind1['user']).should == nil
+      unruly_children.index(bind2['user']).should_not == nil
       EM.stop
     end
   end
