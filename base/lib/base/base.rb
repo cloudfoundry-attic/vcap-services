@@ -38,12 +38,8 @@ class VCAP::Services::Base::Base
       @nats_lock = Mutex.new
 
       NATS.on_error do |e|
-        if e.kind_of? NATS::ConnectError
-          @logger.error("EXITING! NATS connection failed: #{e}")
-          exit
-        else
-          @logger.error("NATS problem, #{e}")
-        end
+        @logger.error("Exiting due to NATS error: #{e}")
+        exit
       end
       @node_nats = NATS.connect(:uri => options[:mbus]) {
         on_connect_node
