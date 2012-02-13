@@ -180,6 +180,10 @@ class VCAP::Services::Postgresql::Node
     # ensure that all children and in fact children of their parents
     unruly_children = get_unruly_children(connection, parent, children)
     unless unruly_children.empty?
+      unruly_children.each do |u_c|
+        connection.query("alter role #{u_c} inherit")
+        connection.query("alter role #{u_c} set role=#{parent.user}")
+      end
       connection.query("GRANT #{parent.user} TO #{unruly_children.join(',')};")
       @logger.info("New children #{unruly_children} of parent #{parent.user}")
     end

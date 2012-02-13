@@ -685,6 +685,7 @@ describe "Postgresql node normal cases" do
 
   it "should be able to migrate(manage object owner) legacy instances" do
     EM.run do
+      parent = @db['user']
       # create a regular user through node
       user1 = @node.bind(@db['name'], @default_opts)
       # connect to the db with sys credential to 'revoke' the user's role
@@ -693,22 +694,29 @@ describe "Postgresql node normal cases" do
       @db["password"] = @opts[:postgresql]['pass']
       sys_conn = connect_to_postgresql @db
       sys_conn.query "alter role #{user1['user']} noinherit"
-      sys_conn.query "alter role #{user1['user']} set role = #{user1['user']}"
+      sys_conn.query "revoke #{parent} from #{user1['user']} cascade"
       sys_conn.close if sys_conn
       # connect to the db with revoked user
       conn1 = connect_to_postgresql user1
-      conn1.query 'create table t(i int)'
+      conn1.query 'create table t1(i int)'
       conn1.close if conn1
 
       user2 = @node.bind(@db['name'], @default_opts)
       conn2 = connect_to_postgresql user2
-      expect { conn2.query 'drop table t' }.should raise_error
+      expect { conn2.query 'drop table t1' }.should raise_error
+      conn2.query 'create table t2(i int)'
 
       # new a node class to do migration work
       node = VCAP::Services::Postgresql::Node.new(@opts)
       sleep 1
       EM.add_timer(0.1) {
-        expect { conn2.query 'drop table t' }.should_not raise_error
+        expect { conn2.query 'drop table t1' }.should_not raise_error
+        conn1 = connect_to_postgresql user1
+        expect { conn1.query 'drop table t2' }.should_not raise_error
+        conn1.query 'create table tt1(i int)'
+        conn1.close if conn1
+        expect { conn2.query 'drop table tt1' }.should_not raise_error
+        conn2.close if conn2
         EM.stop
       }
     end
@@ -716,6 +724,7 @@ describe "Postgresql node normal cases" do
 
   it "should migrate(manage object owner) legacy instances, even there is *orphan* user" do
     EM.run do
+      parent = @db['user']
       # create a regular user through node
       user1 = @node.bind(@db['name'], @default_opts)
       # connect to the db with sys credential to 'revoke' the user's role
@@ -724,7 +733,7 @@ describe "Postgresql node normal cases" do
       @db["password"] = @opts[:postgresql]['pass']
       sys_conn = connect_to_postgresql @db
       sys_conn.query "alter role #{user1['user']} noinherit"
-      sys_conn.query "alter role #{user1['user']} set role = #{user1['user']}"
+      sys_conn.query "revoke #{parent} from #{user1['user']} cascade"
       # connect to the db with revoked user
       conn1 = connect_to_postgresql user1
       conn1.query 'create table t(i int)'
