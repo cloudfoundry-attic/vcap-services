@@ -49,6 +49,8 @@ def getNodeTestConfig
   options = {
     :logger => getLogger,
     :base_dir => "/tmp/redis_instances",
+    :plan => parse_property(config, "plan", String),
+    :capacity => parse_property(config, "capacity", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
     :local_db_file => "/tmp/redis_node_" + Time.now.to_i.to_s + ".db",
@@ -56,7 +58,6 @@ def getNodeTestConfig
     :redis_server_path => parse_property(config, "redis_server_path", String),
     :config_template => File.join(File.dirname(__FILE__), "..", "resources/redis.conf.erb"),
     :port_range => parse_property(config, "port_range", Range),
-    :available_memory => parse_property(config, "available_memory", Integer),
     :max_memory => parse_property(config, "max_memory", Integer),
     :max_swap => parse_property(config, "max_swap", Integer),
     :redis_log_dir => "/tmp/redis_log",

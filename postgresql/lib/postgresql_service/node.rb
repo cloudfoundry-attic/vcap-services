@@ -32,7 +32,8 @@ class VCAP::Services::Postgresql::Node
   class Provisionedservice
     include DataMapper::Resource
     property :name,       String,   :key => true
-    property :plan,       Enum[:free], :required => true
+    # property plan is deprecated. The instances in one node have same plan.
+    property :plan,       Integer, :required => true
     property :quota_exceeded,  Boolean, :default => false
     has n, :bindusers
   end
@@ -64,15 +65,10 @@ class VCAP::Services::Postgresql::Node
     @restore_bin = options[:restore_bin]
     @dump_bin = options[:dump_bin]
 
-    @available_storage = options[:available_storage] * 1024 * 1024
-    @node_capacity = @available_storage
-
     @long_queries_killed = 0
     @long_tx_killed = 0
     @provision_served = 0
     @binding_served = 0
-
-    @mutex_available_storage = Mutex.new
   end
 
   def pre_send_announcement
@@ -80,11 +76,13 @@ class VCAP::Services::Postgresql::Node
     DataMapper::auto_upgrade!
 
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
-
     check_db_consistency()
-    Provisionedservice.all.each do |provisionedservice|
-      @available_storage -= storage_for_service(provisionedservice)
-      migrate_instance provisionedservice
+
+    @capacity_lock.synchronize do
+      Provisionedservice.all.each do |provisionedservice|
+        migrate_instance provisionedservice
+        @capacity -= capacity_unit
+      end
     end
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
@@ -195,17 +193,10 @@ class VCAP::Services::Postgresql::Node
     connection.close if connection
   end
 
-  def get_available_storage
-    @mutex_available_storage.synchronize do
-      return @available_storage
-    end
-  end
-
   def announcement
-    a = {
-      :available_storage => get_available_storage
-    }
-    a
+    @capacity_lock.synchronize do
+      { :available_capacity => @capacity }
+    end
   end
 
   def all_instances_list
@@ -250,14 +241,6 @@ class VCAP::Services::Postgresql::Node
           next
         end
       end
-    end
-  end
-
-  def storage_for_service(provisionedservice)
-    case provisionedservice.plan
-    when :free then @max_db_size
-    else
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_INVALID_PLAN, provisionedservice.plan)
     end
   end
 
@@ -320,15 +303,11 @@ class VCAP::Services::Postgresql::Node
   end
 
   def provision(plan, credential=nil)
+    raise PostgresqlError.new(PostgresqlError::POSTGRESQL_INVALID_PLAN, plan) unless plan == @plan
     provisionedservice = Provisionedservice.new
-    provisionedservice.plan = plan
-    storage = storage_for_service(provisionedservice)
+    provisionedservice.plan = 1
 
     begin
-      @mutex_available_storage.synchronize do
-        @available_storage -= storage
-      end
-
       binduser = Binduser.new
       if credential
         name, user, password = %w(name user password).map{|key| credential[key]}
@@ -364,10 +343,6 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
     rescue => e
-      storage = storage_for_service(provisionedservice)
-      @mutex_available_storage.synchronize do
-        @available_storage += storage
-      end
       delete_database(provisionedservice) if provisionedservice
       raise e
     end
@@ -385,7 +360,6 @@ class VCAP::Services::Postgresql::Node
       # ignore
     end
     delete_database(provisionedservice)
-    storage = storage_for_service(provisionedservice)
 
     provisionedservice.bindusers.all.each do |binduser|
       if not binduser.destroy
@@ -394,11 +368,6 @@ class VCAP::Services::Postgresql::Node
     end
     if not provisionedservice.destroy
       @logger.error("Could not delete entry: #{provisionedservice.errors.inspect}")
-    else
-      # restore quota only if provisionedservice is deleted from local db
-      @mutex_available_storage.synchronize do
-        @available_storage += storage
-      end
     end
     @logger.info("Successfully fulfilled unprovision request: #{name}")
     true
@@ -487,8 +456,6 @@ class VCAP::Services::Postgresql::Node
       if not create_database_user(name, bindusers[0], false) then
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
-      storage = storage_for_service(provisionedservice)
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if get_available_storage < storage
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
     rescue PGError => e
@@ -824,10 +791,8 @@ class VCAP::Services::Postgresql::Node
     varz[:pg_version] = @connection.query('select version()')[0]["version"]
     # db stat
     varz[:db_stat] = get_db_stat
-    # node capacity
-    # (no need to synchronize @available_storage here since varz is not in critical path)
-    varz[:node_storage_capacity] = @node_capacity
-    varz[:node_storage_used] = @node_capacity - @available_storage
+    varz[:max_capacity] = @max_capacity
+    varz[:available_capacity] = @capacity
     # how many long queries and long txs are killed.
     varz[:long_queries_killed] = @long_queries_killed
     varz[:long_transactions_killed] = @long_tx_killed

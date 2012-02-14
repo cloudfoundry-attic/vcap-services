@@ -1,4 +1,6 @@
 ---
+capacity: 200
+plan: free
 local_db: sqlite3:/var/vcap/services/redis/redis_node.db
 mbus: nats://localhost:4222
 index: 0
@@ -7,10 +9,9 @@ ip_route: 127.0.0.1
 logging:
   level: debug
 pid: /var/vcap/sys/run/redis_node.pid
-available_memory: 4096
 max_memory: 16
 max_swap: 32
-node_id: redis_node_1
+node_id: redis_node_free_1
 redis_server_path: redis-server
 port_range:
   first: 5000
