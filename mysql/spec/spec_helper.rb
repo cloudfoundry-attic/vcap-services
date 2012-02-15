@@ -22,6 +22,10 @@ def connect_to_mysql(options)
   Mysql2::Client.new(:host => host, :username => user, :password => password, :database => db, :port => port)
 end
 
+def connection_pool_klass
+    VCAP::Services::Mysql::Util::ConnectionPool
+end
+
 def parse_property(hash, key, type, options = {})
   obj = hash[key]
   if obj.nil?

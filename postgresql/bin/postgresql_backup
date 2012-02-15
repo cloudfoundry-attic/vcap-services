@@ -64,9 +64,7 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
       else
       end
 
-      if @shutdown
-        raise Interrupt, "Interrupted"
-      end
+      raise Interrupt, "Interrupted" if @shutdown
     end
     echo "Backup begins at #{current_time} complete. Success: #{success}. Failed #{failed}. Ignored #{ignored}."
     0
@@ -105,8 +103,8 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
     return 1
   end
 
-  def self.cleanup(path)
-    FileUtils.rm_rf(path)
+  def cleanup(path)
+    FileUtils.rm_rf(path) if path
   end
 end
 
