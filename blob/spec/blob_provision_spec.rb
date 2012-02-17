@@ -9,7 +9,6 @@ describe "blob_node provision" do
       @opts = get_node_config()
       @logger = @opts[:logger]
       @node = Node.new(@opts)
-      @original_memory = @node.available_memory
 
       EM.add_timer(2) { @resp = @node.provision("free") }
       EM.add_timer(4) { EM.stop }
@@ -22,10 +21,6 @@ describe "blob_node provision" do
     inst_name = @resp['name']
     inst_name.should_not be_nil
     inst_name.should_not == ""
-  end
-
-  it "should consume node's memory" do
-    (@original_memory - @node.available_memory).should > 0
   end
 
   it "should be able to connect to blob gateway" do
@@ -43,8 +38,8 @@ describe "blob_node provision" do
       stats[:running_services].length.should > 0
       stats[:running_services][0]['name'].should_not be_nil
       stats[:disk].should_not be_nil
-      stats[:services_max_memory].should > 0
-      stats[:services_used_memory].should > 0
+      stats[:max_capacity].should > 0
+      stats[:available_capacity].should > 0
       EM.stop
     end
   end
@@ -97,13 +92,6 @@ describe "blob_node provision" do
       rescue => e
       end
       e.should be_nil
-      EM.stop
-    end
-  end
-
-  it "should release memory" do
-    EM.run do
-      @original_memory.should == @node.available_memory
       EM.stop
     end
   end

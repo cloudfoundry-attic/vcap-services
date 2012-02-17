@@ -77,10 +77,11 @@ def get_node_config()
   options = {
   #  :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :nodejs_path => parse_property(config, "nodejs_path", String),
+    :plan => parse_property(config, "plan", String),
+    :capacity => parse_property(config, "capacity", Integer),
     :blobd_path => parse_property(config, "blobd_path", String),
     :blobd_log_dir => parse_property(config, "blobd_log_dir", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :available_memory => parse_property(config, "available_memory", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
     :config_template => blob_conf_template,

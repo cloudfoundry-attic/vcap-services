@@ -38,7 +38,6 @@ class VCAP::Services::Blob::Node
     include DataMapper::Resource
     property :name,         String,   :key => true
     property :port,         Integer,  :unique => true
-    property :plan,         Enum[:free], :required => true
     property :pid,          Integer
     property :memory,       Integer
     property :keyid,        String,   :required => true
@@ -89,8 +88,6 @@ class VCAP::Services::Blob::Node
     @blobd_log_dir = options[:blobd_log_dir]
     @blobd_auth = options[:blobd_auth] || "basic" #default is basic auth
 
-    @total_memory = options[:available_memory]
-    @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
 
     @config_template = ERB.new(File.read(options[:config_template]))
@@ -124,39 +121,29 @@ class VCAP::Services::Blob::Node
     end
   end
 
-  def inc_memory(memory)
-    @mutex.synchronize do
-      @available_memory += memory
-    end
-  end
-
-  def dec_memory(memory)
-    @mutex.synchronize do
-      @available_memory -= memory
-    end
-  end
-
   def pre_send_announcement
-    ProvisionedService.all.each do |provisioned_service|
-      delete_port(provisioned_service.port)
-      if provisioned_service.listening?
-        @logger.warn("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
-        dec_memory(provisioned_service.memory || @max_memory)
-        next
-      end
+    @capacity_lock.synchronize do
+      ProvisionedService.all.each do |provisioned_service|
+        @capacity -= capacity_unit
+        delete_port(provisioned_service.port)
+        if provisioned_service.listening?
+          @logger.warn("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
+          next
+        end
 
-      unless service_exist?(provisioned_service)
-        @logger.warn("Service #{provisioned_service.name} in local DB, but not in file system")
-        next
-      end
+        unless service_exist?(provisioned_service)
+          @logger.warn("Service #{provisioned_service.name} in local DB, but not in file system")
+          next
+        end
 
-      begin
-        pid = start_instance(provisioned_service)
-        provisioned_service.pid = pid
-        raise "Cannot save provision_service" unless provisioned_service.save
-      rescue => e
-        provisioned_service.kill
-        @logger.error("Error starting service #{provisioned_service.name}: #{e}")
+        begin
+          pid = start_instance(provisioned_service)
+          provisioned_service.pid = pid
+          raise "Cannot save provision_service" unless provisioned_service.save
+        rescue => e
+          provisioned_service.kill
+          @logger.error("Error starting service #{provisioned_service.name}: #{e}")
+        end
       end
     end
   end
@@ -174,10 +161,9 @@ class VCAP::Services::Blob::Node
   end
 
   def announcement
-    a = {
-      :available_memory => @available_memory
-    }
-    a
+    @capacity_lock.synchronize do
+      { :available_capacity => @capacity }
+    end
   end
 
   def all_instances_list
@@ -223,7 +209,6 @@ class VCAP::Services::Blob::Node
     provisioned_service             = ProvisionedService.new
     provisioned_service.name        = name
     provisioned_service.port        = port
-    provisioned_service.plan        = plan
     provisioned_service.memory      = @max_memory
     provisioned_service.keyid       = username
     provisioned_service.secretid    = password
@@ -266,7 +251,6 @@ class VCAP::Services::Blob::Node
       FileUtils.rm_rf(dir)
       FileUtils.rm_rf(log_dir)
     end
-    inc_memory(provisioned_service.memory)
     return_port(provisioned_service.port)
     raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
     true
@@ -342,8 +326,8 @@ class VCAP::Services::Blob::Node
     {
       :running_services     => stats,
       :disk                 => du_hash,
-      :services_max_memory  => @total_memory,
-      :services_used_memory => @total_memory - @available_memory
+      :max_capacity         => @max_capacity,
+      :available_capacity     => @capacity
     }
   end
 
@@ -380,7 +364,6 @@ class VCAP::Services::Blob::Node
     pid = fork
     if pid
       @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
-      dec_memory(memory)
       # In parent, detach the child.
       Process.detach(pid)
       pid

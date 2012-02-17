@@ -5,8 +5,5 @@ class VCAP::Services::Blob::Provisioner < VCAP::Services::Base::Provisioner
 
   include VCAP::Services::Blob::Common
 
-  def node_score(node)
-    node['available_memory']
-  end
 end
 

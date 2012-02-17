@@ -1,4 +1,6 @@
 ---
+capacity: 200
+plan: free
 local_db: sqlite3:/var/vcap/services/blob/blob_node.db
 mbus: nats://localhost:4222
 index: 0
@@ -8,9 +10,8 @@ logging:
   level: debug
 blobd_log_dir: /var/vcap/sys/service-log/blob
 pid: /var/vcap/sys/run/blob_node.pid
-available_memory: 4096
 max_memory: 128
-node_id: blob_node_1
+node_id: blob_node_free_1
 nodejs_path: node
 blobd_path: /var/vcap/packages/blob/bin
 blobd_auth: disabled
