@@ -8,14 +8,22 @@ describe VCAP::Services::Redis::Provisioner do
     logger = Logger.new(STDOUT, "daily")
     logger.level = Logger::DEBUG
     EM.run do
-      @provisioner = VCAP::Services::Redis::Provisioner.new({:logger => logger})
+      @provisioner = VCAP::Services::Redis::Provisioner.new({:logger => logger, :plan_management => {:plans => {:free => {:low_water => 10}}}})
       EM.add_timer(1) {EM.stop}
     end
   end
 
   describe 'Provisioner.node_score' do
-    it "should returen the node available memory when get the node score" do
-      @provisioner.node_score({"available_memory" => 1024}).should == 1024
+    it "should return the node available capacity when get the node score" do
+      @provisioner.node_score({"available_capacity" => 1024}).should == 1024
+    end
+  end
+
+  describe 'Provisioner.varz' do
+    it "should contain plan config in varz" do
+      varz = @provisioner.varz_details
+      varz[:plans][0][:plan].should == :free
+      varz[:plans][0][:low_water].should == 10
     end
   end
 end

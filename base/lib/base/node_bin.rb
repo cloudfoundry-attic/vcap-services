@@ -50,6 +50,8 @@ class VCAP::Services::Base::NodeBin
 
     options = {
       :index => parse_property(config, "index", Integer, :optional => true),
+      :plan => parse_property(config, "plan", String, :optional => true, :default => "free"),
+      :capacity => parse_property(config, "capacity", Integer, :optional => true, :default => 200),
       :base_dir => parse_property(config, "base_dir", String),
       :ip_route => parse_property(config, "ip_route", String, :optional => true),
       :node_id => parse_property(config, "node_id", String),
@@ -99,7 +101,7 @@ class VCAP::Services::Base::NodeBin
     obj = hash[key]
     if obj.nil?
       raise "Missing required option: #{key}" unless options[:optional]
-      nil
+      options[:default]
     elsif type == Range
       raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
       first, last = obj["first"], obj["last"]

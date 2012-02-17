@@ -24,7 +24,6 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
     options[:mysqldump_bin] = parse_property(config, "mysqldump_bin", String)
     options[:gzip_bin] = parse_property(config, "gzip_bin", String)
     options[:mysql_bin] = parse_property(config, "mysql_bin", String)
-    options[:available_storage] = parse_property(config, "available_storage", Integer)
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
     options[:max_long_query] = parse_property(config, "max_long_query", Integer)
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)

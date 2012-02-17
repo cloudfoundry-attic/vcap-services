@@ -93,7 +93,8 @@ class VCAP::Services::Base::Gateway
              :allow_over_provisioning => @config[:allow_over_provisioning],
              :max_nats_payload => @config[:max_nats_payload],
              :additional_options => additional_options,
-             :status => @config[:status]
+             :status => @config[:status],
+             :plan_management => @config[:plan_management]
            )
       sg = async_gateway_class.new(
              :proxy   => @config[:proxy],
@@ -105,7 +106,7 @@ class VCAP::Services::Base::Gateway
              :cloud_controller_uri => cloud_controller_uri,
              :check_orphan_interval => @config[:check_orphan_interval],
              :double_check_orphan_interval => @config[:double_check_orphan_interval],
-             :api_extensions => @config[:api_extensions],
+             :api_extensions => @config[:api_extensions]
            )
       Thin::Server.start(@config[:host], @config[:port], sg)
     end

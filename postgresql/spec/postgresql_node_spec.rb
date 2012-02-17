@@ -209,20 +209,6 @@ describe "Postgresql node normal cases" do
     end
   end
 
-  it "should calculate available storage correctly" do
-    EM.run do
-      original= @node.available_storage
-      db2 = @node.provision(@default_plan)
-      @test_dbs[db2] = []
-      current= @node.available_storage
-      (original - current).should == @opts[:max_db_size]*1024*1024
-      @node.unprovision(db2["name"],[])
-      unprov= @node.available_storage
-      unprov.should == original
-      EM.stop
-    end
-  end
-
   it "should calculate both table and index as database size" do
     EM.run do
       conn = connect_to_postgresql(@db)
@@ -405,8 +391,8 @@ describe "Postgresql node normal cases" do
       varz.should be_instance_of Hash
       varz[:pg_version].should be
       varz[:db_stat].should be_instance_of Array
-      varz[:node_storage_capacity].should > 0
-      varz[:node_storage_used].should >= 0
+      varz[:max_capacity].should > 0
+      varz[:available_capacity].should >= 0
       varz[:long_queries_killed].should >= 0
       varz[:long_transactions_killed].should >= 0
       varz[:provision_served].should >= 0
@@ -434,21 +420,6 @@ describe "Postgresql node normal cases" do
       instance = v[:db_stat].find {|d| d[:name] == @db["name"]}
       instance.should_not be_nil
       instance[:size].should >= 0
-      EM.stop
-    end
-  end
-
-  it "should update node capacity after provision new instance" do
-    EM.run do
-      v1 = @node.varz_details
-      db = @node.provision(@default_plan)
-      @test_dbs[db] = []
-      v2 = @node.varz_details
-      (v2[:node_storage_used] - v1[:node_storage_used]).should ==
-        (@opts[:max_db_size] * 1024 * 1024)
-      @node.unprovision(db["name"], [])
-      v3 = @node.varz_details
-      (v3[:node_storage_used] - v1[:node_storage_used]).should == 0
       EM.stop
     end
   end
@@ -845,21 +816,6 @@ describe "Postgresql node special cases" do
     expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
     conn.close if conn
     node.unprovision(db["name"], [])
-  end
-
-  it "should raise error if there is no available storage to provision instance" do
-    node = nil
-    EM.run do
-      opts = getNodeTestConfig
-      opts[:available_storage] = 10
-      opts[:max_db_size] = 20
-      node = VCAP::Services::Postgresql::Node.new(opts)
-      sleep 1
-      EM.add_timer(0.1) {EM.stop}
-    end
-    expect {
-      node.provision('free')
-    }.should raise_error(PostgresqlError, /Node disk is full/)
   end
 
   it "should handle postgresql error in varz" do

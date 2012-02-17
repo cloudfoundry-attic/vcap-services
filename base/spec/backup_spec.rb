@@ -1,6 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require 'spec_helper'
-
+require 'helper/spec_helper'
 require 'eventmachine'
 
 describe BackupTest do
