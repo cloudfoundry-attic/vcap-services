@@ -251,9 +251,10 @@ class VCAP::Services::MongoDB::Node
     # Add an end_user
     mongodb_add_user(provisioned_service, username, password)
 
+    host = get_host
     response = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host" => host,
       "port" => provisioned_service.port,
       "name" => provisioned_service.name,
       "db" => provisioned_service.db,
@@ -311,9 +312,10 @@ class VCAP::Services::MongoDB::Node
 
     mongodb_add_user(provisioned_service, username, password, bind_opts)
 
+    host = get_host
     response = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host"     => host,
       "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
@@ -454,16 +456,16 @@ class VCAP::Services::MongoDB::Node
 
     raise "Cannot save provisioned_service" unless provisioned_service.save
 
+    host = get_host
+
     # Update credentials for the new credential
     service_credential['port'] = port
-    service_credential['host'] = @local_ip
-    service_credential['hostname'] = @local_ip
+    service_credential['host'] = service_credential['hostname'] = host
 
     binding_credentials.each_value do |value|
       v = value["credentials"]
       v['port'] = port
-      v['host'] = @local_ip
-      v['hostname'] = @local_ip
+      v['host'] = v['hostname'] = host
     end
 
     [service_credential, binding_credentials]

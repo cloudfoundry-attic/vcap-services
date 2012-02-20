@@ -2,6 +2,7 @@
 require 'nats/client'
 require 'vcap/component'
 require 'fileutils'
+require 'socket'
 
 $:.unshift(File.dirname(__FILE__))
 require 'base'
@@ -18,6 +19,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @max_capacity = @capacity
     @capacity_lock = Mutex.new
     @migration_nfs = options[:migration_nfs]
+    @fqdn_hosts = options[:fqdn_hosts]
 
     z_interval = options[:z_interval] || 30
     EM.add_periodic_timer(z_interval) do
@@ -320,6 +322,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     end
     response.error = error.to_hash
     response.encode
+  end
+
+  def get_host
+    @fqdn_hosts ? Socket.gethostname : @local_ip
   end
 
   # Service Node subclasses must implement the following methods

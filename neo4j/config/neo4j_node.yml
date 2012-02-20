@@ -16,3 +16,4 @@ port_range:
 
 # z_interval: 30
 # max_nats_payload: 1048576
+# fqdn_hosts: false

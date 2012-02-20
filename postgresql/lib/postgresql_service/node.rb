@@ -616,10 +616,11 @@ class VCAP::Services::Postgresql::Node
   end
 
   def gen_credential(name, user, passwd)
+    host = get_host
     response = {
       "name" => name,
-      "host" => @local_ip,
-      "hostname" => @local_ip,
+      "host" => host,
+      "hostname" => host,
       "port" => @postgresql_config['port'],
       "user" => user,
       "username" => user,
@@ -755,7 +756,7 @@ class VCAP::Services::Postgresql::Node
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
-    if prov_cred["hostname"] == @local_ip
+    if prov_cred["hostname"] == get_host
       # Original
       db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
       service = Provisionedservice.get(name)

@@ -407,9 +407,10 @@ class VCAP::Services::Redis::Node
   end
 
   def gen_credentials(instance)
+    host = get_host
     credentials = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host" => host,
       "port" => instance.port,
       "password" => instance.password,
       "name" => instance.name

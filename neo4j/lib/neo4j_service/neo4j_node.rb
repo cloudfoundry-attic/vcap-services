@@ -190,9 +190,10 @@ class VCAP::Services::Neo4j::Node
       raise "Could not save entry: #{provisioned_service.errors.pretty_inspect}"
     end
 
+    host = get_host
     response = {
-      "hostname" => @local_ip,
-      "host"     => @local_ip,
+      "hostname" => host,
+      "host"     => host,
       "port"     => provisioned_service.port,
       "password" => provisioned_service.password,
       "name"     => provisioned_service.name,
@@ -251,9 +252,10 @@ class VCAP::Services::Neo4j::Node
     r = RestClient.post "http://#{provisioned_service.username}:#{provisioned_service.password}@#{@local_ip}:#{provisioned_service.port}/admin/add-user-#{ro ? 'ro' : 'rw'}","user=#{username}:#{password}"
     raise "Failed to add user:  #{username} status: #{r.code} message: #{r.to_str}" unless r.code == 200
 
+    host = get_host
     response = {
-      "hostname" => @local_ip,
-      "host"     => @local_ip,
+      "hostname" => host,
+      "host"     => host,
       "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,

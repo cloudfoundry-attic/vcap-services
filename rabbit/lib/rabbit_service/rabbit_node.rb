@@ -196,12 +196,13 @@ class VCAP::Services::Rabbit::Node
   def enable_instance(service_credentials, binding_credentials_map={})
     if get_permissions(service_credentials["vhost"], service_credentials["user"]) != ""
       # The new node
-      service_credentials["hostname"] = @local_ip
-      service_credentials["host"] = @local_ip
+      host = get_host
+      service_credentials["hostname"] = host
+      service_credentials["host"] = host
       binding_credentials_map.each do |key, value|
         bind(service_credentials["name"], value["binding_options"], value["credentials"])
-        binding_credentials_map[key]["credentials"]["hostname"] = @local_ip
-        binding_credentials_map[key]["credentials"]["host"] = @local_ip
+        binding_credentials_map[key]["credentials"]["hostname"] = host
+        binding_credentials_map[key]["credentials"]["host"] = host
       end
     else
       # The old node
@@ -489,10 +490,11 @@ class VCAP::Services::Rabbit::Node
   end
 
   def gen_credentials(instance, user = nil, pass = nil)
+    host = get_host
     credentials = {
       "name" => instance.name,
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host" => host,
       "port"  => @rabbit_port,
       "vhost" => instance.vhost,
     }

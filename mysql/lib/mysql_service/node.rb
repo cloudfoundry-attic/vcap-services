@@ -645,10 +645,11 @@ class VCAP::Services::Mysql::Node
   end
 
   def gen_credential(name, user, passwd)
+    host = get_host
     response = {
       "name" => name,
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host" => host,
       "port" => @mysql_config['port'],
       "user" => user,
       "username" => user,

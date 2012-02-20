@@ -20,12 +20,15 @@ module VCAP
   end
 end
 
-
 class VCAP::Services::Base::NodeBin
 
   abstract :default_config_file
   abstract :node_class
   abstract :additional_config
+
+  module Boolean; end
+  class ::TrueClass; include Boolean; end
+  class ::FalseClass; include Boolean; end
 
   def start
     config_file = default_config_file
@@ -59,7 +62,8 @@ class VCAP::Services::Base::NodeBin
       :mbus => parse_property(config, "mbus", String),
       :local_db => parse_property(config, "local_db", String),
       :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
-      :max_nats_payload => parse_property(config, "max_nats_payload", Integer, :optional => true)
+      :max_nats_payload => parse_property(config, "max_nats_payload", Integer, :optional => true),
+      :fqdn_hosts => parse_property(config, "fqdn_hosts", Boolean, :optional => true, :default => false)
     }
 
     VCAP::Logging.setup_from_config(config["logging"])
