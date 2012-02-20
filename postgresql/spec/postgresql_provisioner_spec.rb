@@ -30,8 +30,8 @@ describe 'Postgresql Provisioner Test' do
     EM.run do
       msg1 = {:id => 'node1'}
       msg2 = {:id => 'node2'}
-      @provisioner.on_node_announce(Yajl::Encoder.encode(msg1))
-      @provisioner.on_node_announce(Yajl::Encoder.encode(msg2))
+      @provisioner.on_announce(Yajl::Encoder.encode(msg1))
+      @provisioner.on_announce(Yajl::Encoder.encode(msg2))
       @provisioner.nodes.size.should == 2
       EM.stop
     end
@@ -40,9 +40,9 @@ describe 'Postgresql Provisioner Test' do
   it "should not save duplicated announcement" do
     EM.run do
       msg = {:id => 'node1'}
-      @provisioner.on_node_announce(Yajl::Encoder.encode(msg))
-      @provisioner.on_node_announce(Yajl::Encoder.encode(msg))
-      @provisioner.on_node_announce(Yajl::Encoder.encode(msg))
+      @provisioner.on_announce(Yajl::Encoder.encode(msg))
+      @provisioner.on_announce(Yajl::Encoder.encode(msg))
+      @provisioner.on_announce(Yajl::Encoder.encode(msg))
       @provisioner.nodes.size.should == 1
       EM.stop
     end
@@ -51,7 +51,7 @@ describe 'Postgresql Provisioner Test' do
   it "should handle malformed announcement msg" do
     EM.run do
       msg = {}
-      @provisioner.on_node_announce(Yajl::Encoder.encode(msg))
+      @provisioner.on_announce(Yajl::Encoder.encode(msg))
       @provisioner.nodes.size.should == 0
       EM.stop
     end
@@ -60,7 +60,7 @@ describe 'Postgresql Provisioner Test' do
   it "should define score node method" do
     @provisioner.respond_to?("node_score").should be true
     lambda {@provisioner.node_score(nil)}.should_not raise_error
-    res = @provisioner.node_score({'available_storage' => 5})
+    res = @provisioner.node_score({'available_capacity' => 5})
     res.should == 5
   end
 

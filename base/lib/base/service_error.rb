@@ -28,6 +28,7 @@ module VCAP
           INVALID_CONTENT = [30000, HTTP_BAD_REQUEST, 'Invalid Content-Type']
           MALFORMATTED_REQ = [30001, HTTP_BAD_REQUEST, 'Malformatted request']
           UNKNOWN_LABEL = [30002, HTTP_BAD_REQUEST, 'Unknown label']
+          UNKNOWN_PLAN = [30003, HTTP_BAD_REQUEST, 'Unknown plan %s']
 
           # 30100 - 30199  401 Unauthorized
           NOT_AUTHORIZED = [30100, HTTP_NOT_AUTHORIZED, 'Not authorized']

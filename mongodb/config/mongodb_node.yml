@@ -1,4 +1,6 @@
 ---
+capacity: 200
+plan: free
 local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
 mbus: nats://localhost:4222
 index: 0
@@ -8,9 +10,8 @@ logging:
   level: debug
 mongod_log_dir: /var/vcap/sys/log/mongodb
 pid: /var/vcap/sys/run/mongodb_node.pid
-available_memory: 4096
 max_memory: 128
-node_id: mongodb_node_1
+node_id: mongodb_node_free_1
 mongod_path: mongod
 mongorestore_path: mongorestore
 port_range:

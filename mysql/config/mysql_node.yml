@@ -1,4 +1,6 @@
 ---
+capacity: 200
+plan: free
 local_db: sqlite3:/var/vcap/services/mysql/mysql_node.db
 base_dir: /var/vcap/services/mysql/
 mysqldump_bin: mysqldump
@@ -10,8 +12,7 @@ index: 0
 logging:
   level: debug
 pid: /var/vcap/sys/run/mysql_node.pid
-available_storage: 1024
-node_id: mysql_node_1
+node_id: mysql_node_free_1
 max_db_size: 20
 max_long_query: 3
 max_long_tx: 30
