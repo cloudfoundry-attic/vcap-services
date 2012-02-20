@@ -29,10 +29,6 @@ class VCAP::Services::MongoDB::Provisioner < VCAP::Services::Base::Provisioner
     end
   end
 
-  def node_score(node)
-    node['available_memory']
-  end
-
   def create_snapshot_job
     VCAP::Services::Snapshot::MongoDB::CreateSnapshotJob
   end
