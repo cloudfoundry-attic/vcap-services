@@ -294,36 +294,6 @@ describe ProvisionerTests do
     prov_svcs_before.should == prov_svcs_after
   end
 
-  it "should support healthz" do
-    provisioner = nil
-    gateway = nil
-    node = nil
-    prov_svcs_before = nil
-    prov_svcs_after = nil
-    healthz_invoked_before = nil
-    healthz_invoked_after = nil
-    EM.run do
-      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
-      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-      Do.at(2) { node = ProvisionerTests.create_node(1) }
-      Do.at(3) { gateway.send_provision_request }
-      Do.at(4) { gateway.send_bind_request }
-      Do.at(5) {
-        prov_svcs_before = Marshal.dump(provisioner.prov_svcs)
-        healthz_invoked_before = provisioner.healthz_invoked
-      }
-      # healthz is invoked 5 seconds after provisioner is created
-      Do.at(11) {
-        prov_svcs_after = Marshal.dump(provisioner.prov_svcs)
-        healthz_invoked_after = provisioner.healthz_invoked
-      }
-      Do.at(12) { EM.stop }
-    end
-    healthz_invoked_before.should be_false
-    healthz_invoked_after.should be_true
-    prov_svcs_before.should == prov_svcs_after
-  end
-
   it "should allow over provisioning when it is configured so" do
     provisioner = nil
     gateway = nil

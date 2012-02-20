@@ -30,7 +30,7 @@ class NodeTests
     attr_reader   :unbind_count
     attr_reader   :capacity
     attr_accessor :varz_invoked
-    attr_accessor :healthz_invoked
+    attr_reader   :healthz_ok
     SERVICE_NAME = "Test"
     ID = "node-1"
     def initialize(options)
@@ -47,10 +47,10 @@ class NodeTests
       @unprovision_count = 0
       @unbind_count = 0
       @varz_invoked = false
-      @healthz_invoked = false
       @ins_count = options[:ins_count] || 0
       @bind_count = options[:bind_count] || 0
       @plan = options[:plan] || "free"
+      @healthz_ok = VCAP::Component.healthz
     end
     def service_name
       SERVICE_NAME
@@ -87,10 +87,6 @@ class NodeTests
     end
     def varz_details
       @varz_invoked = true
-      {}
-    end
-    def healthz_details
-      @healthz_invoked = true
       {}
     end
 

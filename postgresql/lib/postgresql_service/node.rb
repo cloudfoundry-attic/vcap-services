@@ -800,6 +800,15 @@ class VCAP::Services::Postgresql::Node
     # how many provision/binding operations since startup.
     varz[:provision_served] = @provision_served
     varz[:binding_served] = @binding_served
+    # get instances status
+    varz[:instances] = {}
+    begin
+      Provisionedservice.all.each do |instance|
+        varz[:instances][instance.name.to_sym] = get_status(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
     varz
   rescue => e
     @logger.warn("Error during generate varz: #{e}")
@@ -833,25 +842,7 @@ class VCAP::Services::Postgresql::Node
     []
   end
 
-  def healthz_details()
-    healthz = {:self => "ok"}
-    if connection_exception
-      @logger.warn("PostgreSQL connection lost, healthz fail.")
-      healthz[:self] = "fail"
-      return healthz
-    end
-    begin
-      Provisionedservice.all.each do |instance|
-        healthz[instance.name.to_sym] = get_instance_healthz(instance)
-      end
-    rescue => e
-      @logger.error("Error get instance list: #{e}")
-      healthz[:self] = "fail"
-    end
-    healthz
-  end
-
-  def get_instance_healthz(instance)
+  def get_status(instance)
     res = 'ok'
     host, port = %w{host port}.map { |opt| @postgresql_config[opt] }
     begin

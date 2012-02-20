@@ -23,12 +23,12 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
     z_interval = options[:z_interval] || 30
     EM.add_periodic_timer(z_interval) do
-      EM.defer { update_varz; update_healthz }
+      EM.defer { update_varz }
     end
 
     # Defer 5 seconds to give service a change to wake up
     EM.add_timer(5) do
-      EM.defer { update_varz; update_healthz }
+      EM.defer { update_varz }
     end
   end
 
@@ -293,14 +293,6 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     # provide service specific data beyond what is returned by their
     # "announcement" method.
     return announcement
-  end
-
-  def healthz_details()
-    # Service Node subclasses may want to override this method to
-    # provide service specific data
-    healthz = {
-      :self => "ok"
-    }
   end
 
   def capacity_unit

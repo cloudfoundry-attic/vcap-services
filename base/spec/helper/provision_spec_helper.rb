@@ -31,7 +31,6 @@ class ProvisionerTests
   class ProvisionerTester < VCAP::Services::Base::Provisioner
     attr_accessor :prov_svcs
     attr_accessor :varz_invoked
-    attr_accessor :healthz_invoked
     attr_accessor :prov_svcs
     attr_reader   :staging_orphan_instances
     attr_reader   :staging_orphan_bindings
@@ -54,10 +53,6 @@ class ProvisionerTests
     end
     def varz_details
       @varz_invoked = true
-      super
-    end
-    def healthz_details
-      @healthz_invoked = true
       super
     end
   end
