@@ -27,13 +27,7 @@ resque:
   port: 5454
 
 upload_temp_dir: /tmp
-plan_management:
-  plans:
-    free:
-      low_water: 10
-      high_water: 180
-      #allow_over_provisioning: false
-
+# allow_over_provisioning: false
 # z_interval: 30
 # check_orphan_interval: 3600
 # double_check_orphan_interval: 300

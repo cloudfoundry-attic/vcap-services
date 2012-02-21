@@ -10,6 +10,7 @@ describe "mongodb_node provision" do
       @opts = get_node_config()
       @logger = @opts[:logger]
       @node = Node.new(@opts)
+      @original_memory = @node.available_memory
       @node.max_clients = MAX_CONNECTION
 
       EM.add_timer(2) { @resp = @node.provision("free") }
@@ -23,6 +24,10 @@ describe "mongodb_node provision" do
     inst_name = @resp['name']
     inst_name.should_not be_nil
     inst_name.should_not == ""
+  end
+
+  it "should consume node's memory" do
+    (@original_memory - @node.available_memory).should > 0
   end
 
   it "should be able to connect to mongodb" do
@@ -60,8 +65,8 @@ describe "mongodb_node provision" do
       stats[:running_services][0]['db'].should_not be_nil
       stats[:running_services][0]['overall']['connections']['current'].should == 1
       stats[:disk].should_not be_nil
-      stats[:max_capacity].should > 0
-      stats[:available_capacity].should > 0
+      stats[:services_max_memory].should > 0
+      stats[:services_used_memory].should > 0
       EM.stop
     end
   end
@@ -207,6 +212,14 @@ describe "mongodb_node provision" do
       EM.stop
     end
   end
+
+  it "should release memory" do
+    EM.run do
+      @original_memory.should == @node.available_memory
+      EM.stop
+    end
+  end
+
 end
 
 

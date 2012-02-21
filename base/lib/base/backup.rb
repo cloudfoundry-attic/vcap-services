@@ -187,12 +187,8 @@ class CMDHandle
         return false
       end
     else
-      begin
-        # child process
-        exec(@cmd)
-      rescue => e
-        exit!
-      end
+      # child process
+      exec(@cmd)
     end
   end
 

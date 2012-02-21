@@ -37,8 +37,7 @@ class VCAP::Services::Mysql::Node
     property :name,       String,   :key => true
     property :user,       String,   :required => true
     property :password,   String,   :required => true
-    # property plan is deprecated. The instances in one node have same plan.
-    property :plan,       Integer,  :required => true
+    property :plan,       Enum[:free], :required => true
     property :quota_exceeded,  Boolean, :default => false
   end
 
@@ -54,19 +53,10 @@ class VCAP::Services::Mysql::Node
     @mysqldump_bin = options[:mysqldump_bin]
     @gzip_bin = options[:gzip_bin]
     @mysql_bin = options[:mysql_bin]
-    @delete_user_lock = Mutex.new
-    @base_dir = options[:base_dir]
-    @local_db = options[:local_db]
 
-    @long_queries_killed = 0
-    @long_tx_killed = 0
-    @statistics_lock = Mutex.new
-    @provision_served = 0
-    @binding_served = 0
-  end
-
-  def pre_send_announcement
     @pool = mysql_connect
+    @delete_user_lock = Mutex.new
+
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f/2) {kill_long_queries} if @max_long_query > 0
     if (@max_long_tx > 0) and (check_innodb_plugin)
@@ -76,19 +66,30 @@ class VCAP::Services::Mysql::Node
     end
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
 
+    @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
 
-    DataMapper.setup(:default, @local_db)
+    DataMapper.setup(:default, options[:local_db])
     DataMapper::auto_upgrade!
+
+    @available_storage = options[:available_storage] * 1024 * 1024
+    @available_storage_lock = Mutex.new
+    @node_capacity = @available_storage
+
     @queries_served = 0
     @qps_last_updated = 0
     # initialize qps counter
     get_qps
+    @long_queries_killed = 0
+    @long_tx_killed = 0
+    @statistics_lock = Mutex.new
+    @provision_served = 0
+    @binding_served = 0
+  end
 
-    @capacity_lock.synchronize do
-      ProvisionedService.all.each do |provisionedservice|
-        @capacity -= capacity_unit
-      end
+  def pre_send_announcement
+    ProvisionedService.all.each do |provisioned_service|
+      @available_storage -= storage_for_service(provisioned_service)
     end
     check_db_consistency
   end
@@ -110,8 +111,11 @@ class VCAP::Services::Mysql::Node
   end
 
   def announcement
-    @capacity_lock.synchronize do
-      { :available_capacity => @capacity }
+    @available_storage_lock.synchronize do
+      a = {
+        :available_storage => @available_storage
+      }
+      a
     end
   end
 
@@ -137,6 +141,14 @@ class VCAP::Services::Mysql::Node
     @pool.with_connection do |connection|
       res = connection.query("show tables from information_schema like 'INNODB_TRX'")
       return true if res.count > 0
+    end
+  end
+
+  def storage_for_service(provisioned_service)
+    case provisioned_service.plan
+    when :free then @max_db_size
+    else
+      raise MysqlError.new(MysqlError::MYSQL_INVALID_PLAN, provisioned_service.plan)
     end
   end
 
@@ -216,10 +228,13 @@ class VCAP::Services::Mysql::Node
   end
 
   def provision(plan, credential=nil)
-    raise MysqlError.new(MysqlError::MYSQL_INVALID_PLAN, plan) unless plan == @plan
     provisioned_service = ProvisionedService.new
-    provisioned_service.plan = 1
+    provisioned_service.plan = plan
+    storage = storage_for_service(provisioned_service)
     begin
+      @available_storage_lock.synchronize do
+        @available_storage -= storage
+      end
       if credential
         name, user, password = %w(name user password).map{|key| credential[key]}
         provisioned_service.name = name
@@ -243,6 +258,9 @@ class VCAP::Services::Mysql::Node
       end
       return response
     rescue => e
+      @available_storage_lock.synchronize do
+        @available_storage += storage
+      end
       delete_database(provisioned_service)
       raise e
     end
@@ -262,11 +280,15 @@ class VCAP::Services::Mysql::Node
       @logger.warn("Error found in unbind operation:#{e}")
     end
     delete_database(provisioned_service)
+    storage = storage_for_service(provisioned_service)
     if not provisioned_service.destroy
       @logger.error("Could not delete service: #{provisioned_service.errors.inspect}")
       raise MysqlError.new(MysqError::MYSQL_LOCAL_DB_ERROR)
     end
     # the order is important, restore quota only when record is deleted from local db.
+    @available_storage_lock.synchronize do
+      @available_storage += storage
+    end
     @logger.debug("Successfully fulfilled unprovision request: #{name}")
     true
   end
@@ -532,8 +554,11 @@ class VCAP::Services::Mysql::Node
     # disk usage per instance
     status = get_instance_status
     varz[:database_status] = status
-    varz[:max_capacity] = @max_capacity
-    varz[:available_capacity] = @capacity
+    # node capacity
+    varz[:node_storage_capacity] = @node_capacity
+    @available_storage_lock.synchronize do
+      varz[:node_storage_used] = @node_capacity - @available_storage
+    end
     # how many long queries and long txs are killed.
     varz[:long_queries_killed] = @long_queries_killed
     varz[:long_transactions_killed] = @long_tx_killed

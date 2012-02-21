@@ -11,7 +11,7 @@ resque:
   host: localhost
   port: 5454
 index: 0
-node_id: redis_node_free_1
+node_id: redis_node_1
 download_url_template: http://dl.vcap.me/serialized/#{service}/#{name}?token=#{token}
 worker_count: 5
 logging:

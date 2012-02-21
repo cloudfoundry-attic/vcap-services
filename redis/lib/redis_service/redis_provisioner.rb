@@ -36,6 +36,10 @@ class VCAP::Services::Redis::Provisioner < VCAP::Services::Base::Provisioner
     end
   end
 
+  def node_score(node)
+    node["available_memory"] if node
+  end
+
   def create_snapshot_job
     VCAP::Services::Snapshot::Redis::CreateSnapshotJob
   end

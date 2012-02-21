@@ -108,11 +108,10 @@ def get_node_config()
   mongodb_conf_template = File.join(PWD, "../resources/mongodb.conf.erb")
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    :plan => parse_property(config, "plan", String),
-    :capacity => parse_property(config, "capacity", Integer),
     :mongod_path => parse_property(config, "mongod_path", String),
     :mongorestore_path => parse_property(config, "mongorestore_path", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
+    :available_memory => parse_property(config, "available_memory", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
     :config_template => mongodb_conf_template,

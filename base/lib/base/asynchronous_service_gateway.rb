@@ -544,7 +544,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
     req = create_http_request(
       :head => @cc_req_hdrs,
-      :body => @svc_json
+      :body => @svc_json,
     )
 
     http = EM::HttpRequest.new(@offering_uri).post(req)

@@ -36,6 +36,10 @@ class VCAP::Services::Mysql::Provisioner < VCAP::Services::Base::Provisioner
     end
   end
 
+  def node_score(node)
+    node['available_storage'] if node
+  end
+
   def create_snapshot_job
     VCAP::Services::Snapshot::Mysql::CreateSnapshotJob
   end

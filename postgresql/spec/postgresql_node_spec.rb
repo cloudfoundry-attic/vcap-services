@@ -209,6 +209,20 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should calculate available storage correctly" do
+    EM.run do
+      original= @node.available_storage
+      db2 = @node.provision(@default_plan)
+      @test_dbs[db2] = []
+      current= @node.available_storage
+      (original - current).should == @opts[:max_db_size]*1024*1024
+      @node.unprovision(db2["name"],[])
+      unprov= @node.available_storage
+      unprov.should == original
+      EM.stop
+    end
+  end
+
   it "should calculate both table and index as database size" do
     EM.run do
       conn = connect_to_postgresql(@db)
@@ -313,7 +327,6 @@ describe "Postgresql node normal cases" do
       sleep 1
       EM.add_timer(0.1) do
         db = node.provision('free')
-        @test_dbs[db] = []
         conn = connect_to_postgresql(db)
         # prepare a transaction and not commit
         conn.query("create table a(id int)")
@@ -391,8 +404,8 @@ describe "Postgresql node normal cases" do
       varz.should be_instance_of Hash
       varz[:pg_version].should be
       varz[:db_stat].should be_instance_of Array
-      varz[:max_capacity].should > 0
-      varz[:available_capacity].should >= 0
+      varz[:node_storage_capacity].should > 0
+      varz[:node_storage_used].should >= 0
       varz[:long_queries_killed].should >= 0
       varz[:long_transactions_killed].should >= 0
       varz[:provision_served].should >= 0
@@ -420,6 +433,21 @@ describe "Postgresql node normal cases" do
       instance = v[:db_stat].find {|d| d[:name] == @db["name"]}
       instance.should_not be_nil
       instance[:size].should >= 0
+      EM.stop
+    end
+  end
+
+  it "should update node capacity after provision new instance" do
+    EM.run do
+      v1 = @node.varz_details
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      v2 = @node.varz_details
+      (v2[:node_storage_used] - v1[:node_storage_used]).should ==
+        (@opts[:max_db_size] * 1024 * 1024)
+      @node.unprovision(db["name"], [])
+      v3 = @node.varz_details
+      (v3[:node_storage_used] - v1[:node_storage_used]).should == 0
       EM.stop
     end
   end
@@ -552,234 +580,6 @@ describe "Postgresql node normal cases" do
     end
   end
 
-  it "should be able to share objects across users" do
-    EM.run do
-      user1 = @node.bind @db["name"], @default_opts
-      conn1 = connect_to_postgresql user1
-      conn1.query 'create table t_user1(i int)'
-      conn1.query 'create sequence s_user1'
-      conn1.query "create function f_user1() returns integer as 'select 1234;' language sql"
-      conn1.close if conn1
-
-      user2 = @node.bind @db["name"], @default_opts
-      conn2 = connect_to_postgresql user2
-      expect { conn2.query 'drop table t_user1' }.should_not raise_error
-      expect { conn2.query 'drop sequence s_user1' }.should_not raise_error
-      expect { conn2.query 'drop function f_user1()' }.should_not raise_error
-      conn2.close if conn2
-      EM.stop
-    end
-  end
-
-  it "should keep all objects created by a user after the user deleted, then new user is able to access those objects" do
-    EM.run do
-      user = @node.bind @db["name"], @default_opts
-      conn = connect_to_postgresql user
-      conn.query 'create table t(i int)'
-      conn.query 'create sequence s'
-      conn.query "create function f() returns integer as 'select 1234;' language sql"
-      conn.close if conn
-      @node.unbind user
-
-      user = @node.bind @db["name"], @default_opts
-      conn = connect_to_postgresql user
-      expect { conn.query 'drop table t' }.should_not raise_error
-      expect { conn.query 'drop sequence s' }.should_not raise_error
-      expect { conn.query 'drop function f()' }.should_not raise_error
-      conn.close if conn
-      EM.stop
-    end
-  end
-
-  it "should get expected children correctly" do
-    EM.run do
-      bind = @node.bind @db['name'], @default_opts
-      children = @node.get_expected_children @db['name']
-      children.index(bind['user']).should_not == nil
-      children.index(@db['user']).should == nil
-      EM.stop
-    end
-  end
-
-  it "should get actual children correctly" do
-    EM.run do
-      # sys_user is not return from provision/bind response
-      # so only set user for parent
-      parent = VCAP::Services::Postgresql::Node::Binduser.new
-      parent.user = @db['user']
-      @db['user'] = @opts[:postgresql]['user']
-      @db['password'] = @opts[:postgresql]['pass']
-      sys_conn = connect_to_postgresql @db
-      user = @node.bind @db['name'], @default_opts
-
-      # this parent does not contain sys_user
-      children = @node.get_actual_children sys_conn, @db['name'], parent
-      sys_conn.close if sys_conn
-      children.index('').should == nil
-      children.index(parent.user).should == nil
-      children.index(@opts[:postgresql]['user']).should == nil
-      children.index(user['user']).should_not == nil
-      # should only have 2 sys_user in children
-      # one for parent and the other for new binding
-      num_sys_user = 0
-      children.each do |child|
-        num_sys_user+=1 if child.index 'su'
-      end
-      num_sys_user.should == 2
-      EM.stop
-    end
-  end
-
-  it "should get unruly children correctly" do
-    EM.run do
-      parent = VCAP::Services::Postgresql::Node::Binduser.new
-      parent.user = @db['user']
-      bind1 = @node.bind @db['name'], @default_opts
-      bind2 = VCAP::Services::Postgresql::Node::Binduser.new
-      bind2.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
-
-      @db['user'] = @opts[:postgresql]['user']
-      @db['password'] = @opts[:postgresql]['pass']
-      sys_conn = connect_to_postgresql @db
-      sys_conn.query "create role #{bind2.user}"
-
-      children = []
-      children << bind1['user']
-      children << bind2['user']
-      unruly_children = @node.get_unruly_children sys_conn, parent, children
-      sys_conn.close if sys_conn
-      unruly_children.index(bind1['user']).should == nil
-      unruly_children.index(bind2['user']).should_not == nil
-      EM.stop
-    end
-  end
-
-  it "should be able to migrate(manage object owner) legacy instances" do
-    EM.run do
-      parent = @db['user']
-      # create a regular user through node
-      user1 = @node.bind(@db['name'], @default_opts)
-      # connect to the db with sys credential to 'revoke' the user's role
-      # from parent to itself, to simulate a 'pre-r8' binding
-      @db["user"] = @opts[:postgresql]['user']
-      @db["password"] = @opts[:postgresql]['pass']
-      sys_conn = connect_to_postgresql @db
-      sys_conn.query "alter role #{user1['user']} noinherit"
-      sys_conn.query "revoke #{parent} from #{user1['user']} cascade"
-      sys_conn.close if sys_conn
-      # connect to the db with revoked user
-      conn1 = connect_to_postgresql user1
-      conn1.query 'create table t1(i int)'
-      conn1.close if conn1
-
-      user2 = @node.bind(@db['name'], @default_opts)
-      conn2 = connect_to_postgresql user2
-      expect { conn2.query 'drop table t1' }.should raise_error
-      conn2.query 'create table t2(i int)'
-
-      # new a node class to do migration work
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      sleep 1
-      EM.add_timer(0.1) {
-        expect { conn2.query 'drop table t1' }.should_not raise_error
-        conn1 = connect_to_postgresql user1
-        expect { conn1.query 'drop table t2' }.should_not raise_error
-        conn1.query 'create table tt1(i int)'
-        conn1.close if conn1
-        expect { conn2.query 'drop table tt1' }.should_not raise_error
-        conn2.close if conn2
-        EM.stop
-      }
-    end
-  end
-
-  it "should migrate(manage object owner) legacy instances, even there is *orphan* user" do
-    EM.run do
-      parent = @db['user']
-      # create a regular user through node
-      user1 = @node.bind(@db['name'], @default_opts)
-      # connect to the db with sys credential to 'revoke' the user's role
-      # from parent to itself, to simulate a 'pre-r8' binding
-      @db["user"] = @opts[:postgresql]['user']
-      @db["password"] = @opts[:postgresql]['pass']
-      sys_conn = connect_to_postgresql @db
-      sys_conn.query "alter role #{user1['user']} noinherit"
-      sys_conn.query "revoke #{parent} from #{user1['user']} cascade"
-      # connect to the db with revoked user
-      conn1 = connect_to_postgresql user1
-      conn1.query 'create table t(i int)'
-      conn1.close if conn1
-
-      user2 = @node.bind(@db['name'], @default_opts)
-      conn2 = connect_to_postgresql user2
-      expect { conn2.query 'drop table t' }.should raise_error
-
-      # create an orphan binding
-      # i.e. it's in local sqlite but not in pg server
-      orphan = @node.bind(@db['name'], @default_opts)
-      sys_conn.query "revoke all on database #{@db['name']} from #{orphan['user']} cascade"
-      sys_conn.query "drop role #{orphan['user']}"
-      sys_conn.close if sys_conn
-
-      # new a node class to do migration work
-      node = VCAP::Services::Postgresql::Node.new(@opts)
-      sleep 1
-      EM.add_timer(0.1) {
-        expect { conn2.query 'drop table t' }.should_not raise_error
-        EM.stop
-      }
-    end
-  end
-
-  it "should work that user2 can bring the db back to normal after user1 puts much data to cause quota enforced" do
-    node = nil
-    EM.run do
-      opts = @opts.dup
-      # new pg db takes about 5M(~5554180)
-      # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6
-      node = VCAP::Services::Postgresql::Node.new(opts)
-      EM.add_timer(1.1) do
-        node.should_not == nil
-        db = node.provision(@default_plan)
-        @test_dbs[db] = []
-        binding = node.bind(db['name'], @default_opts)
-        EM.add_timer(2) do
-          conn = connect_to_postgresql(binding)
-          conn.query("create table test(data text)")
-          c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
-          # prepare 1M data
-          content = (0..1000000).map{ c[rand(c.size)] }.join
-          conn.query("insert into test values('#{content}')")
-          EM.add_timer(2) do
-            # terminating connection due to administrator command
-            expect {conn.query("select version()").should raise_error(PGError)}
-            conn.close if conn
-            conn = connect_to_postgresql(binding)
-            expect {conn.query("select version()").should_not raise_error}
-            # permission denied for relation test
-            expect {conn.query("insert into test values('1')").should raise_error(PGError)}
-            expect {conn.query("create table test1(data text)").should raise_error(PGError)}
-            # user2 deletes data
-            binding_2 = node.bind(db['name'], @default_opts)
-            conn2 = connect_to_postgresql(binding_2)
-            conn2.query("delete from test")
-            EM.add_timer(2) do
-              # write privilege should restore
-              expect {conn.query("insert into test values('1')").should_not raise_error}
-              expect {conn.query("create table test1(data text)").should_not raise_error}
-              expect {conn2.query("insert into test values('1')").should_not raise_error}
-              expect {conn2.query("create table test1(data text)").should_not raise_error}
-              conn.close if conn
-              conn2.close if conn2
-              EM.stop
-            end
-          end
-        end
-      end
-    end
-  end
-
   after:each do
     @test_dbs.keys.each do |db|
       begin
@@ -816,6 +616,21 @@ describe "Postgresql node special cases" do
     expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
     conn.close if conn
     node.unprovision(db["name"], [])
+  end
+
+  it "should raise error if there is no available storage to provision instance" do
+    node = nil
+    EM.run do
+      opts = getNodeTestConfig
+      opts[:available_storage] = 10
+      opts[:max_db_size] = 20
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      sleep 1
+      EM.add_timer(0.1) {EM.stop}
+    end
+    expect {
+      node.provision('free')
+    }.should raise_error(PostgresqlError, /Node disk is full/)
   end
 
   it "should handle postgresql error in varz" do

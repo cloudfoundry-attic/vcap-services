@@ -32,8 +32,7 @@ class VCAP::Services::Redis::Node
     property :name,       String,   :key => true
     property :port,       Integer,  :unique => true
     property :password,   String,   :required => true
-    # property plan is deprecated. The instances in one node have same plan.
-    property :plan,       Integer,  :required => true
+    property :plan,       Enum[:free], :required => true
     property :pid,        Integer
     property :memory,     Integer
 
@@ -57,6 +56,8 @@ class VCAP::Services::Redis::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @redis_server_path = options[:redis_server_path]
+    @available_memory = options[:available_memory]
+    @available_memory_mutex = Mutex.new
     @max_memory = options[:max_memory]
     @max_swap = options[:max_swap]
     @config_template = ERB.new(File.read(options[:config_template]))
@@ -90,15 +91,16 @@ class VCAP::Services::Redis::Node
   end
 
   def announcement
-    @capacity_lock.synchronize do
-      { :available_capacity => @capacity }
+    @available_memory_mutex.synchronize do
+      a = {
+          :available_memory => @available_memory
+      }
     end
   end
 
   def provision(plan, credentials = nil, db_file = nil)
-    raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
     instance = ProvisionedService.new
-    instance.plan = 1
+    instance.plan = plan
     if credentials
       instance.name = credentials["name"]
       @free_ports_mutex.synchronize do
@@ -124,6 +126,9 @@ class VCAP::Services::Redis::Node
 
     begin
       instance.memory = memory_for_instance(instance)
+      @available_memory_mutex.synchronize do
+        @available_memory -= instance.memory
+      end
     rescue => e
       raise e
     end
@@ -240,10 +245,11 @@ class VCAP::Services::Redis::Node
 
   def varz_details
     varz = {}
-    varz[:max_capacity] = @max_capacity
-    varz[:available_capacity] = @capacity
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
+    @available_memory_mutex.synchronize do
+      varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    end
     ProvisionedService.all.each do |instance|
       varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
@@ -272,28 +278,27 @@ class VCAP::Services::Redis::Node
   end
 
   def start_provisioned_instances
-    @capacity_lock.synchronize do
-      ProvisionedService.all.each do |instance|
-        @free_ports_mutex.synchronize do
-          @free_ports.delete(instance.port)
+    ProvisionedService.all.each do |instance|
+      @free_ports_mutex.synchronize do
+        @free_ports.delete(instance.port)
+      end
+      if instance.listening?
+        @logger.warn("Service #{instance.name} already running on port #{instance.port}")
+        @available_memory_mutex.synchronize do
+          @available_memory -= (instance.memory || @max_memory)
         end
-        @capacity -= capacity_unit
-
-        if instance.listening?
-          @logger.warn("Service #{instance.name} already running on port #{instance.port}")
-          next
-        end
+        next
+      end
+      begin
+        pid = start_instance(instance)
+        instance.pid = pid
+        save_instance(instance)
+      rescue => e
+        @logger.warn("Error starting instance #{instance.name}: #{e}")
         begin
-          pid = start_instance(instance)
-          instance.pid = pid
-          save_instance(instance)
-        rescue => e
-          @logger.warn("Error starting instance #{instance.name}: #{e}")
-          begin
-            cleanup_instance(instance)
-          rescue => e2
-            # Ignore the rollback exception
-          end
+          cleanup_instance(instance)
+        rescue => e2
+          # Ignore the rollback exception
         end
       end
     end
@@ -374,6 +379,9 @@ class VCAP::Services::Redis::Node
     rescue => e
       err_msg << e.message
     end
+    @available_memory_mutex.synchronize do
+      @available_memory += instance.memory
+    end
     @free_ports_mutex.synchronize do
       @free_ports.add(instance.port)
     end
@@ -386,7 +394,11 @@ class VCAP::Services::Redis::Node
   end
 
   def memory_for_instance(instance)
-    @max_memory
+    case instance.plan
+      when :free then 16
+      else
+        raise RedisError.new(RedisError::REDIS_INVALID_PLAN, instance.plan)
+    end
   end
 
   def get_varz(instance)
@@ -394,7 +406,7 @@ class VCAP::Services::Redis::Node
     varz = {}
     varz[:name] = instance.name
     varz[:port] = instance.port
-    varz[:plan] = @plan
+    varz[:plan] = instance.plan
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
     varz[:usage][:used_memory] = info["used_memory"].to_f / (1024.0 * 1024.0)
