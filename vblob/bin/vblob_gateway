@@ -8,21 +8,21 @@ require 'bundler/setup'
 require 'vcap_services_base'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-require 'blob_service/blob_provisioner'
+require 'vblob_service/vblob_provisioner'
 
-class VCAP::Services::Blob::Gateway < VCAP::Services::Base::Gateway
+class VCAP::Services::VBlob::Gateway < VCAP::Services::Base::Gateway
 
   def provisioner_class
-    VCAP::Services::Blob::Provisioner
+    VCAP::Services::VBlob::Provisioner
   end
 
   def default_config_file
     config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
-    File.join(config_base_dir, 'blob_gateway.yml')
+    File.join(config_base_dir, 'vblob_gateway.yml')
   end
 
 end
 
-VCAP::Services::Blob::Gateway.new.start
+VCAP::Services::VBlob::Gateway.new.start
 
 

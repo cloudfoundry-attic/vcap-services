@@ -17,22 +17,22 @@ require "uuidtools"
 
 require 'vcap/common'
 require 'vcap/component'
-require "blob_service/common"
+require "vblob_service/common"
 
 module VCAP
   module Services
-    module Blob
+    module VBlob
       class Node < VCAP::Services::Base::Node
       end
     end
   end
 end
 
-class VCAP::Services::Blob::Node
+class VCAP::Services::VBlob::Node
 
-  BLOB_TIMEOUT = 3
+  VBLOB_TIMEOUT = 3
 
-  include VCAP::Services::Blob::Common
+  include VCAP::Services::VBlob::Common
 
   class ProvisionedService
     include DataMapper::Resource
@@ -84,9 +84,9 @@ class VCAP::Services::Blob::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @nodejs_path = options[:nodejs_path]
-    @blobd_path = options[:blobd_path]
-    @blobd_log_dir = options[:blobd_log_dir]
-    @blobd_auth = options[:blobd_auth] || "basic" #default is basic auth
+    @vblobd_path = options[:vblobd_path]
+    @vblobd_log_dir = options[:vblobd_log_dir]
+    @vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
 
     @max_memory = options[:max_memory]
 
@@ -152,11 +152,11 @@ class VCAP::Services::Blob::Node
     super
     @logger.info("Shutting down instances..")
     ProvisionedService.all.each { |provisioned_service|
-      @logger.debug("Trying to terminate blobd pid:#{provisioned_service.pid}")
+      @logger.debug("Trying to terminate vblobd pid:#{provisioned_service.pid}")
       provisioned_service.kill(:SIGTERM)
       provisioned_service.wait_killed ?
-        @logger.debug("Blobd pid:#{provisioned_service.pid} terminated") :
-        @logger.error("Timeout to terminate blobd pid:#{provisioned_service.pid}")
+        @logger.debug("VBlobd pid:#{provisioned_service.pid} terminated") :
+        @logger.error("Timeout to terminate vblobd pid:#{provisioned_service.pid}")
     }
   end
 
@@ -256,7 +256,7 @@ class VCAP::Services::Blob::Node
     true
   end
 
-  # provide the key/secret to blob gw
+  # provide the key/secret to vblob gw
   def bind(name, bind_opts, credential = nil)
     @logger.debug("Bind request: name=#{name}, bind_opts=#{bind_opts}")
     provisioned_service = ProvisionedService.get(name)
@@ -264,7 +264,7 @@ class VCAP::Services::Blob::Node
     username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
 
-    blobgw_add_user({
+    vblobgw_add_user({
       :port      => provisioned_service.port,
       :admin     => provisioned_service.keyid,
       :adminpass => provisioned_service.secretid,
@@ -293,7 +293,7 @@ class VCAP::Services::Blob::Node
       raise ServiceError.new(ServiceError::HTTP_BAD_REQUEST)
     end
 
-    blobgw_remove_user({
+    vblobgw_remove_user({
       :port => credential['port'],
       :admin => provisioned_service.keyid,
       :adminpass => provisioned_service.secretid,
@@ -319,7 +319,7 @@ class VCAP::Services::Blob::Node
     stats = []
     ProvisionedService.all.each do |provisioned_service|
       stat = {}
-      # TODO: get stat from blob services
+      # TODO: get stat from vblob services
       stat['name'] = provisioned_service.name
       stats << stat
     end
@@ -344,10 +344,10 @@ class VCAP::Services::Blob::Node
   end
 
   def get_healthz(instance)
-    # ping blob gw
+    # ping vblob gw
     req = Net::HTTP::Get.new("/")
     res = nil
-    Timeout::timeout(BLOB_TIMEOUT) do
+    Timeout::timeout(VBLOB_TIMEOUT) do
       res = Net::HTTP.start(@local_ip, instance.port) {|http|
         http.request(req)
       }
@@ -368,13 +368,13 @@ class VCAP::Services::Blob::Node
       Process.detach(pid)
       pid
     else
-      $0 = "Starting Blob service: #{provisioned_service.name}"
+      $0 = "Starting VBlob service: #{provisioned_service.name}"
       close_fds
-      blob_port = provisioned_service.port
+      vblob_port = provisioned_service.port
       dir = service_dir(provisioned_service.name)
       logdir = log_dir(provisioned_service.name);
-      blob_dir = blob_dir(dir)
-      log_file = log_file_blob(provisioned_service.name)
+      vblob_dir = vblob_dir(dir)
+      log_file = log_file_vblob(provisioned_service.name)
       account_file = File.join(dir,"account.json")
       keyid = provisioned_service.keyid
       secretid = provisioned_service.secretid
@@ -383,8 +383,8 @@ class VCAP::Services::Blob::Node
       if !(File.exist?(dir))
         FileUtils.mkdir_p(dir) rescue @logger.warn("Creating service folder for #{provisioned_service.name} failed")
       end
-      if !(File.exist?(blob_dir))
-        FileUtils.mkdir_p(blob_dir) rescue @logger.warn("Creating blob data folder for #{provisioned_service.name}  failed")
+      if !(File.exist?(vblob_dir))
+        FileUtils.mkdir_p(vblob_dir) rescue @logger.warn("Creating vblob data folder for #{provisioned_service.name}  failed")
       end
       if !(File.exist?(logdir))
         FileUtils.mkdir_p(logdir) rescue @logger.warn("Creating log folder for #{provisioned_service.name} failed")
@@ -393,7 +393,7 @@ class VCAP::Services::Blob::Node
         FileUtils.rm_f(config_path) rescue @logger.warn("Deleting old config file for #{provisioned_service.name} failed")
       end
       File.open(config_path, "w") {|f| f.write(config)}
-      cmd = "#{@nodejs_path} #{@blobd_path}/server.js -f #{config_path}"
+      cmd = "#{@nodejs_path} #{@vblobd_path}/server.js -f #{config_path}"
       exec(cmd) rescue @logger.warn("exec(#{cmd}) failed!")
     end
   end
@@ -432,29 +432,29 @@ class VCAP::Services::Blob::Node
     max
   end
 
-  def blobgw_add_user(options)
+  def vblobgw_add_user(options)
     @logger.debug("add user #{options[:username]} in port: #{options[:port]}")
     creds = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
     res = nil
-    Timeout::timeout(BLOB_TIMEOUT) do
+    Timeout::timeout(VBLOB_TIMEOUT) do
       res = Net::HTTP.start(@local_ip, options[:port]) {|http|
         http.send_request('PUT','/~bind',creds, auth_header(options[:admin], options[:adminpass]))
       }
     end
-    raise "Add blob user #{options[:username]} failed" if (res.nil? || res.code != "200")
+    raise "Add vblob user #{options[:username]} failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} added")
   end
 
-  def blobgw_remove_user(options)
+  def vblobgw_remove_user(options)
     @logger.debug("remove user #{options[:username]} in port: #{options[:port]}")
     creds = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
     res = nil
-    Timeout::timeout(BLOB_TIMEOUT) do
+    Timeout::timeout(VBLOB_TIMEOUT) do
       res = Net::HTTP.start(@local_ip, options[:port]) {|http|
         http.send_request('PUT','/~unbind',creds, auth_header(options[:admin], options[:adminpass]))
       }
     end
-    raise "Delete blob user #{options[:username]} failed" if (res.nil? || res.code != "200")
+    raise "Delete vblob user #{options[:username]} failed" if (res.nil? || res.code != "200")
     @logger.debug("user #{options[:username]} removed")
   end
 
@@ -463,19 +463,19 @@ class VCAP::Services::Blob::Node
   end
 
   def log_dir(instance_id)
-    File.join(@blobd_log_dir,instance_id)
+    File.join(@vblobd_log_dir,instance_id)
   end
 
-  def log_file_blob(instance_id)
-    File.join(log_dir(instance_id), 'blob.log')
+  def log_file_vblob(instance_id)
+    File.join(log_dir(instance_id), 'vblob.log')
   end
 
   def service_exist?(provisioned_service)
     Dir.exists?(service_dir(provisioned_service.name))
   end
 
-  def blob_dir(base_dir)
-    File.join(base_dir,'blob_data')
+  def vblob_dir(base_dir)
+    File.join(base_dir,'vblob_data')
   end
 
   def auth_header(user,passwd)
@@ -483,16 +483,16 @@ class VCAP::Services::Blob::Node
   end
 
   def record_service_log(service_id)
-    @logger.warn(" *** BEGIN blob log - instance: #{service_id}")
+    @logger.warn(" *** BEGIN vblob log - instance: #{service_id}")
     @logger.warn("")
-    file = File.new(log_file_blob(service_id), 'r')
+    file = File.new(log_file_vblob(service_id), 'r')
     while (line = file.gets)
       @logger.warn(line.chomp!)
     end
   rescue => e
     @logger.warn(e)
   ensure
-    @logger.warn(" *** END blob log - instance: #{service_id}")
+    @logger.warn(" *** END vblob log - instance: #{service_id}")
     @logger.warn("")
   end
 end

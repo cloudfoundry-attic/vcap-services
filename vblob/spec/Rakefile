@@ -11,7 +11,7 @@ require 'ci/reporter/rake/rspec'
 
 coverage_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_coverage"))
 reports_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_reports"))
-dump_file = File.join(Dir.tmpdir, "blob.rcov")
+dump_file = File.join(Dir.tmpdir, "vblob.rcov")
 ignore_pattern = 'spec,[.]bundle,[/]gems[/]'
 
 ENV['CI_REPORTS'] = reports_dir

@@ -7,30 +7,30 @@ require 'bundler/setup'
 require 'vcap_services_base'
 
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
-require "blob_service/blob_node"
+require "vblob_service/vblob_node"
 
-class VCAP::Services::Blob::NodeBin < VCAP::Services::Base::NodeBin
+class VCAP::Services::VBlob::NodeBin < VCAP::Services::Base::NodeBin
 
   def node_class
-    VCAP::Services::Blob::Node
+    VCAP::Services::VBlob::Node
   end
 
   def default_config_file
     config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
-    File.join(config_base_dir, 'blob_node.yml')
+    File.join(config_base_dir, 'vblob_node.yml')
   end
 
   def additional_config(options, config)
-    options[:config_template] = File.expand_path("../../resources/blob.conf.erb", __FILE__)
+    options[:config_template] = File.expand_path("../../resources/vblob.conf.erb", __FILE__)
     options[:port_range] = parse_property(config, "port_range", Range)
     options[:nodejs_path] = parse_property(config, "nodejs_path", String)
-    options[:blobd_log_dir] = parse_property(config, "blobd_log_dir", String)
-    options[:blobd_path] = parse_property(config, "blobd_path", String)
-    options[:blobd_auth] = parse_property(config, "blobd_auth", String)
+    options[:vblobd_log_dir] = parse_property(config, "vblobd_log_dir", String)
+    options[:vblobd_path] = parse_property(config, "vblobd_path", String)
+    options[:vblobd_auth] = parse_property(config, "vblobd_auth", String)
     options[:max_memory] = parse_property(config, "max_memory", Integer)
     options
   end
 
 end
 
-VCAP::Services::Blob::NodeBin.new.start
+VCAP::Services::VBlob::NodeBin.new.start

@@ -2,7 +2,7 @@
 $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 
-describe "blob_node check & purge orphan" do
+describe "vblob_node check & purge orphan" do
   before :all do
     EM.run do
       @opts = get_node_config

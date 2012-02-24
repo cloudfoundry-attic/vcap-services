@@ -1,7 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 PWD = File.dirname(__FILE__)
-TMP = '/tmp/blob'
+TMP = '/tmp/vblob'
 
 $:.unshift File.join(PWD, '..')
 $:.unshift File.join(PWD, '..', 'lib')
@@ -13,7 +13,7 @@ require "rspec"
 require "socket"
 require "timeout"
 require "erb"
-require "blob_service/blob_node"
+require "vblob_service/vblob_node"
 require "fileutils"
 require 'vcap/common'
 require 'vcap/logging'
@@ -26,11 +26,11 @@ TEST_KEY     = 'test_key'
 TEST_VAL     = 1234
 TEST_VAL_2   = 4321
 
-include VCAP::Services::Blob
+include VCAP::Services::VBlob
 
 module VCAP
   module Services
-    module Blob
+    module VBlob
       class Node
         attr_reader :available_memory
       end
@@ -71,24 +71,24 @@ def parse_property(hash, key, type, options = {})
 end
 
 def get_node_config()
-  config_file = File.join(PWD, "../config/blob_node.yml")
+  config_file = File.join(PWD, "../config/vblob_node.yml")
   config = YAML.load_file(config_file)
-  blob_conf_template = File.join(PWD, "../resources/blob.conf.erb")
+  vblob_conf_template = File.join(PWD, "../resources/vblob.conf.erb")
   options = {
   #  :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :nodejs_path => parse_property(config, "nodejs_path", String),
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
-    :blobd_path => parse_property(config, "blobd_path", String),
-    :blobd_log_dir => parse_property(config, "blobd_log_dir", String),
+    :vblobd_path => parse_property(config, "vblobd_path", String),
+    :vblobd_log_dir => parse_property(config, "vblobd_log_dir", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
-    :config_template => blob_conf_template,
+    :config_template => vblob_conf_template,
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
-    :base_dir => '/tmp/blob/instances',
-    :local_db => 'sqlite3:/tmp/blob/blob_node.db'
+    :base_dir => '/tmp/vblob/instances',
+    :local_db => 'sqlite3:/tmp/vblob/vblob_node.db'
   }
   VCAP::Logging.setup_from_config(config["logging"])
   # Use the node id for logger identity name.

@@ -1,7 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "spec_helper"
 
-describe "blob_node bind" do
+describe "vblob_node bind" do
 
   before :all do
     EM.run do
@@ -32,7 +32,7 @@ describe "blob_node bind" do
     @bind_resp['password'].should_not be_nil
   end
 
-  it "should be able to connect to blob" do
+  it "should be able to connect to vblob" do
     is_port_open?('127.0.0.1', @resp['port']).should be_true
   end
 
@@ -98,7 +98,7 @@ describe "blob_node bind" do
   end
 
   after:all do
-    FileUtils.rm_rf Dir.glob('/tmp/blob')
+    FileUtils.rm_rf Dir.glob('/tmp/vblob')
   end
 end
 

@@ -16,7 +16,7 @@ token: "0xdeadbeef"
 mbus: nats://localhost:4222
 logging:
   level: debug
-pid: /var/vcap/sys/run/blob_service.pid
+pid: /var/vcap/sys/run/vblob_service.pid
 # z_interval: 30
 # check_orphan_interval: 3600
 # double_check_orphan_interval: 300

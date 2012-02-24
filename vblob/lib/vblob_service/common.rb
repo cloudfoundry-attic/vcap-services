@@ -1,10 +1,10 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 module VCAP
   module Services
-    module Blob
+    module VBlob
       module Common
         def service_name
-          "BlobaaS"
+          "VBlobaaS"
         end
       end
     end
