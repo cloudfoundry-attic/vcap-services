@@ -113,7 +113,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     if instance.empty?
       res = Yajl::Encoder.encode(@prov_svcs)
     else
-      handles = find_all_bindings(msg)
+      handles = find_all_bindings(instance)
       res = Yajl::Encoder.encode(handles)
     end
     @node_nats.publish(reply, res)
