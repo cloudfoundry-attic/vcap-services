@@ -10,6 +10,7 @@ describe "mongodb backup/restore"  do
       @opts = get_node_config()
       @logger = @opts[:logger]
 
+      BINARY_DIR = File.dirname(@opts[:mongod_path])
       @node = Node.new(@opts)
       @resp = @node.provision("free")
 

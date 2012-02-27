@@ -95,9 +95,18 @@ describe "mongodb_node provision" do
 
     stats = @node.varz_details
     available = stats[:running_services][0]['overall']['connections']['available']
-    available.times do
+
+    # ruby mongo client has a issue. When making connection to mongod, it will make two
+    # actual sockets, one for read, one for write. When authentication done, one of them
+    # will be closed. But for here, the maximum connection test, it will cause a problem,
+    # when last available connection met. So here we decrease one for available connection.
+    available = available - 1
+    available.times do |i|
       begin
-        connections << Mongo::Connection.new('localhost', @resp['port'])
+        conn = Mongo::Connection.new('localhost', @resp['port'])
+        db = conn.db(@resp['db'])
+        auth = db.authenticate(@resp['username'], @resp['password'])
+        connections << conn
       rescue Mongo::ConnectionFailure => e
         first_conn_refused = true
       end
@@ -105,7 +114,10 @@ describe "mongodb_node provision" do
 
     # max+1's connection should fail
     begin
-      connections << Mongo::Connection.new('localhost', @resp['port'])
+      conn = Mongo::Connection.new('localhost', @resp['port'])
+      db = conn.db(@resp['db'])
+      auth = db.authenticate(@resp['username'], @resp['password'])
+      connections << conn
     rescue Mongo::ConnectionFailure => e
       max_conn_refused = true
     end
