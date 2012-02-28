@@ -128,6 +128,15 @@ class VCAP::Services::Postgresql::Node
          db_connection.query(query_to_do['query_to_do'].to_s)
       end
     end
+
+    # with the fix for user access rights in r8, actually this line is a no-op.
+    # - for newly created users(after the fix), all objects created will be owned by parent
+    # - for existing users(created before the fix), if quota exceeds, then sys_user will
+    #  own the objects, but, when the fix comes, the migration job will pull all the objects
+    #  (both user and sys_user) to parent as the owner. So, after the fix comes, there is no
+    #  object owned by sys_user.
+    # while quota can be still enforced because 'revoke_write_access' and 'do_revoke_query'
+    # do the work.
     db_connection.query("update pg_class set relowner = (select oid from pg_roles where rolname = '#{sys_user}') where relowner = (select oid from pg_roles where rolname ='#{user}')")
   end
 

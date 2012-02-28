@@ -52,11 +52,12 @@ def getNodeTestConfig()
   options = {
     :logger => getLogger,
     :base_dir => parse_property(config, "base_dir", String),
+    :plan => parse_property(config, "plan", String),
+    :capacity => parse_property(config, "capacity", Integer),
     :mysqldump_bin => parse_property(config, "mysqldump_bin", String),
     :mysql_bin => parse_property(config, "mysql_bin", String),
     :gzip_bin => parse_property(config, "gzip_bin", String),
     :mysql_bin => parse_property(config, "mysql_bin", String),
-    :available_storage => parse_property(config, "available_storage", Integer),
     :max_db_size => parse_property(config, "max_db_size", Integer),
     :max_long_query => parse_property(config, "max_long_query", Integer),
     :node_id => parse_property(config, "node_id", String),
@@ -78,6 +79,7 @@ def getProvisionerTestConfig()
     :logger   => getLogger,
     :version  => config[:service][:version],
     :local_ip => config[:host],
+    :plan_management => config[:plan_management],
     :mbus => config[:mbus]
   }
   options

@@ -1,13 +1,11 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require File.dirname(__FILE__) + '/spec_helper'
-require "redis_service/redis_node"
-require "redis_service/redis_error"
+require File.dirname(__FILE__) + "/spec_helper"
 
 module VCAP
   module Services
     module Redis
       class Node
-         attr_reader :base_dir, :redis_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports, :redis_timeout
+         attr_reader :base_dir, :redis_server_path, :local_ip, :capacity, :max_memory, :max_swap, :node_id, :config_template, :free_ports, :redis_timeout
          attr_accessor :logger, :local_db
       end
     end
@@ -17,32 +15,15 @@ end
 describe VCAP::Services::Redis::Node do
 
   before :all do
-    @logger = Logger.new(STDOUT, "daily")
-    @logger.level = Logger::ERROR
-    @local_db_file = "/tmp/redis_node_" + Time.now.to_i.to_s + ".db"
-    @options = {
-      :logger => @logger,
-      :base_dir => "/tmp/services/redis/instances",
-      :redis_server_path => "redis-server",
-      :local_ip => "127.0.0.1",
-      :available_memory => 4096,
-      :max_memory => 16,
-      :max_swap => 32,
-      :node_id => "redis-node-1",
-      :config_template => File.expand_path("../resources/redis.conf.erb", File.dirname(__FILE__)),
-      :local_db => "sqlite3:" + @local_db_file,
-      :port_range => Range.new(5000, 25000),
-      :mbus => "nats://localhost:4222",
-      :redis_log_dir => "/tmp/redis_log",
-      :command_rename_prefix => "protect-command",
-      :max_clients => 100
-    }
+    @options = getNodeTestConfig
+    @options.freeze
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
 
+    # Setup code must be wrapped in EM.run
     EM.run do
       @node = VCAP::Services::Redis::Node.new(@options)
-      EM.add_timer(0.1) {EM.stop}
+      EM.stop
     end
   end
 
@@ -50,18 +31,18 @@ describe VCAP::Services::Redis::Node do
     @instance          = VCAP::Services::Redis::Node::ProvisionedService.new
     @instance.name     = UUIDTools::UUID.random_create.to_s
     @instance.port     = VCAP.grab_ephemeral_port
-    @instance.plan     = :free
+    @instance.plan     = 1
     @instance.password = UUIDTools::UUID.random_create.to_s
     @instance.memory   = @options[:max_memory]
   end
 
   after :all do
-    FileUtils.rm_f(@local_db_file)
+    FileUtils.rm_f(@options[:local_db_file])
     FileUtils.rm_rf(@options[:base_dir])
     FileUtils.rm_rf(@options[:redis_log_dir])
   end
 
-  describe 'Node.initialize' do
+  describe "Node.initialize" do
     it "should set up a base directory" do
       @node.base_dir.should be @options[:base_dir]
     end
@@ -74,8 +55,8 @@ describe VCAP::Services::Redis::Node do
       @node.local_ip.should be
     end
 
-    it "should set up an available memory size" do
-      @node.available_memory.should be
+    it "should set up an available capacity" do
+      @node.capacity.should be
     end
 
     it "should set up a maximum memory size" do
@@ -114,7 +95,7 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
-  describe 'Node.start_provisioned_instances' do
+  describe "Node.start_provisioned_instances" do
     it "should check whether provisioned instance is running or not" do
       @instance.pid = @node.start_instance(@instance)
       sleep 1
@@ -126,9 +107,11 @@ describe VCAP::Services::Redis::Node do
 
     it "should not start a new instance if the instance is already started when start all provisioned instances" do
       @instance.pid = @node.start_instance(@instance)
+      @instance.plan = 1
       @instance.save
       sleep 1
       @node.start_provisioned_instances
+      sleep 1
       instance = VCAP::Services::Redis::Node::ProvisionedService.get(@instance.name)
       instance.pid.should == @instance.pid
       @node.stop_instance(@instance)
@@ -137,10 +120,12 @@ describe VCAP::Services::Redis::Node do
 
     it "should start a new instance if the instance is not started when start all provisioned instances" do
       @instance.pid = @node.start_instance(@instance)
+      @instance.plan = 1
       @instance.save
       @node.stop_instance(@instance)
       sleep 1
       @node.start_provisioned_instances
+      sleep 1
       instance = VCAP::Services::Redis::Node::ProvisionedService.get(@instance.name)
       instance.pid.should_not == @instance.pid
       @node.stop_instance(@instance)
@@ -148,19 +133,19 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
-  describe 'Node.announcement' do
+  describe "Node.announcement" do
     it "should send node announcement" do
       @node.announcement.should be
     end
 
-    it "should send available_memory in announce message" do
-      @node.announcement[:available_memory].should == @node.available_memory
+    it "should send available_capacity in announce message" do
+      @node.announcement[:available_capacity].should == @node.capacity
     end
   end
 
   describe "Node.provision" do
     before :all do
-      @old_memory = @node.available_memory
+      @old_capacity = @node.capacity
       @credentials = @node.provision(:free)
       sleep 1
     end
@@ -188,10 +173,6 @@ describe VCAP::Services::Redis::Node do
       @node.free_ports.include?(@credentials["port"]).should == false
     end
 
-    it "should decrease available memory when finish a provision" do
-      (@old_memory - @node.available_memory).should == @node.max_memory
-    end
-
     it "should send provision message when finish a provision" do
       @credentials["hostname"].should be
       @credentials["host"].should == @credentials["hostname"]
@@ -217,7 +198,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.unprovision" do
     before :all do
       @credentials = @node.provision(:free)
-      @old_memory = @node.available_memory
+      @old_capacity = @node.capacity
       sleep 1
       @node.unprovision(@credentials["name"])
     end
@@ -229,10 +210,6 @@ describe VCAP::Services::Redis::Node do
 
     it "should add the provisioned instance port in free port list when finish an unprovision" do
       @node.free_ports.include?(@credentials["port"]).should == true
-    end
-
-    it "should increase available memory when finish an unprovision" do
-      (@node.available_memory - @old_memory).should == @node.max_memory
     end
 
     it "should raise exception when unprovision an non-existed name" do
@@ -313,14 +290,8 @@ describe VCAP::Services::Redis::Node do
   describe "Node.memory_for_instance" do
     it "should return memory size by the plan" do
       instance = VCAP::Services::Redis::Node::ProvisionedService.new
-      instance.plan = :free
-      @node.memory_for_instance(instance).should == 16
-    end
-
-    it "should raise exception when giving wrong plan name" do
-      instance = VCAP::Services::Redis::Node::ProvisionedService.new
-      instance.plan = :non_existed_plan
-      expect {@node.memory_for_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)
+      instance.plan = 1
+      @node.memory_for_instance(instance).should == @node.max_memory
     end
   end
 
@@ -330,10 +301,9 @@ describe VCAP::Services::Redis::Node do
       sleep 1
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
-      varz[:max_instances_num].should == @options[:available_memory] / @options[:max_memory]
       varz[:provisioned_instances][0][:name].should == @credentials["name"]
       varz[:provisioned_instances][0][:port].should == @credentials["port"]
-      varz[:provisioned_instances][0][:plan].should == :free
+      varz[:provisioned_instances][0][:plan].should == "free"
       @node.unprovision(@credentials["name"])
     end
   end
@@ -502,7 +472,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.orphan" do
     it "should return proper instance list" do
       before_instances = @node.all_instances_list
-      oi = @node.provision("free")
+      oi = @node.provision(:free)
       after_instances = @node.all_instances_list
       @node.unprovision(oi["name"])
       (after_instances - before_instances).include?(oi["name"]).should be_true
@@ -511,7 +481,6 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.thread_safe" do
     it "should be thread safe in multi-threads call" do
-      old_memory = @node.available_memory
       old_ports = @node.free_ports.clone
       semaphore = Mutex.new
       credentials_list = []
@@ -525,9 +494,7 @@ describe VCAP::Services::Redis::Node do
       end
       somethreads.each {|t| t.join}
       sleep 2
-      new_memory = @node.available_memory
       new_ports = @node.free_ports.clone
-      (old_memory - new_memory).should == threads_num * @node.max_memory
       delta_ports = Set.new
       credentials_list.each do |credentials|
         delta_ports << credentials["port"]
@@ -541,7 +508,6 @@ describe VCAP::Services::Redis::Node do
       end
       somethreads.each {|t| t.join}
       @node.free_ports.should == old_ports
-      @node.available_memory.should == old_memory
       VCAP::Services::Redis::Node::ProvisionedService.all.size.should == 0
     end
   end

@@ -11,7 +11,7 @@ module VCAP
   module Services
     module Mysql
       class Node
-        attr_reader :pool, :logger, :available_storage, :provision_served, :binding_served
+        attr_reader :pool, :logger, :capacity, :provision_served, :binding_served
       end
     end
   end
@@ -36,7 +36,7 @@ describe "Mysql server node" do
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
-      EM.stop
+      EM.add_timer(1) { EM.stop }
     end
   end
 
@@ -84,20 +84,6 @@ describe "Mysql server node" do
     end
   end
 
-  it "should calculate available storage correctly" do
-    EM.run do
-      original = @node.available_storage
-      db2 = @node.provision(@default_plan)
-      @test_dbs[db2] = []
-      current = @node.available_storage
-      (original - current).should == @opts[:max_db_size]*1024*1024
-      @node.unprovision(db2["name"],[])
-      unprov = @node.available_storage
-      unprov.should == original
-      EM.stop
-    end
-  end
-
   it "should calculate both table and index as database size" do
     EM.run do
       conn = connect_to_mysql(@db)
@@ -121,29 +107,31 @@ describe "Mysql server node" do
       # reduce storage quota to 4KB.
       opts[:max_db_size] = 4.0/1024
       node = VCAP::Services::Mysql::Node.new(opts)
-      binding = node.bind(@db["name"],  @default_opts)
-      @test_dbs[@db] << binding
-      conn = connect_to_mysql(binding)
-      conn.query("create table test(data text)")
-      c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
-      content = (0..5000).map{ c[rand(c.size)] }.join
-      conn.query("insert into test value('#{content}')")
-      EM.add_timer(3) do
-        expect {conn.query('SELECT 1')}.should raise_error
-        conn.close
+      EM.add_timer(1) do
+        binding = node.bind(@db["name"],  @default_opts)
+        @test_dbs[@db] << binding
         conn = connect_to_mysql(binding)
-        # write privilege should be rovoked.
-        expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
-        conn2 = connect_to_mysql(@db)
-        expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
-        conn.query("delete from test")
+        conn.query("create table test(data text)")
+        c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
+        content = (0..5000).map{ c[rand(c.size)] }.join
+        conn.query("insert into test value('#{content}')")
         EM.add_timer(3) do
           expect {conn.query('SELECT 1')}.should raise_error
           conn.close
           conn = connect_to_mysql(binding)
-          # write privilege should restore
-          expect{ conn.query("insert into test value('test')")}.should_not raise_error
-          EM.stop
+          # write privilege should be rovoked.
+          expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
+          conn2 = connect_to_mysql(@db)
+          expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
+          conn.query("delete from test")
+          EM.add_timer(3) do
+            expect {conn.query('SELECT 1')}.should raise_error
+            conn.close
+            conn = connect_to_mysql(binding)
+            # write privilege should restore
+            expect{ conn.query("insert into test value('test')")}.should_not raise_error
+            EM.stop
+          end
         end
       end
     end
@@ -159,7 +147,7 @@ describe "Mysql server node" do
       service.name = 'test-'+ UUIDTools::UUID.random_create.to_s
       service.user = "test"
       service.password = "test"
-      service.plan = "free"
+      service.plan = 1
       if not service.save
         raise "Failed to forge orphan instance: #{service.errors.inspect}"
       end
@@ -215,14 +203,16 @@ describe "Mysql server node" do
   it "should support over provisioning" do
     EM.run do
       opts = @opts.dup
-      opts[:available_storage] = 10
+      opts[:capacity] = 10
       opts[:max_db_size] = 20
       node = VCAP::Services::Mysql::Node.new(opts)
-      expect {
-        db = node.provision(@default_plan)
-        @test_dbs[db] = []
-      }.should_not raise_error
-      EM.stop
+      EM.add_timer(1) do
+        expect {
+          db = node.provision(@default_plan)
+          @test_dbs[db] = []
+        }.should_not raise_error
+        EM.stop
+      end
     end
   end
 
@@ -276,17 +266,19 @@ describe "Mysql server node" do
         # reduce max_long_tx to accelerate test
         opts[:max_long_tx] = 1
         node = VCAP::Services::Mysql::Node.new(opts)
-        conn = connect_to_mysql(@db)
-        # prepare a transaction and not commit
-        conn.query("create table a(id int) engine=innodb")
-        conn.query("insert into a value(10)")
-        conn.query("begin")
-        conn.query("select * from a for update")
-        EM.add_timer(opts[:max_long_tx] * 5) {
-          expect {conn.query("select * from a for update")}.should raise_error(Mysql2::Error)
-          conn.close
-          EM.stop
-        }
+        EM.add_timer(1) do
+          conn = connect_to_mysql(@db)
+          # prepare a transaction and not commit
+          conn.query("create table a(id int) engine=innodb")
+          conn.query("insert into a value(10)")
+          conn.query("begin")
+          conn.query("select * from a for update")
+          EM.add_timer(opts[:max_long_tx] * 5) {
+            expect {conn.query("select * from a for update")}.should raise_error(Mysql2::Error)
+            conn.close
+            EM.stop
+          }
+        end
       end
     else
       pending "long transaction killer is disabled."
@@ -302,33 +294,35 @@ describe "Mysql server node" do
       opts[:max_long_query] = 1
       conn = connect_to_mysql(db)
       node = VCAP::Services::Mysql::Node.new(opts)
-      conn.query('create table test(id INT) engine innodb')
-      conn.query('insert into test value(10)')
-      conn.query('begin')
-      # lock table test
-      conn.query('select * from test where id = 10 for update')
-      old_counter = node.varz_details[:long_queries_killed]
+      EM.add_timer(1) do
+        conn.query('create table test(id INT) engine innodb')
+        conn.query('insert into test value(10)')
+        conn.query('begin')
+        # lock table test
+        conn.query('select * from test where id = 10 for update')
+        old_counter = node.varz_details[:long_queries_killed]
 
-      conn2 = connect_to_mysql(db)
-      err = nil
-      t = Thread.new do
-        begin
-          # conn2 is blocked by conn, we use lock to simulate long queries
-          conn2.query("select * from test for update")
-        rescue => e
-          err = e
-        ensure
-          conn2.close
+        conn2 = connect_to_mysql(db)
+        err = nil
+        t = Thread.new do
+          begin
+            # conn2 is blocked by conn, we use lock to simulate long queries
+            conn2.query("select * from test for update")
+          rescue => e
+            err = e
+          ensure
+            conn2.close
+          end
         end
-      end
 
-      EM.add_timer(opts[:max_long_query] * 5){
-        err.should_not == nil
-        err.message.should =~ /interrupted/
-        # counter should also be updated
-        node.varz_details[:long_queries_killed].should > old_counter
-        EM.stop
-      }
+        EM.add_timer(opts[:max_long_query] * 5){
+          err.should_not == nil
+          err.message.should =~ /interrupted/
+            # counter should also be updated
+            node.varz_details[:long_queries_killed].should > old_counter
+          EM.stop
+        }
+      end
     end
   end
 
@@ -489,35 +483,41 @@ describe "Mysql server node" do
   it "should retain instance data after node restart" do
     EM.run do
       node = VCAP::Services::Mysql::Node.new(@opts)
-      db = node.provision(@default_plan)
-      @test_dbs[db] = []
-      conn = connect_to_mysql(db)
-      conn.query('create table test(id int)')
-      # simulate we restart the node
-      node.shutdown
-      node = VCAP::Services::Mysql::Node.new(@opts)
-      conn2 = connect_to_mysql(db)
-      result = conn2.query('show tables')
-      result.count.should == 1
-      EM.stop
+      EM.add_timer(1) do
+        db = node.provision(@default_plan)
+        @test_dbs[db] = []
+        conn = connect_to_mysql(db)
+        conn.query('create table test(id int)')
+        # simulate we restart the node
+        node.shutdown
+        node = VCAP::Services::Mysql::Node.new(@opts)
+        EM.add_timer(1) do
+          conn2 = connect_to_mysql(db)
+          result = conn2.query('show tables')
+          result.count.should == 1
+          EM.stop
+        end
+      end
     end
   end
 
   it "should able to generate varz." do
     EM.run do
       node = VCAP::Services::Mysql::Node.new(@opts)
-      varz = node.varz_details
-      varz.should be_instance_of Hash
-      varz[:queries_since_startup].should >0
-      varz[:queries_per_second].should >= 0
-      varz[:database_status].should be_instance_of Array
-      varz[:node_storage_capacity].should > 0
-      varz[:node_storage_used].should >= 0
-      varz[:long_queries_killed].should >= 0
-      varz[:long_transactions_killed].should >= 0
-      varz[:provision_served].should >= 0
-      varz[:binding_served].should >= 0
-      EM.stop
+      EM.add_timer(1) do
+        varz = node.varz_details
+        varz.should be_instance_of Hash
+        varz[:queries_since_startup].should >0
+        varz[:queries_per_second].should >= 0
+        varz[:database_status].should be_instance_of Array
+        varz[:max_capacity].should > 0
+        varz[:available_capacity].should >= 0
+        varz[:long_queries_killed].should >= 0
+        varz[:long_transactions_killed].should >= 0
+        varz[:provision_served].should >= 0
+        varz[:binding_served].should >= 0
+        EM.stop
+      end
     end
   end
 
@@ -525,12 +525,14 @@ describe "Mysql server node" do
     pending "This test is not capatiable with mysql2 conenction pool."
     EM.run do
       node = VCAP::Services::Mysql::Node.new(@opts)
-      # drop mysql connection
-      node.pool.close
-      varz = nil
-      expect {varz = node.varz_details}.should_not raise_error
-      varz.should == {}
-      EM.stop
+      EM.add_timer(1) do
+        # drop mysql connection
+        node.pool.close
+        varz = nil
+        expect {varz = node.varz_details}.should_not raise_error
+        varz.should == {}
+        EM.stop
+      end
     end
   end
 
@@ -557,28 +559,18 @@ describe "Mysql server node" do
     end
   end
 
-  it "should update node capacity after provision new instance" do
-    EM.run do
-      v1 = @node.varz_details
-      db = @node.provision(@default_plan)
-      @test_dbs[db] =[]
-      v2 = @node.varz_details
-      (v2[:node_storage_used] - v1[:node_storage_used]).should ==
-        (@opts[:max_db_size] * 1024 * 1024)
-      EM.stop
-    end
-  end
-
   it "should report node status in healthz" do
     pending "This test is not capatiable with mysql2 conenction pool."
     EM.run do
       healthz = @node.healthz_details()
       healthz[:self].should == "ok"
       node = VCAP::Services::Mysql::Node.new(@opts)
-      node.pool.close
-      healthz = node.healthz_details()
-      healthz[:self].should == "fail"
-      EM.stop
+      EM.add_timer(1) do
+        node.pool.close
+        healthz = node.healthz_details()
+        healthz[:self].should == "fail"
+        EM.stop
+      end
     end
   end
 
@@ -626,7 +618,6 @@ describe "Mysql server node" do
 
   it "should be thread safe" do
     EM.run do
-      available_storage = @node.available_storage
       provision_served = @node.provision_served
       binding_served = @node.binding_served
       NUM = 20
@@ -639,7 +630,6 @@ describe "Mysql server node" do
         end
       end
       threads.each {|t| t.join}
-      available_storage.should == @node.available_storage
       provision_served.should == @node.provision_served - NUM
       binding_served.should == @node.binding_served - NUM
       EM.stop
@@ -651,12 +641,14 @@ describe "Mysql server node" do
       opts = @opts.dup
       opts[:max_user_conns] = 1 # easy for testing
       node = VCAP::Services::Mysql::Node.new(opts)
-      db = node.provision(@default_plan)
-      binding = node.bind(db["name"],  @default_opts)
-      @test_dbs[db] = [binding]
-      expect { conn = connect_to_mysql(db) }.should_not raise_error
-      expect { conn = connect_to_mysql(binding) }.should_not raise_error
-      EM.stop
+      EM.add_timer(1) do
+        db = node.provision(@default_plan)
+        binding = node.bind(db["name"],  @default_opts)
+        @test_dbs[db] = [binding]
+        expect { conn = connect_to_mysql(db) }.should_not raise_error
+        expect { conn = connect_to_mysql(binding) }.should_not raise_error
+        EM.stop
+      end
     end
   end
 

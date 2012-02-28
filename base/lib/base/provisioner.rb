@@ -24,10 +24,10 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     super(options)
     @version   = options[:version]
     @node_timeout = options[:node_timeout]
-    @allow_over_provisioning = options[:allow_over_provisioning]
     @nodes     = {}
     @prov_svcs = {}
     @handles_for_check_orphan = {}
+    @plan_mgmt = options[:plan_management] && options[:plan_management][:plans] || {}
     reset_orphan_stat
 
     z_interval = options[:z_interval] || 30
@@ -42,7 +42,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
 
     EM.add_periodic_timer(60) { process_nodes }
-
   end
 
   def create_redis(opt)
@@ -86,7 +85,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def process_nodes
-    @nodes.delete_if {|_, timestamp| Time.now.to_i - timestamp > 300}
+    @nodes.delete_if {|_, node| Time.now.to_i - node["time"] > 300}
   end
 
   def pre_send_announcement
@@ -94,24 +93,22 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def on_connect_node
     @logger.debug("[#{service_description}] Connected to node mbus..")
-    @node_nats.subscribe("#{service_name}.announce") { |msg|
-      on_node_announce(msg)
-    }
-    @node_nats.subscribe("#{service_name}.node_handles") { |msg| on_node_handles(msg) }
-    @node_nats.subscribe("#{service_name}.handles") {|msg, reply| on_query_handles(msg, reply) }
-    @node_nats.subscribe("#{service_name}.update_service_handle") {|msg, reply| on_update_service_handle(msg, reply) }
+    %w[announce node_handles handles update_service_handle].each do |op|
+      eval %[@node_nats.subscribe("#{service_name}.#{op}") { |msg, reply| on_#{op}(msg, reply) }]
+    end
+
     pre_send_announcement()
     @node_nats.publish("#{service_name}.discover")
   end
 
-  def on_node_announce(msg)
+  def on_announce(msg, reply=nil)
     @logger.debug("[#{service_description}] Received node announcement: #{msg}")
     announce_message = Yajl::Parser.parse(msg)
-    @nodes[announce_message["id"]] = Time.now.to_i if announce_message["id"]
+    @nodes[announce_message["id"]] = announce_message.merge({"time" => Time.now.to_i}) if announce_message["id"]
   end
 
   # query all handles for a given instance
-  def on_query_handles(instance, reply)
+  def on_handles(instance, reply)
     @logger.debug("[#{service_description}] Receive query handles request for instance: #{instance}")
     if instance.empty?
       res = Yajl::Encoder.encode(@prov_svcs)
@@ -122,7 +119,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.publish(reply, res)
   end
 
-  def on_node_handles(msg)
+  def on_node_handles(msg, reply)
     @logger.debug("[#{service_description}] Received node handles")
     response = NodeHandlesReport.decode(msg)
     nid = response.node_id
@@ -142,7 +139,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
     @logger.debug("Staging Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Exception at on_node_handles #{e}")
   end
 
   def check_orphan(handles, &blk)
@@ -152,7 +149,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @node_nats.publish("#{service_name}.check_orphan","Send Me Handles")
     blk.call(success)
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Exception at check_orphan #{e}")
     if e.instance_of? ServiceError
       blk.call(failure(e))
     else
@@ -182,7 +179,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     ob_count = @final_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
     @logger.debug("Final Orphans: Instances: #{oi_count}; Bindings: #{ob_count}")
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Exception at double_check_orphan #{e}")
   end
 
   def purge_orphan(orphan_ins_hash,orphan_bind_hash, &blk)
@@ -209,7 +206,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
     blk.call(success)
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Exception at purge_orphan #{e}")
     if e.instance_of? ServiceError
       blk.call(failure(e))
     else
@@ -260,7 +257,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       if e.instance_of? ServiceError
         blk.call(failure(e))
       else
-        @logger.warn(e)
+        @logger.warn("Exception at unprovision_service #{e}")
         blk.call(internal_fail)
       end
     end
@@ -269,28 +266,38 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def provision_service(request, prov_handle=nil, &blk)
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     subscription = nil
-    barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => @nodes.length) do |responses|
-      @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
-      @node_nats.unsubscribe(subscription)
-      unless responses.empty?
-        provision_node(request, responses, prov_handle, blk)
+    plan = request.plan || "free"
+    plan_nodes = @nodes.select{ |_, node| node["plan"] == plan }
+    @logger.debug("Going to query nodes #{plan_nodes}")
+    if plan_nodes.count > 0
+      barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => plan_nodes.length) do |responses|
+        @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
+        @node_nats.unsubscribe(subscription)
+        provision_node(request, responses, prov_handle, blk) unless responses.empty?
       end
+      req = Yajl::Encoder.encode({"plan" => plan})
+      subscription = @node_nats.request("#{service_name}.discover", req) {|msg| barrier.call(msg)}
+    else
+      @logger.error("Unknown plan(#{plan})")
+      blk.call(failure(ServiceError.new(ServiceError::UNKNOWN_PLAN, plan)))
     end
-    subscription = @node_nats.request("#{service_name}.discover") {|msg| barrier.call(msg)}
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Exception at provision_service #{e}")
     blk.call(internal_fail)
   end
 
   def provision_node(request, node_msgs, prov_handle, blk)
     @logger.debug("[#{service_description}] Provisioning node (request=#{request.extract}, nnodes=#{node_msgs.length})")
+    plan = request.plan
     nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
+    allow_over_provisioning = @plan_mgmt[plan.to_sym] && @plan_mgmt[plan.to_sym][:allow_over_provisioning] || false
+    @logger.debug("Pick best node from:  #{nodes}")
     best_node = nodes.max_by { |node| node_score(node) }
-    if best_node && ( @allow_over_provisioning || node_score(best_node) > 0 )
+    if best_node && ( allow_over_provisioning || node_score(best_node) > 0 )
       best_node = best_node["id"]
       @logger.debug("[#{service_description}] Provisioning on #{best_node}")
       prov_req = ProvisionRequest.new
-      prov_req.plan = request.plan
+      prov_req.plan = plan
       # use old credentials to provision a service if provided.
       prov_req.credentials = prov_handle["credentials"] if prov_handle
       subscription = nil
@@ -384,7 +391,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       if e.instance_of? ServiceError
         blk.call(failure(e))
       else
-        @logger.warn(e)
+        @logger.warn("Exception at bind_instance #{e}")
         blk.call(internal_fail)
       end
     end
@@ -429,7 +436,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       if e.instance_of? ServiceError
         blk.call(failure(e))
       else
-        @logger.warn(e)
+        @logger.warn("Exception at unbind_instance #{e}")
         blk.call(internal_fail)
       end
     end
@@ -471,7 +478,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       if e.instance_of? ServiceError
         blk.call(failure(e))
       else
-        @logger.warn(e)
+        @logger.warn("Exception at restore_instance #{e}")
         blk.call(internal_fail)
       end
     end
@@ -556,7 +563,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       end
     end
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Exception at recover #{e}")
     blk.call(internal_fail)
   end
 
@@ -721,15 +728,28 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       end
     end
 
+    plan_mgmt = []
+    @plan_mgmt.each do |plan, v|
+      plan_nodes = @nodes.select { |_, node| node["plan"] == plan }
+      score = plan_nodes.inject { |sum, node| sum + node_score(node) }
+      plan_mgmt << {
+        :plan => plan,
+        :score => score,
+        :low_water => v[:low_water],
+        :high_water => v[:high_water]
+      }
+    end
+
     varz = {
       :nodes => @nodes,
       :prov_svcs => svcs,
       :orphan_instances => orphan_instances,
-      :orphan_bindings => orphan_bindings
+      :orphan_bindings => orphan_bindings,
+      :plans => plan_mgmt
     }
     return varz
   rescue => e
-    @logger.warn(e)
+    @logger.warn("Exception at varz_details #{e}")
   end
 
   def healthz_details()
@@ -766,7 +786,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   # handle request exception
   def handle_error(e, &blk)
-    @logger.warn(e)
+    @logger.warn("Exception at handle_error #{e}")
     if e.instance_of? ServiceError
       blk.call(failure(e))
     else
@@ -783,14 +803,16 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     node_id
   end
 
-  # Service Provisioner subclasses must implement the following
-  # methods
-
   # node_score(node) -> number.  this base class provisions on the
   # "best" node (lowest load, most free capacity, etc). this method
   # should return a number; higher scores represent "better" nodes;
   # negative/zero scores mean that a node should be ignored
-  abstract :node_score
+  def node_score(node)
+    node['available_capacity'] if node
+  end
+
+  # Service Provisioner subclasses must implement the following
+  # methods
 
   # service_name() --> string
   # (inhereted from VCAP::Services::Base::Base)
