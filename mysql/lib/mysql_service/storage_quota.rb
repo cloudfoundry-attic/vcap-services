@@ -45,9 +45,7 @@ class VCAP::Services::Mysql::Node
       rights = connection.query("SELECT insert_priv, create_priv, update_priv
                                   FROM db WHERE Db=" +  "'#{db}'")
       rights.each do |right|
-        if right.include? 'Y' then
-          return false
-        end
+        return false if right.values.include? 'Y'
       end
     end
     true
