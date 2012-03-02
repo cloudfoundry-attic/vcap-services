@@ -38,9 +38,9 @@ class VCAP::Services::Rabbit::Node
     property :memory,          Integer,     :required => true
     property :status,          Integer,     :default => 0
 
-    def listening?
+    def listening?(interface_ip, instance_port=port)
       begin
-        TCPSocket.open("localhost", port).close
+        TCPSocket.open(interface_ip, instance_port).close
         return true
       rescue => e
         return false
@@ -320,7 +320,7 @@ class VCAP::Services::Rabbit::Node
         end
         @capacity -= capacity_unit
 
-        if instance.listening?
+        if instance.listening?(@local_ip)
           @logger.warn("Service #{instance.name} already running on port #{instance.port}")
           next
         end

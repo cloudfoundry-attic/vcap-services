@@ -44,6 +44,10 @@ end
 
 def getNodeTestConfig
   config_file = File.join(config_base_dir, "rabbit_node.yml")
+  # The configuration file name could be "rabbitmq_node.yml" in dev_setup environment
+  if !File.exist?(config_file)
+    config_file = File.join(config_base_dir, "rabbitmq_node.yml")
+  end
   config = YAML.load_file(config_file)
   options = {
     :logger => getLogger,
