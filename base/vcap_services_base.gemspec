@@ -12,7 +12,7 @@ Gem::Specification.new do |s|
   s.author       = "CloudFoundry Services Team"
   s.email        = "cf-services-eng-cn@vmware.com"
 
-  s.add_dependency "nats", "~> 0.4.22.beta.4"
+  s.add_dependency "nats", "~> 0.4.22.beta.8"
   s.add_dependency "datamapper", "~> 1.1.0"
   s.add_dependency "do_sqlite3", "~> 0.10.3"
   s.add_dependency "eventmachine", "~> 0.12.11.cloudfoundry.3"
@@ -23,7 +23,8 @@ Gem::Specification.new do |s|
   s.add_dependency "em-http-request", "~> 0.3.0"
   s.add_dependency "sinatra", "~> 1.2.3"
   s.add_dependency "thin", "~> 1.3.1"
-  s.add_dependency "vcap_common", ">= 1.0.4"
+  s.add_dependency "vcap_common", ">= 1.0.8"
+  s.add_dependency "logging", ">= 1.5.0"
   s.add_dependency "vcap_logging", ">=0.1.3"
   s.add_dependency "resque-status", "~> 0.2.4"
   s.add_dependency "curb", "~> 0.7.16"

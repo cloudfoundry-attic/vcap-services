@@ -730,8 +730,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
     plan_mgmt = []
     @plan_mgmt.each do |plan, v|
-      plan_nodes = @nodes.select { |_, node| node["plan"] == plan }
-      score = plan_nodes.inject { |sum, node| sum + node_score(node) }
+      plan_nodes = @nodes.select { |_, node| node["plan"] == plan.to_s }.values
+      score = plan_nodes.inject(0) { |sum, node| sum + node_score(node) }
       plan_mgmt << {
         :plan => plan,
         :score => score,

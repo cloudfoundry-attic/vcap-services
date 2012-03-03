@@ -35,7 +35,6 @@ class VCAP::Services::Base::Base
 
     @node_nats = nil
     if options[:mbus]
-      @nats_lock = Mutex.new
 
       NATS.on_error do |e|
         @logger.error("Exiting due to NATS error: #{e}")
@@ -73,7 +72,8 @@ class VCAP::Services::Base::Base
   end
 
   def publish(reply, msg)
-    @nats_lock.synchronize do
+    # nats publish are only allowed to be called in reactor thread.
+    EM.schedule do
       @node_nats.publish(reply, msg)
     end
   end
