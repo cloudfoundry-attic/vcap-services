@@ -64,10 +64,7 @@ class VCAP::Services::Neo4j::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @neo4j_path = options[:neo4j_path]
-
-    @available_memory = options[:available_memory]
     @max_memory = options[:max_memory]
-
     @config_template = ERB.new(File.read(options[:config_template]))
     @db_template = ERB.new(File.read(options[:neo4j_template]))
     @log_template = ERB.new(File.read(options[:log4j_template]))
@@ -101,39 +98,28 @@ class VCAP::Services::Neo4j::Node
     end
   end
 
-  def inc_memory(memory)
-    @mutex.synchronize do
-      @available_memory += memory
-    end
-  end
-
-  def dec_memory(memory)
-    @mutex.synchronize do
-      @available_memory -= memory
-    end
-  end
-
   def pre_send_announcement
-    ProvisionedService.all.each do |provisioned_service|
-      delete_port(provisioned_service.port)
-      if provisioned_service.listening?
-        @logger.info("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
-        dec_memory(provisioned_service.memory || @max_memory)
-        next
-      end
-
-      begin
-        pid = start_instance(provisioned_service)
-        provisioned_service.pid = pid
-        unless provisioned_service.save
-          provisioned_service.kill
-          raise "Couldn't save pid (#{pid})"
+    @capacity_lock.synchronize do
+      ProvisionedService.all.each do |provisioned_service|
+        @capacity -= capacity_unit
+        delete_port(provisioned_service.port)
+        if provisioned_service.listening?
+          @logger.info("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
+          next
         end
-      rescue => e
-        @logger.error("Error starting service #{provisioned_service.name}: #{e}")
+
+        begin
+          pid = start_instance(provisioned_service)
+          provisioned_service.pid = pid
+          unless provisioned_service.save
+            provisioned_service.kill
+            raise "Couldn't save pid (#{pid})"
+          end
+        rescue => e
+          @logger.error("Error starting service #{provisioned_service.name}: #{e}")
+        end
       end
     end
-
   end
 
   def shutdown
@@ -160,10 +146,10 @@ class VCAP::Services::Neo4j::Node
   end
 
   def announcement
-    a = {
-      :available_memory => @available_memory
-    }
-    a
+    @capacity_lock.synchronize do
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
+    end
   end
 
   def provision(plan, credentials=nil)
@@ -225,7 +211,6 @@ class VCAP::Services::Neo4j::Node
 
     EM.defer { FileUtils.rm_rf(dir) }
 
-    inc_memory(provisioned_service.memory)
     return_port(provisioned_service.port)
 
     true
@@ -329,7 +314,6 @@ class VCAP::Services::Neo4j::Node
     out = `cd #{dir} && #{init_script} start`
     status = $?
     @logger.send(status.success? ? :debug : :error, "Init finished, status = #{status}: #{out}")
-    dec_memory(memory) if status.success?
 
     pidfile = File.join(dir,"data","neo4j-service.pid")
 

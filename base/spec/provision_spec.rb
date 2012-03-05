@@ -108,6 +108,24 @@ describe ProvisionerTests do
     node2.got_provision_request.should be_true
   end
 
+  it "should avoid over provision when provisioning " do
+    provisioner = nil
+    gateway = nil
+    node1 = nil
+    node2 = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+      Do.at(2) { node1 = ProvisionerTests.create_node(1, 1) }
+      Do.at(3) { node2 = ProvisionerTests.create_node(2, 1) }
+      Do.at(4) { gateway.send_provision_request; gateway.send_provision_request }
+      Do.at(10) { gateway.send_provision_request }
+      Do.at(15) { EM.stop }
+    end
+    node1.got_provision_request.should be_true
+    node2.got_provision_request.should be_true
+  end
+
   it "should raise error on provisioning error plan" do
     provisioner = nil
     gateway = nil
@@ -256,7 +274,7 @@ describe ProvisionerTests do
     EM.run do
       Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
       Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-      Do.at(2) { node = ProvisionerTests.create_node(1) }
+      Do.at(2) { node = ProvisionerTests.create_node(1, 2) }
       Do.at(3) { gateway.send_provision_request }
       Do.at(4) { gateway.send_recover_request }
       Do.at(10) { EM.stop }

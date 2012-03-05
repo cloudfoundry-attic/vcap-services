@@ -46,7 +46,7 @@ class ProvisionerTests
       SERVICE_NAME
     end
     def node_score(node)
-      node["score"]
+      node["available_capacity"]
     end
     def node_count
       return @nodes.length
@@ -237,6 +237,7 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.provision.#{node_id}") { |_, reply|
           @got_provision_request = true
+          @score -= 1
           response = ProvisionResponse.new
           response.success = true
           response.credentials = {
@@ -310,7 +311,7 @@ class ProvisionerTests
       "node-#{@id}"
     end
     def announce(reply=nil)
-      a = { :id => node_id, :score => @score, :plan => @plan}
+      a = { :id => node_id, :available_capacity => @score, :plan => @plan, :capacity_unit => 1 }
       @nats.publish(reply||"#{service_name}.announce", a.to_json)
     end
   end

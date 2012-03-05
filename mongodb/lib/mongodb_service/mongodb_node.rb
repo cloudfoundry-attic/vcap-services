@@ -173,7 +173,8 @@ class VCAP::Services::MongoDB::Node
 
   def announcement
     @capacity_lock.synchronize do
-      { :available_capacity => @capacity }
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
     end
   end
 
