@@ -46,6 +46,7 @@ class VCAP::Services::Mysql::Node
     super(options)
 
     @mysql_config = options[:mysql]
+    @connection_pool_size = options[:connection_pool_size]
 
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
@@ -107,6 +108,9 @@ class VCAP::Services::Mysql::Node
       end
     end
     res
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    []
   end
 
   def announcement
@@ -131,6 +135,9 @@ class VCAP::Services::Mysql::Node
       @logger.warn("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
     end
     missing_accounts
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    nil
   end
 
   # check whether mysql has required innodb plugin installed.
@@ -139,6 +146,9 @@ class VCAP::Services::Mysql::Node
       res = connection.query("show tables from information_schema like 'INNODB_TRX'")
       return true if res.count > 0
     end
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    nil
   end
 
   def mysql_connect
@@ -146,7 +156,7 @@ class VCAP::Services::Mysql::Node
 
     5.times do
       begin
-        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger)
+        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => @connection_pool_size)
       rescue Mysql2::Error => e
         @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(5)
@@ -599,6 +609,9 @@ class VCAP::Services::Mysql::Node
     @queries_served = queries
     @qps_last_updated = ts
     qps
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    0
   end
 
   def get_instance_status()
@@ -650,5 +663,8 @@ class VCAP::Services::Mysql::Node
       res = connection.query("show variables where variable_name like 'version_comment'")
       return res.count > 0 && res.to_a[0]["Value"] =~ /percona/i
     end
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    nil
   end
 end

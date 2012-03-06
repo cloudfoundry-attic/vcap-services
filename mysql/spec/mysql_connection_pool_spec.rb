@@ -26,7 +26,7 @@ describe 'Mysql Connection Pool Test' do
     @opts.freeze
     @mysql_config = @opts[:mysql]
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
-    @pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger)
+    @pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => 20)
 
   end
 
@@ -99,4 +99,55 @@ describe 'Mysql Connection Pool Test' do
     Mysql2::Client.should_receive(:new).and_raise(error)
     pool.connected?.should == nil
   end
+
+  it "should not leak connection when can't connect to mysql" do
+    mock_client = mock("client")
+    mock_client.should_receive(:close).and_return(true)
+    Mysql2::Client.should_receive(:new).and_return(mock_client)
+
+    pool = connection_pool_klass.new(:logger => @logger, :pool => 1)
+
+    # Simulate mysql server is gone.
+    mock_client.should_receive(:ping).and_return(nil)
+    error = Mysql2::Error.new("Can't connect to mysql")
+    Mysql2::Client.should_receive(:new).and_raise(error)
+
+    expect{ pool.with_connection{|conn| conn.query("select 1")} }.should raise_error(Mysql2::Error, /Can't connect to mysql/)
+
+    # Ensure that we can still checkout from the pool
+    mock_client.should_receive(:ping).and_return(true)
+    mock_client.should_receive(:query).with("select 1").and_return(true)
+    expect{ pool.with_connection{|conn| conn.query("select 1")} }.should_not raise_error
+  end
+
+  it "should raise error when pool is still empty after timeout second" do
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    # create a tiny pool with very short timeout
+    pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql",
+                                     :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger, :wait_timeout => 2)
+    threads = []
+    threads << Thread.new do
+      # acquire connection for quite a long time.
+      pool.with_connection do |conn|
+        sleep 5
+        conn.query("select 1")
+      end
+    end
+
+    error = nil
+    threads << Thread.new do
+      begin
+        sleep 1
+        pool.with_connection do |conn|
+          conn.query("select 1")
+        end
+      rescue => e
+        error = e
+      end
+    end
+    threads.each{|t| t.join}
+    error.should_not == nil
+    error.to_s.should match(/could not obtain a database connection/)
+  end
+
 end

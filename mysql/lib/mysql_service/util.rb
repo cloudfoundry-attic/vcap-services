@@ -147,6 +147,7 @@ module VCAP
         end
 
         class ConnectionPool
+          attr_reader  :timeout, :size
           include Util
           def initialize(options)
             @options = options
@@ -157,6 +158,7 @@ module VCAP
             @connections.extend(MonitorMixin)
             @cond = @connections.new_cond
             @reserved_connections = {}
+            @checked_out = []
             for i in 1..@size do
               @connections << Connection.new(@options)
             end
@@ -174,7 +176,7 @@ module VCAP
           # verify all pooled connections
           def keep_alive
             @connections.synchronize do
-              @connections.each do |conn|
+              (@connections - @checked_out).each do |conn|
                 conn.verify!
               end
             end
@@ -219,17 +221,21 @@ module VCAP
           def checkout
             @connections.synchronize do
               loop do
-                conn = @connections.shift
-                return conn.verify! if conn
+                if @checked_out.size < @connections.size
+                  conn = (@connections - @checked_out).first
+                  conn.verify!
+                  @checked_out << conn
+                  return conn
+                end
 
                 @cond.wait(@timeout)
 
-                if @connections.empty?
+                if @checked_out.size < @connections.size
                   next
                 else
                   clear_stale_cached_connections!
-                  if @connections.empty?
-                    raise Mysql2::Error, "could not obtain a database connection#{" within #{@timeout} seconds" if @timeout}.  The max pool size is currently #{@size}; consider increasing it."
+                  if @checked_out.size == @connections.size
+                    raise Mysql2::Error, "could not obtain a database connection within #{@timeout} seconds.  The max pool size is currently #{@size}; consider increasing it."
                   end
                 end
               end
@@ -238,7 +244,7 @@ module VCAP
 
           def checkin(conn)
             @connections.synchronize do
-              @connections << conn
+              @checked_out.delete conn
               @cond.signal
             end
           end
