@@ -15,7 +15,7 @@ gem "resque-status", "~> 0.2.4"
 gem "rake"
 gem "curb"
 
-gem 'vcap_common', '>= 1.0.4', :require => ['vcap/common', 'vcap/component']
+gem 'vcap_common', '>= 1.0.8', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
 gem "vcap_services_base"
 
