@@ -19,7 +19,6 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def additional_config(options, config)
-    options[:available_storage] = parse_property(config, "available_storage", Integer)
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
     options[:max_long_query] = parse_property(config, "max_long_query", Integer)
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
