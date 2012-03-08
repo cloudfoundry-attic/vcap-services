@@ -130,7 +130,6 @@ def get_node_config()
     :mbus => parse_property(config, "mbus", String),
     :config_template => mongodb_conf_template,
     :port_range => parse_property(config, "port_range", Range),
-    :max_memory => parse_property(config, "max_memory", Integer),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :base_dir => '/tmp/mongo/instances',
     :mongod_log_dir => '/tmp/mongo/mongod_log',

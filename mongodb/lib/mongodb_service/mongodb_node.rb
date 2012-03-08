@@ -94,7 +94,6 @@ class VCAP::Services::MongoDB::Node
     @mongorestore_path = options[:mongorestore_path]
     @mongod_log_dir = options[:mongod_log_dir]
 
-    @max_memory = options[:max_memory]
     @max_clients = options[:max_clients] || MAX_CLIENTS
     @quota_files = options[:quota_files] || QUOTA_FILES
 
@@ -220,7 +219,6 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.port      = port
     provisioned_service.plan      = 1
     provisioned_service.password  = UUIDTools::UUID.random_create.to_s
-    provisioned_service.memory    = @max_memory
     provisioned_service.pid       = start_instance(provisioned_service)
     provisioned_service.admin     = 'admin'
     provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
@@ -553,8 +551,6 @@ class VCAP::Services::MongoDB::Node
 
   def start_instance(provisioned_service)
     @logger.info("Starting: #{provisioned_service.inspect}")
-
-    memory = @max_memory
 
     pid = fork
     if pid
