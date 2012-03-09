@@ -193,7 +193,7 @@ class VCAP::Services::Mysql::Node
     @pool.with_connection do |connection|
       process_list = connection.query("show processlist")
       process_list.each do |proc|
-        thread_id, user, db, command, time, info, state = %w(Id User Db Command Time Info State).map{|o| proc[o]}
+        thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map{|o| proc[o]}
         if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
           connection.query("KILL QUERY #{thread_id}")
           @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
