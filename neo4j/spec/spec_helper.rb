@@ -77,9 +77,10 @@ def get_node_config()
   neo4j_conf_template = File.join(File.dirname(__FILE__), "../resources/neo4j.properties.erb")
   log4j_conf_template = File.join(File.dirname(__FILE__), "../resources/log4j.properties.erb")
   options = {
+    :capacity => parse_property(config, "capacity", Integer),
+    :plan => parse_property(config, "plan", String),
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :neo4j_path => parse_property(config, "neo4j_path", String),
-    :available_memory => parse_property(config, "available_memory", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
     :config_template => neo4j_server_conf_template,

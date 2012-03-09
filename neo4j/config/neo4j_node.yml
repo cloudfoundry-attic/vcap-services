@@ -1,5 +1,6 @@
 ---
 capacity: 200
+plan: "free"
 local_db: sqlite3:/var/vcap/services/neo4j/neo4j_node.db
 mbus: nats://localhost:4222
 index: 0
