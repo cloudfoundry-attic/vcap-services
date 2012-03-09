@@ -87,19 +87,23 @@ class VCAP::Services::Mysql::Node
       sizes = dbs_size(connection)
     end
     ProvisionedService.all.each do |service|
-      db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
-      size = sizes[db]
-      # ignore the orphan instance
-      next if size.nil?
+      begin
+        db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
+        size = sizes[db]
+        # ignore the orphan instance
+        next if size.nil?
 
-      if (size >= @max_db_size) and not quota_exceeded then
-        revoke_write_access(db, service)
-        @logger.info("Storage quota exceeded :" + fmt_db_listing(user, db, size) +
-                     " -- access revoked")
-      elsif (size < @max_db_size) and quota_exceeded then
-        grant_write_access(db, service)
-        @logger.info("Below storage quota:" + fmt_db_listing(user, db, size) +
-                     " -- access restored")
+        if (size >= @max_db_size) and not quota_exceeded then
+          revoke_write_access(db, service)
+          @logger.info("Storage quota exceeded :" + fmt_db_listing(user, db, size) +
+                       " -- access revoked")
+        elsif (size < @max_db_size) and quota_exceeded then
+          grant_write_access(db, service)
+          @logger.info("Below storage quota:" + fmt_db_listing(user, db, size) +
+                       " -- access restored")
+        end
+      rescue => e1
+        @logger.warn("Fail to enfroce storage quota on #{service.name}: #{e1}" + e1.backtrace.join("|") )
       end
     end
     rescue Mysql2::Error => e
