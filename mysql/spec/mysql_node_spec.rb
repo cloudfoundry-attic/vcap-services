@@ -607,7 +607,8 @@ describe "Mysql server node" do
     EM.run do
       provision_served = @node.provision_served
       binding_served = @node.binding_served
-      NUM = 20
+      # Set concurrent threads to pool size. Prevent pool is empty error.
+      NUM = @node.pool.size
       threads = []
       NUM.times do
         threads << Thread.new do
