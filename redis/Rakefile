@@ -2,6 +2,7 @@ require 'rake'
 require 'resque/tasks'
 require 'yaml'
 require 'yajl'
+require 'ci/reporter/rake/rspec'
 
 desc "Run specs"
 task "spec" => ["bundler:install:test", "test:spec"]
@@ -64,4 +65,8 @@ task "resque:setup" do |t|
 
   resque = %w(host port password).inject({}){|res, o| res[o.to_sym] = config["resque"][o]; res}
   Resque.redis = Redis.new(resque)
+end
+
+namespace "ci" do
+  task "spec" => ["ci:setup:rspec", "^spec"]
 end

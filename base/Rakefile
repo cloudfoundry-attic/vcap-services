@@ -1,5 +1,6 @@
 require 'rake'
 require 'bundler'
+require 'ci/reporter/rake/rspec'
 
 desc "Run specs"
 task "spec" => ["bundler:install:test", "test:spec"]
@@ -47,4 +48,8 @@ namespace "test" do
  task "spec:rcov" do |t|
     sh("cd spec && rake spec:rcov")
   end
+end
+
+namespace "ci" do
+  task "spec" => ["ci:setup:rspec", "^spec"]
 end
