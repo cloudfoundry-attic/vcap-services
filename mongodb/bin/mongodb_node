@@ -25,7 +25,6 @@ class VCAP::Services::MongoDB::NodeBin < VCAP::Services::Base::NodeBin
     options[:port_range] = parse_property(config, "port_range", Range)
     options[:mongod_path] = parse_property(config, "mongod_path", String)
     options[:mongorestore_path] = parse_property(config, "mongorestore_path", String)
-    options[:max_memory] = parse_property(config, "max_memory", Integer)
     options[:mongod_log_dir] = parse_property(config, "mongod_log_dir", String)
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options[:quota_files] = parse_property(config, "quota_files", Integer, :optional => true)

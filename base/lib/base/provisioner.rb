@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 require "pp"
 require "set"
@@ -25,6 +26,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @version   = options[:version]
     @node_timeout = options[:node_timeout]
     @nodes     = {}
+    @provision_refs = Hash.new(0)
     @prov_svcs = {}
     @handles_for_check_orphan = {}
     @plan_mgmt = options[:plan_management] && options[:plan_management][:plans] || {}
@@ -33,12 +35,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     z_interval = options[:z_interval] || 30
 
     EM.add_periodic_timer(z_interval) do
-      update_varz; update_healthz
+      update_varz
     end
 
     # Defer 5 seconds to give service a change to wake up
     EM.add_timer(5) do
-      update_varz; update_healthz
+      update_varz
     end
 
     EM.add_periodic_timer(60) { process_nodes }
@@ -85,7 +87,11 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def process_nodes
-    @nodes.delete_if {|_, node| Time.now.to_i - node["time"] > 300}
+    @nodes.delete_if do |id, node|
+      stale = (Time.now.to_i - node["time"]) > 300
+      @provision_refs.delete(id) if stale
+      stale
+    end
   end
 
   def pre_send_announcement
@@ -104,7 +110,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def on_announce(msg, reply=nil)
     @logger.debug("[#{service_description}] Received node announcement: #{msg}")
     announce_message = Yajl::Parser.parse(msg)
-    @nodes[announce_message["id"]] = announce_message.merge({"time" => Time.now.to_i}) if announce_message["id"]
+    if announce_message["id"]
+      id = announce_message["id"]
+      announce_message["time"] = Time.now.to_i
+      if @provision_refs[id] > 0
+        announce_message['available_capacity'] = @nodes[id]['available_capacity']
+      end
+      @nodes[id] = announce_message
+    end
   end
 
   # query all handles for a given instance
@@ -113,7 +126,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     if instance.empty?
       res = Yajl::Encoder.encode(@prov_svcs)
     else
-      handles = find_all_bindings(msg)
+      handles = find_all_bindings(instance)
       res = Yajl::Encoder.encode(handles)
     end
     @node_nats.publish(reply, res)
@@ -267,49 +280,29 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     subscription = nil
     plan = request.plan || "free"
-    plan_nodes = @nodes.select{ |_, node| node["plan"] == plan }
-    @logger.debug("Going to query nodes #{plan_nodes}")
+    plan_nodes = @nodes.select{ |_, node| node["plan"] == plan }.values
+    @logger.debug("Pick best nodes from: #{plan_nodes}")
     if plan_nodes.count > 0
-      barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => plan_nodes.length) do |responses|
-        @logger.debug("[#{service_description}] Found the following nodes: #{responses.inspect}")
-        @node_nats.unsubscribe(subscription)
-        provision_node(request, responses, prov_handle, blk) unless responses.empty?
-      end
-      req = Yajl::Encoder.encode({"plan" => plan})
-      subscription = @node_nats.request("#{service_name}.discover", req) {|msg| barrier.call(msg)}
-    else
-      @logger.error("Unknown plan(#{plan})")
-      blk.call(failure(ServiceError.new(ServiceError::UNKNOWN_PLAN, plan)))
-    end
-  rescue => e
-    @logger.warn("Exception at provision_service #{e}")
-    blk.call(internal_fail)
-  end
-
-  def provision_node(request, node_msgs, prov_handle, blk)
-    @logger.debug("[#{service_description}] Provisioning node (request=#{request.extract}, nnodes=#{node_msgs.length})")
-    plan = request.plan
-    nodes = node_msgs.map { |msg| Yajl::Parser.parse(msg.first) }
-    allow_over_provisioning = @plan_mgmt[plan.to_sym] && @plan_mgmt[plan.to_sym][:allow_over_provisioning] || false
-    @logger.debug("Pick best node from:  #{nodes}")
-    best_node = nodes.max_by { |node| node_score(node) }
-    if best_node && ( allow_over_provisioning || node_score(best_node) > 0 )
-      best_node = best_node["id"]
-      @logger.debug("[#{service_description}] Provisioning on #{best_node}")
-      prov_req = ProvisionRequest.new
-      prov_req.plan = plan
-      # use old credentials to provision a service if provided.
-      prov_req.credentials = prov_handle["credentials"] if prov_handle
-      subscription = nil
-      timer = EM.add_timer(@node_timeout) {
-        @node_nats.unsubscribe(subscription)
-        blk.call(timeout_fail)
-      }
-      subscription =
-        @node_nats.request(
-          "#{service_name}.provision.#{best_node}",
-          prov_req.encode
-       ) do |msg|
+      allow_over_provisioning = @plan_mgmt[plan.to_sym] && @plan_mgmt[plan.to_sym][:allow_over_provisioning] || false
+      best_node = plan_nodes.max_by { |node| node_score(node) }
+      if best_node && ( allow_over_provisioning || node_score(best_node) > 0 )
+        best_node = best_node["id"]
+        @logger.debug("[#{service_description}] Provisioning on #{best_node}")
+        prov_req = ProvisionRequest.new
+        prov_req.plan = plan
+        # use old credentials to provision a service if provided.
+        prov_req.credentials = prov_handle["credentials"] if prov_handle
+        @provision_refs[best_node] += 1
+        @nodes[best_node]['available_capacity'] -= @nodes[best_node]['capacity_unit']
+        subscription = nil
+        timer = EM.add_timer(@node_timeout) {
+          @provision_refs[best_node] -= 1
+          @node_nats.unsubscribe(subscription)
+          blk.call(timeout_fail)
+        }
+        subscription =
+          @node_nats.request("#{service_name}.provision.#{best_node}", prov_req.encode) do |msg|
+          @provision_refs[best_node] -= 1
           EM.cancel_timer(timer)
           @node_nats.unsubscribe(subscription)
           response = ProvisionResponse.decode(msg)
@@ -328,11 +321,18 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
             blk.call(wrap_error(response))
           end
         end
+      else
+        # No resources
+        @logger.warn("[#{service_description}] Could not find a node to provision")
+        blk.call(internal_fail)
+      end
     else
-      # No resources
-      @logger.warn("[#{service_description}] Could not find a node to provision")
-      blk.call(internal_fail)
+      @logger.error("Unknown plan(#{plan})")
+      blk.call(failure(ServiceError.new(ServiceError::UNKNOWN_PLAN, plan)))
     end
+  rescue => e
+    @logger.warn("Exception at provision_service #{e}")
+    blk.call(internal_fail)
   end
 
   def bind_instance(instance_id, binding_options, bind_handle=nil, &blk)
@@ -750,12 +750,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     return varz
   rescue => e
     @logger.warn("Exception at varz_details #{e}")
-  end
-
-  def healthz_details()
-    healthz = {
-      :self => "ok"
-    }
   end
 
   ########

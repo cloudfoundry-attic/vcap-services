@@ -90,7 +90,6 @@ class VCAP::Services::Base::Gateway
              :mbus => @config[:mbus],
              :node_timeout => node_timeout,
              :z_interval => @config[:z_interval],
-             :allow_over_provisioning => @config[:allow_over_provisioning],
              :max_nats_payload => @config[:max_nats_payload],
              :additional_options => additional_options,
              :status => @config[:status],

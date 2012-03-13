@@ -1,4 +1,6 @@
 ---
+capacity: 200
+plan: "free"
 local_db: sqlite3:/var/vcap/services/neo4j/neo4j_node.db
 mbus: nats://localhost:4222
 index: 0
@@ -6,7 +8,6 @@ base_dir: /var/vcap/services/neo4j/instances
 logging:
   level: debug
 pid: /var/vcap/sys/run/neo4j_node.pid
-available_memory: 4096
 max_memory: 128
 node_id: neo4j_node_1
 neo4j_path: /var/vcap/services/neo4j
@@ -16,3 +17,4 @@ port_range:
 
 # z_interval: 30
 # max_nats_payload: 1048576
+# fqdn_hosts: false

@@ -23,7 +23,6 @@ class VCAP::Services::Neo4j::NodeBin < VCAP::Services::Base::NodeBin
     options[:config_template] = File.expand_path("../../resources/neo4j-server.properties.erb", __FILE__)
     options[:port_range] = parse_property(config, "port_range", Range)
     options[:neo4j_path] = parse_property(config, "neo4j_path", String)
-    options[:available_memory] = parse_property(config, "available_memory", Integer)
     options[:max_memory] = parse_property(config, "max_memory", Integer)
     options[:neo4j_template] = File.expand_path("../../resources/neo4j.properties.erb", __FILE__)
     options[:log4j_template] = File.expand_path("../../resources/log4j.properties.erb", __FILE__)

@@ -141,5 +141,3 @@ describe VCAP::Services::Neo4j::Node do
   end
 
 end
-
-

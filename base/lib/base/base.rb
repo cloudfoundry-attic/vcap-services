@@ -85,10 +85,6 @@ class VCAP::Services::Base::Base
     }
   end
 
-  def update_healthz()
-    VCAP::Component.healthz = Yajl::Encoder.encode(healthz_details, :pretty => true, :terminator => "\n")
-  end
-
   def shutdown()
     @logger.info("#{service_description}: Shutting down")
     @node_nats.close if @node_nats
@@ -147,7 +143,6 @@ class VCAP::Services::Base::Base
   abstract :on_connect_node
   abstract :flavor # "Provisioner" or "Node"
   abstract :varz_details
-  abstract :healthz_details
 
   # Service Provisioner and Node classes must implement the following
   # method

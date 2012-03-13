@@ -125,7 +125,7 @@ GEM
       yajl-ruby (~> 0.8.3)
     vcap_logging (1.0.0)
       rake
-    vcap_services_base (0.1.7)
+    vcap_services_base (0.1.8)
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)

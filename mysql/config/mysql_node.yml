@@ -23,6 +23,8 @@ mysql:
   port: 3306
   user: root
   pass: root
+connection_pool_size: 5
 
 # z_interval: 30
 # max_nats_payload: 1048576
+# fqdn_hosts: false

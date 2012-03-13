@@ -94,7 +94,6 @@ class VCAP::Services::MongoDB::Node
     @mongorestore_path = options[:mongorestore_path]
     @mongod_log_dir = options[:mongod_log_dir]
 
-    @max_memory = options[:max_memory]
     @max_clients = options[:max_clients] || MAX_CLIENTS
     @quota_files = options[:quota_files] || QUOTA_FILES
 
@@ -173,7 +172,8 @@ class VCAP::Services::MongoDB::Node
 
   def announcement
     @capacity_lock.synchronize do
-      { :available_capacity => @capacity }
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
     end
   end
 
@@ -219,7 +219,6 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.port      = port
     provisioned_service.plan      = 1
     provisioned_service.password  = UUIDTools::UUID.random_create.to_s
-    provisioned_service.memory    = @max_memory
     provisioned_service.pid       = start_instance(provisioned_service)
     provisioned_service.admin     = 'admin'
     provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
@@ -251,9 +250,10 @@ class VCAP::Services::MongoDB::Node
     # Add an end_user
     mongodb_add_user(provisioned_service, username, password)
 
+    host = get_host
     response = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host" => host,
       "port" => provisioned_service.port,
       "name" => provisioned_service.name,
       "db" => provisioned_service.db,
@@ -311,9 +311,10 @@ class VCAP::Services::MongoDB::Node
 
     mongodb_add_user(provisioned_service, username, password, bind_opts)
 
+    host = get_host
     response = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host"     => host,
       "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
@@ -454,16 +455,16 @@ class VCAP::Services::MongoDB::Node
 
     raise "Cannot save provisioned_service" unless provisioned_service.save
 
+    host = get_host
+
     # Update credentials for the new credential
     service_credential['port'] = port
-    service_credential['host'] = @local_ip
-    service_credential['hostname'] = @local_ip
+    service_credential['host'] = service_credential['hostname'] = host
 
     binding_credentials.each_value do |value|
       v = value["credentials"]
       v['port'] = port
-      v['host'] = @local_ip
-      v['hostname'] = @local_ip
+      v['host'] = v['hostname'] = host
     end
 
     [service_credential, binding_credentials]
@@ -496,24 +497,24 @@ class VCAP::Services::MongoDB::Node
       stat['name'] = provisioned_service.name
       stats << stat
     end
+
+    # Get service instance status
+    provisioned_instances = {}
+    begin
+      ProvisionedService.all.each do |instance|
+        provisioned_instances[instance.name.to_sym] = get_status(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
+
     {
       :running_services     => stats,
       :disk                 => du_hash,
       :max_capacity         => @max_capacity,
-      :available_capacity     => @capacity
+      :available_capacity   => @capacity,
+      :instances            => provisioned_instances
     }
-  end
-
-  def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
-    ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
-    end
-    healthz
-  rescue => e
-    @logger.warn("Error get healthz details: #{e}")
-    {:self => "fail"}
   end
 
   def connect_and_auth(instance)
@@ -541,7 +542,7 @@ class VCAP::Services::MongoDB::Node
     end
   end
 
-  def get_healthz(instance)
+  def get_status(instance)
     conn = connect_and_auth(instance)
     "ok"
   rescue => e
@@ -550,8 +551,6 @@ class VCAP::Services::MongoDB::Node
 
   def start_instance(provisioned_service)
     @logger.info("Starting: #{provisioned_service.inspect}")
-
-    memory = @max_memory
 
     pid = fork
     if pid

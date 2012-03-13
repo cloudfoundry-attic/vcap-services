@@ -16,7 +16,7 @@ describe NodeTests do
     provisioner.got_announcement.should be_true
   end
 
-  it "should call varz/healthz" do
+  it "should call varz" do
     node = nil
     provisioner = nil
     EM.run do
@@ -26,7 +26,18 @@ describe NodeTests do
       Do.at(12) { EM.stop }
     end
     node.varz_invoked.should be_true
-    node.healthz_invoked.should be_true
+  end
+
+  it "should report healthz ok" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start provisioner then node
+      Do.at(0) { provisioner = NodeTests.create_provisioner }
+      Do.at(1) { node = NodeTests.create_node }
+      Do.at(12) { EM.stop }
+    end
+    node.healthz_ok.should == "ok\n"
   end
 
   it "should announce on request" do
