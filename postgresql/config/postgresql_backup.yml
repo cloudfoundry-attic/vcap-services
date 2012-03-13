@@ -1,5 +1,6 @@
 ---
 service_name: postgresql
+local_db: sqlite3:/var/vcap/services/postgresql/postgresql_node.db
 backup_base_dir: /tmp/backup/
 backup_cmd: /var/vcap/packages/postgresql/bin/pg_dump -Fc --port=:port --host=:host --username=:user --file=:full_path/:name.dump :name
 node_id: postgresql_node_free_1

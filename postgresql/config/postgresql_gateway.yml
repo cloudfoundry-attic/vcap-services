@@ -11,12 +11,22 @@ ip_route: localhost
 #   host: proxy
 #   port: 8080
 #   keepalive: true
+index: 0
 token: "0xdeadbeef"
 logging:
   level: debug
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/postgresql_service.pid
 node_timeout: 2
+api_extensions:
+  - snapshots
+  - serialization
+  - jobs
+resque:
+  host: localhost
+  port: 5454
+
+upload_temp_dir: /tmp
 plan_management:
   plans:
     free:

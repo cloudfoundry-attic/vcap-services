@@ -162,6 +162,7 @@ DEPENDENCIES
   pg
   rake
   rcov
+  resque-status (~> 0.2.4)
   rspec
   ruby-hmac
   simplecov
