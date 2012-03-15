@@ -36,12 +36,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
     EM.add_periodic_timer(z_interval) do
       update_varz
-    end
+    end if @node_nats
 
     # Defer 5 seconds to give service a change to wake up
     EM.add_timer(5) do
       update_varz
-    end
+    end if @node_nats
 
     EM.add_periodic_timer(60) { process_nodes }
   end
