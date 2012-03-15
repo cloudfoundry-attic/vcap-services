@@ -528,7 +528,7 @@ class VCAP::Services::Mysql::Node
     @logger.debug("Execute shell cmd:[#{cmd}]")
     o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
     if s.exitstatus == 0
-      @logger.info("Execute cmd:[#{cmd}] successd.")
+      @logger.info("Execute cmd:[#{cmd}] succeeded.")
     else
       @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
     end

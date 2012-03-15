@@ -287,6 +287,22 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  # Delete a snapshot
+  delete "/gateway/v1/configurations/:service_id/snapshots/:snapshot_id" do
+    not_impl unless @api_extensions.include? "snapshots"
+    service_id = params["service_id"]
+    snapshot_id = params["snapshot_id"]
+    @logger.info("Delete service_id=#{service_id} to snapshot_id=#{snapshot_id}")
+    @provisioner.delete_snapshot(service_id, snapshot_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
   # Get serialized url
   get "/gateway/v1/configurations/:service_id/serialized/url" do
     not_impl unless @api_extensions.include? "serialization"

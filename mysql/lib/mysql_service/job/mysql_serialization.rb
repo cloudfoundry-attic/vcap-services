@@ -6,8 +6,8 @@ require "mysql_error"
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..')
 require "mysql_service/node"
 
-module VCAP::Services::Serialization::Mysql
-  include VCAP::Services::Serialization
+module VCAP::Services::Mysql::Serialization
+  include VCAP::Services::Base::AsyncJob::Serialization
 
   # Validate the serialized data file.
   # TODO add more validation
@@ -29,14 +29,10 @@ module VCAP::Services::Serialization::Mysql
 
   # Dump a database into files just as create snapshot job.
   # Create a download token in redis so user is able to download the serialzed data.
-  class CreateSerializedURLJob < SerializationJob
+  class CreateSerializedURLJob < BaseCreateSerializedURLJob
     include VCAP::Services::Mysql::Util
 
-    def perform
-      name = options["service_id"]
-      @logger.info("Begin create serialized url job for #{name}")
-      VCAP::Services::Serialization.redis_connect(@config["resque"])
-
+    def execute
       dump_path = get_serialized_data_path(name)
       # Clean up previous data
       cleanup(name)
@@ -48,48 +44,17 @@ module VCAP::Services::Serialization::Mysql
       result = dump_database(name, mysql_conf, dump_file_path, :mysqldump_bin => @config["mysqldump_bin"], :gzip_bin => @config["gzip_bin"])
       raise "Failed to execute dump command to #{name}" unless result
 
-      token = generate_credential()
-      service_name = @config["service_name"]
-      update_download_token(service_name, name, dump_file_name, token)
-      url = generate_download_url(name, token)
-      @logger.info("Download link generated for #{name}: #{url}")
-
-      job_result = { :url => url }
-      set_status({:complete_time => Time.now.to_s})
-      completed(Yajl::Encoder.encode(job_result))
-    rescue => e
-      @logger.error("Error in CreateSerializedURLJob #{@uuid}:#{fmt_error(e)}")
-      cleanup(name)
-      err = (e.instance_of?(ServiceError)? e : ServiceError.new(ServiceError::INTERNAL_ERROR)).to_hash
-      err_msg = Yajl::Encoder.encode(err)
-      set_status({:complete_time => Time.now.to_s})
-      failed(err_msg)
-    end
-
-    def generate_download_url(name, token)
-      service = @config["service_name"]
-      url_template = @config["download_url_template"]
-      eval "\"#{url_template}\""
+      {:dump_file_name => dump_file_name}
     end
   end
 
   # Download serialized data from url and import into database
-  class ImportFromURLJob < SerializationJob
+  class ImportFromURLJob < BaseImportFromURLJob
     include VCAP::Services::Mysql::Util
-    include VCAP::Services::Serialization::Mysql
+    include VCAP::Services::Mysql::Serialization
 
-    def perform
-      name = options["service_id"]
-      url = options["url"]
-      @logger.info("Begin import from url:#{url} job for #{name}")
+    def execute
       init_localdb(@config["local_db"])
-
-      @temp_file_path = File.join(@config["tmp_dir"], "#{name}.gz")
-      FileUtils.rm_rf(@temp_file_path)
-      fetch_url(url, @temp_file_path)
-      result = validate_input(@temp_file_path)
-      raise ServiceError.new(MysqlError::MYSQL_BAD_SERIALIZED_DATA, url) unless result
-
       mysql_conf = @config["mysql"]
       srv = mysql_provisioned_service.get(name)
       # to isolate the affection of user uploaded sql file, use instance account to import dump file.
@@ -99,35 +64,17 @@ module VCAP::Services::Serialization::Mysql
       result = import_dumpfile(name, mysql_conf, instance_user, instance_pass, @temp_file_path, :mysql_bin => @config["mysql_bin"], :gzip_bin => @config["gzip_bin"])
       raise "Failed to execute import command to #{name}" unless result
 
-      job_result = { :result => :ok }
-      set_status({:complete_time => Time.now.to_s})
-      completed(Yajl::Encoder.encode(job_result))
-    rescue => e
-      @logger.error("Error in ImportFromURLJob #{@uuid}:#{fmt_error(e)}")
-      err = (e.instance_of?(ServiceError)? e : ServiceError.new(ServiceError::INTERNAL_ERROR)).to_hash
-      err_msg = Yajl::Encoder.encode(err)
-      set_status({:complete_time => Time.now.to_s})
-      failed(err_msg)
-    ensure
-      FileUtils.rm_rf(@temp_file_path) if @temp_file_path
+      true
     end
   end
 
   # Import serailzed data, which is saved in temp file, into database
-  class ImportFromDataJob < SerializationJob
+  class ImportFromDataJob < BaseImportFromDataJob
     include VCAP::Services::Mysql::Util
-    include VCAP::Services::Serialization::Mysql
+    include VCAP::Services::Mysql::Serialization
 
-    def perform
-      name = options["service_id"]
-      @temp_file_path = options["temp_file_path"]
-      @logger.info("Begin import from temp_file_path:#{@temp_file_path} job for #{name}")
+    def execute
       init_localdb(@config["local_db"])
-
-      raise "Can't find temp file: #{@temp_file_path}" unless File.exists? @temp_file_path
-      result = validate_input(@temp_file_path)
-      raise ServiceError.new(MysqlError::MYSQL_BAD_SERIALIZED_DATA, url) unless result
-
       mysql_conf = @config["mysql"]
       srv = mysql_provisioned_service.get(name)
       instance_user = srv.user
@@ -136,17 +83,7 @@ module VCAP::Services::Serialization::Mysql
       result = import_dumpfile(name, mysql_conf, instance_user, instance_pass, @temp_file_path, :mysql_bin => @config["mysql_bin"], :gzip_bin => @config["gzip_bin"])
       raise "Failed to execute import command to #{name}" unless result
 
-      job_result = { :result => :ok }
-      set_status({:complete_time => Time.now.to_s})
-      completed(Yajl::Encoder.encode(job_result))
-    rescue => e
-      @logger.error("Error in ImportFromDataJob #{@uuid}:#{fmt_error(e)}")
-      err = (e.instance_of?(ServiceError)? e : ServiceError.new(ServiceError::INTERNAL_ERROR)).to_hash
-      err_msg = Yajl::Encoder.encode(err)
-      set_status({:complete_time => Time.now.to_s})
-      failed(err_msg)
-    ensure
-      FileUtils.rm_rf(@temp_file_path) if @temp_file_path
+      true
     end
   end
 end

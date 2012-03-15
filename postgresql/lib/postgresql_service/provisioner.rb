@@ -9,50 +9,32 @@ require 'base/job/async_job'
 
 require 'postgresql_service/common'
 require 'postgresql_service/job'
-require 'postgresql_service/job/postgresql_snapshot'
-require 'postgresql_service/job/postgresql_serialization'
 
 class VCAP::Services::Postgresql::Provisioner < VCAP::Services::Base::Provisioner
-
   include VCAP::Services::Postgresql::Common
 
-  def initialize(opts)
-    super(opts)
-    @opts = opts
-    VCAP::Services::Postgresql::Job::setup_job_logger(@logger)
-  end
-
-  def pre_send_announcement
-    addition_opts = @opts[:additional_options]
-    if addition_opts
-      @upload_temp_dir = addition_opts[:upload_temp_dir]
-      if addition_opts[:resque]
-        resque_opt = addition_opts[:resque]
-        redis = create_redis(resque_opt)
-        job_repo_setup(:redis => redis)
-        VCAP::Services::Snapshot.redis = redis
-      end
-    end
-  end
-
   def create_snapshot_job
-    VCAP::Services::Snapshot::Postgresql::CreateSnapshotJob
+    VCAP::Services::Postgresql::Snapshot::CreateSnapshotJob
   end
 
   def rollback_snapshot_job
-    VCAP::Services::Snapshot::Postgresql::RollbackSnapshotJob
+    VCAP::Services::Postgresql::Snapshot::RollbackSnapshotJob
+  end
+
+  def delete_snapshot_job
+    VCAP::Services::Base::AsyncJob::Snapshot::BaseDeleteSnapshotJob
   end
 
   def create_serialized_url_job
-    VCAP::Services::Serialization::Postgresql::CreateSerializedURLJob
+    VCAP::Services::Postgresql::Serialization::CreateSerializedURLJob
   end
 
   def import_from_url_job
-    VCAP::Services::Serialization::Postgresql::ImportFromURLJob
+    VCAP::Services::Postgresql::Serialization::ImportFromURLJob
   end
 
   def import_from_data_job
-    VCAP::Services::Serialization::Postgresql::ImportFromDataJob
+    VCAP::Services::Postgresql::Serialization::ImportFromDataJob
   end
 
 end

@@ -1,6 +1,4 @@
 require 'rake'
-require 'resque'
-require 'resque/tasks'
 require 'yaml'
 require 'yajl'
 
@@ -47,28 +45,4 @@ namespace "test" do
   task "spec:ci" do |t|
     sh("cd spec && ../../base/bin/nats-util start && rake spec:ci && ../../base/bin/nats-util stop")
   end
-end
-
-# resque tasks
-task "resque:setup" do |t|
-  config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), "config")
-  config_file = File.join(config_base_dir, "postgresql_worker.yml")
-
-  begin
-    config = YAML.load_file(config_file)
-  rescue => e
-    puts "Could not read configuration file:  #{e}"
-    exit
-  end
-
-  REQ_OPTS  = %w(resque node_id)
-  missing_opts = REQ_OPTS.select {|o| !config.has_key? o}
-  raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
-
-  ENV['QUEUE'] = config["node_id"]
-  ENV['COUNT'] = config["worker_count"].to_s if config["worker_count"]
-  ENV['WORKER_CONFIG'] = Yajl::Encoder.encode(config)
-
-  resque = %w(host port password).inject({}){|res, o| res[o.to_sym] = config["resque"][o]; res}
-  Resque.redis = Redis.new(resque)
 end
