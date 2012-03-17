@@ -86,19 +86,32 @@ describe "mongodb_node provision" do
     stats = @node.varz_details
     available = stats[:running_services][0]['overall']['connections']['available']
 
-    # ruby mongo client has a issue. When making connection to mongod, it will make two
-    # actual sockets, one for read, one for write. When authentication done, one of them
-    # will be closed. But for here, the maximum connection test, it will cause a problem,
-    # when last available connection met. So here we decrease one for available connection.
-    available = available - 1
+    # A issue here:
+    # There are two socket connection used in each iteration of the following loop.
+    #    1. One created in "Mongo::Connection.new". This one is temperory, it's closed when return from new.
+    #       But this close is not a syncornized close. It doesn't wait the tcp close ack from mongod. So there
+    #       are one connection occupied in server side in short time, this will cause the following connection
+    #       fails when maxConn reached.
+    #    2. The other socket connection created in "db.authenticate()", this socket is a persistent one.
+    #
+    #  So the solution here is when we meet a connection failure and maxConn reached, we insert a sleep after
+    #  first connection close. So that client and mongod can sync the state.
+    #
+    retry_count = 20
     available.times do |i|
       begin
         conn = Mongo::Connection.new('localhost', @resp['port'])
+        if first_conn_refused
+          sleep 1
+          first_conn_refused = false
+        end
         db = conn.db(@resp['db'])
         auth = db.authenticate(@resp['username'], @resp['password'])
         connections << conn
       rescue Mongo::ConnectionFailure => e
         first_conn_refused = true
+        retry_count -= 1
+        retry if ( (i >= (available-1)) && (retry_count > 0))
       end
     end
 
