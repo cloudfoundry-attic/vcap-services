@@ -92,6 +92,7 @@ class VCAP::Services::Rabbit::Node
     # Timeout for rabbitmq client operations, node cannot be blocked on any rabbitmq instances.
     # Default value is 2 seconds.
     @rabbit_timeout = @options[:rabbit_timeout] || 2
+    @rabbitmq_start_timeout = @options[:rabbitmq_start_timeout] || 5
     @default_permissions = '{"configure":".*","write":".*","read":".*"}'
     @initial_username = "guest"
     @initial_password = "guest"
@@ -345,7 +346,10 @@ class VCAP::Services::Rabbit::Node
   end
 
   def destroy_instance(instance)
-    raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.destroy
+    # Here need check whether the object is in db or not,
+    # otherwise the destory operation will persist the object from memory to db without deleting it,
+    # the behavior of datamapper is doing persistent work at the end of each save/update/destroy API
+    raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.new? || instance.destroy
   end
 
   def get_instance(instance_id)
@@ -420,7 +424,7 @@ EOF
     Process.detach(pid)
     @logger.debug("Service #{instance.name} started with pid #{pid}")
     # Wait enough time for the RabbitMQ server starting
-    for i in 1..3
+    (1..@rabbitmq_start_timeout).each do
       sleep 1
       if instance.pid # An existed instance
         credentials = {"username" => instance.admin_username, "password" => instance.admin_password, "admin_port" => instance.admin_port}
@@ -436,7 +440,10 @@ EOF
         next
       end
     end
-    @logger.error("Timeout to start RabbitMQ server")
+    @logger.error("Timeout to start RabbitMQ server for instance #{instance.name}")
+    # Stop the instance if it is running
+    instance.pid = pid
+    stop_instance(instance) if instance.running?
     raise RabbitError.new(RabbitError::RABBIT_START_INSTANCE_FAILED, instance.inspect)
   end
 
