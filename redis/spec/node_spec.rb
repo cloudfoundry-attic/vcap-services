@@ -225,10 +225,23 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
-  describe "Node.destory_instance" do
-    it "should raise exception when destroy instance failed" do
+  describe "Node.destroy_instance" do
+    it "should return true when the instance is in local db" do
       instance = VCAP::Services::Redis::Node::ProvisionedService.new
-      expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Redis::RedisError)
+      instance.name     = "test"
+      instance.port     = 1
+      instance.plan     = 1
+      instance.password = "test"
+      instance.memory   = 1
+      instance.save
+      @node.destroy_instance(instance).should == true
+      expect {@node.get_instance(instance.name)}.should raise_error(VCAP::Services::Redis::RedisError)
+    end
+
+    it "should return true when the instance is not in local db" do
+      instance = VCAP::Services::Redis::Node::ProvisionedService.new
+      @node.destroy_instance(instance).should == true
+      expect {@node.get_instance(instance.name)}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 

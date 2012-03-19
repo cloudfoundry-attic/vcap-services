@@ -343,6 +343,7 @@ class VCAP::Services::Rabbit::Node
 
   def save_instance(instance)
     raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.inspect) unless instance.save
+    true
   end
 
   def destroy_instance(instance)
@@ -350,6 +351,7 @@ class VCAP::Services::Rabbit::Node
     # otherwise the destory operation will persist the object from memory to db without deleting it,
     # the behavior of datamapper is doing persistent work at the end of each save/update/destroy API
     raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.new? || instance.destroy
+    true
   end
 
   def get_instance(instance_id)

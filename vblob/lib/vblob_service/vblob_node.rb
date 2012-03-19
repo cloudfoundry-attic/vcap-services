@@ -255,7 +255,7 @@ class VCAP::Services::VBlob::Node
       FileUtils.rm_rf(log_dir)
     end
     return_port(provisioned_service.port)
-    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
+    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.new? || provisioned_service.destroy
     true
   end
 

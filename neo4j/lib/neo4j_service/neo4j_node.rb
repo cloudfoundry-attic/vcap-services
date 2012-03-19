@@ -204,7 +204,7 @@ class VCAP::Services::Neo4j::Node
 
     stop_service(provisioned_service)
 
-    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
+    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.new? || provisioned_service.destroy
 
     Process.kill(9, provisioned_service.pid) if provisioned_service.running?
     dir = File.join(@base_dir, provisioned_service.name)
