@@ -8,4 +8,7 @@ group :test do
   gem "rspec"
   gem "rcov"
   gem "ci_reporter"
+  gem "simplecov"
+  gem "simplecov-clover"
+  gem "simplecov-rcov"
 end
