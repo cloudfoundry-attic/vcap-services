@@ -294,10 +294,12 @@ class VCAP::Services::Redis::Node
 
   def save_instance(instance)
     raise RedisError.new(RedisError::REDIS_SAVE_INSTANCE_FAILED, instance.inspect) unless instance.save
+    true
   end
 
   def destroy_instance(instance)
-    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.destroy
+    raise RedisError.new(RedisError::REDIS_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.new? || instance.destroy
+    true
   end
 
   def get_instance(name)
