@@ -102,9 +102,10 @@ class VCAP::Services::Mysql::Node
     res = []
     all_ins_users = ProvisionedService.all.map{|s| s.user}
     @pool.with_connection do |connection|
-      connection.query('select DISTINCT user.user,db,password from user, db where user.user = db.user and length(user.user) > 0').each do |entry|
+      # we can't query plaintext password from mysql since it's encrypted.
+      connection.query('select DISTINCT user.user,db from user, db where user.user = db.user and length(user.user) > 0').each do |entry|
         # Filter out the instances handles
-        res << gen_credential(entry["name"], entry["user"], entry["password"]) unless all_ins_users.include?(entry["user"])
+        res << gen_credential(entry["db"], entry["user"], "fake-password") unless all_ins_users.include?(entry["user"])
       end
     end
     res
