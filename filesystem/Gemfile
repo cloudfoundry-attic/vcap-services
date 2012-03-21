@@ -18,5 +18,8 @@ group :test do
   gem "rake"
   gem "rspec"
   gem "rcov"
+  gem "simplecov"
+  gem "simplecov-clover"
+  gem "simplecov-rcov"
   gem "ci_reporter"
 end
