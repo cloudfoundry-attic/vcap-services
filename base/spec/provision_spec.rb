@@ -159,6 +159,25 @@ describe ProvisionerTests do
     node.got_unprovision_request.should be_true
   end
 
+  it "should delete instance handles in cache after unprovision" do
+    provisioner = gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner; provisioner.prov_svcs.size.should == 0 }
+      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_node(1) }
+      Do.at(3) { gateway.send_provision_request }
+      Do.at(4) { gateway.send_bind_request }
+      Do.at(5) { gateway.send_unprovision_request }
+      Do.at(6) { EM.stop }
+    end
+    node.got_provision_request.should be_true
+    node.got_bind_request.should be_true
+    node.got_unprovision_request.should be_true
+    current_cache = provisioner.prov_svcs
+    current_cache.size.should == 0
+  end
+
   it "should handle error in unprovision" do
     provisioner = nil
     gateway = nil

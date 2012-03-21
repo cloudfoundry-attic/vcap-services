@@ -81,7 +81,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def find_all_bindings(name)
     res = []
     @prov_svcs.each do |k,v|
-      res << v[:credentials] if v[:credentials]["name"] == name && v[:service_id] != name
+      res << v if v[:credentials]["name"] == name && v[:service_id] != name
     end
     res
   end
@@ -240,8 +240,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       @logger.debug("[#{service_description}] Unprovisioning instance #{instance_id} from #{node_id}")
       request = UnprovisionRequest.new
       request.name = instance_id
-      request.bindings = bindings
-      @logger.debug("[#{service_description}] Sending reqeust #{request}")
+      request.bindings = bindings.map{|h| h[:credentials]}
+      @logger.debug("[#{service_description}] Sending request #{request}")
       subscription = nil
       timer = EM.add_timer(@node_timeout) {
         @node_nats.unsubscribe(subscription)

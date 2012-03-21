@@ -256,10 +256,11 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.bind.#{node_id}") { |msg, reply|
           @got_bind_request = true
+          request = BindRequest.decode(msg)
           response = BindResponse.new
           response.success = true
           response.credentials = {
-              'name' => UUIDTools::UUID.random_create.to_s,
+              'name' => request.name,
               'node_id' => node_id,
               'username' => UUIDTools::UUID.random_create.to_s,
               'password' => UUIDTools::UUID.random_create.to_s,
