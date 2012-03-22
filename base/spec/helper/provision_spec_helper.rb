@@ -31,7 +31,6 @@ class ProvisionerTests
   class ProvisionerTester < VCAP::Services::Base::Provisioner
     attr_accessor :prov_svcs
     attr_accessor :varz_invoked
-    attr_accessor :healthz_invoked
     attr_accessor :prov_svcs
     attr_reader   :staging_orphan_instances
     attr_reader   :staging_orphan_bindings
@@ -47,17 +46,13 @@ class ProvisionerTests
       SERVICE_NAME
     end
     def node_score(node)
-      node["score"]
+      node["available_capacity"]
     end
     def node_count
       return @nodes.length
     end
     def varz_details
       @varz_invoked = true
-      super
-    end
-    def healthz_details
-      @healthz_invoked = true
       super
     end
   end
@@ -242,6 +237,7 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.provision.#{node_id}") { |_, reply|
           @got_provision_request = true
+          @score -= 1
           response = ProvisionResponse.new
           response.success = true
           response.credentials = {
@@ -260,10 +256,11 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.bind.#{node_id}") { |msg, reply|
           @got_bind_request = true
+          request = BindRequest.decode(msg)
           response = BindResponse.new
           response.success = true
           response.credentials = {
-              'name' => UUIDTools::UUID.random_create.to_s,
+              'name' => request.name,
               'node_id' => node_id,
               'username' => UUIDTools::UUID.random_create.to_s,
               'password' => UUIDTools::UUID.random_create.to_s,
@@ -315,7 +312,7 @@ class ProvisionerTests
       "node-#{@id}"
     end
     def announce(reply=nil)
-      a = { :id => node_id, :score => @score, :plan => @plan}
+      a = { :id => node_id, :available_capacity => @score, :plan => @plan, :capacity_unit => 1 }
       @nats.publish(reply||"#{service_name}.announce", a.to_json)
     end
   end

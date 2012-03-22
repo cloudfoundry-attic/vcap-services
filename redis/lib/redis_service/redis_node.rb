@@ -91,7 +91,8 @@ class VCAP::Services::Redis::Node
 
   def announcement
     @capacity_lock.synchronize do
-      { :available_capacity => @capacity }
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
     end
   end
 
@@ -248,22 +249,14 @@ class VCAP::Services::Redis::Node
       varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
     end
+    varz[:instances] = {}
+    ProvisionedService.all.each do |instance|
+      varz[:instances][instance.name.to_sym] = get_status(instance)
+    end
     varz
   rescue => e
     @logger.warn("Error while getting varz details: #{e}")
     {}
-  end
-
-  def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
-    ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
-    end
-    healthz
-  rescue => e
-    @logger.warn("Error while getting healthz details: #{e}")
-    {:self => "fail"}
   end
 
   def start_db
@@ -407,16 +400,17 @@ class VCAP::Services::Redis::Node
   end
 
   def gen_credentials(instance)
+    host = get_host
     credentials = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host" => host,
       "port" => instance.port,
       "password" => instance.password,
       "name" => instance.name
     }
   end
 
-  def get_healthz(instance)
+  def get_status(instance)
     Timeout::timeout(@redis_timeout) do
       redis = Redis.new({:port => instance.port, :password => instance.password})
       redis.echo("")

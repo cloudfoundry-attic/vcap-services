@@ -559,56 +559,43 @@ describe "Mysql server node" do
     end
   end
 
-  it "should report node status in healthz" do
+  it "should report node instance status in varz" do
     pending "This test is not capatiable with mysql2 conenction pool."
     EM.run do
-      healthz = @node.healthz_details()
-      healthz[:self].should == "ok"
+      varz = @node.varz_details
+      varz[:instances].each do |name, status|
+        status.shoud  == "ok"
+      end
       node = VCAP::Services::Mysql::Node.new(@opts)
       EM.add_timer(1) do
         node.pool.close
-        healthz = node.healthz_details()
-        healthz[:self].should == "fail"
+        varz = node.varz_details
+        varz[:instances].each do |name, status|
+          status.should == "ok"
+        end
         EM.stop
       end
     end
   end
 
-  it "should report correct health status when user modify instance password" do
+  it "should report instance status in varz" do
     EM.run do
-      conn = connect_to_mysql(@db)
-      a = conn.query("set password for #{@db['user']}@'localhost' = PASSWORD('newpass')")
-      healthz = @node.healthz_details()
-      healthz[:self].should == "ok"
-      healthz[@db['name'].to_sym].should == "password-modified"
-      EM.stop
-    end
-  end
-
-  it "should close extra mysql connections after generate healthz" do
-    EM.run do
-      @node.pool.with_connection do |connection|
-        res = connection.query("show processlist")
-        conns_before_healthz = res.count
-        healthz = @node.healthz_details()
-        healthz.keys.size.should >= 2
-        res = connection.query("show processlist")
-        conns_after_healthz = res.count
-        conns_before_healthz.should == conns_after_healthz
-      end
-      EM.stop
-    end
-  end
-
-  it "should report instance status in healthz" do
-    EM.run do
-      healthz = @node.healthz_details()
+      varz = @node.varz_details()
       instance = @db['name']
-      healthz[instance.to_sym].should == "ok"
+      varz[:instances].each do |name, value|
+        if name == instance.to_sym
+          value.should == "ok"
+        end
+      end
       @node.pool.with_connection do |connection|
         connection.query("Drop database #{instance}")
-        healthz = @node.healthz_details()
-        healthz[instance.to_sym].should == "fail"
+        sleep 1
+        varz = @node.varz_details()
+        varz[:instances].each do |name, value|
+          if name == instance.to_sym
+            value.should == "fail"
+          end
+        end
         # restore db so cleanup code doesn't complain.
         connection.query("create database #{instance}")
       end
@@ -620,7 +607,8 @@ describe "Mysql server node" do
     EM.run do
       provision_served = @node.provision_served
       binding_served = @node.binding_served
-      NUM = 20
+      # Set concurrent threads to pool size. Prevent pool is empty error.
+      NUM = @node.pool.size
       threads = []
       NUM.times do
         threads << Thread.new do

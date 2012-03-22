@@ -5,8 +5,4 @@ class VCAP::Services::Rabbit::Provisioner < VCAP::Services::Base::Provisioner
 
   include VCAP::Services::Rabbit::Common
 
-  def node_score(node)
-    node['available_memory']
-  end
-
 end

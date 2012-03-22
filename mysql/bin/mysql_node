@@ -30,6 +30,7 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_user_conns] = parse_property(config, "max_user_conns", Integer, :optional => true)
     options[:mysql] = parse_property(config, "mysql", Hash)
     options[:socket] = parse_property(config, "socket", String, :optional => true)
+    options[:connection_pool_size] = parse_property(config, "connection_pool_size", Integer, :optional => true)
     options
   end
 

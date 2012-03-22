@@ -46,6 +46,7 @@ class VCAP::Services::Mysql::Node
     super(options)
 
     @mysql_config = options[:mysql]
+    @connection_pool_size = options[:connection_pool_size]
 
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
@@ -107,11 +108,15 @@ class VCAP::Services::Mysql::Node
       end
     end
     res
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    []
   end
 
   def announcement
     @capacity_lock.synchronize do
-      { :available_capacity => @capacity }
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
     end
   end
 
@@ -130,6 +135,9 @@ class VCAP::Services::Mysql::Node
       @logger.warn("Node database inconsistent!!! db:user <#{db}:#{user}> not in mysql.")
     end
     missing_accounts
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    nil
   end
 
   # check whether mysql has required innodb plugin installed.
@@ -138,6 +146,9 @@ class VCAP::Services::Mysql::Node
       res = connection.query("show tables from information_schema like 'INNODB_TRX'")
       return true if res.count > 0
     end
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    nil
   end
 
   def mysql_connect
@@ -145,7 +156,7 @@ class VCAP::Services::Mysql::Node
 
     5.times do
       begin
-        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger)
+        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => @connection_pool_size)
       rescue Mysql2::Error => e
         @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(5)
@@ -182,7 +193,7 @@ class VCAP::Services::Mysql::Node
     @pool.with_connection do |connection|
       process_list = connection.query("show processlist")
       process_list.each do |proc|
-        thread_id, user, db, command, time, info, state = %w(Id User Db Command Time Info State).map{|o| proc[o]}
+        thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map{|o| proc[o]}
         if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
           connection.query("KILL QUERY #{thread_id}")
           @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
@@ -542,35 +553,22 @@ class VCAP::Services::Mysql::Node
       varz[:provision_served] = @provision_served
       varz[:binding_served] = @binding_served
     end
+    # provisioned services status
+    varz[:instances] = {}
+    begin
+      ProvisionedService.all.each do |instance|
+        varz[:instances][instance.name.to_sym] = get_status(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
     varz
   rescue => e
     @logger.error("Error during generate varz: #{e}")
     {}
   end
 
-  def healthz_details()
-    healthz = {:self => "ok"}
-    begin
-      @pool.with_connection do |connection|
-        connection.query("SHOW DATABASES")
-      end
-    rescue => e
-      @logger.error("Error get database list: #{e}")
-      healthz[:self] = "fail"
-      return healthz
-    end
-    begin
-      ProvisionedService.all.each do |instance|
-        healthz[instance.name.to_sym] = get_instance_healthz(instance)
-      end
-    rescue => e
-      @logger.error("Error get instance list: #{e}")
-      healthz[:self] = "fail"
-    end
-    healthz
-  end
-
-  def get_instance_healthz(instance)
+  def get_status(instance)
     res = "ok"
     host, port, socket, root_user, root_pass = %w{host port socket user pass}.map { |opt| @mysql_config[opt] }
     begin
@@ -611,6 +609,9 @@ class VCAP::Services::Mysql::Node
     @queries_served = queries
     @qps_last_updated = ts
     qps
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    0
   end
 
   def get_instance_status()
@@ -645,10 +646,11 @@ class VCAP::Services::Mysql::Node
   end
 
   def gen_credential(name, user, passwd)
+    host = get_host
     response = {
       "name" => name,
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => host,
+      "host" => host,
       "port" => @mysql_config['port'],
       "user" => user,
       "username" => user,
@@ -661,5 +663,8 @@ class VCAP::Services::Mysql::Node
       res = connection.query("show variables where variable_name like 'version_comment'")
       return res.count > 0 && res.to_a[0]["Value"] =~ /percona/i
     end
+  rescue Mysql2::Error => e
+    @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+    nil
   end
 end

@@ -66,16 +66,21 @@ def parse_property(hash, key, type, options = {})
   end
 end
 
+def config_base_dir
+  ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+end
+
 def get_node_config()
-  config_file = File.join(File.dirname(__FILE__), "../config/neo4j_node.yml")
+  config_file = File.join(config_base_dir, "neo4j_node.yml")
   config = YAML.load_file(config_file)
   neo4j_server_conf_template = File.join(File.dirname(__FILE__), "../resources/neo4j-server.properties.erb")
   neo4j_conf_template = File.join(File.dirname(__FILE__), "../resources/neo4j.properties.erb")
   log4j_conf_template = File.join(File.dirname(__FILE__), "../resources/log4j.properties.erb")
   options = {
+    :capacity => parse_property(config, "capacity", Integer),
+    :plan => parse_property(config, "plan", String),
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :neo4j_path => parse_property(config, "neo4j_path", String),
-    :available_memory => parse_property(config, "available_memory", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
     :config_template => neo4j_server_conf_template,
