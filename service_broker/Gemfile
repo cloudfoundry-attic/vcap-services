@@ -22,7 +22,6 @@ group :test do
   gem "rack-test"
   gem "rcov"
   gem "simplecov"
-  gem "simplecov-clover"
   gem "simplecov-rcov"
   gem "ci_reporter"
 end
