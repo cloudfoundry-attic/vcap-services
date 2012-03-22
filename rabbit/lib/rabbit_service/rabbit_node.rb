@@ -374,7 +374,7 @@ class VCAP::Services::Rabbit::Node
 
       dir = instance_dir(instance.name)
       config_dir = File.join(dir, "config")
-      log_dir = File.join(@rabbitmq_log_dir, instance.name)
+      log_dir = instance_log_dir(instance.name)
       FileUtils.mkdir_p(config_dir)
       FileUtils.mkdir_p(log_dir)
       admin_port = instance.admin_port
@@ -453,6 +453,7 @@ EOF
     instance.kill
     EM.defer do
       FileUtils.rm_rf(instance_dir(instance.name))
+      FileUtils.rm_rf(instance_log_dir(instance.name))
     end
   end
 
@@ -534,4 +535,7 @@ EOF
     File.join(@base_dir, instance_id)
   end
 
+  def instance_log_dir(instance_id)
+    File.join(@rabbitmq_log_dir, instance_id)
+  end
 end
