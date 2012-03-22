@@ -49,6 +49,25 @@ class VCAP::Services::Redis::Node
     def running?
       VCAP.process_running? pid
     end
+
+    def kill(sig=:SIGTERM)
+      @wait_thread = Process.detach(pid)
+      Process.kill(sig, pid) if running?
+    end
+
+    def wait_killed(timeout=5, interval=0.2)
+      begin
+        Timeout::timeout(timeout) do
+          @wait_thread.join if @wait_thread
+          while running? do
+            sleep interval
+          end
+        end
+      rescue Timeout::Error
+        return false
+      end
+      true
+    end
   end
 
   def initialize(options)

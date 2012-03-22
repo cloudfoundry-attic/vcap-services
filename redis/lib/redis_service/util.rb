@@ -185,10 +185,18 @@ module VCAP
             begin
               redis.shutdown(@shutdown_command_name)
             rescue RuntimeError => e
-              # It could be a disabled instance
-              if @disable_password
-                redis = ::Redis.new({:port => instance.port, :password => @disable_password})
-                redis.shutdown(@shutdown_command_name)
+              if e.message == "ERR max number of clients reached"
+                # The max clients limitation could be reached, try to kill the process
+                  instance.kill
+                  instance.wait_killed ?
+                    @logger.debug("Redis server pid: #{instance.pid} terminated") :
+                    @logger.error("Timeout to terminate Redis server pid: #{instance.pid}")
+              else
+                # It could be a disabled instance
+                if @disable_password
+                  redis = ::Redis.new({:port => instance.port, :password => @disable_password})
+                  redis.shutdown(@shutdown_command_name)
+                end
               end
             end
           end
