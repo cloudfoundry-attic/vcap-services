@@ -121,8 +121,6 @@ GEM
     simplecov (0.5.4)
       multi_json (~> 1.0.3)
       simplecov-html (~> 0.5.3)
-    simplecov-clover (0.0.1)
-      simplecov (>= 0.4.1)
     simplecov-html (0.5.3)
     simplecov-rcov (0.2.3)
       simplecov (>= 0.4.1)
@@ -160,7 +158,6 @@ DEPENDENCIES
   rcov
   rspec
   simplecov
-  simplecov-clover
   simplecov-rcov
   sinatra
   vcap_services_base!

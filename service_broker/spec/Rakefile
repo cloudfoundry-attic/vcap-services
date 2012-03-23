@@ -11,7 +11,6 @@ require 'ci/reporter/rake/rspec'
 
 require "simplecov"
 require "simplecov-rcov"
-require "simplecov-clover"
 
 coverage_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_coverage"))
 reports_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_reports"))
@@ -30,7 +29,6 @@ desc "Run spec with coverage"
 task "simcov" => "cleanup_coverage" do
   class SimpleCov::Formatter::CombinedFormatter
     def format(result)
-      SimpleCov::Formatter::CloverFormatter.new.format(result)
       SimpleCov::Formatter::RcovFormatter.new.format(result)
     end
   end
