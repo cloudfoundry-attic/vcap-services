@@ -461,6 +461,18 @@ describe VCAP::Services::Redis::Node do
       Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info
       @node.unprovision(@credentials["name"])
     end
+
+    it "should unprovision successfully when reach the maximum number of clients" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      redis = []
+      # Create max_clients connections
+      for i in 1..@options[:max_clients]
+        redis[i] = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+        redis[i].info
+      end
+      @node.unprovision(@credentials["name"]).should == {}
+    end
   end
 
   describe "Node.timeout" do
