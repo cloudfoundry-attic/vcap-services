@@ -60,12 +60,11 @@ task "resque:setup" do |t|
     exit
   end
 
-  REQ_OPTS  = %w(resque node_id pid)
+  REQ_OPTS  = %w(resque node_id)
   missing_opts = REQ_OPTS.select {|o| !config.has_key? o}
   raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
 
   ENV['QUEUE'] = config["node_id"]
-  ENV['PIDFILE'] = config["pid"]
   ENV['COUNT'] = config["worker_count"].to_s if config["worker_count"]
   ENV['WORKER_CONFIG'] = Yajl::Encoder.encode(config)
 

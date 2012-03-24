@@ -3,7 +3,7 @@ service_name: mysql
 snapshots_base_dir: /var/vcap/services/
 serialization_base_dir: /var/vcap/services/
 local_db: sqlite3:/var/vcap/services/mysql/mysql_node.db
-pid: /var/vcap/sys/run/mysql_worker.pid
+snapshot_quota: 0
 # Temp directory to save uploaded file
 tmp_dir: /tmp
 resque:
