@@ -1,4 +1,6 @@
 ---
+mbus: nats://localhost:4222
+z_interval: 30
 logging:
   level: debug
 root: /mnt/appcloud
