@@ -28,6 +28,7 @@ class VCAP::Services::Redis::NodeBin < VCAP::Services::Base::NodeBin
     options[:redis_log_dir] = parse_property(config, "redis_log_dir", String)
     options[:command_rename_prefix] = parse_property(config, "command_rename_prefix", String)
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
+    options[:redis_start_timeout] = parse_property(config, "redis_start_timeout", Integer, :optional => true)
     options
   end
 

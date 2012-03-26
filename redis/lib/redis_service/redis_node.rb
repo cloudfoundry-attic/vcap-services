@@ -92,6 +92,7 @@ class VCAP::Services::Redis::Node
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
     @redis_timeout = @options[:redis_timeout] || 2
+    @redis_start_timeout = @options[:redis_start_timeout] || 3
   end
 
   def pre_send_announcement
@@ -333,9 +334,29 @@ class VCAP::Services::Redis::Node
     pid = fork
     if pid
       @logger.debug("Service #{instance.name} started with pid #{pid}")
-      # In parent, detch the child.
+      # In parent, detch the child
       Process.detach(pid)
-      pid
+      # Wait enough time for the redis server starting
+      @redis_start_timeout.times do
+        sleep 1
+        begin
+          redis = Redis.new({:port => instance.port, :password => instance.password})
+          redis.echo("")
+          return pid
+        rescue => e
+          next
+        ensure
+          begin
+            redis.quit if redis
+          rescue => e
+          end
+        end
+      end
+      @logger.error("Timeout to start redis server for instance #{instance.name}")
+      # Stop the instance if it is running
+      instance.pid = pid
+      stop_instance(instance) if instance.running?
+      raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
     else
       $0 = "Starting Redis instance: #{instance.name}"
       close_fds
