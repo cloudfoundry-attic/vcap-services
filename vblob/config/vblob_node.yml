@@ -10,7 +10,6 @@ logging:
   level: debug
 vblobd_log_dir: /var/vcap/sys/service-log/vblob
 pid: /var/vcap/sys/run/vblob_node.pid
-max_memory: 128
 node_id: vblob_node_free_1
 nodejs_path: node
 vblobd_path: /var/vcap/packages/vblob

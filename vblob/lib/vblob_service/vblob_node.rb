@@ -88,7 +88,6 @@ class VCAP::Services::VBlob::Node
     @vblobd_log_dir = options[:vblobd_log_dir]
     @vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
 
-    @max_memory = options[:max_memory]
 
     @config_template = ERB.new(File.read(options[:config_template]))
 
@@ -210,7 +209,6 @@ class VCAP::Services::VBlob::Node
     provisioned_service             = ProvisionedService.new
     provisioned_service.name        = name
     provisioned_service.port        = port
-    provisioned_service.memory      = @max_memory
     provisioned_service.keyid       = username
     provisioned_service.secretid    = password
     provisioned_service.pid         = start_instance(provisioned_service)
@@ -366,7 +364,6 @@ class VCAP::Services::VBlob::Node
 
   def start_instance(provisioned_service)
     @logger.debug("Starting instance: #{provisioned_service.pretty_inspect}")
-    memory = @max_memory
     pid = fork
     if pid
       @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
