@@ -86,7 +86,6 @@ def get_node_config()
     :mbus => parse_property(config, "mbus", String),
     :config_template => vblob_conf_template,
     :port_range => parse_property(config, "port_range", Range),
-    :max_memory => parse_property(config, "max_memory", Integer),
     :base_dir => '/tmp/vblob/instances',
     :local_db => 'sqlite3:/tmp/vblob/vblob_node.db'
   }
