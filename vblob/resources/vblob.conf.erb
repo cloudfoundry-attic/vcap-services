@@ -10,8 +10,8 @@
                 "gcfc_exepath": "<%= @vblobd_path %>/drivers/fs/fs_gcfc.js",
                 "gctmp_exepath": "<%= @vblobd_path %>/drivers/fs/fs_gctmp.js",
                 "ec_exepath": "<%= @vblobd_path %>/drivers/fs/fs_ec.js",
-                "quota": 2147483648,
-                "obj_limit": 32768
+                "quota": <%= @vblobd_quota %>,
+                "obj_limit": <%= @vblobd_obj_limit %>
             }
         }
     }

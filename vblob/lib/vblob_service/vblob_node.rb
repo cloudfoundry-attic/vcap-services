@@ -87,6 +87,8 @@ class VCAP::Services::VBlob::Node
     @vblobd_path = options[:vblobd_path]
     @vblobd_log_dir = options[:vblobd_log_dir]
     @vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
+    @vblobd_quota = options[:vblobd_quota] || 2147483647 #default max bytes 
+    @vblobd_obj_limit = options[:vblobd_obj_limit] || 32768  #default max obj num
 
 
     @config_template = ERB.new(File.read(options[:config_template]))
