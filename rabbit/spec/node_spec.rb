@@ -31,6 +31,8 @@ describe VCAP::Services::Rabbit::Node do
   after :all do
     FileUtils.rm_f(@options[:local_db_file])
     FileUtils.rm_rf(@options[:base_dir])
+    # Use %x to call shell command since ruby doesn't has pkill interface
+    %x[pkill epmd]
   end
 
   before :each do
