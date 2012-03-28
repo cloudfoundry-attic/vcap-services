@@ -3,8 +3,6 @@ require 'rubygems'
 require 'bundler/setup'
 
 require 'optparse'
-require 'logger'
-require 'logging'
 require 'net/http'
 require 'thin'
 require 'yaml'

@@ -8,9 +8,6 @@ GEM
     diff-lcs (1.1.3)
     eventmachine (0.12.11.cloudfoundry.3)
     json_pure (1.6.5)
-    little-plugger (1.1.3)
-    logging (1.6.1)
-      little-plugger (>= 1.1.2)
     multi_json (1.0.4)
     nats (0.4.22.beta.8)
       daemons (>= 1.1.4)
@@ -64,7 +61,6 @@ PLATFORMS
 
 DEPENDENCIES
   ci_reporter
-  logging (>= 1.5.0)
   nats
   rack-test
   rake

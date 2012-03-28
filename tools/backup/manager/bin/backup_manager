@@ -6,8 +6,6 @@ ENV["BUNDLE_GEMFILE"] ||= File.join(File.dirname(__FILE__), "..", "Gemfile")
 require "rubygems"
 require "bundler/setup"
 require "set"
-require "logger"
-require 'logging'
 require 'vcap_services_base'
 require 'vcap/logging'
 

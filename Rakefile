@@ -1,4 +1,4 @@
-SERVICES_DIR = %w(atmos filesystem mongodb mysql neo4j postgresql rabbit redis service_broker vblob)
+SERVICES_DIR = %w(atmos filesystem mongodb mysql neo4j postgresql rabbit redis service_broker vblob tools/backup/manager)
 
 desc "Run integration tests."
 task "tests" do |t|

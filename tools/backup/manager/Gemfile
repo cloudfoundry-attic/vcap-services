@@ -4,7 +4,6 @@ gem 'eventmachine'
 gem 'em-http-request'
 gem 'json'
 gem 'yajl-ruby'
-gem 'logging', '>= 1.5.0'
 gem 'nats'
 
 gem 'vcap_common', '>= 1.0.8', :require => ['vcap/common', 'vcap/component']

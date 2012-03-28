@@ -3,8 +3,6 @@ require 'bundler/setup'
 require 'optparse'
 require 'timeout'
 require 'fileutils'
-require 'logger'
-require 'logging'
 require 'yaml'
 require 'pathname'
 
