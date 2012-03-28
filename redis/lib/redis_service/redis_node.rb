@@ -453,6 +453,7 @@ class VCAP::Services::Redis::Node
   end
 
   def get_status(instance)
+    redis = nil
     Timeout::timeout(@redis_timeout) do
       redis = Redis.new({:port => instance.port, :password => instance.password})
       redis.echo("")
