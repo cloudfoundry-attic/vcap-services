@@ -6,6 +6,7 @@ gem "thin"
 gem "sinatra"
 gem "redis"
 gem "rake"
+gem "sys-filesystem"
 
 gem 'vcap_common', '>= 1.0.8', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
