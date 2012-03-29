@@ -41,6 +41,9 @@ module VCAP
       class Node
         attr_reader :available_memory
         attr_accessor :max_clients
+        def get_instance(name)
+          ProvisionedService.get(name)
+        end
       end
     end
   end
@@ -75,15 +78,14 @@ def get_backup_dir(backup_dir)
   dir
 end
 
-def delete_admin(options)
-  db = Mongo::Connection.new('127.0.0.1', options['port']).db(options['db'])
+def delete_admin(p_service, options)
+  db = Mongo::Connection.new(p_service.ip, '27017').db(options['db'])
   auth = db.authenticate(options['username'], options['password'])
   db.remove_user('admin')
 
-  db = Mongo::Connection.new('127.0.0.1', options['port']).db('admin')
-  service = VCAP::Services::MongoDB::Node::ProvisionedService.get(options['name'])
-  auth = db.authenticate(service.admin, service.adminpass)
-  db.remove_user(service.admin)
+  db = Mongo::Connection.new(p_service.ip, '27017').db('admin')
+  auth = db.authenticate(p_service.admin, p_service.adminpass)
+  db.remove_user(p_service.admin)
 end
 
 def parse_property(hash, key, type, options = {})
