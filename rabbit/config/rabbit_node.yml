@@ -1,17 +1,27 @@
 ---
+capacity: 200
+plan: free
 local_db: sqlite3:/var/vcap/services/rabbit/rabbit_node.db
-base_dir: /var/vcap/services/rabbit/
-rabbit_ctl: rabbitmqctl
-rabbit_server: rabbitmq-server
-rabbit_port: 5672
+base_dir: /var/vcap/services/rabbit/instances
 mbus: nats://localhost:4222
 index: 0
 logging:
   level: debug
 ip_route: 127.0.0.1
-available_memory: 4096
 max_memory: 16
-node_id: rabbit_node_1
+node_id: rabbit_node_free_1
 pid: /var/vcap/sys/run/rabbit_node.pid
 migration_nfs: /mnt/appcloud
+max_clients: 1000
+port_range:
+  first: 10001
+  last: 20000
+admin_port_range:
+  first: 20001
+  last: 30000
+rabbitmq_server: /home/tangrui/rabbitmq_server-2.4.1/sbin/rabbitmq-server
+rabbitmq_log_dir: /var/vcap/sys/log/rabbit
+# rabbitmq_start_timeout: 5
 # z_interval: 30
+# max_nats_payload: 1048576
+# fqdn_hosts: false

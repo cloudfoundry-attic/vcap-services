@@ -195,7 +195,8 @@ class VCAP::Services::Postgresql::Node
 
   def announcement
     @capacity_lock.synchronize do
-      { :available_capacity => @capacity }
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
     end
   end
 
@@ -616,10 +617,11 @@ class VCAP::Services::Postgresql::Node
   end
 
   def gen_credential(name, user, passwd)
+    host = get_host
     response = {
       "name" => name,
-      "host" => @local_ip,
-      "hostname" => @local_ip,
+      "host" => host,
+      "hostname" => host,
       "port" => @postgresql_config['port'],
       "user" => user,
       "username" => user,
@@ -755,7 +757,7 @@ class VCAP::Services::Postgresql::Node
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
-    if prov_cred["hostname"] == @local_ip
+    if prov_cred["hostname"] == get_host
       # Original
       db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
       service = Provisionedservice.get(name)
@@ -799,6 +801,15 @@ class VCAP::Services::Postgresql::Node
     # how many provision/binding operations since startup.
     varz[:provision_served] = @provision_served
     varz[:binding_served] = @binding_served
+    # get instances status
+    varz[:instances] = {}
+    begin
+      Provisionedservice.all.each do |instance|
+        varz[:instances][instance.name.to_sym] = get_status(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
     varz
   rescue => e
     @logger.warn("Error during generate varz: #{e}")
@@ -832,25 +843,7 @@ class VCAP::Services::Postgresql::Node
     []
   end
 
-  def healthz_details()
-    healthz = {:self => "ok"}
-    if connection_exception
-      @logger.warn("PostgreSQL connection lost, healthz fail.")
-      healthz[:self] = "fail"
-      return healthz
-    end
-    begin
-      Provisionedservice.all.each do |instance|
-        healthz[instance.name.to_sym] = get_instance_healthz(instance)
-      end
-    rescue => e
-      @logger.error("Error get instance list: #{e}")
-      healthz[:self] = "fail"
-    end
-    healthz
-  end
-
-  def get_instance_healthz(instance)
+  def get_status(instance)
     res = 'ok'
     host, port = %w{host port}.map { |opt| @postgresql_config[opt] }
     begin

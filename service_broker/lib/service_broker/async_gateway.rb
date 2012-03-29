@@ -22,7 +22,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     property :name,        String,   :required => true
     property :version,     String,   :required => true
     property :credentials, Json,     :required => true
-    property :acls,        Json,     :required => true
+    property :acls,        Json
   end
 
   REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
@@ -419,7 +419,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         success(svc)
       else
         @logger.warn("Can't find service label=#{request.label}")
-        raise ServiceError.new(ServiceError::NOT_FOUND, req.label)
+        raise ServiceError.new(ServiceError::NOT_FOUND, request.label)
       end
     rescue => e
       if e.instance_of? ServiceError

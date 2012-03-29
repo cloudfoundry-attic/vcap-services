@@ -2,6 +2,7 @@
 require 'nats/client'
 require 'vcap/component'
 require 'fileutils'
+require 'socket'
 
 $:.unshift(File.dirname(__FILE__))
 require 'base'
@@ -18,15 +19,16 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @max_capacity = @capacity
     @capacity_lock = Mutex.new
     @migration_nfs = options[:migration_nfs]
+    @fqdn_hosts = options[:fqdn_hosts]
 
     z_interval = options[:z_interval] || 30
     EM.add_periodic_timer(z_interval) do
-      EM.defer { update_varz; update_healthz }
+      EM.defer { update_varz }
     end
 
     # Defer 5 seconds to give service a change to wake up
     EM.add_timer(5) do
-      EM.defer { update_varz; update_healthz }
+      EM.defer { update_varz }
     end
   end
 
@@ -293,14 +295,6 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     return announcement
   end
 
-  def healthz_details()
-    # Service Node subclasses may want to override this method to
-    # provide service specific data
-    healthz = {
-      :self => "ok"
-    }
-  end
-
   def capacity_unit
     # subclasses could overwrite this method to re-define
     # the capacity unit decreased/increased by provision/unprovision
@@ -320,6 +314,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     end
     response.error = error.to_hash
     response.encode
+  end
+
+  def get_host
+    @fqdn_hosts ? Socket.gethostname : @local_ip
   end
 
   # Service Node subclasses must implement the following methods
