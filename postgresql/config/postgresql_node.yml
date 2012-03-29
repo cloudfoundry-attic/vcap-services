@@ -15,6 +15,7 @@ max_db_size: 20
 max_long_query: 3
 max_long_tx: 30
 max_db_conns: 20
+db_size_overhead: 5.4
 postgresql:
   host: 127.0.0.1
   port: 5432

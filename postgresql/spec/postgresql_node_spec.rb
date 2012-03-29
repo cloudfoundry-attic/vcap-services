@@ -475,7 +475,7 @@ describe "Postgresql node normal cases" do
       opts = @opts.dup
       # new pg db takes about 5M(~5554180)
       # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6
+      opts[:max_db_size] = 6 - @opts[:db_size_overhead]
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
         node.should_not == nil
