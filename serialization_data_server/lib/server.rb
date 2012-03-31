@@ -1,8 +1,13 @@
 # Copyright (c) 2009-2011 VMware, Inc.
+require "eventmachine"
+require "vcap/common"
+require "vcap/component"
 require "sinatra"
 require "nats/client"
 require "redis"
 require "json"
+require "sys/filesystem"
+include Sys
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'mysql')
 
@@ -40,8 +45,26 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
       end
     end
     @nats = NATS.connect(:uri => opts[:mbus]) {
+      VCAP::Component.register(
+        :nats => @nats,
+        :type => "SerializationDataServer",
+        :index => opts[:index] || 0,
+        :config => opts
+      )
+
       on_connect_nats
     }
+
+    z_interval = opts[:z_interval] || 30
+    EM.add_periodic_timer(z_interval) do
+      EM.defer { update_varz }
+    end if @nats
+
+    # Defer 5 seconds to give service a change to wake up
+    EM.add_timer(5) do
+      EM.defer { update_varz }
+    end if @nats
+
     Kernel.at_exit do
       if EM.reactor_running?
         send_deactivation_notice(false)
@@ -63,6 +86,30 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
     @nats.publish('router.register', @router_register_json)
     @router_start_channel = @nats.subscribe('router.start') { @nats.publish('router.register', @router_register_json)}
     @redis = connect_redis
+  end
+
+  def varz_details()
+    varz = {}
+    # check NFS disk free space
+    free_space = 0
+    begin
+      stats = Filesystem.stat("#{@base_dir}")
+      avail_blocks = stats.blocks_available
+      total_blocks = stats.blocks
+      free_space = format("%.2f", avail_blocks.to_f / total_blocks.to_f * 100)
+    rescue => e
+      @logger.error("Failed to get filesystem info of #{@base_dir}: #{e}")
+    end
+    varz[:nfs_free_space] = free_space
+
+    varz
+  end
+
+  def update_varz()
+    varz = varz_details
+    varz.each { |k, v|
+      VCAP::Component.varz[k] = v
+    }
   end
 
   def connect_redis()
