@@ -94,7 +94,7 @@ class BackupRotatorTests
     opts.merge!({:logger => logger})
 
     yield RotatorTester.new(manager, opts)
-    FileUtils.rm_rf(root) if complicated
+    FileUtils.rm_rf(File.join('/tmp', 'backup_spec')) if complicated
   end
 
   def self.validate_retained(backup, threshold)
