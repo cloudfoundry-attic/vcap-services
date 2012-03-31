@@ -736,7 +736,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         :plan => plan,
         :score => score,
         :low_water => v[:low_water],
-        :high_water => v[:high_water]
+        :high_water => v[:high_water],
+        :allow_over_provisioning => v[:allow_over_provisioning]?1:0
       }
     end
 
