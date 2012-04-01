@@ -428,6 +428,31 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  # Service migration API
+  post "/service/internal/v1/migration/:node_id/:instance_id/:action" do
+    @logger.info("Migration: #{params["action"]} instance #{params["instance_id"]} in #{params["node_id"]}")
+    @provisioner.migrate_instance(params["node_id"], params["instance_id"], params["action"]) do |msg|
+      if msg["success"]
+        async_reply(msg["response"].to_json)
+      else
+        async_reply_error(msg["response"])
+      end
+    end
+    async_mode
+  end
+
+  get "/service/internal/v1/migration/:node_id/instances" do
+    @logger.info("Migration: get instance id list of node #{params["node_id"]}")
+    @provisioner.get_instance_id_list(params["node_id"]) do |msg|
+      if msg["success"]
+        async_reply(msg["response"].to_json)
+      else
+        async_reply_error(msg["response"])
+      end
+    end
+    async_mode
+  end
+
 
   #################### Helpers ####################
 

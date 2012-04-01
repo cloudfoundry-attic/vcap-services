@@ -32,6 +32,8 @@ class AsyncGatewayTests
     attr_accessor :unbind_http_code
     attr_accessor :restore_http_code
     attr_accessor :recover_http_code
+    attr_reader   :migrate_http_code
+    attr_reader   :instances_http_code
     attr_reader   :purge_orphan_http_code
     attr_reader   :check_orphan_http_code
 
@@ -74,6 +76,8 @@ class AsyncGatewayTests
       @unbind_http_code = 0
       @restore_http_code = 0
       @recover_http_code = 0
+      @migrate_http_code = 0
+      @instances_http_code = 0
       @purge_orphan_http_code = 0
       @check_orphan_http_code = 0
       @last_service_id = nil
@@ -201,6 +205,26 @@ class AsyncGatewayTests
       }
     end
 
+    def send_migrate_request(service_id = nil)
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/migration/test_node/test_instance/test_action").post(gen_req)
+      http.callback {
+        @migrate_http_code = http.response_header.status
+      }
+      http.errback {
+        @migrate_http_code = -1
+      }
+    end
+
+    def send_instances_request(service_id = nil)
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/migration/test_node/instances").get(gen_req)
+      http.callback {
+        @instances_http_code = http.response_header.status
+      }
+      http.errback {
+        @instances_http_code = -1
+      }
+    end
+
     def send_purge_orphan_request
       msg = Yajl::Encoder.encode({
         :orphan_instances => TEST_PURGE_INS_HASH,
@@ -273,6 +297,8 @@ class AsyncGatewayTests
     attr_accessor :got_unbind_request
     attr_accessor :got_restore_request
     attr_accessor :got_recover_request
+    attr_accessor :got_migrate_request
+    attr_accessor :got_instances_request
     attr_reader   :purge_orphan_invoked
     attr_reader   :check_orphan_invoked
     attr_reader   :double_check_orphan_invoked
@@ -284,6 +310,8 @@ class AsyncGatewayTests
       @got_unbind_request = false
       @got_restore_request = false
       @got_recover_request = false
+      @got_migrate_request = false
+      @got_instances_request = false
       @purge_orphan_invoked = false
       @check_orphan_invoked = false
       @double_check_orphan_invoked = false
@@ -326,7 +354,17 @@ class AsyncGatewayTests
     end
 
     def recover(instance_id, backup_path, handles, &blk)
-      @got_recover_reqeust = true
+      @got_recover_request = true
+      blk.call(success(true))
+    end
+
+    def migrate_instance(node_id, instance_id, action, &blk)
+      @got_migrate_request = true
+      blk.call(success(true))
+    end
+
+    def get_instance_id_list(node_id, &blk)
+      @got_instances_request = true
       blk.call(success(true))
     end
 
@@ -372,7 +410,17 @@ class AsyncGatewayTests
     end
 
     def recover(instance_id, backup_path, handles, &blk)
-      @got_recover_reqeust = true
+      @got_recover_request = true
+      blk.call(internal_fail)
+    end
+
+    def migrate_instance(node_id, instance_id, action, &blk)
+      @got_migrate_request = true
+      blk.call(internal_fail)
+    end
+
+    def get_instance_id_list(node_id, &blk)
+      @got_instances_request = true
       blk.call(internal_fail)
     end
 

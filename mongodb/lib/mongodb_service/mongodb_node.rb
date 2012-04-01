@@ -388,6 +388,20 @@ class VCAP::Services::MongoDB::Node
     nil
   end
 
+  def enable_instance(service_credential, binding_credentials)
+    @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
+    service_id = service_credential["name"]
+    provisioned_service = ProvisionedService.get(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential["name"]) if provisioned_service.nil?
+    pid = start_instance(provisioned_service)
+    provisioned_service.pid = pid
+    raise "Cannot save provision_service" unless provisioned_service.save
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
   def dump_instance(service_credential, binding_credentials, dump_dir)
     @logger.info("dump_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}, dump_dir=#{dump_dir}")
 
@@ -426,8 +440,8 @@ class VCAP::Services::MongoDB::Node
     nil
   end
 
-  def enable_instance(service_credential, binding_credentials)
-    @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
+  def update_instance(service_credential, binding_credentials)
+    @logger.info("update_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
 
     # Load provisioned_service from dumped file
     stored_service = nil

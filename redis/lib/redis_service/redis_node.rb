@@ -211,26 +211,24 @@ class VCAP::Services::Redis::Node
   def disable_instance(service_credentials, binding_credentials_list = [])
     set_config(service_credentials["port"], service_credentials["password"], "requirepass", @disable_password)
     true
+  rescue => e
+    @logger.warn(e)
+    nil
   end
 
-  # This function may run in old node or new node, it does these things:
-  # 1. Try to use password in credentials to connect to redis instance
-  # 2. If connection failed, then it's the old node,
-  #    since the password old node is changed to deny then access,
-  #    if successed, then it's the new node.
-  # 3. For old node, it should restore the password,
-  #    for new node, nothing need to do, all are done in import_instance.
   def enable_instance(service_credentials, binding_credentials_map = {})
+    set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def update_instance(service_credentials, binding_credentials_map = {})
     instance = get_instance(service_credentials["name"])
-    if check_password(instance.port, instance.password)
-      # The new node
-      service_credentials = gen_credentials(instance)
-      binding_credentials_map.each do |key, value|
-        binding_credentials_map[key]["credentials"] = gen_credentials(instance)
-      end
-    else
-      # The old node
-      set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
+    service_credentials = gen_credentials(instance)
+    binding_credentials_map.each do |key, value|
+      binding_credentials_map[key]["credentials"] = gen_credentials(instance)
     end
     [service_credentials, binding_credentials_map]
   rescue => e
@@ -250,6 +248,7 @@ class VCAP::Services::Redis::Node
   def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
     provision(plan, service_credentials, db_file)
+    true
   rescue => e
     @logger.warn(e)
     nil

@@ -510,6 +510,20 @@ class VCAP::Services::Mysql::Node
   # Refer to #disable_instance
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
+    prov_cred = bind(prov_cred["name"], nil, prov_cred)
+    binding_creds_hash.each_value do |v|
+      cred = v["credentials"]
+      binding_opts = v["binding_options"]
+      bind(v["credentials"]["name"], v["binding_options"], v["credentials"])
+    end
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def update_instance(prov_cred, binding_creds_hash)
+    @logger.debug("Update instance #{prov_cred["name"]} handles request.")
     name = prov_cred["name"]
     prov_cred = bind(name, nil, prov_cred)
     binding_creds_hash.each_value do |v|
@@ -517,7 +531,7 @@ class VCAP::Services::Mysql::Node
       binding_opts = v["binding_options"]
       v["credentials"] = bind(name, binding_opts, cred)
     end
-    return [prov_cred, binding_creds_hash]
+    [prov_cred, binding_creds_hash]
   rescue => e
     @logger.warn(e)
     []

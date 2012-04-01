@@ -749,27 +749,26 @@ class VCAP::Services::Postgresql::Node
     FileUtils.rm_rf("#{import_file}.archive_list")
   end
 
-  # This function might run at new node or original node
-  # New node: update credentials
-  # Original node: restore from the migration
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
-    name = prov_cred["name"]
-    if prov_cred["hostname"] == get_host
-      # Original
-      db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
-      service = Provisionedservice.get(name)
-      unblock_user_from_db(db_connection, service)
-    else
-      # New
-      prov_cred = gen_credential(name, prov_cred["user"], prov_cred["password"])
-      binding_creds_hash.each_value do |v|
-        v["credentials"] = gen_credential(name, v["credentials"]["username"], v["credentials"]["password"])
-      end
-    end
-    return [prov_cred, binding_creds_hash]
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], prov_cred["name"])
+    service = Provisionedservice.get(prov_cred["name"])
+    unblock_user_from_db(db_connection, service)
+    true
   rescue => e
     @logger.error("Error during enable_instance #{e}")
+    nil
+  end
+
+  def update_instance(prov_cred, binding_creds_hash)
+    @logger.debug("Update instance #{prov_cred["name"]} handles request.")
+    prov_cred = gen_credential(prov_cred["name"], prov_cred["user"], prov_cred["password"])
+    binding_creds_hash.each_value do |v|
+      v["credentials"] = gen_credential(prov_cred["name"], v["credentials"]["username"], v["credentials"]["password"])
+    end
+    [prov_cred, binding_creds_hash]
+  rescue => e
+    @logger.error("Error during update_instance #{e}")
     []
   end
 

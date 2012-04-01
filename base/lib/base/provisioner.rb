@@ -576,6 +576,91 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     blk.call(internal_fail)
   end
 
+  def migrate_instance(node_id, instance_id, action, &blk)
+    @logger.debug("[#{service_description}] Attempting to #{action} instance #{instance_id} in node #{node_id}")
+
+    begin
+      svc = @prov_svcs[instance_id]
+      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
+
+      binding_handles = []
+      @prov_svcs.each do |_, handle|
+        if handle[:service_id] != instance_id
+          binding_handles << handle if handle[:credentials]["name"] == instance_id
+        end
+      end
+      subscription = nil
+      message = nil
+      channel = nil
+      if action == "disable" || action == "enable" || action == "import" || action == "update" || action == "cleanupnfs"
+        channel = "#{service_name}.#{action}_instance.#{node_id}"
+        message = Yajl::Encoder.encode([svc, binding_handles])
+      elsif action == "unprovision"
+        channel = "#{service_name}.unprovision.#{node_id}"
+        bindings = find_all_bindings(instance_id)
+        request = UnprovisionRequest.new
+        request.name = instance_id
+        request.bindings = bindings
+        message = request.encode
+      elsif action == "check"
+        if node_id == svc[:credentials]["node_id"]
+          blk.call(success())
+          return
+        else
+          raise ServiceError.new(ServiceError::NOT_FOUND, instance_id)
+        end
+      else
+        raise ServiceError.new(ServiceError::NOT_FOUND, action)
+      end
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
+      subscription = @node_nats.request(channel, message) do |msg|
+        EM.cancel_timer(timer)
+        @node_nats.unsubscribe(subscription)
+        if action != "update"
+          response = SimpleResponse.decode(msg)
+          if response.success
+            blk.call(success())
+          else
+            blk.call(wrap_error(response))
+          end
+        else
+          handles = Yajl::Parser.parse(msg)
+          handles.each do |handle|
+            @update_handle_callback.call(handle) do |update_res|
+              if update_res
+                @logger.info("Migration: success to update handle: #{handle}")
+              else
+                @logger.error("Migration: failed to update handle: #{handle}")
+                blk.call(wrap_error(response))
+              end
+            end
+            blk.call(success())
+          end
+        end
+      end
+    rescue => e
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn("Exception at migrate_instance #{e}")
+        blk.call(internal_fail)
+      end
+    end
+  end
+
+  def get_instance_id_list(node_id, &blk)
+    @logger.debug("Get instance id list for migration")
+
+    id_list = []
+    @prov_svcs.each do |k, v|
+      id_list << k if (k == v[:credentials]["name"] && node_id == v[:credentials]["node_id"])
+    end
+    blk.call(success(id_list))
+  end
+
   # Create a create_snapshot job and return the job object.
   #
   def create_snapshot(service_id, &blk)

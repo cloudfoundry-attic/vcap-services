@@ -127,6 +127,27 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should recreate bindings when update instance handles" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
+      conn = connect_to_postgresql(binding)
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.update_instance(db, value).should be_true
+      result.should be_instance_of Array
+      expect {conn = connect_to_postgresql(binding)}.should_not raise_error
+      expect {conn = connect_to_postgresql(db)}.should_not raise_error
+      EM.stop
+    end
+  end
+
   it "should recreate bindings when enable instance" do
     EM.run do
       db = @node.provision(@default_plan)
@@ -143,8 +164,7 @@ describe "Postgresql node normal cases" do
           "binding_options" => @default_opts,
         }
       }
-      result = @node.enable_instance(db, value)
-      result.should be_instance_of Array
+      @node.enable_instance(db, value).should be_true
       expect {conn = connect_to_postgresql(binding)}.should_not raise_error
       expect {conn = connect_to_postgresql(db)}.should_not raise_error
       EM.stop

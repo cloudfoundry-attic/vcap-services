@@ -410,19 +410,19 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should not access redis server after disable the instance" do
-      @node.disable_instance(@credentials, @binding_credentials_list)
+      @node.disable_instance(@credentials, @binding_credentials_list).should == true
       sleep 1
       expect {@node.get_info(@credentials["port"], @credentials["password"])}.should raise_error(VCAP::Services::Redis::RedisError)
     end
 
     it "should dump db file to right location after dump instance" do
-      @node.dump_instance(@credentials, @binding_credentials_list, @dump_dir)
+      @node.dump_instance(@credentials, @binding_credentials_list, @dump_dir).should == true
       dump_file = File.join(@dump_dir, "dump.rdb")
       File.exists?(dump_file).should == true
     end
 
     it "should access redis server in old node after enable the instance" do
-      @node.enable_instance(@credentials, @binding_credentials_map)
+      @node.enable_instance(@credentials, @binding_credentials_map).should == true
       sleep 1
       @node.check_password(@credentials["port"], @credentials["password"]).should == true
     end
@@ -432,7 +432,7 @@ describe VCAP::Services::Redis::Node do
       sleep 1
       @node.import_instance(@credentials, @binding_credentials_map, @dump_dir, :free)
       sleep 1
-      credentials_list = @node.enable_instance(@credentials, @binding_credentials_map)
+      credentials_list = @node.update_instance(@credentials, @binding_credentials_map)
       credentials_list.size.should == 2
       Redis.new({:port => credentials_list[0]["port"], :password => credentials_list[0]["password"]}).get("test_key").should == "test_value"
       credentials_list[1].each do |key, value|

@@ -65,6 +65,8 @@ class ProvisionerTests
     attr_accessor :got_unbind_response
     attr_accessor :got_restore_response
     attr_accessor :got_recover_response
+    attr_accessor :got_migrate_response
+    attr_accessor :got_instances_response
     attr_reader :got_purge_orphan_response
     attr_reader :got_check_orphan_response
     def initialize(provisioner, ins_count, bind_count)
@@ -76,6 +78,8 @@ class ProvisionerTests
       @got_unbind_response = false
       @got_restore_response = false
       @got_recover_response = false
+      @got_migrate_response = false
+      @got_instances_response = false
       @got_purge_orphan_response = false
       @got_check_orphan_response = false
       @instance_id = nil
@@ -119,6 +123,20 @@ class ProvisionerTests
         @got_recover_response = res['success']
       end
     end
+    def send_migrate_request(node_id)
+      # register a fake callback to provisioner which always return true
+      @provisioner.register_update_handle_callback{|handle, &blk| blk.call(true)}
+      @provisioner.migrate_instance(node_id, @instance_id, "disable") do |res|
+        @got_migrate_response = res['success']
+      end
+    end
+    def send_instances_request(node_id)
+      # register a fake callback to provisioner which always return true
+      @provisioner.register_update_handle_callback{|handle, &blk| blk.call(true)}
+      @provisioner.get_instance_id_list(node_id) do |res|
+        @got_instances_response = res['success']
+      end
+    end
     def send_check_orphan_request
       @provisioner.check_orphan(TEST_CHECK_HANDLES.drop(1)) do |res|
         @got_check_orphan_response = res["success"]
@@ -145,6 +163,8 @@ class ProvisionerTests
     attr_accessor :unbind_response
     attr_accessor :restore_response
     attr_accessor :recover_response
+    attr_accessor :migrate_response
+    attr_accessor :instances_response
     attr_accessor :error_msg
     attr_accessor :instance_id
     attr_accessor :bind_id
@@ -157,6 +177,8 @@ class ProvisionerTests
       @unbind_response = true
       @restore_response = true
       @recover_response = true
+      @migrate_response = true
+      @instances_response = true
       @error_msg = nil
       @instance_id = nil
       @bind_id = nil
@@ -205,6 +227,18 @@ class ProvisionerTests
         @error_msg = res['response']
       end
     end
+    def send_migrate_request(node_id)
+      @provisioner.migrate_instance(node_id, @instance_id, "disable") do |res|
+        @migrate_response = res['success']
+        @error_msg = res['response']
+      end
+    end
+    def send_instances_request(node_id)
+      @provisioner.get_instance_id_list(node_id) do |res|
+        @migrate_response = res['success']
+        @error_msg = res['response']
+      end
+    end
   end
 
   class MockNode
@@ -214,6 +248,7 @@ class ProvisionerTests
     attr_accessor :got_unbind_request
     attr_accessor :got_bind_request
     attr_accessor :got_restore_request
+    attr_accessor :got_migrate_request
     attr_reader :got_check_orphan_request
     attr_reader :got_purge_orphan_request
     attr_reader :purge_ins_list
@@ -227,6 +262,7 @@ class ProvisionerTests
       @got_bind_request = false
       @got_unbind_request = false
       @got_restore_request = false
+      @got_migrate_request = false
       @got_check_orphan_request = false
       @got_purge_orphan_request = false
       @purge_ins_list = []
@@ -278,6 +314,12 @@ class ProvisionerTests
           response.success = true
           @nats.publish(reply, response.encode)
         }
+        @nats.subscribe("#{service_name}.disable_instance.#{node_id}") { |msg, reply|
+          @got_migrate_request = true
+          response = SimpleResponse.new
+          response.success = true
+          @nats.publish(reply, response.encode)
+        }
         @nats.subscribe("#{service_name}.check_orphan") do |msg|
           @got_check_orphan_request = true
           ins_list = Array.new(@id) { |i| (@id * 10 + i).to_s.ljust(36, "I") }
@@ -324,6 +366,7 @@ class ProvisionerTests
     attr_accessor :got_unbind_request
     attr_accessor :got_bind_request
     attr_accessor :got_restore_request
+    attr_accessor :got_migrate_request
     def initialize(id, score)
       @id = id
       @plan = "free"
@@ -333,6 +376,7 @@ class ProvisionerTests
       @got_bind_request = false
       @got_unbind_request = false
       @got_restore_request = false
+      @got_migrate_request = false
       @got_check_orphan_request = false
       @internal_error = ServiceError.new(ServiceError::INTERNAL_ERROR)
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
@@ -363,6 +407,10 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.restore.#{node_id}") { |msg, reply|
           @got_restore_request = true
+          @nats.publish(reply, gen_simple_error_response.encode)
+        }
+        @nats.subscribe("#{service_name}.disable_instance.#{node_id}") { |msg, reply|
+          @got_migrate_request = true
           @nats.publish(reply, gen_simple_error_response.encode)
         }
         @nats.subscribe("#{service_name}.check_orphan") do |msg|
