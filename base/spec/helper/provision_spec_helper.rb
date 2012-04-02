@@ -367,7 +367,11 @@ class ProvisionerTests
         }
         @nats.subscribe("#{service_name}.check_orphan") do |msg|
           @got_check_orphan_request = true
-          @nats.publish("#{service_name}.node_handles", "malformed node handles")
+          malformed_msg = NodeHandlesReport.new
+          malformed_msg.instances_list = ["malformed-due-to-no-bindings-list"]
+          malformed_msg.bindings_list = nil
+          malformed_msg.node_id = "malformed_node"
+          @nats.publish("#{service_name}.node_handles", malformed_msg.encode)
         end
         announce
       }
