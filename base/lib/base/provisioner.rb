@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2009-2011 VMware, Inc.
-require "pp"
 require "set"
 require "datamapper"
 require "uuidtools"
@@ -15,14 +14,15 @@ require 'service_message'
 
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::Internal
-  include VCAP::Services::AsyncJob
-  include VCAP::Services::Snapshot
+  include VCAP::Services::Base::AsyncJob
+  include VCAP::Services::Base::AsyncJob::Snapshot
 
   BARRIER_TIMEOUT = 2
   MASKED_PASSWORD = '********'
 
   def initialize(options)
     super(options)
+    @opts = options
     @version   = options[:version]
     @node_timeout = options[:node_timeout]
     @nodes     = {}
@@ -95,6 +95,15 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def pre_send_announcement
+    addition_opts = @opts[:additional_options]
+    if addition_opts
+      @upload_temp_dir = addition_opts[:upload_temp_dir]
+      if addition_opts[:resque]
+        # Initial AsyncJob module
+        job_repo_setup()
+        VCAP::Services::Base::AsyncJob::Snapshot.redis_connect
+      end
+    end
   end
 
   def on_connect_node
@@ -634,6 +643,21 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     handle_error(e, &blk)
   end
 
+  def delete_snapshot(service_id, snapshot_id, &blk)
+    @logger.debug("Delete snapshot=#{snapshot_id} for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    job_id = delete_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id,
+                  :node_id => find_node(service_id))
+    job = get_job(job_id)
+    @logger.info("DeleteSnapshotJob created: #{job.inspect}")
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
   # Generate a url for user to download serialized data.
   def get_serialized_url(service_id, &blk)
     @logger.debug("get serialized url for service_id=#{service_id}")
@@ -781,7 +805,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   # handle request exception
   def handle_error(e, &blk)
-    @logger.warn("Exception at handle_error #{e}")
+    @logger.warn("Exception at handle_error #{e}:"+"[#{e.backtrace.join("|")}]")
     if e.instance_of? ServiceError
       blk.call(failure(e))
     else
@@ -814,6 +838,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   #
 
   # various lifecycle jobs class
-  abstract :create_snapshot_job, :rollback_snapshot_job, :create_serialized_url_job, :import_from_url_job, :import_from_data_job
+  abstract :create_snapshot_job, :rollback_snapshot_job, :delete_snapshot_job, :create_serialized_url_job, :import_from_url_job, :import_from_data_job
 
 end
