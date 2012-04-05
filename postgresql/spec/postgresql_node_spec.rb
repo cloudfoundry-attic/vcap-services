@@ -97,10 +97,10 @@ describe "Postgresql node normal cases" do
       conn2 = connect_to_postgresql(bind_cred)
       @test_dbs[@db] << bind_cred
       @node.disable_instance(@db, [bind_cred])
-      expect { conn.query('select 1') }.should raise_error
-      expect { conn2.query('select 1') }.should raise_error
-      expect { connect_to_postgresql(@db) }.should raise_error
-      expect { connect_to_postgresql(bind_cred) }.should raise_error
+      expect { conn.query('select 1') }.should raise_error  # expected exception: connection terminated
+      expect { conn2.query('select 1') }.should raise_error # expected exception: connection terminated
+      expect { connect_to_postgresql(@db) }.should_not raise_error # default user won't be blocked
+      expect { connect_to_postgresql(bind_cred) }.should raise_error #expected exception: no permission to connect
       EM.stop
     end
   end
@@ -135,8 +135,8 @@ describe "Postgresql node normal cases" do
       @test_dbs[db] << binding
       conn = connect_to_postgresql(binding)
       @node.disable_instance(db, [binding])
-      expect {conn = connect_to_postgresql(binding)}.should raise_error
-      expect {conn = connect_to_postgresql(db)}.should raise_error
+      expect {conn = connect_to_postgresql(binding)}.should raise_error # expected exception: no permission to connect
+      expect {conn = connect_to_postgresql(db)}.should_not raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
@@ -316,10 +316,11 @@ describe "Postgresql node normal cases" do
         db = node.provision('free')
         binding = node.bind(db['name'], @default_opts)
         @test_dbs[db] = [binding]
-        # use a non-default user (not parent role)
+
+        # use a superuser, won't be killed
         user = db.dup
-        user['user'] = binding['user']
-        user['password'] = binding['password']
+        user['user'] = opts[:postgresql]['user']
+        user['password'] = opts[:postgresql]['pass']
         conn = connect_to_postgresql(user)
         # prepare a transaction and not commit
         conn.query("create table a(id int)")
@@ -327,10 +328,47 @@ describe "Postgresql node normal cases" do
         conn.query("begin")
         conn.query("select * from a for update")
         EM.add_timer(opts[:max_long_tx] * 2) {
-          expect {conn.query("select * from a for update")}.should raise_error
+          expect do
+            conn.query("select * from a for update")
+            conn.query("commit")
+          end.should_not raise_error
           conn.close if conn
-          EM.stop
         }
+
+        # use a default user (parent role), won't be killed
+        default_user = VCAP::Services::Postgresql::Node::Provisionedservice.get(db['name']).bindusers.all(:default_user => true)[0]
+        user['user'] = default_user[:user]
+        user['password'] = default_user[:password]
+        conn = connect_to_postgresql(user)
+        # prepare a transaction and not commit
+        conn.query("create table b(id int)")
+        conn.query("insert into b values(10)")
+        conn.query("begin")
+        conn.query("select * from b for update")
+        EM.add_timer(opts[:max_long_tx] * 2) {
+          expect do
+            conn.query("select * from b for update")
+            conn.query("commit")
+          end.should_not raise_error
+          conn.close if conn
+        }
+
+
+        # use a non-default user (not parent role), will be killed
+        user = db.dup
+        user['user'] = binding['user']
+        user['password'] = binding['password']
+        conn = connect_to_postgresql(user)
+        # prepare a transaction and not commit
+        conn.query("create table c(id int)")
+        conn.query("insert into c values(10)")
+        conn.query("begin")
+        conn.query("select * from c for update")
+        EM.add_timer(opts[:max_long_tx] * 2) {
+          expect {conn.query("select * from c for update")}.should raise_error
+          conn.close if conn
+        }
+        EM.stop
       end
     end
   end

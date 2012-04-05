@@ -625,17 +625,25 @@ class VCAP::Services::Postgresql::Node
 
   def block_user_from_db(db_connection, service)
     name = service.name
+    default_user = service.bindusers.all(:default_user => true)[0]
     service.bindusers.all.each do |binduser|
-      db_connection.query("revoke connect on database #{name} from #{binduser.user}")
-      db_connection.query("revoke connect on database #{name} from #{binduser.sys_user}")
+      if binduser.default_user == false
+        db_connection.query("revoke #{default_user.user} from #{binduser.user}")
+        db_connection.query("revoke connect on database #{name} from #{binduser.user}")
+        db_connection.query("revoke connect on database #{name} from #{binduser.sys_user}")
+      end
     end
   end
 
   def unblock_user_from_db(db_connection, service)
     name = service.name
+    default_user = service.bindusers.all(:default_user => true)[0]
     service.bindusers.all.each do |binduser|
-      db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
-      db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
+      if binduser.default_user == false
+        db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
+        db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
+        db_connection.query("GRANT #{default_user.user} to #{binduser.user}")
+      end
     end
   end
 
@@ -658,17 +666,7 @@ class VCAP::Services::Postgresql::Node
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless service
     default_user = service.bindusers.all(:default_user => true)[0]
     raise "No default user for provisioned service #{name}" unless default_user
-
-    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
-    block_user_from_db(db_connection, service)
-    db_connection.close
-    exe_drop_database(name)
-    exe_create_database(name)
-
-    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
-    exe_grant_user_priv(db_connection)
-    unblock_user_from_db(db_connection, service)
-    db_connection.close
+    reset_db(@postgresql_config['host'], @postgresql_config['port'], @postgresql_config['user'], @postgresql_config['pass'], name, service)
 
     host, port =  %w{host port}.map { |opt| @postgresql_config[opt] }
     path = File.join(backup_path, "#{name}.dump")
