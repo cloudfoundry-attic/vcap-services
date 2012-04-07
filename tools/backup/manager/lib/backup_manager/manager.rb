@@ -56,34 +56,34 @@ class VCAP::Services::Backup::Manager < VCAP::Services::Base::Base
     trap("TERM"){ exit_fun }
     trap("INT"){ exit_fun }
 
-    Fiber.new do
-      if @once
-        run
-        exit_fun
-      else
-        EM.add_periodic_timer(@wakeup_interval) {run}
-      end
-    end.resume
+    if @once
+      run
+    else
+      EM.add_periodic_timer(@wakeup_interval) {run}
+    end
   end
 
   def run
-    if @enable
-      @run_lock.synchronize do
-        begin
-          @logger.info("#{self.class}: Running")
-          @tasks.each do |task|
-            @logger.warn("#{self.class}: #{task.class} failed") unless task.run
+    Fiber.new do
+      if @enable
+        @run_lock.synchronize do
+          begin
+            @logger.info("#{self.class}: Running")
+            @tasks.each do |task|
+              @logger.warn("#{self.class}: #{task.class} failed") unless task.run
+            end
+          rescue => x
+            # tasks should catch their own exceptions, but just in case...
+            @logger.error("#{self.class}: Exception while running: #{x.to_s}")
+          rescue Interrupt
+            @logger.info("#{self.class}: Task is interrupted")
           end
-        rescue => x
-          # tasks should catch their own exceptions, but just in case...
-          @logger.error("#{self.class}: Exception while running: #{x.to_s}")
-        rescue Interrupt
-          @logger.info("#{self.class}: Task is interrupted")
         end
+      else
+        @logger.info("#{self.class}: Not enabled")
       end
-    else
-      @logger.info("#{self.class}: Not enabled")
-    end
+      exit_fun if @once
+    end.resume
   end
 
   def time

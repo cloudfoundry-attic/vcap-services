@@ -94,7 +94,7 @@ class VCAP::Services::Backup::Rotator
       if result
         handle_response(http, name)
       else
-        @manager.logger.error("Error at fetching handle at #{uri} ans: #{http.error}")
+        @manager.logger.error("Error at fetching handle at #{uri} ans: #{http}")
       end
 
       raise Interrupt, "Interrupted" if @manager.shutdown?
