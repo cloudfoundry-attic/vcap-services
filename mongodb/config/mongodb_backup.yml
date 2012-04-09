@@ -4,6 +4,7 @@ backup_base_dir: /mnt/nfs/servicebackup
 local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
 service_base_dir: /var/vcap/services/mongodb/instances/
 mongodump_path: mongodump
+mongod_log_dir: /var/vcap/sys/log/mongodb
 timeout: 600
 logging:
   level: debug

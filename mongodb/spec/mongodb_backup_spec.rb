@@ -9,6 +9,7 @@ describe "mongodb backup/restore"  do
     @logger = @opts[:logger]
 
     BINARY_DIR = File.dirname(@opts[:mongod_path])
+    MONGOD_LOG = @opts[:mongod_log_dir]
 
     @config_template = ERB.new(File.read(TEMPLATE_FILE))
     config = @config_template.result(binding)

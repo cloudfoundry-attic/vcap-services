@@ -88,7 +88,7 @@ class VCAP::Services::MongoDB::Node
           next
         end
 
-        unless p_service.service_dir?
+        unless p_service.data_dir?
           @logger.warn("Service #{p_service.name} in local DB, but not in file system")
           next
         end
@@ -369,16 +369,25 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   class << self
     def init(args)
-      raise "Parameter missing" unless args[:base_dir] && args[:local_db]
+      raise "Parameter :base_dir missing" unless args[:base_dir]
+      raise "Parameter :mongod_log_dir missing" unless args[:mongod_log_dir]
+      raise "Parameter :image_dir missing" unless args[:image_dir]
+      raise "Parameter :local_db missing" unless args[:local_db]
       @@mongorestore_path = args[:mongorestore_path] ? args[:mongorestore_path] : 'mongorestore'
       @@mongodump_path    = args[:mongodump_path] ? args[:mongodump_path] : 'mongodump'
       @@tar_path          = args[:tar_path] ? args[:tar_path] : 'tar'
       @@base_dir          = args[:base_dir]
-      FileUtils.mkdir_p(@@base_dir)
+      @@log_dir           = args[:mongod_log_dir]
+      @@image_dir         = args[:image_dir]
+      @@max_db_size       = args[:max_db_size] ? args[:max_db_size] : 128
       @@warden_client     = Warden::Client.new("/tmp/warden.sock")
       @@warden_client.connect
+      @@warden_lock = Mutex.new
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
+      FileUtils.mkdir_p(@@base_dir)
+      FileUtils.mkdir_p(@@log_dir)
+      FileUtils.mkdir_p(@@image_dir)
     end
 
     def create(args)
@@ -395,9 +404,15 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
       raise "Cannot save provision service" unless p_service.save!
 
-      FileUtils.rm_rf(p_service.service_dir)
-      FileUtils.mkdir_p(File.join(p_service.service_dir, 'data'))
-      FileUtils.mkdir_p(File.join(p_service.service_dir, 'log'))
+      FileUtils.rm_rf(p_service.data_dir)
+      FileUtils.rm_rf(p_service.log_dir)
+      FileUtils.rm_rf(p_service.image_file)
+      FileUtils.mkdir_p(p_service.data_dir)
+      FileUtils.mkdir_p(p_service.log_dir)
+      system "dd if=/dev/null of=#{p_service.image_file} bs=1M seek=#{@@max_db_size}"
+      system "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{p_service.image_file}"
+      system "mount -n -o loop #{p_service.image_file} #{p_service.data_dir}"
+      FileUtils.mkdir_p(File.join(p_service.data_dir, 'data'))
       p_service
     end
 
@@ -419,8 +434,9 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
                          'admin'     => s_service.admin,
                          'adminpass' => s_service.adminpass,
                          'db'        => s_service.db)
-      FileUtils.cp_r(File.join(dir, 'data'), p_service.service_dir)
-      FileUtils.cp_r(File.join(dir, 'log'), p_service.service_dir)
+      FileUtils.cp_r(File.join(dir, 'data'), p_service.data_dir)
+      FileUtils.rm_rf(p_service.log_dir)
+      FileUtils.cp_r(File.join(dir, 'log'), p_service.log_dir)
       p_service
     end
   end
@@ -429,7 +445,10 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     # stop container
     stop if running?
     # delete log and service directory
-    FileUtils.rm_rf(service_dir)
+    system "umount #{data_dir}"
+    FileUtils.rm_rf(image_file)
+    FileUtils.rm_rf(data_dir)
+    FileUtils.rm_rf(log_dir)
     # delete recorder
     destroy!
   end
@@ -441,8 +460,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       Marshal.dump(self, f)
     end
     # dump database data/log directory
-    FileUtils.cp_r(File.join(service_dir, 'data'), dir)
-    FileUtils.cp_r(File.join(service_dir, 'log'), dir)
+    FileUtils.cp_r(File.join(data_dir, 'data'), dir)
+    FileUtils.cp_r(log_dir, File.join(dir, 'log'))
   end
 
   def d_import(dir)
@@ -475,7 +494,9 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     if (self[:container] == '')
       return false
     else
-      @@warden_client.call(["info", self[:container]])
+      @@warden_lock.synchronize do
+        @@warden_client.call(["info", self[:container]])
+      end
       return true
     end
   rescue => e
@@ -484,19 +505,24 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def stop(timeout=5,sig=:SIGTERM)
     unmapping_port(self[:ip], self[:port])
-    @@warden_client.call(["stop", self[:container]])
-    @@warden_client.call(["destroy", self[:container]])
+    @@warden_lock.synchronize do
+      @@warden_client.call(["stop", self[:container]])
+      @@warden_client.call(["destroy", self[:container]])
+    end
     self[:container] = ''
     save
     true
   end
 
   def run
-    req = ["create", {"bind_mounts" => [[service_dir, "/store", {"mode" => "rw"}]]}]
-    self[:container] = @@warden_client.call(req)
-    req = ["info", self[:container]]
-    info = @@warden_client.call(req)
-    self[:ip] = info["container_ip"]
+    @@warden_lock.synchronize do
+      req = ["create", {"bind_mounts" => [[File.join(data_dir, 'data'), "/store/data", {"mode" => "rw"}],
+                                          [log_dir, "/store/log", {"mode" => "rw"}]]}]
+      self[:container] = @@warden_client.call(req)
+      req = ["info", self[:container]]
+      info = @@warden_client.call(req)
+      self[:ip] = info["container_ip"]
+    end
     save!
     mapping_port(self[:ip], self[:port])
   end
@@ -518,17 +544,27 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   # diretory helper
-  def service_dir
+  def image_file
+    File.join(@@image_dir, "#{self[:name]}.img")
+  end
+
+  def data_dir
     File.join(@@base_dir, self[:name])
   end
 
-  def service_dir?
-    Dir.exists?(service_dir)
+  def log_dir
+    File.join(@@log_dir, self[:name])
+  end
+
+  def data_dir?
+    Dir.exists?(data_dir)
   end
 
   # user management helper
   def add_admin(username, password)
-    @@warden_client.call(["run", self[:container], "mongo localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"])
+    @@warden_lock.synchronize do
+      @@warden_client.call(["run", self[:container], "mongo localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"])
+    end
   rescue => e
     raise "Could not add admin user \'#{username}\'"
   end

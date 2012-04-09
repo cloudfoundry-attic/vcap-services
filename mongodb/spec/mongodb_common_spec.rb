@@ -4,25 +4,24 @@ $:.unshift(File.join(File.dirname(__FILE__), '..'))
 $:.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
 require "vcap_services_base"
 require "mongodb_service/mongodb_node"
+require "spec_helper"
 require "mongo"
 
-describe "mongodb service instance" do
+describe "mongodb provisionedservice class" do
 
   include VCAP::Services::MongoDB
 
   before :all do
     begin
-      options = { :max_memory => 128,
-        :base_dir => "/tmp/mongo_data",
-        :local_db => "sqlite3:/tmp/mongo_data/mongo.db" }
-      Node::ProvisionedService.init(options)
+      @options = get_node_config()
+      Node::ProvisionedService.init(@options)
     rescue Exception => e
       raise e
     end
   end
 
   after :all do
-    FileUtils.rm_rf("/tmp/mongo_data")
+    FileUtils.rm_rf(File.dirname(@options[:base_dir]))
   end
 
   def insert_testdata(p_service)
@@ -51,7 +50,7 @@ describe "mongodb service instance" do
     doc['test_key'].should == 1234
   end
 
-  it "should be able to create/delete new instance" do
+  it "should be able to create/delete instance" do
     p_service = Node::ProvisionedService.create({ 'port' => 27017 })
     name = p_service.name
     p_service.delete
@@ -124,7 +123,7 @@ describe "mongodb service instance" do
     FileUtils.mkdir_p('/tmp/mongo_backup')
     begin
       insert_testdata(p_service)
-      p_service.d_dump('/tmp/mongo_backup')
+      p_service.d_dump('/tmp/mongo_backup', false)
       backup_success = true
     rescue => e
     end

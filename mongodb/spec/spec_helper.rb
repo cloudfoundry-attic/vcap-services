@@ -134,8 +134,10 @@ def get_node_config()
     :port_range => parse_property(config, "port_range", Range),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :base_dir => '/tmp/mongo/instances',
-    :mongod_log_dir => '/tmp/mongo/mongod_log',
-    :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db'
+    :mongod_log_dir => '/tmp/mongo/logs',
+    :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db',
+    :image_dir => '/tmp/mongo/images',
+    :max_db_size => 128
   }
   options[:logger].level = Logger::FATAL
   options
