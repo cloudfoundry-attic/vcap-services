@@ -8,6 +8,7 @@ require 'logger'
 require 'sinatra'
 require 'thin'
 require 'fileutils'
+require 'vcap_services_base'
 require 'backup_manager/manager'
 
 class BackupManagerTests
@@ -17,7 +18,9 @@ class BackupManagerTests
     mgr = ManagerTest.new({
       :logger => Logger.new(STDOUT),
       :wakeup_interval => 3,
-      :root => '',
+      :root => '/',
+      :mbus => 'nats://localhost:4222',
+      :z_interval => 30,
       :rotation => {
         :max_days => 7
       },
@@ -28,24 +31,18 @@ class BackupManagerTests
   end
 
   class ManagerTest < VCAP::Services::Backup::Manager
-    alias_method :ori_run,:run
     attr_accessor :root
-    attr_reader :exit_invoked
+    attr_reader :shutdown_invoked
 
     def initialize(options)
       super(options)
       @tasks = [MockRotator.new(self,options[:rotation])]
-      @exit_invoked = false
+      @shutdown_invoked = false
     end
 
-    def exit
-      @exit_invoked = true
-      @logger.debug("exit is called")
-    end
-
-    def run
-      ori_run
-      raise "break the loop"
+    def shutdown
+      @shutdown_invoked = true
+      @logger.debug("shutdown is called")
     end
 
     def time
@@ -82,32 +79,25 @@ class BackupRotatorTests
   CC_PORT = 45678
   MAX_DAYS = 7
 
-  @@root = ''
-  @@complicated = false
-
-  def self.create_rotator(root_p,opts)
+  def self.create_rotator(root_p, opts)
     logger = Logger.new(STDOUT)
-    @@complicated = root_p == 'complicated' # special handling for this one...
-    if @@complicated
-      @@root = File.join('/tmp','backup_spec','test_directories',root_p)
+    complicated = root_p == 'complicated' # special handling for this one...
+    root = ''
+    if complicated
+      root = File.join('/tmp','backup_spec','test_directories',root_p)
       require 'spec/test_directories/complicated/populate'
-      populate_complicated(@@root)
+      populate_complicated(root)
     else
-      @@root = File.join(File.dirname(__FILE__), 'test_directories', root_p)
+      root = File.join(File.dirname(__FILE__), 'test_directories', root_p)
     end
-    manager = MockManager.new(@@root, logger)
+    manager = MockManager.new(root, logger)
     opts.merge!({:logger => logger})
 
-    RotatorTester.new(manager, opts)
+    yield RotatorTester.new(manager, opts)
+    FileUtils.rm_rf(File.join('/tmp', 'backup_spec')) if complicated
   end
 
-  def self.cleanup
-    if @@complicated
-      FileUtils.rm_rf(@@root)
-    end
-  end
-
-  def self.validate_retained(backup,threshold)
+  def self.validate_retained(backup, threshold)
     path = backup[0]
     timestamp = backup[1]
     return true if timestamp > threshold

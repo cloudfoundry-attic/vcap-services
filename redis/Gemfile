@@ -11,7 +11,6 @@ gem "do_sqlite3"
 gem "sinatra"
 gem "thin"
 gem "redis"
-gem "resque-status", "~> 0.2.4"
 gem "rake"
 gem "curb"
 
@@ -23,5 +22,7 @@ group :test do
   gem "rake"
   gem "rspec"
   gem "rcov"
+  gem "simplecov"
+  gem "simplecov-rcov"
   gem "ci_reporter"
 end

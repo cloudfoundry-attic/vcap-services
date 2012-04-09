@@ -287,6 +287,22 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  # Delete a snapshot
+  delete "/gateway/v1/configurations/:service_id/snapshots/:snapshot_id" do
+    not_impl unless @api_extensions.include? "snapshots"
+    service_id = params["service_id"]
+    snapshot_id = params["snapshot_id"]
+    @logger.info("Delete service_id=#{service_id} to snapshot_id=#{snapshot_id}")
+    @provisioner.delete_snapshot(service_id, snapshot_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
   # Get serialized url
   get "/gateway/v1/configurations/:service_id/serialized/url" do
     not_impl unless @api_extensions.include? "serialization"
@@ -407,6 +423,31 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
         async_reply
       else
         async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
+
+  # Service migration API
+  post "/service/internal/v1/migration/:node_id/:instance_id/:action" do
+    @logger.info("Migration: #{params["action"]} instance #{params["instance_id"]} in #{params["node_id"]}")
+    @provisioner.migrate_instance(params["node_id"], params["instance_id"], params["action"]) do |msg|
+      if msg["success"]
+        async_reply(msg["response"].to_json)
+      else
+        async_reply_error(msg["response"])
+      end
+    end
+    async_mode
+  end
+
+  get "/service/internal/v1/migration/:node_id/instances" do
+    @logger.info("Migration: get instance id list of node #{params["node_id"]}")
+    @provisioner.get_instance_id_list(params["node_id"]) do |msg|
+      if msg["success"]
+        async_reply(msg["response"].to_json)
+      else
+        async_reply_error(msg["response"])
       end
     end
     async_mode

@@ -81,11 +81,11 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     elsif SYSTEM_DB.include?(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<node_id>\<service specific data>
-      full_path = get_dump_path(name,1)
+      full_path = get_dump_path(name, :mode => 1, :time => ts)
     else
       # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
       # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-      full_path = get_dump_path(name)
+      full_path = get_dump_path(name, :time => ts)
     end
     opts.merge!({:full_path => full_path})
     # options substitution

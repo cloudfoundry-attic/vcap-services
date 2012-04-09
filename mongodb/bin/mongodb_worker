@@ -1,6 +1,19 @@
-#!/bin/bash
-path=`dirname $0`
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2012 VMware, Inc.
 
-cd $path
-cd ..
-bundle exec rake --trace -r ./lib/mongodb_service/job.rb resque:work
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+require 'bundler/setup'
+require 'vcap_services_base'
+
+$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
+require "mongodb_service/job"
+
+class VCAP::Services::MongoDB::Worker < VCAP::Services::Base::WorkerBin
+  def default_config_file
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.expand_path("../../config", __FILE__)
+    config_file = File.join(config_base_dir, "mongodb_worker.yml")
+  end
+end
+
+VCAP::Services::MongoDB::Worker.new.start

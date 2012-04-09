@@ -42,6 +42,20 @@ describe "mongodb rebalance" do
     is_port_open?('127.0.0.1', @resp['port']).should be_true
   end
 
+  it "should be able to enable instance" do
+    @node.disable_instance(
+            @resp,
+            { '' => { 'credentials' => @bind_resp } },
+          )
+    res = @node.enable_instance(
+            @resp,
+            { '' => { 'credentials' => @bind_resp } },
+          )
+    res.should == true
+    sleep 1
+    is_port_open?('127.0.0.1', @resp['port']).should be_true
+  end
+
   it "should be able to disable instance" do
     res = @node.disable_instance(
             @resp,
@@ -86,10 +100,10 @@ describe "mongodb rebalance" do
     end
   end
 
-  it "should be able to enable instance" do
+  it "should be able to update instance handles" do
     EM.run do
       EM.add_timer(1) do
-        res = @node.enable_instance(
+        res = @node.update_instance(
                 @resp,
                 { '' => { 'credentials' => @bind_resp } }
               )

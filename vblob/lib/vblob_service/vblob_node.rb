@@ -87,8 +87,9 @@ class VCAP::Services::VBlob::Node
     @vblobd_path = options[:vblobd_path]
     @vblobd_log_dir = options[:vblobd_log_dir]
     @vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
+    @vblobd_quota = options[:vblobd_quota] || 2147483647 #default max bytes 
+    @vblobd_obj_limit = options[:vblobd_obj_limit] || 32768  #default max obj num
 
-    @max_memory = options[:max_memory]
 
     @config_template = ERB.new(File.read(options[:config_template]))
 
@@ -210,7 +211,6 @@ class VCAP::Services::VBlob::Node
     provisioned_service             = ProvisionedService.new
     provisioned_service.name        = name
     provisioned_service.port        = port
-    provisioned_service.memory      = @max_memory
     provisioned_service.keyid       = username
     provisioned_service.secretid    = password
     provisioned_service.pid         = start_instance(provisioned_service)
@@ -255,7 +255,7 @@ class VCAP::Services::VBlob::Node
       FileUtils.rm_rf(log_dir)
     end
     return_port(provisioned_service.port)
-    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.destroy
+    raise "Could not cleanup service: #{provisioned_service.errors.pretty_inspect}" unless provisioned_service.new? || provisioned_service.destroy
     true
   end
 
@@ -366,7 +366,6 @@ class VCAP::Services::VBlob::Node
 
   def start_instance(provisioned_service)
     @logger.debug("Starting instance: #{provisioned_service.pretty_inspect}")
-    memory = @max_memory
     pid = fork
     if pid
       @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")

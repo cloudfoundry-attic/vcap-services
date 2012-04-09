@@ -148,6 +148,30 @@ describe AsyncGatewayTests do
     gateway.recover_http_code.should == 200
   end
 
+  it "should be able to migrate instance" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(2) { gateway.send_migrate_request }
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.migrate_http_code.should == 200
+  end
+
+  it "should be able to get instance id list" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway ; gateway.start }
+      Do.at(2) { gateway.send_instances_request }
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.instances_http_code.should == 200
+  end
+
   it "should not serve request when handle is not fetched" do
     gateway = nil
     EM.run do
@@ -253,5 +277,29 @@ describe AsyncGatewayTests do
       Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
     end
     gateway.recover_http_code.should == 500
+  end
+
+  it "should be able to return error when migrate instance failed" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nasty_gateway ; gateway.start }
+      Do.at(2) { gateway.send_migrate_request }
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.migrate_http_code.should == 500
+  end
+
+  it "should be able to return error when get instance id list failed" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller ; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nasty_gateway ; gateway.start }
+      Do.at(2) { gateway.send_instances_request }
+      Do.at(3) { cc.stop ; gateway.stop ; EM.stop }
+    end
+    gateway.instances_http_code.should == 500
   end
 end

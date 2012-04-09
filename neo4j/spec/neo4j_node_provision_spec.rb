@@ -30,11 +30,12 @@ describe VCAP::Services::Neo4j::Node do
   after :all do
     EM.run do
       begin
-      @node.shutdown() unless @node.nil?
-      EM.stop
+        @node.shutdown() unless @node.nil?
+        EM.stop
       rescue
       end
     end
+    FileUtils.rm_rf(File.dirname(@opts[:base_dir]))
   end
 
   it "should have valid response" do

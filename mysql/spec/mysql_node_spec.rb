@@ -473,7 +473,28 @@ describe "Mysql server node" do
           "binding_options" => @default_opts,
         }
       }
-      result = @node.enable_instance(db, value)
+      @node.enable_instance(db, value).should be_true
+      expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      EM.stop
+    end
+  end
+
+  it "should recreate bindings when update instance handles" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
+      conn = connect_to_mysql(binding)
+      @node.disable_instance(db, [binding])
+      expect {conn = connect_to_mysql(binding)}.should raise_error
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.update_instance(db, value)
       result.should be_instance_of Array
       expect {conn = connect_to_mysql(binding)}.should_not raise_error
       EM.stop

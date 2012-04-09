@@ -74,7 +74,7 @@ class VCAP::Services::Base::Base
   def publish(reply, msg)
     # nats publish are only allowed to be called in reactor thread.
     EM.schedule do
-      @node_nats.publish(reply, msg)
+      @node_nats.publish(reply, msg) if @node_nats
     end
   end
 
