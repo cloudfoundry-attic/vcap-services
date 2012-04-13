@@ -563,6 +563,10 @@ describe "Postgresql node normal cases" do
             # permission denied for relation test
             expect {conn.query("insert into test values('1')").should raise_error(PGError)}
             expect {conn.query("create table test1(data text)").should raise_error(PGError)}
+            new_binding = node.bind(db['name'], @default_opts)
+            new_conn = connect_to_postgresql(new_binding)
+            expect {new_conn.query("insert into test values('1')").should raise_error(PGError)}
+
             conn.query("delete from test")
             EM.add_timer(2) do
               # write privilege should restore

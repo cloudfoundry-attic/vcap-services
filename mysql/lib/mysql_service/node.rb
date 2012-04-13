@@ -302,6 +302,7 @@ class VCAP::Services::Mysql::Node
 
       begin
         create_database_user(name, binding[:user], binding[:password])
+        enforce_instance_storage_quota(service)
       rescue Mysql2::Error => e
         raise "Could not create database user: [#{e.errno}] #{e.error}"
       end
