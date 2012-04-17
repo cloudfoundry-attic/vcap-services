@@ -12,7 +12,6 @@ gem "uuidtools"
 gem "ruby-hmac", :require => "hmac-sha1"
 gem "thin"
 gem "sinatra"
-gem "resque-status", "~> 0.2.4"
 gem "rake"
 gem "curb"
 
@@ -22,7 +21,7 @@ gem "vcap_services_base"
 
 group :test do
   gem "rspec"
-  gem "rcov"
   gem "ci_reporter"
+  gem "simplecov"
+  gem "simplecov-rcov"
 end
-

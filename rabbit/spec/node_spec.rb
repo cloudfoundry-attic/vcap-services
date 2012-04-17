@@ -31,6 +31,8 @@ describe VCAP::Services::Rabbit::Node do
   after :all do
     FileUtils.rm_f(@options[:local_db_file])
     FileUtils.rm_rf(@options[:base_dir])
+    # Use %x to call shell command since ruby doesn't has pkill interface
+    %x[pkill epmd]
   end
 
   before :each do
@@ -238,10 +240,27 @@ describe VCAP::Services::Rabbit::Node do
     end
   end
 
-  describe "Node.destory_instance" do
-    it "should raise exception when destroy instance failed" do
+  describe "Node.destroy_instance" do
+    it "should return true when the instance is in local db" do
       instance = VCAP::Services::Rabbit::Node::ProvisionedService.new
-      expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
+      instance.name = "test"
+      instance.port = 1
+      instance.plan = 1
+      instance.vhost = "test"
+      instance.port = 1
+      instance.admin_port = 1
+      instance.admin_username = "test"
+      instance.admin_password = "test"
+      instance.memory   = 1
+      instance.save
+      @node.destroy_instance(instance).should == true
+      expect {@node.get_instance(instance.name)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
+    end
+
+    it "should return true when the instance is not in local db" do
+      instance = VCAP::Services::Rabbit::Node::ProvisionedService.new
+      @node.destroy_instance(instance).should == true
+      expect {@node.get_instance(instance.name)}.should raise_error(VCAP::Services::Rabbit::RabbitError)
     end
   end
 

@@ -4,16 +4,21 @@ gem 'eventmachine'
 gem 'em-http-request'
 gem 'json'
 gem 'yajl-ruby'
-gem 'logging', '>= 1.5.0'
+gem 'nats'
 
 gem 'vcap_common', '>= 1.0.8', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
+gem 'vcap_services_base'
 
 group :test do
+  gem 'rake'
   gem 'rspec', '>= 2.4.0', :require => nil
   gem 'rcov'
   gem 'mocha'
   gem 'ci_reporter'
   gem 'sinatra'
-  gem "thin"
+  gem 'thin'
+  gem "simplecov"
+  gem "simplecov-clover"
+  gem "simplecov-rcov"
 end

@@ -4,8 +4,11 @@ require 'bundler'
 desc "Run specs"
 task "spec" => ["bundler:install:test", "test:spec"]
 
-desc "Run specs using RCov"
+desc "Run specs using SimpleCov"
 task "spec:rcov" => ["bundler:install:test", "test:spec:rcov"]
+
+desc "Run ci using SimpleCov"
+task "spec:ci" => ["bundler:install:test", "test:spec:ci"]
 
 namespace "bundler" do
   gem_helper = Bundler::GemHelper.new(Dir.pwd)
@@ -44,7 +47,11 @@ namespace "test" do
     sh("cd spec && ../bin/nats-util start && rake spec && ../bin/nats-util stop")
   end
 
- task "spec:rcov" do |t|
-    sh("cd spec && rake spec:rcov")
+  task "spec:rcov" do |t|
+    sh("cd spec && ../bin/nats-util start && rake simcov && ../bin/nats-util stop")
+  end
+
+  task "spec:ci" do |t|
+    sh("cd spec && ../bin/nats-util start && rake spec:ci && ../bin/nats-util stop")
   end
 end

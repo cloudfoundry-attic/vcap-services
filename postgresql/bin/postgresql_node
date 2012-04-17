@@ -20,6 +20,7 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
 
   def additional_config(options, config)
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
+    options[:db_size_overhead] = parse_property(config, "db_size_overhead", Float)
     options[:max_long_query] = parse_property(config, "max_long_query", Integer)
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
     options[:postgresql] = parse_property(config, "postgresql", Hash)

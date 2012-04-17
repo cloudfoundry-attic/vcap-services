@@ -1,19 +1,28 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require 'time'
-require 'eventmachine'
 require 'em-http'
 require 'json'
 require 'json_message'
 require 'services/api'
+require 'fiber'
+
+module VCAP
+  module Services
+    module Backup
+    end
+  end
+end
 
 class VCAP::Services::Backup::Rotator
-  @@req = { :head =>
+
+  REQ_HEADER = { :head =>
     {
       'Content-Type'         => 'application/json',
       'X-VCAP-Service-Token' => '0xdeadbeef',
     }
   }
 
+  ONE_DAY = 24*60*60
 
   def initialize(manager, options)
     @manager = manager
@@ -38,6 +47,7 @@ class VCAP::Services::Backup::Rotator
     @manager.logger.error("#{self.class}: Exception while running: #{x.message}, #{x.backtrace.join(', ')}")
     false
   end
+
   def handle_response(http,name)
     instances = []
     if http.response_header.status == 200
@@ -65,53 +75,33 @@ class VCAP::Services::Backup::Rotator
 
   def request_service_ins_fibered(uri)
     f = Fiber.current
-    http = EM::HttpRequest.new(uri).get(@@req)
-    http.errback  { f.resume([false,http]) }
-    http.callback { f.resume([true,http]) }
+    http = EM::HttpRequest.new(uri).get(REQ_HEADER)
+    http.errback  { f.resume([false, http]) }
+    http.callback { f.resume([true,  http]) }
     Fiber.yield
-  end
-
-  def request_service_ins(uri,name)
-    http = EM::HttpRequest.new(uri).get(@@req)
-    http.callback do
-      handle_response(http,name)
-      EM.stop
-    end
-    http.errback do
-      @manager.logger.error("Error at fetching handle at #{uri} ans: #{http.error}")
-      EM.stop
-    end
   end
 
   def get_live_service_ins
     cc_uri = @options[:cloud_controller_uri]||"api.vcap.me"
     cc_uri = "http://#{cc_uri}" if !cc_uri.start_with?("http://")
     @serv_ins = {}
+
     @options[:services].each do |name,svc|
       version = svc['version']
       uri = "#{cc_uri}/services/v1/offerings/#{name}-#{version}/handles"
-      @@req[:head]['X-VCAP-Service-Token'] = svc['token']||'0xdeadbeef'
-      if EM.reactor_running?
-        res = request_service_ins_fibered(uri)
-        if res[0]
-          handle_response(res[1],name)
-        else
-          @manager.logger.error("Error at fetching handle at #{uri} ans: #{res[1].error}")
-        end
+      REQ_HEADER[:head]['X-VCAP-Service-Token'] = svc['token']||'0xdeadbeef'
+      result, http = request_service_ins_fibered(uri)
+      if result
+        handle_response(http, name)
       else
-        EM.run{
-          request_service_ins(uri,name)
-        }
+        @manager.logger.error("Error at fetching handle at #{uri} ans: #{http}")
       end
-      if @manager.shutdown?
-        raise Interrupt, "Interrupted"
-      end
+
+      raise Interrupt, "Interrupted" if @manager.shutdown?
     end if @options[:services]
   rescue => e
     @manager.logger.error "Failed to get_live_service_ins #{e.message}"
   end
-
-
 
   def scan(service)
     @manager.logger.info("#{self.class}: Scanning #{service}");
@@ -120,10 +110,10 @@ class VCAP::Services::Backup::Rotator
     ins_list = @serv_ins[File.basename(service)]
     # we are expecting the directory structure to look like this
     # root/service/ab/cd/ef/abcdef.../timestamp/data
-    each_subdirectory(service) { |ab|
-      each_subdirectory(ab) { |cd|
-        each_subdirectory(cd) { |ef|
-          each_subdirectory(ef) { |guid|
+    each_subdirectory(service) do |ab|
+      each_subdirectory(ab) do |cd|
+        each_subdirectory(cd) do |ef|
+          each_subdirectory(ef) do |guid|
             if ins_list && !ins_list.include?(File.basename(guid))
               if 'mysql' == File.basename(service)
                 mysql_extra_prunes |= Dir.entries(guid).delete_if{|x| dotty(x)}
@@ -135,10 +125,10 @@ class VCAP::Services::Backup::Rotator
               end
               rotate(guid)
             end
-          }
-        }
-      }
-    }
+          end
+        end
+      end
+    end
     # special case: for mysql we should take care of system data
     # $root/mysql/{information_schema|mysql}/timestamp
     if service == File.join(@manager.root, "mysql")
@@ -159,14 +149,14 @@ class VCAP::Services::Backup::Rotator
   def rotate(dir)
     if File.directory? dir then
       backups = {}
-      each_subdirectory(dir) { |backup|
+      each_subdirectory(dir) do |backup|
         timestamp = validate(backup)
         if timestamp
           backups[timestamp] = backup
         else
           @manager.logger.warn("Ignoring invalid backup #{backup}")
         end
-      }
+      end
       prune_all(backups)
     else
       @manager.logger.error("#{self.class}: #{dir} does not exist");
@@ -198,20 +188,20 @@ class VCAP::Services::Backup::Rotator
       end
     else
       midnight = n_midnights_ago(0)
-      backups.each { |timestamp,path|
+      backups.each do |timestamp, path|
         retain(path, timestamp) if timestamp >= midnight
-      }
-      bucketize(backups).each { |bucket|
+      end
+      bucketize(backups).each do |bucket|
         newest = bucket.max
-        bucket.each { |timestamp|
+        bucket.each do |timestamp|
           path = backups[timestamp]
           if timestamp == newest && timestamp >= ancient
             retain(path, timestamp)
           else
             prune(path, timestamp)
           end
-        }
-      }
+        end
+      end
     end
   end
 
@@ -233,22 +223,18 @@ class VCAP::Services::Backup::Rotator
     buckets
   end
 
-  ONE_DAY = 24*60*60
-
   def n_midnights_ago(n)
     t = Time.at(@manager.time)
     t = t - t.utc_offset # why oh why does Time.at assume local timezone?!
     _, _, _, d, m, y = t.to_a
     t = Time.utc(y, m, d)
-    t = t - n*ONE_DAY
+    t = t - n * ONE_DAY
     t.to_i
   end
 
   def retain(path, timestamp)
     @manager.logger.debug("Retaining #{path} from #{Time.at(timestamp)}")
-    if @manager.shutdown?
-      raise Interrupt, "Interrupted"
-    end
+    raise Interrupt, "Interrupted" if @manager.shutdown?
   end
 
   def prune(path, timestamp=nil )
@@ -268,9 +254,7 @@ class VCAP::Services::Backup::Rotator
   rescue => x
     @manager.logger.error("Could not prune #{path}: #{x.to_s}")
   ensure
-    if @manager.shutdown?
-      raise Interrupt, "Interrupted"
-    end
+    raise Interrupt, "Interrupted" if @manager.shutdown?
   end
 
   def rmdashr(path)

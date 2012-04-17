@@ -24,8 +24,8 @@ Gem::Specification.new do |s|
   s.add_dependency "sinatra", "~> 1.2.3"
   s.add_dependency "thin", "~> 1.3.1"
   s.add_dependency "vcap_common", ">= 1.0.8"
-  s.add_dependency "logging", ">= 1.5.0"
   s.add_dependency "vcap_logging", ">=0.1.3"
-  s.add_dependency "resque-status", "~> 0.2.4"
+  s.add_dependency "resque", "~> 1.20"
+  s.add_dependency "resque-status", "~> 0.3.2"
   s.add_dependency "curb", "~> 0.7.16"
 end

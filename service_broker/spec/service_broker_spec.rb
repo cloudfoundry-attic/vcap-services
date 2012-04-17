@@ -23,6 +23,11 @@ describe "Service Broker" do
 
   before :all do
     @config = load_config
+    db_conf = @config[:local_db]
+    if db_conf.include?("/")
+      dir = db_conf[db_conf.index(":")+1..db_conf.rindex("/")-1]
+      FileUtils.mkdir_p(dir) unless File.exists?(dir)
+    end
     @rack_env = {
       "CONTENT_TYPE" => Rack::Mime.mime_type('.json'),
       "HTTP_X_VCAP_SERVICE_TOKEN" =>  @config[:token],
