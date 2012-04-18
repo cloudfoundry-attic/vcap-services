@@ -37,7 +37,7 @@ GEM
       fastercsv (~> 1.5.4)
       json (~> 1.4.6)
     dm-sqlite-adapter (1.1.0)
-      dm-do-adapter (~> 1.1.0)
+      dm-do-adapter (~> 1.2.0)
       do_sqlite3 (~> 0.10.2)
     dm-timestamps (1.1.0)
       dm-core (~> 1.1.0)
@@ -62,6 +62,7 @@ GEM
     eventmachine (0.12.11.cloudfoundry.3)
     eventmachine_httpserver (0.2.1)
     fastercsv (1.5.4)
+    ffi (1.0.11)
     json (1.4.6)
     json_pure (1.6.5)
     macaddr (1.5.0)
@@ -109,6 +110,8 @@ GEM
       rack (~> 1.1)
       tilt (>= 1.2.2, < 2.0)
     stringex (1.2.2)
+    sys-filesystem (1.0.0)
+      ffi (>= 1.0.0)
     systemu (2.5.0)
     thin (1.3.1)
       daemons (>= 1.0.9)
@@ -164,6 +167,7 @@ DEPENDENCIES
   simplecov
   simplecov-rcov
   sinatra
+  sys-filesystem
   thin
   uuidtools
   vcap_common (~> 1.0.8)

@@ -21,6 +21,10 @@ require "vblob_service/common"
 require "vblob_service/vblob_error"
 require "vblob_service/vblob_utils"
 
+require "sys/filesystem"
+require "find"
+include Sys
+
 module VCAP
   module Services
     module VBlob
@@ -341,30 +345,38 @@ class VCAP::Services::VBlob::Node
   end
 
   def varz_details
-    # Do disk summary
-    du_hash = {}
-    du_all_out = `cd #{@base_dir}; du -sk * 2> /dev/null`
-    du_entries = du_all_out.split("\n")
-    du_entries.each do |du_entry|
-      size, dir = du_entry.split("\t")
-      size = size.to_i * 1024 # Convert to bytes
-      du_hash[dir] = size
-    end
+    varz = {}
 
-    # Get meta db.stats
-    stats = []
-    ProvisionedService.all.each do |provisioned_service|
-      stat = {}
-      # TODO: get stat from vblob services
-      stat['name'] = provisioned_service.name
-      stats << stat
+    varz[:max_capacity] = @max_capacity
+    varz[:available_capacity] = @capacity
+
+    # varz[:disk]: records the side of files in each subfolder
+    du = {}
+    Dir.glob(File.join(@base_dir, "*/")).each do |sub_dir|
+      dir_size = 0
+      Find.find(sub_dir) {|f| dir_size += File.stat(f).size}
+      du[sub_dir] = dir_size
     end
-    {
-      :running_services     => stats,
-      :disk                 => du_hash,
-      :max_capacity         => @max_capacity,
-      :available_capacity     => @capacity
-    }
+    varz[:disk] = du
+
+    # varz[:running_services]: vblob services stats
+    stats = []
+    ProvisionedService.all.each {|provisioned_service| stats << provisioned_service.name}
+    varz[:running_services] = stats
+
+    # check NFS disk free space
+    free_space = 0
+    begin
+      stats = Filesystem.stat("#{@base_dir}")
+      avail_blocks = stats.blocks_available
+      total_blocks = stats.blocks
+      free_space = format("%.2f", avail_blocks.to_f / total_blocks.to_f * 100)
+    rescue => e
+      @logger.error("Failed to get filesystem info of #{@base_dir}: #{e}")
+    end
+    varz[:nfs_free_space] = free_space
+
+    varz
   end
 
   def healthz_details
