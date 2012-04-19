@@ -28,7 +28,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @nodes     = {}
     @provision_refs = Hash.new(0)
     @prov_svcs = {}
-    @handles_for_check_orphan = {}
+    @instance_handles_CO = {}
+    @binding_handles_CO = {}
     @plan_mgmt = options[:plan_management] && options[:plan_management][:plans] || {}
     reset_orphan_stat
 
@@ -145,17 +146,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Received node handles")
     response = NodeHandlesReport.decode(msg)
     nid = response.node_id
+    @staging_orphan_instances[nid] ||= []
+    @staging_orphan_bindings[nid] ||= []
     response.instances_list.each do |ins|
-      @staging_orphan_instances[nid] ||= []
-      @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
+      @staging_orphan_instances[nid] << ins unless @instance_handles_CO.has_key?(ins)
     end
     response.bindings_list.each do |bind|
-      @staging_orphan_bindings[nid] ||= []
-      @staging_orphan_bindings[nid] << bind unless @handles_for_check_orphan.index do |h|
-        instance = h["credentials"]["name"]
-        username = h["credentials"]["username"] || h["credentials"]["user"]
-        instance == bind["name"] && username == bind["username"]
-      end
+      key = bind["name"].concat(bind["username"] || bind["user"])
+      @staging_orphan_bindings[nid] << bind unless @binding_handles_CO.has_key?(key)
     end
     oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
     ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
@@ -164,10 +162,28 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.warn("Exception at on_node_handles #{e}")
   end
 
+  def indexing_handles(handles)
+    # instance handles hash's key is service_id, value is handle
+    # binding handles hash's key is credentials name & username, value is handle
+    ins_handles = {}
+    bin_handles = {}
+
+    handles.each do |h|
+      if h["service_id"] == h["credentials"]["name"]
+        ins_handles[h["service_id"]] = h
+      else
+        key = h["credentials"]["name"].concat(h["credentials"]["username"] || h["credentials"]["user"])
+        bin_handles[key] = h
+      end
+    end
+
+    [ins_handles, bin_handles]
+  end
+
   def check_orphan(handles, &blk)
     @logger.debug("[#{service_description}] Check if there are orphans")
     reset_orphan_stat
-    @handles_for_check_orphan = handles.deep_dup
+    @instance_handles_CO, @binding_handles_CO = indexing_handles(handles.deep_dup)
     @node_nats.publish("#{service_name}.check_orphan","Send Me Handles")
     blk.call(success)
   rescue => e
@@ -181,20 +197,18 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def double_check_orphan(handles)
     @logger.debug("[#{service_description}] Double check the orphan result")
+    ins_handles, bin_handles = indexing_handles(handles)
     @staging_orphan_instances.each do |nid, oi_list|
+      @final_orphan_instances[nid] ||= []
       oi_list.each do |oi|
-        @final_orphan_instances[nid] ||= []
-        @final_orphan_instances[nid] << oi unless handles.index { |h| h["service_id"] == oi }
+        @final_orphan_instances[nid] << oi unless ins_handles.has_key?(oi)
       end
     end
     @staging_orphan_bindings.each do |nid, ob_list|
+      @final_orphan_bindings[nid] ||= []
       ob_list.each do |ob|
-        @final_orphan_bindings[nid] ||= []
-        @final_orphan_bindings[nid] << ob unless handles.index do |h|
-          instance = h["credentials"]["name"]
-          username = h["credentials"]["username"] || h["credentials"]["user"]
-          instance == ob["name"] && username == ob["username"]
-        end
+        key = ob["name"].concat(ob["username"] || ob["user"])
+        @final_orphan_bindings[nid] << ob unless bin_handles.has_key?(key)
       end
     end
     oi_count = @final_orphan_instances.values.reduce(0) { |m, v| m += v.count }
