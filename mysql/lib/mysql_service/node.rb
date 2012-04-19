@@ -19,6 +19,7 @@ module VCAP
 end
 
 require "mysql_service/common"
+require "mysql_service/mysql2_timeout"
 require "mysql_service/util"
 require "mysql_service/storage_quota"
 require "mysql_service/mysql_error"
@@ -64,11 +65,16 @@ class VCAP::Services::Mysql::Node
     @statistics_lock = Mutex.new
     @provision_served = 0
     @binding_served = 0
+
+    @connection_wait_timeout = options[:connection_wait_timeout]
+    Mysql2::Client.default_timeout = @connection_wait_timeout
   end
 
   def pre_send_announcement
     @pool = mysql_connect
-    EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {mysql_keep_alive}
+    keep_alive_interval = KEEP_ALIVE_INTERVAL
+    keep_alive_interval = [keep_alive_interval, @connection_wait_timeout.to_f/2].min if @connection_wait_timeout
+    EM.add_periodic_timer(keep_alive_interval) {mysql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f/2) {kill_long_queries} if @max_long_query > 0
     if (@max_long_tx > 0) and (check_innodb_plugin)
       EM.add_periodic_timer(@max_long_tx.to_f/2) {kill_long_transaction}
