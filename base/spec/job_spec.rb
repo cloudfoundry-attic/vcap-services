@@ -85,4 +85,21 @@ describe VCAP::Services::Base::AsyncJob::Lock do
     ran_once.should be_true
     (@stored_value == start - 1).should_not be_true
   end
+
+  it "should not update expiration time after the lock is released" do
+    start = Time.now.to_f
+
+    @redis.should_receive(:watch).with(@name).any_number_of_times
+    @redis.should_receive(:multi).any_number_of_times.and_yield
+
+    expiration = 0.5
+    lock = VCAP::Services::Base::AsyncJob::Lock.new(@name,:timeout => @timeout, :expiration => expiration, :logger => @logger)
+
+    ran_once = false
+    lock.lock{ran_once = true; sleep expiration *2 }
+
+    current_value = @stored_value
+    sleep expiration * 2
+    current_value.should == @stored_value
+  end
 end
