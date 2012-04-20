@@ -5,6 +5,7 @@ require 'mysql_service/node'
 require 'mysql_service/mysql_error'
 require 'mysql2'
 require 'yajl'
+require 'fileutils'
 
 
 module VCAP
@@ -38,6 +39,7 @@ describe "Mysql server node" do
       @node = Node.new(@opts)
       EM.add_timer(1) { EM.stop }
     end
+    @tmpfiles = []
   end
 
   before :each do
@@ -421,6 +423,7 @@ describe "Mysql server node" do
       res = conn.query("show tables")
       res.count().should == 1
       res.first["Tables_in_#{db['name']}"].should == "test"
+      @tmpfiles << tmp_file
       EM.stop
     end
   end
@@ -449,6 +452,7 @@ describe "Mysql server node" do
         line = f.each_line.find {|line| line =~ /MyTestTable/}
         line.should_not be nil
       end
+      @tmpfiles << File.join("/tmp", "#{@db['name']}.sql")
       EM.stop
     end
   end
@@ -462,6 +466,7 @@ describe "Mysql server node" do
       @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_mysql(db)
       expect { conn.query('SELECT 1')}.should_not raise_error
+      @tmpfiles << File.join("/tmp", "#{db['name']}.sql")
       EM.stop
     end
   end
@@ -669,7 +674,7 @@ describe "Mysql server node" do
     end
   end
 
-  after:each do
+  after :each do
     @test_dbs.keys.each do |db|
       begin
         name = db["name"]
@@ -679,5 +684,11 @@ describe "Mysql server node" do
         @node.logger.info("Error during cleanup #{e}")
       end
     end if @test_dbs
+  end
+
+  after :all do
+    @tmpfiles.each do |tmpfile|
+      FileUtils.rm_r tmpfile
+    end
   end
 end
