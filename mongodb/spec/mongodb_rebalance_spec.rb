@@ -20,20 +20,6 @@ describe "mongodb rebalance" do
     FileUtils.rm_rf(File.dirname(@opts[:base_dir]))
   end
 
-  it "should be able to enable instance" do
-    @node.disable_instance(
-            @resp,
-            { '' => { 'credentials' => @bind_resp } },
-          )
-    res = @node.enable_instance(
-            @resp,
-            { '' => { 'credentials' => @bind_resp } },
-          )
-    res.should == true
-    sleep 1
-    is_port_open?('127.0.0.1', @resp['port']).should be_true
-  end
-
   it "should be able to disable instance" do
     resp = @node.provision("free")
     p_service = @node.get_instance(resp['name'])

@@ -7,8 +7,10 @@ describe "mongodb backup/restore"  do
   before :all do
     @opts = get_node_config()
     @logger = @opts[:logger]
+    @opts[:local_db] = 'sqlite3:/tmp/mongo/mongodb_node1.db'
 
-    BINARY_DIR = File.dirname(@opts[:mongod_path])
+    bin_dir = File.dirname(@opts[:mongod_path])
+    BINARY_DIR = bin_dir == '.' ? '' : bin_dir
     MONGOD_LOG = @opts[:mongod_log_dir]
 
     @config_template = ERB.new(File.read(TEMPLATE_FILE))

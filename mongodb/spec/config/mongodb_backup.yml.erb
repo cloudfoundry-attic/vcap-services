@@ -1,8 +1,8 @@
 service_name: mongodb
 backup_base_dir: <%= BACKUP_DIR %>
-local_db: sqlite3:/tmp/mongo/mongodb_node.db
+local_db: sqlite3:/tmp/mongo/mongodb_node1.db
 base_dir: /tmp/mongo/instances
-mongodump_path: <%= BINARY_DIR %>/mongodump
+mongodump_path: <%= BINARY_DIR %>mongodump
 mongod_log_dir: <%= MONGOD_LOG %>
 image_dir: /tmp/mongo/images
 timeout: 10

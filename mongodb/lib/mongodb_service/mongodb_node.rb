@@ -255,12 +255,9 @@ class VCAP::Services::MongoDB::Node
 
   def enable_instance(service_credential, binding_credentials)
     @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
-    service_id = service_credential["name"]
-    provisioned_service = ProvisionedService.get(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential["name"]) if provisioned_service.nil?
-    pid = start_instance(provisioned_service)
-    provisioned_service.pid = pid
-    raise "Cannot save provision_service" unless provisioned_service.save
+    p_service = ProvisionedService.get(service_credential['name'])
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if p_service.nil?
+    p_service.run unless p_service.running?
     true
   rescue => e
     @logger.warn(e)
