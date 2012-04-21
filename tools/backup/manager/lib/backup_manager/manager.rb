@@ -2,6 +2,7 @@
 $LOAD_PATH.unshift File.dirname(__FILE__)
 
 require 'rotator'
+require 'snapshot_cleaner'
 
 module VCAP
   module Services
@@ -19,11 +20,15 @@ class VCAP::Services::Backup::Manager < VCAP::Services::Base::Base
     @logger.info("#{self.class}: Initializing")
     @wakeup_interval = options[:wakeup_interval]
     @mountpoint = options[:root]
-    @root = File.join(options[:root], "backups")
-    @tasks = [
-      VCAP::Services::Backup::Rotator.new(self, options[:rotation])
-    ]
+    @root = File.join(options[:root], options[:target])
+    @tasks = []
+    if options[:target] == "backups"
+      @tasks << VCAP::Services::Backup::Rotator.new(self, options[:rotation])
+    elsif options[:target] == "snapshots"
+      @tasks << VCAP::Services::Backup::SnapshotCleaner.new(self, options[:cleanup])
+    end
     @enable = options[:enable]
+    @service_name = options[:service_name]
     @shutdown = false
     @run_lock = Mutex.new
 
@@ -91,7 +96,7 @@ class VCAP::Services::Backup::Manager < VCAP::Services::Base::Base
   end
 
   def service_name
-    "BackupManager"
+    @service_name
   end
   alias_method :service_description, :service_name
 
