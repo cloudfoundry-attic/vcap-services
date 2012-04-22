@@ -337,7 +337,7 @@ describe VCAP::Services::Rabbit::Node do
       sleep 1
       @binding_credentials_list.each do |credentials|
         admin_credentials = {"username" => credentials["username"], "password" => credentials["password"], "admin_port" => credentials["port"] + @node.port_gap}
-        expect {@node.get_permissions(admin_credentials, credentials["vhost"], credentials["user"])}.should raise_error(VCAP::Services::Rabbit::RabbitError)
+        expect {@node.get_permissions(admin_credentials, credentials["vhost"], credentials["user"])}.should raise_error(RestClient::Unauthorized)
       end
     end
 
