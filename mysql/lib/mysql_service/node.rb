@@ -102,9 +102,10 @@ class VCAP::Services::Mysql::Node
     res = []
     all_ins_users = ProvisionedService.all.map{|s| s.user}
     @pool.with_connection do |connection|
-      connection.query('select DISTINCT user.user,db,password from user, db where user.user = db.user and length(user.user) > 0').each do |entry|
+      # we can't query plaintext password from mysql since it's encrypted.
+      connection.query('select DISTINCT user.user,db from user, db where user.user = db.user and length(user.user) > 0').each do |entry|
         # Filter out the instances handles
-        res << gen_credential(entry["name"], entry["user"], entry["password"]) unless all_ins_users.include?(entry["user"])
+        res << gen_credential(entry["db"], entry["user"], "fake-password") unless all_ins_users.include?(entry["user"])
       end
     end
     res
@@ -301,6 +302,7 @@ class VCAP::Services::Mysql::Node
 
       begin
         create_database_user(name, binding[:user], binding[:password])
+        enforce_instance_storage_quota(service)
       rescue Mysql2::Error => e
         raise "Could not create database user: [#{e.errno}] #{e.error}"
       end
@@ -509,6 +511,20 @@ class VCAP::Services::Mysql::Node
   # Refer to #disable_instance
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
+    prov_cred = bind(prov_cred["name"], nil, prov_cred)
+    binding_creds_hash.each_value do |v|
+      cred = v["credentials"]
+      binding_opts = v["binding_options"]
+      bind(v["credentials"]["name"], v["binding_options"], v["credentials"])
+    end
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def update_instance(prov_cred, binding_creds_hash)
+    @logger.debug("Update instance #{prov_cred["name"]} handles request.")
     name = prov_cred["name"]
     prov_cred = bind(name, nil, prov_cred)
     binding_creds_hash.each_value do |v|
@@ -516,7 +532,7 @@ class VCAP::Services::Mysql::Node
       binding_opts = v["binding_options"]
       v["credentials"] = bind(name, binding_opts, cred)
     end
-    return [prov_cred, binding_creds_hash]
+    [prov_cred, binding_creds_hash]
   rescue => e
     @logger.warn(e)
     []
@@ -527,7 +543,7 @@ class VCAP::Services::Mysql::Node
     @logger.debug("Execute shell cmd:[#{cmd}]")
     o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
     if s.exitstatus == 0
-      @logger.info("Execute cmd:[#{cmd}] successd.")
+      @logger.info("Execute cmd:[#{cmd}] succeeded.")
     else
       @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
     end

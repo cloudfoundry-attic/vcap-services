@@ -27,7 +27,6 @@ class VCAP::Services::VBlob::NodeBin < VCAP::Services::Base::NodeBin
     options[:vblobd_log_dir] = parse_property(config, "vblobd_log_dir", String)
     options[:vblobd_path] = parse_property(config, "vblobd_path", String)
     options[:vblobd_auth] = parse_property(config, "vblobd_auth", String)
-    options[:max_memory] = parse_property(config, "max_memory", Integer)
     options
   end
 

@@ -4,8 +4,8 @@ base_dir: /var/vcap/services/redis/instances
 snapshots_base_dir: /var/vcap/services/
 serialization_base_dir: /var/vcap/services/
 local_db: sqlite3:/var/vcap/services/redis/redis_node.db
-pid: /var/vcap/sys/run/redis_worker.pid
 # Temp directory to save uploaded file
+snapshot_quota: 5
 tmp_dir: /tmp
 resque:
   host: localhost
@@ -13,7 +13,6 @@ resque:
 index: 0
 node_id: redis_node_free_1
 download_url_template: http://dl.vcap.me/serialized/#{service}/#{name}?token=#{token}
-worker_count: 5
 logging:
   level: debug
 # addtional options

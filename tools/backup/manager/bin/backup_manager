@@ -6,38 +6,15 @@ ENV["BUNDLE_GEMFILE"] ||= File.join(File.dirname(__FILE__), "..", "Gemfile")
 require "rubygems"
 require "bundler/setup"
 require "set"
-require "logger"
-require 'logging'
-
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
+require 'vcap_services_base'
 require 'vcap/logging'
 
+DEFAULT_ROTATION_MAX_DAYS = 7
+DEFAULT_WAKEUP_INTERVAL = 60 * 60 # one hour
+DEFAULT_Z_INTERVAL = 30
+
 once = false
-daemon = false
 config_file = File.join(File.dirname(__FILE__), "..", "config", "backup_manager.yml")
-
-OptionParser.new do |opts|
-  opts.banner = "Usage: backup_manager [options]"
-  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
-    config_file = opt
-  end
-  opts.on("-d", "--[no-]daemon", "Run as a daemon") do |opt|
-    daemon = opt
-  end
-  opts.on("-o", "--once", "Run once") do |opt|
-    once = opt
-  end
-  opts.on("-h", "--help", "Help") do
-    puts opts
-    exit
-  end
-end.parse!
-
-begin
-  config = YAML.load_file(config_file)
-rescue => e
-  raise "Could not read configuration file:  #{e}"
-end
 
 def parse_property(hash, key, type, options = {})
   obj = hash[key]
@@ -55,29 +32,47 @@ def parse_property(hash, key, type, options = {})
   end
 end
 
+OptionParser.new do |opts|
+  opts.banner = "Usage: backup_manager [options]"
+  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+    config_file = opt
+  end
+  opts.on("-o", "--once", "Run once") do |opt|
+    once = opt
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+begin
+  config = YAML.load_file(config_file)
+rescue => e
+  raise "Could not read configuration file:  #{e}"
+end
+
 VCAP::Logging.setup_from_config(config["logging"])
-# Use the running binary name for logger identity name.
 logger = VCAP::Logging.logger(File.basename($0))
 
-DEFAULT_ROTATION_MAX_DAYS = 7
-rotation = parse_property(config, "rotation", Hash, :optional => true) || Hash.new
-rotation ||= {}
+rotation = parse_property(config, "rotation", Hash, :optional => true) || {}
 rotation = rotation.inject({}){|m,(k,v)| m[k.to_sym] = v;m}
 rotation[:max_days] ||= DEFAULT_ROTATION_MAX_DAYS
 
-DEFAULT_WAKEUP_INTERVAL = 60*60 # one hour
-
 options = {
   :once => once,
-  :daemon => daemon,
   :logger => logger,
   :root => parse_property(config, "root", String),
   :wakeup_interval => parse_property(config, "wakeup_interval", Integer, :optional => true) || DEFAULT_WAKEUP_INTERVAL,
   :rotation => rotation,
+  :mbus => parse_property(config, "mbus", String),
+  :z_interval => parse_property(config, "z_interval", Integer, :optional => true) || DEFAULT_Z_INTERVAL,
   :enable => parse_property(config, "enable", Object, :optional => true) || false
 }
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "lib")
 require 'backup_manager/manager'
 
-VCAP::Services::Backup::Manager.new(options).start
+EM.run do
+  VCAP::Services::Backup::Manager.new(options).start
+end

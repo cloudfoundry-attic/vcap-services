@@ -24,12 +24,12 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     z_interval = options[:z_interval] || 30
     EM.add_periodic_timer(z_interval) do
       EM.defer { update_varz }
-    end
+    end if @node_nats
 
     # Defer 5 seconds to give service a change to wake up
     EM.add_timer(5) do
       EM.defer { update_varz }
-    end
+    end if @node_nats
   end
 
   def flavor
@@ -40,7 +40,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Connected to node mbus")
 
     %w[provision unprovision bind unbind restore disable_instance
-      enable_instance import_instance cleanup_nfs purge_orphan
+      enable_instance import_instance update_instance cleanupnfs_instance purge_orphan
     ].each do |op|
       eval %[@node_nats.subscribe("#{service_name}.#{op}.#{@node_id}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
     end
@@ -134,46 +134,111 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     publish(reply, encode_failure(response, e))
   end
 
-  # disable and dump instance
+  # Disable and dump instance
   def on_disable_instance(msg, reply)
     @logger.debug("#{service_description}: Disable instance #{msg} request from #{reply}")
-    credentials = Yajl::Parser.parse(msg)
-    prov_cred, binding_creds = credentials
-    instance = prov_cred['name']
-    file_path = get_migration_folder(instance)
+    response = SimpleResponse.new
+    request = Yajl::Parser.parse(msg)
+    prov_handle, binding_handles = request
+    prov_cred = prov_handle["credentials"]
+    binding_creds = get_all_bindings(binding_handles)
+    file_path = get_migration_folder(prov_handle["service_id"])
     FileUtils.mkdir_p(file_path)
     result = disable_instance(prov_cred, binding_creds)
-    result = dump_instance(prov_cred, binding_creds, file_path) if result
-    publish(reply, Yajl::Encoder.encode(result))
+    if result
+      # Do dump together with disable for simpler migration logic
+      result = dump_instance(prov_cred, binding_creds, file_path)
+      if result
+        publish(reply, encode_success(response))
+      else
+        publish(reply, encode_failure(response))
+      end
+    else
+      publish(reply, encode_failure(response))
+    end
   rescue => e
     @logger.warn("Exception at on_disable_instance #{e}")
+    publish(reply, encode_failure(response, e))
   end
 
-  # enable instance and send updated credentials back
+  # Enable instance, the opposite operation of disable
   def on_enable_instance(msg, reply)
     @logger.debug("#{service_description}: enable instance #{msg} request from #{reply}")
-    credentials = Yajl::Parser.parse(msg)
-    prov_cred, binding_creds_hash = credentials
+    response = SimpleResponse.new
+    request = Yajl::Parser.parse(msg)
+    prov_handle, binding_handles = request
+    prov_cred = prov_handle["credentials"]
+    binding_creds_hash = get_all_bindings_with_option(binding_handles)
     result = enable_instance(prov_cred, binding_creds_hash)
-    # Update node_id in provision credentials..
-    prov_cred, binding_creds_hash = result
-    prov_cred['node_id'] = @node_id
-    result = [prov_cred, binding_creds_hash]
-    publish(reply, Yajl::Encoder.encode(result))
+    if result
+      publish(reply, encode_success(response))
+    else
+      publish(reply, encode_failure(response))
+    end
   rescue => e
     @logger.warn("Exception at on_enable_instance #{e}")
+    publish(reply, encode_failure(response, e))
+  end
+
+  # Import the generated data
+  def on_import_instance(msg, reply)
+    @logger.debug("#{service_description}: import instance #{msg} request from #{reply}")
+    response = SimpleResponse.new
+    request = Yajl::Parser.parse(msg)
+    prov_handle, binding_handles = request
+    prov_cred = prov_handle["credentials"]
+    binding_creds_hash = get_all_bindings_with_option(binding_handles)
+    plan = prov_handle["configuration"]["plan"]
+    file_path = get_migration_folder(prov_handle["service_id"])
+    result = import_instance(prov_cred, binding_creds_hash, file_path, plan)
+    if result
+      publish(reply, encode_success(response))
+    else
+      publish(reply, encode_failure(response))
+    end
+  rescue => e
+    @logger.warn("Exception at on_import_instance #{e}")
+    publish(reply, encode_failure(response, e))
+  end
+
+  # Update credentials in destination node of migration
+  def on_update_instance(msg, reply)
+    @logger.debug("#{service_description}: update instance #{msg} request from #{reply}")
+    request = Yajl::Parser.parse(msg)
+    prov_handle, binding_handles = request
+    prov_cred = prov_handle["credentials"]
+    binding_creds_hash = get_all_bindings_with_option(binding_handles)
+    result = update_instance(prov_cred, binding_creds_hash)
+    # Need decrease the capacity in destination node when finish migration
+    @capacity_lock.synchronize{ @capacity -= capacity_unit }
+    prov_cred, binding_creds_hash = result
+    # Update node_id in provision credentials
+    prov_cred["node_id"] = @node_id
+    handles = []
+    prov_handle["credentials"] = prov_cred
+    handles << prov_handle
+    binding_handles.each do |handle|
+      handle["credentials"] = binding_creds_hash[handle["service_id"]]["credentials"]
+      handles << handle
+    end
+    publish(reply, Yajl::Encoder.encode(handles))
+  rescue => e
+    @logger.warn("Exception at on_update_instance #{e}")
+    response = SimpleResponse.new
+    publish(reply, encode_failure(response, e))
   end
 
   # Cleanup nfs folder which contains migration data
-  def on_cleanup_nfs(msg, reply)
+  def on_cleanupnfs_instance(msg, reply)
     @logger.debug("#{service_description}: cleanup nfs request #{msg} from #{reply}")
+    response = SimpleResponse.new
     request = Yajl::Parser.parse(msg)
-    prov_cred, binding_creds = request
-    instance = prov_cred['name']
-    FileUtils.rm_rf(get_migration_folder(instance))
-    publish(reply, Yajl::Encoder.encode(true))
+    prov_handle, _ = request
+    FileUtils.rm_rf(get_migration_folder(prov_handle["service_id"]))
+    publish(reply, encode_success(response))
   rescue => e
-    @logger.warn("Exception at on_cleanup_nfs #{e}")
+    @logger.warn("Exception at on_cleanupnfs_instance #{e}")
+    publish(reply, encode_failure(response, e))
   end
 
   # Send all handles to gateway to check orphan
@@ -206,7 +271,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     oi_list.each do |ins|
       begin
         @logger.debug("Unprovision orphan instance #{ins}")
-        unprovision(ins,[])
+        @capacity_lock.synchronize{ @capacity += capacity_unit } if unprovision(ins,[])
       rescue => e
         @logger.debug("Error on purge orphan instance #{ins}: #{e}")
       end
@@ -244,16 +309,25 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     File.join(@migration_nfs, 'migration', service_name, instance)
   end
 
-  def on_import_instance(msg, reply)
-    @logger.debug("#{service_description}: import instance #{msg} request from #{reply}")
-    credentials = Yajl::Parser.parse(msg)
-    plan, prov_cred, binding_creds_hash = credentials
-    instance = prov_cred['name']
-    file_path = get_migration_folder(instance)
-    result = import_instance(prov_cred, binding_creds_hash, file_path, plan)
-    publish(reply, Yajl::Encoder.encode(result))
-  rescue => e
-    @logger.warn("Exception at on_import_instance #{e}")
+  def get_all_bindings(handles)
+    binding_creds = []
+    handles.each do |handle|
+      binding_creds << handle["credentials"]
+    end
+    binding_creds
+  end
+
+  def get_all_bindings_with_option(handles)
+    binding_creds_hash = {}
+    handles.each do |handle|
+      value = {
+        "credentials" => handle["credentials"],
+        "binding_options" => nil
+      }
+      value["binding_options"] = handle["configuration"]["data"]["binding_options"] if handle["configuration"].has_key?("data")
+      binding_creds_hash[handle["service_id"]] = value
+    end
+    binding_creds_hash
   end
 
   def on_discover(msg, reply)
@@ -341,6 +415,6 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   # (inhereted from VCAP::Services::Base::Base)
 
   # <action>_instance(prov_credential, binding_credentials)  -->  true for success and nil for fail
-  abstract :disable_instance, :dump_instance, :import_instance, :enable_instance
+  abstract :disable_instance, :dump_instance, :import_instance, :enable_instance, :update_instance
 
 end

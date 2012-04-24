@@ -102,6 +102,8 @@ describe "Mongodb Node provision/unprovision" do
         connections << conn
       rescue Mongo::ConnectionFailure => e
         first_conn_refused = true
+        retry_count -= 1
+        retry if ( (i >= (available-1)) && (retry_count > 0))
       end
     end
 

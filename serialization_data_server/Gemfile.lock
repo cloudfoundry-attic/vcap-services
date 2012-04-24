@@ -7,10 +7,9 @@ GEM
     daemons (1.1.5)
     diff-lcs (1.1.3)
     eventmachine (0.12.11.cloudfoundry.3)
+    ffi (1.0.11)
     json_pure (1.6.5)
-    little-plugger (1.1.3)
-    logging (1.6.1)
-      little-plugger (>= 1.1.2)
+    multi_json (1.0.4)
     nats (0.4.22.beta.8)
       daemons (>= 1.1.4)
       eventmachine (>= 0.12.10)
@@ -33,10 +32,18 @@ GEM
     rspec-expectations (2.7.0)
       diff-lcs (~> 1.1.2)
     rspec-mocks (2.7.0)
+    simplecov (0.5.4)
+      multi_json (~> 1.0.3)
+      simplecov-html (~> 0.5.3)
+    simplecov-html (0.5.3)
+    simplecov-rcov (0.2.3)
+      simplecov (>= 0.4.1)
     sinatra (1.3.1)
       rack (~> 1.3, >= 1.3.4)
       rack-protection (~> 1.1, >= 1.1.2)
       tilt (~> 1.3, >= 1.3.3)
+    sys-filesystem (1.0.0)
+      ffi (= 1.0.11)
     thin (1.3.1)
       daemons (>= 1.0.9)
       eventmachine (>= 0.12.6)
@@ -57,14 +64,16 @@ PLATFORMS
 
 DEPENDENCIES
   ci_reporter
-  logging (>= 1.5.0)
   nats
   rack-test
   rake
   rcov
   redis
   rspec
+  simplecov
+  simplecov-rcov
   sinatra
+  sys-filesystem
   thin
   uuidtools
   vcap_common (>= 1.0.8)

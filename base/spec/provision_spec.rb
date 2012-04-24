@@ -301,6 +301,69 @@ describe ProvisionerTests do
     gateway.got_recover_response.should be_true
   end
 
+  it "should support migration" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_node(1, 2) }
+      Do.at(3) { gateway.send_provision_request }
+      Do.at(4) { gateway.send_migrate_request("node-1") }
+      Do.at(10) { EM.stop }
+    end
+    gateway.got_migrate_response.should be_true
+  end
+
+  it "should handle error in migration" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
+      Do.at(4) { gateway.send_migrate_request("node-1") }
+      Do.at(5) { EM.stop }
+    end
+    node.got_migrate_request.should be_true
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
+  end
+
+  it "should support get instance id list" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_node(1) }
+      Do.at(3) { gateway.send_provision_request }
+      Do.at(4) { gateway.send_instances_request("node-1") }
+      Do.at(5) { EM.stop }
+    end
+    gateway.got_instances_response.should be_true
+  end
+
+  it "should handle error in getting instance id list" do
+    provisioner = nil
+    gateway = nil
+    node = nil
+    EM.run do
+      Do.at(0) { provisioner = ProvisionerTests.create_provisioner }
+      Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+      Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+      Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
+      Do.at(4) { gateway.send_migrate_request("node-1") }
+      Do.at(5) { EM.stop }
+    end
+    gateway.error_msg['status'].should == 500
+    gateway.error_msg['msg']['code'].should == 30500
+  end
+
   it "should support varz" do
     provisioner = nil
     gateway = nil

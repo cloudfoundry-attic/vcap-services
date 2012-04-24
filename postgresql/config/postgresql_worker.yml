@@ -1,0 +1,25 @@
+---
+service_name: postgresql
+snapshots_base_dir: /var/vcap/services/
+serialization_base_dir: /var/vcap/services/
+local_db: sqlite3:/var/vcap/services/postgresql/postgresql_node.db
+snapshot_quota: 5
+# Temp directory to save uploaded file
+tmp_dir: /tmp
+resque:
+  host: localhost
+  port: 5454
+index: 0
+node_id: postgresql_node_free_1
+download_url_template: http://dl.vcap.me/serialized/#{service}/#{name}?token=#{token}
+logging:
+  level: debug
+# addtional options
+postgresql:
+  host: 127.0.0.1
+  port: 5432
+  user: vcap
+  pass: vcap
+  database: postgres
+restore_bin: pg_restore
+dump_bin: pg_dump

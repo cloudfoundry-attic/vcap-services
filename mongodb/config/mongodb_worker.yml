@@ -2,10 +2,9 @@ service_name: mongodb
 snapshots_base_dir: /var/vcap/services/
 serialization_base_dir: /var/vcap/services/
 local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
-pid: /var/vcap/sys/run/mongodb_worker.pid
+snapshot_quota: 5
 service_base_dir: /var/vcap/services/mongodb/instances/
 download_url_template: http://dl.vcap.me/serialized/#{service}/#{name}?token=#{token}
-worker_count: 5
 node_id: mongodb_node_free_1
 mongodump_path: mongodump
 mongorestore_path: mongorestore

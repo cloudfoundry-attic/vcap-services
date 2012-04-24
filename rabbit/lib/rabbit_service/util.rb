@@ -41,9 +41,6 @@ module VCAP
         def get_permissions(credentials, vhost, username)
           response = create_resource(credentials)["permissions/#{vhost}/#{username}"].get
           JSON.parse(response)
-        rescue => e
-          @logger.warn(e)
-          raise RabbitError.new(RabbitError::RABBIT_GET_PERMISSIONS_FAILED, username)
         end
 
         def set_permissions(credentials, vhost, username, permissions)
@@ -59,41 +56,26 @@ module VCAP
         def get_vhost_permissions(credentials, vhost)
           response = create_resource(credentials)["vhosts/#{vhost}/permissions"].get
           JSON.parse(response)
-        rescue => e
-          @logger.warn(e)
-          raise RabbitError.new(RabbitError::RABBIT_GET_VHOST_PERMISSIONS_FAILED, vhost)
         end
 
         def list_users(credentials)
           response = create_resource(credentials)["users"].get
           JSON.parse(response)
-        rescue => e
-          @logger.warn(e)
-          raise RabbitError.new(RabbitError::RABBIT_LIST_USERS_FAILED)
         end
 
         def list_queues(credentials, vhost)
           response = create_resource(credentials)["queues"].get
           JSON.parse(response)
-        rescue => e
-          @logger.warn(e)
-          raise RabbitError.new(RabbitError::RABBIT_LIST_QUEUES_FAILED, vhost)
         end
 
         def list_exchanges(credentials, vhost)
           response = create_resource(credentials)["exchanges"].get
           JSON.parse(response)
-        rescue => e
-          @logger.warn(e)
-          raise RabbitError.new(RabbitError::RABBIT_LIST_EXCHANGES_FAILED, vhost)
         end
 
         def list_bindings(credentials, vhost)
           response = create_resource(credentials)["bindings"].get
           JSON.parse(response)
-        rescue => e
-          @logger.warn(e)
-          raise RabbitError.new(RabbitError::RABBIT_LIST_BINDINGS_FAILED, vhost)
         end
 
         def close_fds

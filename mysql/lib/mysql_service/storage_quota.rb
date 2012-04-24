@@ -9,10 +9,12 @@ class VCAP::Services::Mysql::Node
 
   DATA_LENGTH_FIELD = 6
 
-  def dbs_size(connection)
-    result = connection.query('show databases')
-    dbs =[]
-    result.each {|db| dbs << db[0]}
+  def dbs_size(connection, dbs=[])
+    dbs = [] if dbs.nil?
+    if dbs.length == 0
+      result = connection.query('show databases')
+      result.each {|db| dbs << db[0]}
+    end
     sizes = connection.query(
       'SELECT table_schema "name",
        sum( data_length + index_length ) "size"
@@ -111,4 +113,28 @@ class VCAP::Services::Mysql::Node
                    e.backtrace.join("|"))
   end
 
+  # when binding a new application, should check whether to revoke the new user's write access for enforce_storage_quota may have set quota_exceeded already.
+  def enforce_instance_storage_quota(service)
+    begin
+      db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
+      sizes = nil
+      @pool.with_connection do |connection|
+        connection.query('use mysql')
+        sizes = dbs_size(connection, [db])
+      end
+      size = sizes[db]
+      return if size.nil?
+      if size >= @max_db_size then
+        revoke_write_access(db, service)
+        @logger.info("Instance storage quota exceeded :" + fmt_db_listing(user, db, size) +
+                     " -- access revoked")
+      elsif (size < @max_db_size) and quota_exceeded then
+        grant_write_access(db, service)
+        @logger.info("Below instance storage quota:" + fmt_db_listing(user, db, size) +
+                     " -- access restored")
+      end
+    rescue => e
+      @logger.warn("Fail to enforce the storage quota on #{service.name}: #{e}" + e.backtrace.join("|") )
+    end
+  end
 end

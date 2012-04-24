@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2009-2011 VMware, Inc.
-require "pp"
 require "set"
 require "datamapper"
 require "uuidtools"
@@ -15,14 +14,15 @@ require 'service_message'
 
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::Internal
-  include VCAP::Services::AsyncJob
-  include VCAP::Services::Snapshot
+  include VCAP::Services::Base::AsyncJob
+  include VCAP::Services::Base::AsyncJob::Snapshot
 
   BARRIER_TIMEOUT = 2
   MASKED_PASSWORD = '********'
 
   def initialize(options)
     super(options)
+    @opts = options
     @version   = options[:version]
     @node_timeout = options[:node_timeout]
     @nodes     = {}
@@ -36,12 +36,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
     EM.add_periodic_timer(z_interval) do
       update_varz
-    end
+    end if @node_nats
 
     # Defer 5 seconds to give service a change to wake up
     EM.add_timer(5) do
       update_varz
-    end
+    end if @node_nats
 
     EM.add_periodic_timer(60) { process_nodes }
   end
@@ -95,6 +95,15 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def pre_send_announcement
+    addition_opts = @opts[:additional_options]
+    if addition_opts
+      @upload_temp_dir = addition_opts[:upload_temp_dir]
+      if addition_opts[:resque]
+        # Initial AsyncJob module
+        job_repo_setup()
+        VCAP::Services::Base::AsyncJob::Snapshot.redis_connect
+      end
+    end
   end
 
   def on_connect_node
@@ -567,6 +576,91 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     blk.call(internal_fail)
   end
 
+  def migrate_instance(node_id, instance_id, action, &blk)
+    @logger.debug("[#{service_description}] Attempting to #{action} instance #{instance_id} in node #{node_id}")
+
+    begin
+      svc = @prov_svcs[instance_id]
+      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
+
+      binding_handles = []
+      @prov_svcs.each do |_, handle|
+        if handle[:service_id] != instance_id
+          binding_handles << handle if handle[:credentials]["name"] == instance_id
+        end
+      end
+      subscription = nil
+      message = nil
+      channel = nil
+      if action == "disable" || action == "enable" || action == "import" || action == "update" || action == "cleanupnfs"
+        channel = "#{service_name}.#{action}_instance.#{node_id}"
+        message = Yajl::Encoder.encode([svc, binding_handles])
+      elsif action == "unprovision"
+        channel = "#{service_name}.unprovision.#{node_id}"
+        bindings = find_all_bindings(instance_id)
+        request = UnprovisionRequest.new
+        request.name = instance_id
+        request.bindings = bindings
+        message = request.encode
+      elsif action == "check"
+        if node_id == svc[:credentials]["node_id"]
+          blk.call(success())
+          return
+        else
+          raise ServiceError.new(ServiceError::NOT_FOUND, instance_id)
+        end
+      else
+        raise ServiceError.new(ServiceError::NOT_FOUND, action)
+      end
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
+      subscription = @node_nats.request(channel, message) do |msg|
+        EM.cancel_timer(timer)
+        @node_nats.unsubscribe(subscription)
+        if action != "update"
+          response = SimpleResponse.decode(msg)
+          if response.success
+            blk.call(success())
+          else
+            blk.call(wrap_error(response))
+          end
+        else
+          handles = Yajl::Parser.parse(msg)
+          handles.each do |handle|
+            @update_handle_callback.call(handle) do |update_res|
+              if update_res
+                @logger.info("Migration: success to update handle: #{handle}")
+              else
+                @logger.error("Migration: failed to update handle: #{handle}")
+                blk.call(wrap_error(response))
+              end
+            end
+            blk.call(success())
+          end
+        end
+      end
+    rescue => e
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn("Exception at migrate_instance #{e}")
+        blk.call(internal_fail)
+      end
+    end
+  end
+
+  def get_instance_id_list(node_id, &blk)
+    @logger.debug("Get instance id list for migration")
+
+    id_list = []
+    @prov_svcs.each do |k, v|
+      id_list << k if (k == v[:credentials]["name"] && node_id == v[:credentials]["node_id"])
+    end
+    blk.call(success(id_list))
+  end
+
   # Create a create_snapshot job and return the job object.
   #
   def create_snapshot(service_id, &blk)
@@ -629,6 +723,21 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
                   :node_id => find_node(service_id))
     job = get_job(job_id)
     @logger.info("RoallbackSnapshotJob created: #{job.inspect}")
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  def delete_snapshot(service_id, snapshot_id, &blk)
+    @logger.debug("Delete snapshot=#{snapshot_id} for service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    job_id = delete_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id,
+                  :node_id => find_node(service_id))
+    job = get_job(job_id)
+    @logger.info("DeleteSnapshotJob created: #{job.inspect}")
     blk.call(success(job))
   rescue => e
     handle_error(e, &blk)
@@ -736,7 +845,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         :plan => plan,
         :score => score,
         :low_water => v[:low_water],
-        :high_water => v[:high_water]
+        :high_water => v[:high_water],
+        :allow_over_provisioning => v[:allow_over_provisioning]?1:0
       }
     end
 
@@ -780,7 +890,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   # handle request exception
   def handle_error(e, &blk)
-    @logger.warn("Exception at handle_error #{e}")
+    @logger.warn("Exception at handle_error #{e}:"+"[#{e.backtrace.join("|")}]")
     if e.instance_of? ServiceError
       blk.call(failure(e))
     else
@@ -813,6 +923,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   #
 
   # various lifecycle jobs class
-  abstract :create_snapshot_job, :rollback_snapshot_job, :create_serialized_url_job, :import_from_url_job, :import_from_data_job
+  abstract :create_snapshot_job, :rollback_snapshot_job, :delete_snapshot_job, :create_serialized_url_job, :import_from_url_job, :import_from_data_job
 
 end

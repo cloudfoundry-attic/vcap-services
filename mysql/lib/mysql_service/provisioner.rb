@@ -8,51 +8,32 @@ require 'base/job/async_job'
 
 $LOAD_PATH.unshift File.join(File.dirname __FILE__)
 require 'common'
-require 'job/mysql_snapshot'
-require 'job/mysql_serialization'
+require 'job'
 
 class VCAP::Services::Mysql::Provisioner < VCAP::Services::Base::Provisioner
   include VCAP::Services::Mysql::Common
 
-  def initialize(opts)
-    super(opts)
-    @opts = opts
-    VCAP::Services::Snapshot.logger = @logger
-    VCAP::Services::Serialization.logger = @logger
-    VCAP::Services::AsyncJob.logger = @logger
-  end
-
-  def pre_send_announcement
-    addition_opts = @opts[:additional_options]
-    if addition_opts
-      @upload_temp_dir = addition_opts[:upload_temp_dir]
-      if addition_opts[:resque]
-        resque_opt = addition_opts[:resque]
-        redis = create_redis(resque_opt)
-
-        job_repo_setup(:redis => redis)
-        VCAP::Services::Snapshot.redis = redis
-      end
-    end
-  end
-
   def create_snapshot_job
-    VCAP::Services::Snapshot::Mysql::CreateSnapshotJob
+    VCAP::Services::Mysql::Snapshot::CreateSnapshotJob
   end
 
   def rollback_snapshot_job
-    VCAP::Services::Snapshot::Mysql::RollbackSnapshotJob
+    VCAP::Services::Mysql::Snapshot::RollbackSnapshotJob
+  end
+
+  def delete_snapshot_job
+    VCAP::Services::Base::AsyncJob::Snapshot::BaseDeleteSnapshotJob
   end
 
   def create_serialized_url_job
-    VCAP::Services::Serialization::Mysql::CreateSerializedURLJob
+    VCAP::Services::Mysql::Serialization::CreateSerializedURLJob
   end
 
   def import_from_url_job
-    VCAP::Services::Serialization::Mysql::ImportFromURLJob
+    VCAP::Services::Mysql::Serialization::ImportFromURLJob
   end
 
   def import_from_data_job
-    VCAP::Services::Serialization::Mysql::ImportFromDataJob
+    VCAP::Services::Mysql::Serialization::ImportFromDataJob
   end
 end

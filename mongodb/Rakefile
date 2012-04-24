@@ -1,13 +1,15 @@
 require 'rake'
-require 'resque/tasks'
 require 'yaml'
 require 'yajl'
 
 desc "Run specs"
 task "spec" => ["bundler:install:test", "test:spec"]
 
-desc "Run specs using RCov"
+desc "Run specs using SimpleCov"
 task "spec:rcov" => ["bundler:install:test", "test:spec:rcov"]
+
+desc "Run ci using SimpleCov"
+task "spec:ci" => ["bundler:install:test", "test:spec:ci"]
 
 namespace "bundler" do
   desc "Install gems"
@@ -36,32 +38,11 @@ namespace "test" do
     sh("cd spec && ../../base/bin/nats-util start && rake spec && ../../base/bin/nats-util stop")
   end
 
- task "spec:rcov" do |t|
-    sh("cd spec && rake spec:rcov")
-  end
-end
-
-# resque tasks
-task "resque:setup" do |t|
-  config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), "config")
-  config_file = File.join(config_base_dir, "mongodb_worker.yml")
-
-  begin
-    config = YAML.load_file(config_file)
-  rescue => e
-    puts "Could not read configuration file:  #{e}"
-    exit
+  task "spec:rcov" do |t|
+    sh("cd spec && ../../base/bin/nats-util start && rake simcov && ../../base/bin/nats-util stop")
   end
 
-  REQ_OPTS  = %w(resque node_id pid)
-  missing_opts = REQ_OPTS.select { |o| !config.has_key? o }
-  raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
-
-  ENV['QUEUE'] = config["node_id"]
-  ENV['PIDFILE'] = config["pid"]
-  ENV['COUNT'] = config["worker_count"].to_s if config["worker_count"]
-  ENV['WORKER_CONFIG'] = Yajl::Encoder.encode(config)
-
-  resque = %w(host port password).inject({}){|res, o| res[o.to_sym] = config["resque"][o]; res}
-  Resque.redis = Redis.new(resque)
+  task "spec:ci" do |t|
+    sh("cd spec && ../../base/bin/nats-util start && rake spec:ci && ../../base/bin/nats-util stop")
+  end
 end

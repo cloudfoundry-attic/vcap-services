@@ -1,6 +1,8 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require "resque/job_with_status"
+require "resque-status"
 
+$LOAD_PATH.unshift File.dirname(__FILE__)
+require "config"
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..')
 require "service_error"
 
@@ -13,56 +15,34 @@ module Resque
     enqueue_to(queue, klass, *args)
   end
 
-  # Backport from resque master branch, we can remove this method when gem is updated.
-  def enqueue_to(queue, klass, *args)
-    # Perform before_enqueue hooks. Don't perform enqueue if any hook returns false
-    before_hooks = Plugin.before_enqueue_hooks(klass).collect do |hook|
-      klass.send(hook, *args)
-    end
-    return nil if before_hooks.any? { |result| result == false }
-
-    Job.create(queue, klass, *args)
-
-    Plugin.after_enqueue_hooks(klass).each do |hook|
-      klass.send(hook, *args)
-    end
-
-    return true
-  end
-
-  class Status
-    # new attributes
-    hash_accessor :complete_time
-  end
 end
 
-module VCAP
-  module Services
-  end
+module Resque::Plugins::Status
+    class Hash
+      # new attributes
+      hash_accessor :complete_time
+    end
 end
 
 # A thin layer wraps resque-status
-module VCAP::Services::AsyncJob
+module VCAP::Services::Base::AsyncJob
   include VCAP::Services::Base::Error
 
-  def self.logger=(logger)
-    @logger = logger
-  end
-
-  def job_repo_setup(options={})
-    raise "AsyncJob requires redis configuration." unless options[:redis]
-    @logger.debug("Initialize Resque using #{options}")
-    Resque.redis = options[:redis]
-    Resque::Status.expire_in = options[:expire] if options[:expire]
+  def job_repo_setup
+    redis = Config.redis
+    @logger = Config.logger
+    raise "AsyncJob requires redis configuration." unless redis
+    @logger.debug("Initialize Resque using #{redis}") if @logger
+    ::Resque.redis = redis
   end
 
   def get_job(jobid)
-    res = Resque::Status.get(jobid)
+    res = Resque::Plugins::Status::Hash.get(jobid)
     job_to_json(res)
   end
 
   def get_all_jobs()
-    Resque::Status.status_ids
+    Resque::Plugins::Status::Hash.keys
   end
 
   def job_to_json(job)
