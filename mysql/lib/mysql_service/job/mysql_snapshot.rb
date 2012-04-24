@@ -14,7 +14,8 @@ module VCAP::Services::Mysql::Snapshot
     def execute
       dump_path = get_dump_path(name, snapshot_id)
       FileUtils.mkdir_p(dump_path)
-      dump_file_name = File.join(dump_path, "#{snapshot_id}.sql.gz")
+      filename = "#{snapshot_id}.sql.gz"
+      dump_file_name = File.join(dump_path, filename)
 
       mysql_conf = @config["mysql"]
       result = dump_database(name, mysql_conf, dump_file_name, :mysqldump_bin => @config["mysqldump_bin"], :gzip_bin => @config["gzip_bin"])
@@ -24,7 +25,8 @@ module VCAP::Services::Mysql::Snapshot
       File.open(dump_file_name) {|f| dump_file_size = f.size}
       snapshot = {
         :snapshot_id => snapshot_id,
-        :size => dump_file_size
+        :size => dump_file_size,
+        :file => filename
       }
 
       snapshot
