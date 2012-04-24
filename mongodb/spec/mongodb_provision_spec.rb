@@ -9,15 +9,25 @@ describe "Mongodb Node provision/unprovision" do
     @logger = @opts[:logger]
     EM.run do
       @node = Node.new(@opts)
-      @resp = @node.provision("free")
-      @p_service = @node.get_instance(@resp['name'])
       EM.add_timer(1) { EM.stop }
     end
+
+    @resp = @node.provision("free")
+    @p_service = @node.get_instance(@resp['name'])
   end
 
   after :all do
     @node.shutdown if @node
     FileUtils.rm_rf(File.dirname(@opts[:base_dir]))
+  end
+
+  it "sh method should return 0 for successful commands" do
+    status = Node.sh "ls /"
+    status.should == 0
+  end
+
+  it "sh method should raise error for failed commands" do
+    lambda { Node.sh("ls /abc") }.should raise_error()
   end
 
   it "should have valid response" do
@@ -214,6 +224,7 @@ describe "Mongodb Node shutdown/start" do
     end
 
     e.should be_nil
+    node.unprovision(resp['name'], [])
 
     EM.run do
       node.shutdown
