@@ -13,6 +13,7 @@ gem "thin"
 gem "redis"
 gem "rake"
 gem "curb"
+gem "warden-client"
 
 gem 'vcap_common', '>= 1.0.8', :require => ['vcap/common', 'vcap/component']
 gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']

@@ -6,15 +6,15 @@ vm-max-memory <%= vm_max_memory %>mb
 vm-pages <%= vm_pages %>
 dir <%= data_dir %>
 logfile <%= log_file %>
-
-
 daemonize no
 timeout 300
 loglevel notice
 databases 16
+<% if persistent %>
 save 900 1
 save 300 10
 save 60 10000
+<% end %>
 maxclients <%= maxclients %>
 appendonly no
 vm-enabled yes

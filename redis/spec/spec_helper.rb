@@ -63,7 +63,49 @@ def getNodeTestConfig
     :redis_log_dir => "/tmp/redis_log",
     :command_rename_prefix => parse_property(config, "command_rename_prefix", String),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
+    :image_dir => "/tmp/redis_image",
+    :max_db_size => parse_property(config, "max_db_size", Integer),
+    :migration_nfs => "/tmp/migration",
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options
+end
+
+def redis_echo(host, port, password=nil)
+  if password
+    redis = Redis.new({:host => host, :port => port, :password => password})
+  else
+    redis = Redis.new({:host => host, :port => port})
+  end
+  redis.echo("")
+  redis.quit
+  true
+end
+
+def redis_set(host, port, password, key, value)
+  redis = Redis.new({:host => host, :port => port, :password => password})
+  redis.set(key, value)
+  redis.quit if redis
+  true
+end
+
+def redis_get(host, port, password, key)
+  redis = Redis.new({:host => host, :port => port, :password => password})
+  value = redis.get(key)
+  redis.quit if redis
+  value
+end
+
+def redis_del(host, port, password, key)
+  redis = Redis.new({:host => host, :port => port, :password => password})
+  value = redis.del(key)
+  redis.quit if redis
+  true
+end
+
+def redis_save(host, port, password, command)
+  redis = Redis.new({:host => host, :port => port, :password => password})
+  redis.save(command)
+  redis.quit if redis
+  true
 end

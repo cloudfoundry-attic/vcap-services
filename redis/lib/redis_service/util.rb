@@ -48,19 +48,20 @@ module VCAP
           "#{e}: [#{e.backtrace.join(" | ")}]"
         end
 
-        def dump_redis_data(instance, dump_path, gzip_bin=nil, compressed_file_name=nil)
-          dir = get_config(instance.port, instance.password, "dir")
-          set_config(instance.port, instance.password, "dir", dump_path)
+        def dump_redis_data(instance, dump_path=nil, gzip_bin=nil, compressed_file_name=nil)
+          dir = get_config(instance.ip, @redis_port, instance.password, "dir")
+          set_config(instance.ip, @redis_port, instance.password, "dir", dump_path) if dump_path
+          redis = nil
           begin
             Timeout::timeout(@redis_timeout) do
-              redis = ::Redis.new({:port => instance.port, :password => instance.password})
+              redis = ::Redis.new({:host => instance.ip, :port => @redis_port, :password => instance.password})
               redis.save(@save_command_name)
             end
           rescue => e
             raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
           ensure
             begin
-              set_config(instance.port, instance.password, "dir", dir)
+              set_config(instance.ip, @redis_port, instance.password, "dir", dir) if dump_path
               redis.quit if redis
             rescue => e
             end
@@ -122,29 +123,11 @@ module VCAP
           FileUtils.rm_rf temp_file if temp_file
         end
 
-        def check_password(port, password)
-          Timeout::timeout(@redis_timeout) do
-            redis = ::Redis.new({:port => port})
-            redis.auth(password)
-          end
-          true
-        rescue => e
-          if e.message == "ERR invalid password"
-            return false
-          else
-            raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
-          end
-        ensure
-          begin
-            redis.quit if redis
-          rescue => e
-          end
-        end
-
-        def get_info(port, password)
+        def get_info(host, port, password)
           info = nil
+          redis = nil
           Timeout::timeout(@redis_timeout) do
-            redis = ::Redis.new({:port => port, :password => password})
+            redis = ::Redis.new({:host => host, :port => port, :password => password})
             info = redis.info
           end
           info
@@ -157,10 +140,11 @@ module VCAP
           end
         end
 
-        def get_config(port, password, key)
+        def get_config(host, port, password, key)
           config = nil
+          redis = nil
           Timeout::timeout(@redis_timeout) do
-            redis = ::Redis.new({:port => port, :password => password})
+            redis = ::Redis.new({:host => host, :port => port, :password => password})
             config = redis.config(@config_command_name, :get, key)[key]
           end
           config
@@ -173,9 +157,10 @@ module VCAP
           end
         end
 
-        def set_config(port, password, key, value)
+        def set_config(host, port, password, key, value)
+          redis = nil
           Timeout::timeout(@redis_timeout) do
-            redis = ::Redis.new({:port => port, :password => password})
+            redis = ::Redis.new({:host => host, :port => port, :password => password})
             redis.config(@config_command_name, :set, key, value)
           end
         rescue => e
@@ -187,64 +172,6 @@ module VCAP
           end
         end
 
-        def stop_redis_server(instance)
-          Timeout::timeout(@redis_timeout) do
-            redis = ::Redis.new({:port => instance.port, :password => instance.password})
-            begin
-              redis.shutdown(@shutdown_command_name)
-            rescue RuntimeError => e
-              if e.message == "ERR max number of clients reached"
-                # The max clients limitation could be reached, try to kill the process
-                  instance.kill
-                  instance.wait_killed ?
-                    @logger.debug("Redis server pid: #{instance.pid} terminated") :
-                    @logger.error("Timeout to terminate Redis server pid: #{instance.pid}")
-              else
-                # It could be a disabled instance
-                if @disable_password
-                  redis = ::Redis.new({:port => instance.port, :password => @disable_password})
-                  redis.shutdown(@shutdown_command_name)
-                end
-              end
-            end
-          end
-        rescue Timeout::Error => e
-          @logger.warn(e)
-        end
-
-        def close_fds
-          3.upto(get_max_open_fd) do |fd|
-            begin
-              IO.for_fd(fd, "r").close
-            rescue
-            end
-          end
-        end
-
-        def get_max_open_fd
-          max = 0
-
-          dir = nil
-          if File.directory?("/proc/self/fd/") # Linux
-            dir = "/proc/self/fd/"
-          elsif File.directory?("/dev/fd/") # Mac
-            dir = "/dev/fd/"
-          end
-
-          if dir
-            Dir.foreach(dir) do |entry|
-              begin
-                pid = Integer(entry)
-                max = pid if pid > max
-              rescue
-              end
-            end
-          else
-            max = 65535
-          end
-
-          max
-        end
       end
     end
   end
