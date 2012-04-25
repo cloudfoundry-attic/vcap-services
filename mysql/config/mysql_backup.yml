@@ -1,7 +1,7 @@
 ---
 service_name: mysql
 backup_base_dir: /mnt/backup
-backup_cmd: mysqldump --host=:host --user=:user --password=:passwd --result-file=:full_path/:name.sql --single-transaction :name
+backup_cmd: mysqldump --host=:host --user=:user --password=:passwd --result-file=:full_path/:name.sql -R --single-transaction :name
 compress_cmd: gzip :full_path/:name.sql
 timeout: 120
 node_id: mysql_node_free_1
