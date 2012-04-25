@@ -9,12 +9,12 @@ require "set"
 require 'vcap_services_base'
 require 'vcap/logging'
 
-DEFAULT_ROTATION_MAX_DAYS = 7
+DEFAULT_CLEANUP_MAX_DAYS = 7
 DEFAULT_WAKEUP_INTERVAL = 60 * 60 # one hour
 DEFAULT_Z_INTERVAL = 30
 
 once = false
-config_file = File.join(File.dirname(__FILE__), "..", "config", "backup_manager.yml")
+config_file = File.join(File.dirname(__FILE__), "..", "config", "snapshot_manager.yml")
 
 def parse_property(hash, key, type, options = {})
   obj = hash[key]
@@ -55,21 +55,21 @@ end
 VCAP::Logging.setup_from_config(config["logging"])
 logger = VCAP::Logging.logger(File.basename($0))
 
-rotation = parse_property(config, "rotation", Hash, :optional => true) || {}
-rotation = rotation.inject({}){|m,(k,v)| m[k.to_sym] = v;m}
-rotation[:max_days] ||= DEFAULT_ROTATION_MAX_DAYS
+cleanup = parse_property(config, "cleanup", Hash, :optional => true) || {}
+cleanup = cleanup.inject({}){|m,(k,v)| m[k.to_sym] = v;m}
+cleanup[:max_days] ||= DEFAULT_CLEANUP_MAX_DAYS
 
 options = {
   :once => once,
   :logger => logger,
   :root => parse_property(config, "root", String),
   :wakeup_interval => parse_property(config, "wakeup_interval", Integer, :optional => true) || DEFAULT_WAKEUP_INTERVAL,
-  :rotation => rotation,
+  :cleanup => cleanup,
   :mbus => parse_property(config, "mbus", String),
   :z_interval => parse_property(config, "z_interval", Integer, :optional => true) || DEFAULT_Z_INTERVAL,
   :enable => parse_property(config, "enable", Object, :optional => true) || false,
-  :target => "backups",
-  :service_name => "BackupManager"
+  :target => "snapshots",
+  :service_name => "SnapshotManager"
 }
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "lib")
