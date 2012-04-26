@@ -18,10 +18,6 @@ logging:
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/mysql_service.pid
 node_timeout: 2
-api_extensions:
-  - snapshots
-  - serialization
-  - jobs
 resque:
   host: localhost
   port: 5454
@@ -32,6 +28,11 @@ plan_management:
     free:
       low_water: 10
       high_water: 180
+      lifecycle:
+        snapshot:
+          quota: 5
+        serialization: enable
+        job: enable
       #allow_over_provisioning: false
 
 # z_interval: 30

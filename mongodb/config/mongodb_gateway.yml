@@ -20,10 +20,6 @@ pid: /var/vcap/sys/run/mongodb_service.pid
 # z_interval: 30
 # check_orphan_interval: 3600
 # double_check_orphan_interval: 300
-api_extensions:
-  - snapshots
-  - serialization
-  - jobs
 resque:
   host: localhost
   port: 5454
@@ -35,4 +31,9 @@ plan_management:
     free:
       low_water: 10
       high_water: 180
+      lifecycle:
+        snapshots:
+          quota: 5
+        serialization: enable
+        job: enable
       #allow_over_provisioning: false
