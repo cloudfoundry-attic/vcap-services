@@ -35,9 +35,6 @@ describe "vblob_node provision" do
         @node.healthz_details
       end
       stats.should_not be_nil
-      stats[:running_services].length.should > 0
-      stats[:running_services][0].should_not be_nil
-      stats[:disk].should_not be_nil
       stats[:nfs_free_space].should_not == ""
       stats[:max_capacity].should > 0
       stats[:available_capacity].should > 0
