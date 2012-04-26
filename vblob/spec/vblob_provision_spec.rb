@@ -32,22 +32,13 @@ describe "vblob_node provision" do
       stats = nil
       10.times do
         stats = @node.varz_details
-        @node.healthz_details
       end
       stats.should_not be_nil
       stats[:nfs_free_space].should_not == ""
       stats[:max_capacity].should > 0
       stats[:available_capacity].should > 0
-      EM.stop
-    end
-  end
-
-  it "should return healthz" do
-    EM.run do
-      stats = @node.healthz_details
-      stats.should_not be_nil
-      stats[:self].should == "ok"
-      stats[@resp['name'].to_sym].should == "ok"
+      stats[:instances].has_value?("ok").should be_true
+      stats[:instances].has_value?("fail").should be_false
       EM.stop
     end
   end

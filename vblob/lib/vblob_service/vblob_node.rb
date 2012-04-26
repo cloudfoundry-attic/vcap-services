@@ -363,19 +363,13 @@ class VCAP::Services::VBlob::Node
     end
     varz[:nfs_free_space] = free_space
 
-    varz
-  end
-
-  def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
-    ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
+    # check instances health status
+    varz[:instances] = {}
+    ProvisionedService.all.each do |provisioned_service|
+      varz[:instances][provisioned_service.name.to_sym] = get_healthz(provisioned_service)
     end
-    healthz
-  rescue => e
-    @logger.warn("Error get healthz details: #{e}")
-    {:self => "fail"}
+
+    varz
   end
 
   def get_healthz(instance)
