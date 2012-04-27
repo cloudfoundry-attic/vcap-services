@@ -11,7 +11,7 @@ resque:
   port: 5454
 index: 0
 node_id: mysql_node_free_1
-download_url_template: http://dl.vcap.me/serialized/#{service}/#{name}?token=#{token}
+download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
 logging:
   level: debug
 # addtional options

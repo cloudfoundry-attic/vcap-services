@@ -6,8 +6,11 @@ require "vcap/logging"
 # explictly import uuid to resolve namespace conflict between uuid and uuidtools gems.
 require "uuid"
 
+$LOAD_PATH.unshift File.dirname(__FILE__)
+require "snapshot"
+
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..')
-require "base/service_error"
+require "service_error"
 
 module VCAP::Services::Base::AsyncJob
   module Serialization
@@ -31,42 +34,41 @@ module VCAP::Services::Base::AsyncJob
 
     class SerializationJob
       attr_reader :name
+
       include Serialization
+      include Snapshot
       include Resque::Plugins::Status
       include VCAP::Services::Base::Error
 
-        class << self
+      class << self
 
-          def queue_lookup_key
-            :node_id
-          end
-
-          def select_queue(*args)
-            result = nil
-            args.each do |arg|
-              result = arg[queue_lookup_key]if (arg.is_a? Hash )&& (arg.has_key?(queue_lookup_key))
-            end
-            @logger = Config.logger
-            @logger.info("Select queue #{result} for job #{self.class} with args:#{args.inspect}") if @logger
-            result
-          end
+        def queue_lookup_key
+          :node_id
         end
+
+        def select_queue(*args)
+          result = nil
+          args.each do |arg|
+            result = arg[queue_lookup_key]if (arg.is_a? Hash )&& (arg.has_key?(queue_lookup_key))
+          end
+          @logger = Config.logger
+          @logger.info("Select queue #{result} for job #{self.class} with args:#{args.inspect}") if @logger
+          result
+        end
+      end
 
       def initialize(*args)
         super(*args)
         parse_config
         init_worker_logger
         Serialization.redis_connect
+        Snapshot.redis_connect
       end
 
       def create_lock
         lock_name = "lock:lifecycle:#{name}"
         lock = Lock.new(lock_name, :logger => @logger)
         lock
-      end
-
-      def client
-        Serialization.redis
       end
 
       def init_worker_logger
@@ -76,7 +78,7 @@ module VCAP::Services::Base::AsyncJob
       def handle_error(e)
         @logger.error("Error in #{self.class} uuid:#{@uuid}: #{fmt_error(e)}")
         err = (e.instance_of?(ServiceError)? e : ServiceError.new(ServiceError::INTERNAL_ERROR)).to_hash
-        err_msg = Yajl::Encoder.encode(err)
+        err_msg = Yajl::Encoder.encode(err["msg"])
         failed(err_msg)
       end
 
@@ -85,27 +87,22 @@ module VCAP::Services::Base::AsyncJob
         raise ArgumentError, "Missing #{missing_opts.join(', ')} in options: #{options.inspect}" unless missing_opts.empty?
       end
 
-      # the serialize path structure looks like <base-dir>\serialize\<service-name>\<aa>\<bb>\<cc>\
-      # <aabbcc-rest-of-instance-guid>\<serialization data>
-      def get_serialized_data_path(name)
-        File.join(@config["serialization_base_dir"], "serialize", @config["service_name"] , name[0,2],name[2,2], name[4,2], name)
+      # Update the download token for a service snapshot
+      def update_download_token(name, snapshot_id, token)
+        snapshot = snapshot_details(name, snapshot_id)
+        snapshot["token"] = token
+        save_snapshot(name, snapshot)
       end
 
-      # Update the download token for a serialized file and save it in redis
-      def update_download_token(service, name, file_name, token)
-        key = "#{service}:#{name}:token"
-        client.hset(redis_key(key), :token, token)
-        client.hset(redis_key(key), :file, file_name)
+      def delete_download_token(name, snapshot_id)
+        snapshot = snapshot_details(name, snapshot_id)
+        res = snapshot.delete("token")
+        save_snapshot(name, snapshot) if res
       end
 
       def parse_config
         @config = Yajl::Parser.parse(ENV['WORKER_CONFIG'])
         raise "Need environment variable: WORKER_CONFIG" unless @config
-      end
-
-      def cleanup(name)
-        return unless name
-        FileUtils.rm_rf(get_serialized_data_path(name))
       end
 
       # Validate the serialized data file.
@@ -117,21 +114,27 @@ module VCAP::Services::Base::AsyncJob
         true
       end
 
+      # The name for the saved snapshot file. Subclass can override this method to customize file name.
+      def snapshot_filename(name, snapshot_id)
+        "#{name}.gz"
+      end
+
+      def get_dump_path(name, snapshot_id)
+        snapshot_filepath(@config["snapshots_base_dir"], @config["service_name"], name, snapshot_id)
+      end
     end
 
+    # Generate download URL for a service snapshot
     class BaseCreateSerializedURLJob < SerializationJob
-      attr_reader :dump_path
-
       VALID_CREDENTIAL_CHARACTERS = ("A".."Z").to_a + ("a".."z").to_a + ("0".."9").to_a
 
       # workflow template
-      # Sub class should return a hash contains filename that generated on shared storage. For example
-      # {:dump_file_name => 'db1.tgz'}
       def perform
         begin
-          required_options :service_id
+          required_options :service_id, :snapshot_id
           @name = options["service_id"]
-          @logger.info("Launch job: #{self.class} for #{name}")
+          @snapshot_id = options["snapshot_id"]
+          @logger.info("Launch job: #{self.class} for #{name} with options:#{options.inspect}")
 
           lock = create_lock
           lock.lock do
@@ -139,20 +142,33 @@ module VCAP::Services::Base::AsyncJob
             @logger.info("Results of create serialized url: #{result}")
 
             token = generate_download_token()
-            service_name = @config["service_name"]
-            update_download_token(service_name, name, result[:dump_file_name], token)
-            url = generate_download_url(name, token)
-            @logger.info("Download link generated for #{name}: #{url}")
+            update_download_token(name, @snapshot_id, token)
+            url = generate_download_url(name, @snapshot_id, token)
+            @logger.info("Download link generated for snapshot=#{@snapshot_id} of #{name}: #{url}")
 
             job_result = { :url => url }
             completed(Yajl::Encoder.encode(job_result))
             @logger.info("Complete job: #{self.class} for #{name}")
           end
         rescue => e
-          cleanup(name)
+          cleanup(name, @snapshot_id)
           handle_error(e)
         ensure
           set_status({:complete_time => Time.now.to_s})
+        end
+      end
+
+      # empty
+      def execute
+        true
+      end
+
+      def cleanup(name, snapshot_id)
+        return unless (name && snapshot_id)
+        begin
+          delete_download_token(name, snapshot_id)
+        rescue => e
+          @logger.error("Error in cleanup: #{e}")
         end
       end
 
@@ -160,41 +176,65 @@ module VCAP::Services::Base::AsyncJob
         Array.new(length) { VALID_CREDENTIAL_CHARACTERS[rand(VALID_CREDENTIAL_CHARACTERS.length)] }.join
       end
 
-      def generate_download_url(name, token)
-        service = @config["service_name"]
+      def generate_download_url(name, snapshot_id, token)
         url_template = @config["download_url_template"]
-        eval "\"#{url_template}\""
+        url_template % {:service => @config["service_name"], :name => name, :snapshot_id => snapshot_id, :token => token}
       end
     end
 
+    # Create a new snapshot of service using given URL
     class BaseImportFromURLJob < SerializationJob
-      attr_reader :url, :temp_file_path
+      attr_reader :url, :snapshot_id
+
       # Sub class should return true for a successful import job.
       def perform
         begin
           required_options :service_id, :url
           @name = options["service_id"]
           @url = options["url"]
-          @logger.info("Launch job: #{self.class} for #{name}")
+          @logger.info("Launch job: #{self.class} for #{name} with options:#{options.inspect}")
 
           lock = create_lock
           lock.lock do
-            @temp_file_path = File.join(@config["tmp_dir"], "#{name}")
-            FileUtils.rm_rf(temp_file_path)
-            fetch_url(url, temp_file_path)
-            raise ServiceError.new(ServiceError::BAD_SERIALIZED_DATAFILE, url) unless validate_input(temp_file_path)
+            quota = @config["snapshot_quota"]
+            if quota
+              current = service_snapshots_count(name)
+              @logger.debug("Current snapshots count for #{name}: #{current}, max: #{quota}")
+              raise ServiceError.new(ServiceError::OVER_QUOTA, name, current, quota) if current >= quota
+            end
+
+            @snapshot_id = new_snapshot_id
+            @snapshot_path = get_dump_path(name, snapshot_id)
+            @snapshot_file = File.join(@snapshot_path, snapshot_filename(name, snapshot_id))
+
+            # clean any data in snapshot folder
+            FileUtils.rm_rf(@snapshot_path)
+            FileUtils.mkdir_p(@snapshot_path)
+
+            fetch_url(url, @snapshot_file)
+            raise ServiceError.new(ServiceError::BAD_SERIALIZED_DATAFILE, url) unless validate_input(@snapshot_file)
+
             result = execute
             @logger.info("Results of import from url: #{result}")
 
-            job_result = { :result => :ok }
-            completed(Yajl::Encoder.encode(job_result))
+            snapshot = {
+              :snapshot_id => snapshot_id,
+              :size => File.open(@snapshot_file) {|f| f.size },
+              :date => fmt_time,
+              :file => snapshot_filename(name, snapshot_id)
+            }
+            save_snapshot(name, snapshot)
+            @logger.info("Create new snapshot for #{name}:#{snapshot}")
+
+            completed(Yajl::Encoder.encode(filter_keys(snapshot)))
             @logger.info("Complete job: #{self.class} for #{name}")
           end
         rescue => e
           handle_error(e)
+          delete_snapshot(name, snapshot_id) if snapshot_id
+          FileUtils.rm_rf(@snapshot_path) if @snapshot_path
         ensure
           set_status({:complete_time => Time.now.to_s})
-          FileUtils.rm_rf(temp_file_path) if temp_file_path
         end
       end
 
@@ -208,36 +248,72 @@ module VCAP::Services::Base::AsyncJob
         end
       end
 
+      # empty by default
+      def execute
+        true
+      end
     end
 
+    # Create a new snapshot with the given temp file
     class BaseImportFromDataJob < SerializationJob
-      attr_reader :temp_file_path
-      # Sub class should return true for a successful import job.
+      attr_reader :temp_file_path, :snapshot_id
+
       def perform
         begin
           required_options :service_id, :temp_file_path
           @name = options["service_id"]
           @temp_file_path = options["temp_file_path"]
-          @logger.info("Launch job: #{self.class} for #{name}")
+          @logger.info("Launch job: #{self.class} for #{name} with options:#{options.inspect}")
 
           lock = create_lock
           lock.lock do
+            quota = @config["snapshot_quota"]
+            if quota
+              current = service_snapshots_count(name)
+              @logger.debug("Current snapshots count for #{name}: #{current}, max: #{quota}")
+              raise ServiceError.new(ServiceError::OVER_QUOTA, name, current, quota) if current >= quota
+            end
+
             raise "Can't find temp file: #{@temp_file_path}" unless File.exists? temp_file_path
             raise ServiceError.new(SerivceError::BAD_SERIALIZED_DATAFILE, "request") unless validate_input(temp_file_path)
+
+            @snapshot_id = new_snapshot_id
+            @snapshot_path = get_dump_path(name, snapshot_id)
+            @snapshot_file = File.join(@snapshot_path, snapshot_filename(name, snapshot_id))
+            # clean any data in snapshot folder
+            FileUtils.rm_rf(@snapshot_path)
+            FileUtils.mkdir_p(@snapshot_path)
 
             result = execute
             @logger.info("Results of import from url: #{result}")
 
-            job_result = { :result => :ok }
-            completed(Yajl::Encoder.encode(job_result))
+            FileUtils.mv(@temp_file_path, @snapshot_file)
+
+            snapshot = {
+              :snapshot_id => snapshot_id,
+              :size => File.open(@snapshot_file) {|f| f.size },
+              :date => fmt_time,
+              :file => snapshot_filename(name, snapshot_id)
+            }
+            save_snapshot(name, snapshot)
+            @logger.info("Create new snapshot for #{name}:#{snapshot}")
+
+            completed(Yajl::Encoder.encode(filter_keys(snapshot)))
             @logger.info("Complete job: #{self.class} for #{name}")
           end
         rescue => e
           handle_error(e)
+          delete_snapshot(name, snapshot_id) if snapshot_id
+          FileUtils.rm_rf(@snapshot_path) if @snapshot_path
         ensure
           set_status({:complete_time => Time.now.to_s})
           FileUtils.rm_rf(@temp_file_path) if @temp_file_path
         end
+      end
+
+      # empty
+      def execute
+        true
       end
     end
   end

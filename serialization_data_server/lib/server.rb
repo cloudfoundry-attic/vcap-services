@@ -133,41 +133,45 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
   end
 
   def redis_key(service, service_id)
-    "vcap:serialization:#{service}:#{service_id}:token"
+    "vcap:snapshot:#{service_id}"
   end
 
-  def file_path(service, id, file_name)
-    File.join(@base_dir, "serialize", service, id[0,2], id[2,2], id[4,2], id, file_name)
+  def file_path(service, id, snapshot_id, file_name)
+    File.join(@base_dir, "snapshots", service, id[0,2], id[2,2], id[4,2], id, snapshot_id, file_name)
   end
 
-  def nginx_path(service, id)
-    File.join(@nginx["nginx_path"], "serialize", service, id[0,2], id[2,2], id[4,2], id, "#{id}.gz")
+  def nginx_path(service, id, snapshot_id, file_name)
+    File.join(@nginx["nginx_path"], "snapshots", service, id[0,2], id[2,2], id[4,2], id, snapshot_id, file_name)
   end
 
-  get "/serialized/:service/:service_id" do
+  get "/serialized/:service/:service_id/snapshots/:snapshot_id" do
     token = params[:token]
     error(403) unless token
     service = params[:service]
     service_id = params[:service_id]
-    @logger.debug("Get serialized data for service=#{service}, service_id=#{service_id}")
+    snapshot_id = params[:snapshot_id]
+    @logger.debug("Get serialized data for service=#{service}, service_id=#{service_id}, snapshot_id=#{snapshot_id}")
+
     key = redis_key(service, service_id)
-    result = @redis.hget(key, :token)
+    result = @redis.hget(key, snapshot_id)
     if not result
-      @logger.info("Can't find token for service=#{service}, service_id=#{service_id}")
+      @logger.info("Can't find snapshot infor for service=#{service}, service_id=#{service_id}, snapshot=#{snapshot_id}")
       error(404)
     end
-    error(403) unless token == result
-    file_name = @redis.hget(key, :file)
+    result = Yajl::Parser.parse(result)
+    error(403) unless token == result["token"]
+    file_name = result["file"]
     if not file_name
       @logger.error("Can't get serialized filename from redis using key:#{key}.")
       error(501)
     end
-    path = file_path(service, service_id, file_name)
+
+    path = file_path(service, service_id, snapshot_id, file_name)
     if (File.exists? path)
       if @nginx
         status 200
         content_type "application/octet-stream"
-        path = nginx_path(service, service_id)
+        path = nginx_path(service, service_id, snapshot_id, file_name)
         @logger.info("Serve file using nginx: #{path}")
         response["X-Accel-Redirect"] = path
       else

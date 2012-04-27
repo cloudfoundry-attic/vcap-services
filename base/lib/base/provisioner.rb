@@ -23,7 +23,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def initialize(options)
     super(options)
     @opts = options
-    @version   = options[:version]
     @node_timeout = options[:node_timeout]
     @nodes     = {}
     @provision_refs = Hash.new(0)
@@ -710,7 +709,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     snapshot = snapshot_details(service_id, snapshot_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    blk.call(success(snapshot))
+    blk.call(success(filter_keys(snapshot)))
   rescue => e
     handle_error(e, &blk)
   end
@@ -722,7 +721,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     svc = @prov_svcs[service_id]
     raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     snapshots = service_snapshots(service_id)
-    blk.call(success({:snapshots => snapshots}))
+    res = snapshots.map{|s| filter_keys(s)}
+    blk.call(success({:snapshots => res }))
   rescue => e
     handle_error(e, &blk)
   end
@@ -748,8 +748,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     snapshot = snapshot_details(service_id, snapshot_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    job_id = delete_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id,
-                  :node_id => find_node(service_id))
+    job_id = delete_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id, :node_id => find_node(service_id))
     job = get_job(job_id)
     @logger.info("DeleteSnapshotJob created: #{job.inspect}")
     blk.call(success(job))
@@ -757,14 +756,36 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     handle_error(e, &blk)
   end
 
-  # Generate a url for user to download serialized data.
-  def get_serialized_url(service_id, &blk)
-    @logger.debug("get serialized url for service_id=#{service_id}")
+  def create_serialized_url(service_id, snapshot_id, &blk)
+    @logger.debug("create serialized url for snapshot=#{snapshot_id} of service_id=#{service_id}")
     svc = @prov_svcs[service_id]
     raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-    job_id = create_serialized_url_job.create(:service_id => service_id, :node_id => find_node(service_id))
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    job_id = create_serialized_url_job.create(:service_id => service_id, :node_id => find_node(service_id), :snapshot_id => snapshot_id)
     job = get_job(job_id)
     blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  # Genereate the serialized URL of service snapshot.
+  # Return NOTFOUND error if no download token is associate with service instance.
+  def get_serialized_url(service_id, snapshot_id, &blk)
+    @logger.debug("get serialized url for snapshot=#{snapshot_id} of service_id=#{service_id}")
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    token = snapshot["token"]
+    raise ServiceError.new(ServiceError::NOT_FOUND, "Download url for service_id=#{service_id}, snapshot=#{snapshot_id}") unless token
+
+    url_template = @opts[:download_url_template]
+    service = @opts[:service][:name]
+    raise "Configuration error, can't find download_url_template" unless url_template
+    raise "Configuration error, can't find service name." unless service
+    url = url_template % {:service => service, :name => service_id, :snapshot_id => snapshot_id, :token => token}
+    blk.call(success({:url => url}))
   rescue => e
     handle_error(e, &blk)
   end

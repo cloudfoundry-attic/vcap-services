@@ -32,7 +32,8 @@ module VCAP::Services::Redis::Snapshot
 
       dump_path = get_dump_path(name, snapshot_id)
       FileUtils.mkdir_p(dump_path)
-      dump_file_name = File.join(dump_path, "dump.rdb")
+      filename = "dump.rdb"
+      dump_file_name = File.join(dump_path, filename)
 
       srv = redis_provisioned_service.get(name)
       result = dump_redis_data(srv, dump_path)
@@ -43,7 +44,8 @@ module VCAP::Services::Redis::Snapshot
       complete_time = Time.now
       snapshot = {
         :snapshot_id => snapshot_id,
-        :size => dump_file_size
+        :size => dump_file_size,
+        :file => filename
       }
 
       snapshot
