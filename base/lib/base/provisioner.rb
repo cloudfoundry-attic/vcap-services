@@ -986,7 +986,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   # handle request exception
   def handle_error(e, &blk)
-    @logger.warn("Exception at handle_error #{e}:"+"[#{e.backtrace.join("|")}]")
     if e.instance_of? ServiceError
       blk.call(failure(e))
     else
