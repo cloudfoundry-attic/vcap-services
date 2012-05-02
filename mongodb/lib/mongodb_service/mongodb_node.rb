@@ -10,6 +10,7 @@ require 'vcap/common'
 require 'vcap/component'
 require "mongodb_service/common"
 require "warden/client"
+require "posix/spawn"
 
 module VCAP
   module Services
@@ -39,8 +40,50 @@ class VCAP::Services::MongoDB::Node
   # Quota files specify the db quota a instance can use
   QUOTA_FILES = 4
 
+  def self.sh(*args)
+    options =
+      if args[-1].respond_to?(:to_hash)
+        args.pop.to_hash
+      else
+        {}
+      end
+
+    skip_raise = options.delete(:raise) == false
+    options = { :timeout => 5.0, :max => 1024 * 1024 }.merge(options)
+
+    status = []
+    out_buf = ''
+    err_buf = ''
+    begin
+      pid, iwr, ord, erd = POSIX::Spawn::popen4(*args)
+      status = Timeout::timeout(options[:timeout]) do
+        Process.waitpid2(pid)
+      end
+      out_buf += ord.read
+      err_buf += erd.read
+    rescue => e
+      Process.kill("TERM", pid) if pid
+      Process.detach(pid)
+      @@logger.error("sh #{args} timeout: \nstdout: \n#{out_buf}\nstderr: \n#{err_buf}")
+      raise e
+    end
+
+    if status[1].exitstatus != 0
+      @@logger.error("sh #{args} failed: \nstdout: \n#{out_buf}\nstderr: \n#{err_buf}")
+      raise "cmds #{args} failed" unless skip_raise
+    else
+      @@logger.info("sh #{args} success: \nstdout: \n#{out_buf}\nstderr: \n#{err_buf}")
+    end
+    status[1].exitstatus
+  end
+
+  def self.logger
+    @@logger
+  end
+
   def initialize(options)
     super(options)
+    @@logger = options[:logger]
     ProvisionedService.init(options)
     @free_ports = options[:port_range].to_a
     @mutex = Mutex.new
@@ -93,11 +136,22 @@ class VCAP::Services::MongoDB::Node
           next
         end
 
+        if p_service.image_file?
+          unless p_service.image_mounted?
+            # for case where VM rebooted
+            @logger.info("Service #{p_service.name} mounting data file")
+            sh "mount -n -o loop #{p_service.image_file} #{p_service.data_dir}"
+          end
+        else
+          @logger.warn("Service #{p_service.name} need migration to quota")
+          p_service.to_loopfile
+        end
+
         begin
           p_service.run
         rescue => e
-          p_service.stop
           @logger.error("Error starting service #{p_service.name}: #{e}")
+          p_service.stop
         end
       end
     end
@@ -108,7 +162,7 @@ class VCAP::Services::MongoDB::Node
     @logger.info("Shutting down instances..")
     ProvisionedService.all.each do |p_service|
       @logger.debug("Try to terminate mongod container:#{p_service.pid}")
-      p_service.stop
+      p_service.stop if p_service.running?
     end
   end
 
@@ -385,6 +439,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       raise "Parameter :mongod_log_dir missing" unless args[:mongod_log_dir]
       raise "Parameter :image_dir missing" unless args[:image_dir]
       raise "Parameter :local_db missing" unless args[:local_db]
+      @@mongod_path = args[:mongod_path] ? args[:mongod_path] : 'mongod'
       @@mongorestore_path = args[:mongorestore_path] ? args[:mongorestore_path] : 'mongorestore'
       @@mongodump_path    = args[:mongodump_path] ? args[:mongodump_path] : 'mongodump'
       @@tar_path          = args[:tar_path] ? args[:tar_path] : 'tar'
@@ -421,9 +476,9 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       FileUtils.rm_rf(p_service.image_file)
       FileUtils.mkdir_p(p_service.data_dir)
       FileUtils.mkdir_p(p_service.log_dir)
-      system "dd if=/dev/null of=#{p_service.image_file} bs=1M seek=#{@@max_db_size}"
-      system "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{p_service.image_file}"
-      system "mount -n -o loop #{p_service.image_file} #{p_service.data_dir}"
+      Node.sh "dd if=/dev/null of=#{p_service.image_file} bs=1M seek=#{@@max_db_size}"
+      Node.sh "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{p_service.image_file}"
+      Node.sh "mount -n -o loop #{p_service.image_file} #{p_service.data_dir}"
       FileUtils.mkdir_p(File.join(p_service.data_dir, 'data'))
       p_service
     end
@@ -457,12 +512,34 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     # stop container
     stop if running?
     # delete log and service directory
-    system "umount #{data_dir}"
+    Node.sh "umount #{data_dir}"
     FileUtils.rm_rf(image_file)
     FileUtils.rm_rf(data_dir)
     FileUtils.rm_rf(log_dir)
     # delete recorder
     destroy!
+  end
+
+  def image_mounted?
+    mounted = false
+    File.open("/proc/mounts", mode="r") do |f|
+      f.each do |w|
+        if Regexp.new(data_dir) =~ w
+          mounted = true
+          break
+        end
+      end
+    end
+    mounted
+  end
+
+  def to_loopfile
+    FileUtils.mv(data_dir, data_dir+"_bak")
+    FileUtils.mkdir_p(data_dir)
+    Node.sh "A=`du -sm #{data_dir+"_bak"} | awk '{ print $1 }'`;A=$((A+32));if [ $A -lt #{@@max_db_size} ]; then A=#{@@max_db_size}; fi;dd if=/dev/null of=#{image_file} bs=1M seek=$A"
+    Node.sh "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{image_file}"
+    Node.sh "mount -n -o loop #{image_file} #{data_dir}"
+    FileUtils.cp_r(File.join(data_dir+"_bak", 'data'), data_dir)
   end
 
   def dump(dir)
@@ -501,6 +578,19 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     true
   end
 
+  def repair
+    tmpdir = File.join("/var/vcap/store/tmp", self[:name])
+    FileUtils.mkdir_p(tmpdir)
+    begin
+      Node.sh "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{File.join(data_dir, "data")} --port #{self[:port]}", :timeout => 120
+      Node.logger.warn("Service #{self[:name]} db repair done")
+    rescue => e
+      Node.logger.error("Service #{self[:name]} repair failed: #{e}")
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
   # mongod control
   def running?
     if (self[:container] == '')
@@ -517,9 +607,11 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def stop(timeout=5,sig=:SIGTERM)
     unmapping_port(self[:ip], self[:port])
-    @@warden_lock.synchronize do
-      @@warden_client.call(["stop", self[:container]])
-      @@warden_client.call(["destroy", self[:container]])
+    unless self[:container] == ''
+      @@warden_lock.synchronize do
+        @@warden_client.call(["stop", self[:container]])
+        @@warden_client.call(["destroy", self[:container]])
+      end
     end
     self[:container] = ''
     save
@@ -527,6 +619,22 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def run
+    # check whether the instance had been properly shutdown
+    # if no, do "mongo --repair" outside of container.
+    # the reason for do it outside of container:
+    #  - when do repair inside container, more disk space required.
+    #       (refer to http://www.mongodb.org/display/DOCS/Durability+and+Repair)
+    #       Container may not have enough space to satisfy the need.
+    #  - when do repair, more mem required (had experience a situation
+    #       where "mongod --repair" hang with mem quota, and it resume when quota increase)
+    # So to avoid these situation, and make things smooth, do it outside container.
+    lockfile = File.join(data_dir, "data", "mongod.lock")
+    if File.size?(lockfile)
+      Node.logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
+      FileUtils.rm_f(lockfile)
+      repair
+    end
+
     @@warden_lock.synchronize do
       req = ["create", {"bind_mounts" => [[File.join(data_dir, 'data'), "/store/data", {"mode" => "rw"}],
                                           [log_dir, "/store/log", {"mode" => "rw"}]]}]
@@ -544,7 +652,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
              "--dport #{port}",
              "--jump DNAT",
              "--to-destination #{ip}:27017" ]
-    system "iptables -t nat -A PREROUTING #{rule.join(" ")}"
+    Node.sh "iptables -t nat -A PREROUTING #{rule.join(" ")}"
   end
 
   def unmapping_port(ip, port)
@@ -552,7 +660,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
              "--dport #{port}",
              "--jump DNAT",
              "--to-destination #{ip}:27017" ]
-    system "iptables -t nat -D PREROUTING #{rule.join(" ")}"
+    Node.sh "iptables -t nat -D PREROUTING #{rule.join(" ")}"
   end
 
   # diretory helper
@@ -568,8 +676,16 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     File.join(@@log_dir, self[:name])
   end
 
+  def image_file?
+    File.exists?(image_file)
+  end
+
   def data_dir?
     Dir.exists?(data_dir)
+  end
+
+  def log_dir?
+    Dir.exists?(log_dir)
   end
 
   # user management helper

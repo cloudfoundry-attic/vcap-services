@@ -167,6 +167,7 @@ DEPENDENCIES
   eventmachine
   mongo
   nats
+  posix-spawn
   rake
   rcov
   rspec
