@@ -53,10 +53,10 @@ class VCAP::Services::Backup::SnapshotCleaner
   def noop(dir, need_delete_mark)
     if need_delete_mark
       mark_file=File.join(dir, "last_clean_time")
-      rmdashr(mark_file)
+      rmdashr(mark_file) if File.exists?(mark_file)
     end
   rescue => x
-    @manager.logger.error("Fail to delete the mark file in noop")
+    @manager.logger.error("Fail to delete the mark file in noop in #{dir}: #{x.to_s}")
   ensure
     raise Interrupt, "Interrupted" if @manager.shutdown?
   end
@@ -118,10 +118,10 @@ class VCAP::Services::Backup::SnapshotCleaner
     snapshots.keys.sort.each do |key|
       # delete the sanpshots one by one according from oldest to newest
       snap_dir = File.join(dir, key.to_s)
-      rmdashr(snap_dir)
+      rmdashr(snap_dir) if File.exists?(snap_dir)
       @manager.logger.info("Snapshot in #{snap_dir} is deleted.")
     end
-    rmdashr(dir)
+    rmdashr(dir) if File.exists?(dir)
     @manager.logger.info("The directory #{dir} and all snapshots under it are all deleted.")
   rescue => x
     @manager.logger.error("Could not cleanup all snapshots under #{dir}: #{x.backtrace}")
@@ -131,7 +131,7 @@ class VCAP::Services::Backup::SnapshotCleaner
 
   # keep marked
   def keep_mark(dir, snapshots)
-    @manager.logger.info("Keep the clean mark for snapshots under #{dir}")
+    @manager.logger.debug("Keep the clean mark for snapshots under #{dir}")
   ensure
     raise Interrupt, "Interrupted" if @manager.shutdown?
   end
@@ -149,7 +149,7 @@ class VCAP::Services::Backup::SnapshotCleaner
       snapshots.keys.each do |key|
         unless key == latest_key
           snap_dir = File.join(dir, key.to_s)
-          rmdashr(snap_dir)
+          rmdashr(snap_dir) if File.exists?(snap_dir)
           @manager.logger.info("Snapshot in #{snap_dir} is deleted.")
         end
       end
