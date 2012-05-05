@@ -4,7 +4,6 @@
 require "erb"
 require "fileutils"
 require "logger"
-require "pp"
 
 require "uuidtools"
 require 'dalli'
@@ -43,7 +42,6 @@ class VCAP::Services::Memcached::Node
     end
 
     def user_list
-      # FIXME: a bit ugly, but works
       list_str = `sasldblistusers2`.split
       list_str.delete('userPassword')
       users = list_str.map do |e|
@@ -64,8 +62,7 @@ class VCAP::Services::Memcached::Node
       if users.include?(user)
         raise SASLOperationError::SASL_OPS_USER_ALREADY_EXITST
       end
-
-      ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user}  -p`
+      ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user} -p`
 
       if ret == ''
         return true
@@ -91,7 +88,6 @@ class VCAP::Services::Memcached::Node
     property :password,   String,   :required => true
     property :plan,       Enum[:free], :required => true
     property :pid,        Integer
-    property :memory,     Integer
 
     def listening?
       begin
@@ -107,6 +103,8 @@ class VCAP::Services::Memcached::Node
     end
   end
 
+  attr_accessor :local_db
+
   def initialize(options)
     super(options)
 
@@ -115,23 +113,26 @@ class VCAP::Services::Memcached::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @memcached_server_path = options[:memcached_server_path]
-    @available_memory = options[:available_memory]
-    @available_memory_mutex = Mutex.new
-    @max_memory = options[:max_memory]
+    @available_capacity = options[:capacity]
+    @local_db = options[:local_db]
     @free_ports = Set.new
     @free_ports_mutex = Mutex.new
     options[:port_range].each {|port| @free_ports << port}
-    @local_db = options[:local_db]
-    @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     @memcached_log_dir = options[:memcached_log_dir]
     @max_clients = @options[:max_clients] || 500
     @memcached_timeout = @options[:memcached_timeout] || 2
+    @memcached_memory = @options[:memcached_memory]
   end
 
   def pre_send_announcement
     super
     start_db
     start_provisioned_instances
+  end
+
+  def start_db
+    DataMapper.setup(:default, @local_db)
+    DataMapper::auto_upgrade!
   end
 
   def shutdown
@@ -143,9 +144,10 @@ class VCAP::Services::Memcached::Node
   end
 
   def announcement
-    @available_memory_mutex.synchronize do
+    @capacity_lock.synchronize do
       a = {
-          :available_memory => @available_memory
+          :available_capacity => @capacity,
+          :capacity_unit => capacity_unit
       }
     end
   end
@@ -176,15 +178,6 @@ class VCAP::Services::Memcached::Node
       instance.name = UUIDTools::UUID.random_create.to_s
       instance.user = UUIDTools::UUID.random_create.to_s
       instance.password = UUIDTools::UUID.random_create.to_s
-    end
-
-    begin
-      instance.memory = memory_for_instance(instance)
-      @available_memory_mutex.synchronize do
-        @available_memory -= instance.memory
-      end
-    rescue => e
-      raise e
     end
 
     begin
@@ -235,42 +228,12 @@ class VCAP::Services::Memcached::Node
     {}
   end
 
-  def disable_instance(service_credentials, binding_credentials_list = [])
-    instance = get_instance(service_credentials["name"])
-    stop_instance(instance)
-    true
-  end
-
-  def enable_instance(service_credentials, binding_credentials_map = {})
-    instance = get_instance(service_credentials["name"])
-    service_credentials = gen_credentials(instance)
-    binding_credentials_map.each do |key, value|
-      binding_credentials_map[key]["credentials"] = gen_credentials(instance)
-    end
-    start_instance(instance)
-
-    [service_credentials, binding_credentials_map]
-  rescue => e
-    @logger.warn(e)
-    nil
-  end
-
-  def dump_instance(service_credentials, binding_credentials_list = [], dump_dir)
-    # Memcached doesn't have support for dumping
-    true
-  end
-
-  def import_instance(service_credentials, binding_credentials_list = [], dump_dir, plan)
-    # Memcached doesn't have support for importing
-    nil
-  end
-
   def varz_details
     varz = {}
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
-    @available_memory_mutex.synchronize do
-      varz[:max_instances_num] = @options[:available_memory] / @max_memory
+    @capacity_lock.synchronize do
+      varz[:max_instances_num] = @options[:capacity] / capacity_unit
     end
     ProvisionedService.all.each do |instance|
       varz[:provisioned_instances] << get_varz(instance)
@@ -282,25 +245,8 @@ class VCAP::Services::Memcached::Node
     {}
   end
 
-  def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
-    ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
-    end
-    healthz
-  rescue => e
-    @logger.warn("Error while getting healthz details: #{e}")
-    {:self => "fail"}
-  end
-
-  def start_db
-    DataMapper.setup(:default, @local_db)
-    DataMapper::auto_upgrade!
-  end
-
   def start_provisioned_instances
-    @logger.debug("Start provisined instaces....")
+    @logger.debug("Start provisioned instance....")
 
     ProvisionedService.all.each do |instance|
       @logger.debug("instance : #{instance.inspect}")
@@ -309,9 +255,6 @@ class VCAP::Services::Memcached::Node
       end
       if instance.listening?
         @logger.warn("Service #{instance.name} already running on port #{instance.port}")
-        @available_memory_mutex.synchronize do
-          @available_memory -= (instance.memory || @max_memory)
-        end
         next
       end
       begin
@@ -330,7 +273,7 @@ class VCAP::Services::Memcached::Node
       end
     end
 
-    @logger.debug("Started provisined instaces.")
+    @logger.debug("Started provisined instances.")
   end
 
   def save_instance(instance)
@@ -360,12 +303,10 @@ class VCAP::Services::Memcached::Node
   end
 
   def start_instance(instance, db_file = nil)
-    @logger.debug("Starting: #{instance.inspect} on port #{instance.port}")
+    @logger.debug("Starting: #{instance.inspect}")
 
-
-    #$0 = "Starting Memcached instance: #{instance.name}"
     opt = {}
-    opt['memory'] = instance.memory
+    opt['memory'] = @memcached_memory
     opt['port'] = instance.port
     opt['password'] = instance.password
     opt['name'] = instance.name
@@ -375,17 +316,13 @@ class VCAP::Services::Memcached::Node
     @logger.warn("#{@memcached_server_path} #{option_string}")
 
     log_dir = instance_log_dir(instance.name)
-    log_file = File.join(log_dir, "memcachded.log")
-
-    config_command = @config_command_name
-    shutdown_command = @shutdown_command_name
-    maxclients = @max_clients
+    log_file = File.join(log_dir, "memcached.log")
+    err_file = File.join(log_dir, "memcached.err.log")
 
     FileUtils.mkdir_p(log_dir)
 
-    #cmd = "#{@memcached_server_path} #{option_string} 2&> #{log_file}"
     cmd = "#{@memcached_server_path} #{option_string}"
-    pid = Process.spawn(cmd, :err=>"#{log_file}")
+    pid = Process.spawn(cmd, :out=>"#{log_file}", :err=>"#{err_file}")
     Process.detach(pid)
     return pid
   rescue => e
@@ -395,10 +332,6 @@ class VCAP::Services::Memcached::Node
   def stop_instance(instance)
     @logger.debug("Stop instance: #{instance.inspect}")
     stop_memcached_server(instance)
-    EM.defer do
-      FileUtils.rm_rf(instance_dir(instance.name))
-      FileUtils.rm_rf(instance_log_dir(instance.name))
-    end
   end
 
   def cleanup_instance(instance)
@@ -407,9 +340,6 @@ class VCAP::Services::Memcached::Node
       stop_instance(instance) if instance.running?
     rescue => e
       err_msg << e.message
-    end
-    @available_memory_mutex.synchronize do
-      @available_memory += instance.memory
     end
     @free_ports_mutex.synchronize do
       @free_ports.add(instance.port)
@@ -423,14 +353,6 @@ class VCAP::Services::Memcached::Node
     raise MemcachedError.new(MemcachedError::MEMCACHED_CLEANUP_INSTANCE_FAILED, err_msg.inspect) if err_msg.size > 0
   end
 
-  def memory_for_instance(instance)
-    case instance.plan
-      when :free then 16
-      else
-        raise MemcachedError.new(MemcachedError::MEMCACHED_INVALID_PLAN, instance.plan)
-    end
-  end
-
   def stop_memcached_server(instance)
      @logger.debug("stop process #{instance.pid}")
 
@@ -441,40 +363,6 @@ class VCAP::Services::Memcached::Node
     @logger.warn(e)
   rescue => e
     @logger.warn(e)
-  end
-
-  def close_fds
-    3.upto(get_max_open_fd) do |fd|
-      begin
-        IO.for_fd(fd, "r").close
-      rescue
-      end
-    end
-  end
-
-  def get_max_open_fd
-    max = 0
-
-    dir = nil
-    if File.directory?("/proc/self/fd/") # Linux
-      dir = "/proc/self/fd/"
-    elsif File.directory?("/dev/fd/") # Mac
-      dir = "/dev/fd/"
-    end
-
-    if dir
-      Dir.foreach(dir) do |entry|
-        begin
-          pid = Integer(entry)
-          max = pid if pid > max
-        rescue
-        end
-      end
-    else
-      max = 65535
-    end
-
-    max
   end
 
   def get_info(instance)
@@ -497,23 +385,16 @@ class VCAP::Services::Memcached::Node
   end
 
   def get_varz(instance)
-    @logger.info("Connect to instance: localhost:#{instance.port} #{instance.name}")
     info = get_info(instance)
     varz = {}
     varz[:name] = instance.name
     varz[:port] = instance.port
     varz[:plan] = instance.plan
     varz[:usage] = {}
-    varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
+    varz[:usage][:capacity_unit] = capacity_unit
     varz[:usage][:max_clients] = @max_clients
 
-    varz[:usage][:bytes] = info['bytes']
-    varz[:usage][:reserved_fds] = info['reserved_fds']
-    varz[:usage][:accepting_conns] = info['accepting_conns']
-    varz[:usage][:uptime] = info['uptime']
-    varz[:usage][:limit_maxbytes] = info['limit_maxbytes']
-    varz[:usage][:bytes_read] = info['bytes_read']
-    @logger.info("varz: #{varz.inspect}")
+    varz[:info] = info
     varz
   end
 
@@ -529,23 +410,6 @@ class VCAP::Services::Memcached::Node
     }
   end
 
-  def get_healthz(instance)
-    user = instance.user
-    password = instance.password
-    hostname = 'localhost:' + instance.port.to_s
-    Timeout::timeout(@memcached_timeout) do
-      memcached = Dalli::Client.new(hostname, username: user, password: password)
-      memcached.stats
-    end
-    "ok"
-  rescue => e
-    "fail"
-  ensure
-    begin
-      memcached.close if memcached
-    rescue => e
-    end
-  end
 
   def instance_dir(instance_id)
     File.join(@base_dir, instance_id)
@@ -554,5 +418,4 @@ class VCAP::Services::Memcached::Node
   def instance_log_dir(instance_id)
     File.join(@memcached_log_dir, instance_id)
   end
-
 end

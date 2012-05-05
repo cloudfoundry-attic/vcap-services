@@ -10,7 +10,7 @@ module VCAP
   module Services
     module Memcached
       class Node
-         attr_reader :base_dir, :memcached_server_path, :local_ip, :available_memory, :max_memory, :max_swap, :node_id, :config_template, :free_ports, :memcached_timeout
+         attr_reader :base_dir, :memcached_server_path, :local_ip, :capacity, :node_id, :config_template, :free_ports, :memcached_timeout
          attr_accessor :logger, :local_db
       end
     end
@@ -22,23 +22,26 @@ describe VCAP::Services::Memcached::Node do
   before :all do
     @logger = Logger.new(STDOUT, "daily")
     @logger.level = Logger::DEBUG
+    @my_ip = `hostname -I`.chomp.strip
     @local_db_file = "/tmp/memcached_node_" + Time.now.to_i.to_s + ".db"
+    @memcached_exe = ENV['CLOUDFOUNDRY_HOME'] + "/.deployments/devbox/deploy/memcached/bin/memcached";
+    @logger.debug("Using memcached exe from: #{@memcached_exe}")
+    @capacity_unit = 1
     @options = {
       :logger => @logger,
       :base_dir => "/tmp/services/memcached/instances",
-      :memcached_server_path => "memcached",
-      :local_ip => "127.0.0.1",
-      :available_memory => 4096,
-      :max_memory => 16,
-      :max_swap => 32,
+      :memcached_server_path => @memcached_exe,
+      :local_ip => @my_ip,
+      :capacity => 50,
       :node_id => "memcached-node-1",
       #:config_template => File.expand_path("../resources/memcached.conf.erb", File.dirname(__FILE__)),
       :local_db => "sqlite3:" + @local_db_file,
       :port_range => Range.new(5000, 25000),
-      :mbus => "nats://localhost:4222",
+      :mbus => "nats://#{@my_ip}:4222",
       :memcached_log_dir => "/tmp/memcached_log",
       :command_rename_prefix => "protect-command",
-      :max_clients => 100
+      :max_clients => 100,
+      :memcached_memory => 16
     }
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:memcached_log_dir])
@@ -56,7 +59,6 @@ describe VCAP::Services::Memcached::Node do
     @instance.port     = VCAP.grab_ephemeral_port
     @instance.plan     = :free
     @instance.password = UUIDTools::UUID.random_create.to_s
-    @instance.memory   = @options[:max_memory]
   end
 
   after :all do
@@ -67,13 +69,13 @@ describe VCAP::Services::Memcached::Node do
 
   describe 'SASLAdmin' do
     before :all do
-      @admin = VCAP::Services::Memcached::Node::SASLAdmin.new(nil)
+      @admin = VCAP::Services::Memcached::Node::SASLAdmin.new(@logger)
       @create_user = 'username'
       @password = 'password'
     end
 
     it "should create new user" do
-      @admin.create_user(@create_user, @passowrd)
+      @admin.create_user(@create_user, @password)
     end
 
     it "should delete specified user" do
@@ -94,12 +96,8 @@ describe VCAP::Services::Memcached::Node do
       @node.local_ip.should be
     end
 
-    it "should set up an available memory size" do
-      @node.available_memory.should be
-    end
-
-    it "should set up a maximum memory size" do
-      @node.max_memory.should be @options[:max_memory]
+    it "should set up an available capacity" do
+      @node.capacity.should be @options[:capacity]
     end
 
     it "should setup a free port set" do
@@ -108,8 +106,8 @@ describe VCAP::Services::Memcached::Node do
   end
 
   describe "Node.start_db" do
-    it "should fail when set local db with non-existed file argument" do
-      @node.local_db = "sqlite3:/non_existed/non-existed.db"
+    it "should fail when set local db with non-existing file argument" do
+      @node.local_db = "sqlite3:/non_existing/non-existing.db"
       thrown = nil
       begin
         @node.start_db
@@ -130,11 +128,11 @@ describe VCAP::Services::Memcached::Node do
     it "should check whether provisioned instance is running or not" do
       @logger.debug("test : start instance #{@instance.inspect}")
       @instance.pid = @node.start_instance(@instance)
-      sleep 1
+      sleep 2
       @instance.running?.should == true
       @logger.debug("test : stop instance #{@instance.inspect}")
       @node.stop_instance(@instance)
-      sleep 1
+      sleep 2
       @instance.running?.should == false
     end
 
@@ -148,7 +146,7 @@ describe VCAP::Services::Memcached::Node do
       instance = VCAP::Services::Memcached::Node::ProvisionedService.get(@instance.name)
       p instance
       instance.pid.should_not == @instance.pid
-      @node.stop_instance(instance)
+      @node.stop_instance(@instance)
       @instance.destroy
     end
   end
@@ -158,14 +156,13 @@ describe VCAP::Services::Memcached::Node do
       @node.announcement.should be
     end
 
-    it "should send available_memory in announce message" do
-      @node.announcement[:available_memory].should == @node.available_memory
+    it "should send available_capacity in announce message" do
+      @node.announcement[:available_capacity].should == @node.capacity
     end
   end
 
   describe "Node.provision" do
     before :all do
-      @old_memory = @node.available_memory
       @credentials = @node.provision(:free)
       sleep 1
     end
@@ -196,10 +193,6 @@ describe VCAP::Services::Memcached::Node do
       @node.free_ports.include?(@credentials["port"]).should == false
     end
 
-    it "should decrease available memory when finish a provision" do
-      (@old_memory - @node.available_memory).should == @node.max_memory
-    end
-
     it "should send provision message when finish a provision" do
       @credentials["hostname"].should be
       @credentials["host"].should == @credentials["hostname"]
@@ -226,9 +219,7 @@ describe VCAP::Services::Memcached::Node do
   describe "Node.unprovision" do
     before :all do
       @credentials = @node.provision(:free)
-      @old_memory = @node.available_memory
-      sleep 1
-      #sleep 100000
+      sleep 2
       @node.unprovision(@credentials["name"])
     end
 
@@ -236,15 +227,11 @@ describe VCAP::Services::Memcached::Node do
       p @credentials
       hostname, username, password = get_connect_info(@credentials)
       memcached = Dalli::Client.new(hostname, username: username, password: password)
-      expect {memcached.get("test_key")}.should raise_error(Dalli::RingError)
+      expect {memcached.get("test_key")}.should raise_error(Dalli::DalliError)
     end
 
     it "should add the provisioned instance port in free port list when finish an unprovision" do
       @node.free_ports.include?(@credentials["port"]).should == true
-    end
-
-    it "should increase available memory when finish an unprovision" do
-      (@node.available_memory - @old_memory).should == @node.max_memory
     end
 
     it "should raise exception when unprovision an non-existed name" do
@@ -329,41 +316,16 @@ describe VCAP::Services::Memcached::Node do
     end
   end
 
-  describe "Node.memory_for_instance" do
-    it "should return memory size by the plan" do
-      instance = VCAP::Services::Memcached::Node::ProvisionedService.new
-      instance.plan = :free
-      @node.memory_for_instance(instance).should == 16
-    end
-
-    it "should raise exception when giving wrong plan name" do
-      instance = VCAP::Services::Memcached::Node::ProvisionedService.new
-      instance.plan = :non_existed_plan
-      expect {@node.memory_for_instance(instance)}.should raise_error(VCAP::Services::Memcached::MemcachedError)
-    end
-  end
-
   describe "Node.varz_details" do
     it "should report varz details" do
       @credentials = @node.provision(:free)
       sleep 1
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
-      varz[:max_instances_num].should == @options[:available_memory] / @options[:max_memory]
+      varz[:max_instances_num].should == @options[:capacity] / @capacity_unit
       varz[:provisioned_instances][0][:name].should == @credentials["name"]
       varz[:provisioned_instances][0][:port].should == @credentials["port"]
       varz[:provisioned_instances][0][:plan].should == :free
-      @node.unprovision(@credentials["name"])
-    end
-  end
-
-  describe "Node.healthz_details" do
-    it "should report healthz details" do
-      @credentials = @node.provision(:free)
-      sleep 1
-      healthz = @node.healthz_details
-      healthz[:self].should == "ok"
-      healthz[@credentials["name"].to_sym].should == "ok"
       @node.unprovision(@credentials["name"])
     end
   end
@@ -416,9 +378,11 @@ describe VCAP::Services::Memcached::Node do
     end
   end
 
+  # TODO: This test should be ideally for the base class...
+=begin
   describe "Node.thread_safe" do
     it "should be thread safe in multi-threads call" do
-      old_memory = @node.available_memory
+      old_capacity = @node.available_capacity
       old_ports = @node.free_ports.clone
       semaphore = Mutex.new
       credentials_list = []
@@ -432,9 +396,9 @@ describe VCAP::Services::Memcached::Node do
       end
       somethreads.each {|t| t.join}
       sleep 2
-      new_memory = @node.available_memory
+      new_capacity = @node.available_capacity
       new_ports = @node.free_ports.clone
-      (old_memory - new_memory).should == threads_num * @node.max_memory
+      (old_capacity - new_capacity).should == threads_num * @capacity_unit
       delta_ports = Set.new
       credentials_list.each do |credentials|
         delta_ports << credentials["port"]
@@ -448,10 +412,11 @@ describe VCAP::Services::Memcached::Node do
       end
       somethreads.each {|t| t.join}
       @node.free_ports.should == old_ports
-      @node.available_memory.should == old_memory
+      @node.available_capacity.should == old_capacity
       VCAP::Services::Memcached::Node::ProvisionedService.all.size.should == 0
     end
   end
+=end
 
   describe "Node.restart" do
     it "should still use the provisioned service after the restart" do

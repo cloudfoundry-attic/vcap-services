@@ -1,24 +1,20 @@
 ---
 local_db: sqlite3:/var/vcap/services/memcached/memcached_node.db
-#mbus: nats://nats:nats@192.168.0.124:4222/
-mbus: nats://nats:nats@172.16.168.10:4222/  
+mbus: nats://localhost:4222/
 index: 0
 base_dir: /var/vcap/services/memcached/instances
 logging:
   level: debug
 pid: /var/vcap/sys/run/memcached_node.pid
-available_memory: 4096
-max_memory: 16
-max_swap: 32
+capacity: 5
 node_id: memcached_node_1
 memcached_server_path: memcached
+memcached_memory: 16
 port_range:
-  first: 5000
-  last: 25000
-migration_nfs: /mnt/appcloud
-# z_interval: 30
-# redis_log_dir: /var/vcap/sys/log/memcached
+  first: 11000
+  last: 11050
 memcached_log_dir: /var/vcap/sys/log/memcached
-command_rename_prefix: protect-command-prefix
 max_clients: 500
 memcached_timeout: 2
+
+# z_interval: 30

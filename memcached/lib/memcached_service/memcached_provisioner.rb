@@ -8,9 +8,4 @@ require 'memcached_service/common'
 class VCAP::Services::Memcached::Provisioner < VCAP::Services::Base::Provisioner
 
   include VCAP::Services::Memcached::Common
-
-  def node_score(node)
-    node['available_memory']
-  end
-
 end
