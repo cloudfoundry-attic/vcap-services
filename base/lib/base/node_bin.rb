@@ -61,7 +61,8 @@ class VCAP::Services::Base::NodeBin
       :local_db => parse_property(config, "local_db", String),
       :migration_nfs => parse_property(config, "migration_nfs", String, :optional => true),
       :max_nats_payload => parse_property(config, "max_nats_payload", Integer, :optional => true),
-      :fqdn_hosts => parse_property(config, "fqdn_hosts", Boolean, :optional => true, :default => false)
+      :fqdn_hosts => parse_property(config, "fqdn_hosts", Boolean, :optional => true, :default => false),
+      :op_time_limit => parse_property(config, "op_time_limit", Integer, :optional => true, :default => 6)
     }
 
     VCAP::Logging.setup_from_config(config["logging"])

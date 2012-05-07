@@ -26,3 +26,4 @@ postgresql:
 
 # z_interval: 30
 # fqdn_hosts: false
+# op_time_limit: 6

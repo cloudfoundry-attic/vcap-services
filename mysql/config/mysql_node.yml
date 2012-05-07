@@ -30,3 +30,4 @@ connection_wait_timeout: 10
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
+# op_time_limit: 6
