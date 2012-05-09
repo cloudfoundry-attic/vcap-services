@@ -12,10 +12,17 @@ module VCAP::Services::Base::AsyncJob
     attr_reader :expiration, :timeout, :name
     include VCAP::Services::Base::Error
 
+    # Options for lock
+    # name       - The uuid of the lock
+    # timeout    - The time that waits to acquire the lock, default 10 seconds
+    # expiration - Lock expires in given seconds if not refreshed, default 10 seconds
+    # logger     - The logger..
+    # ttl        - The max time that a thread can acquire the lock, default 600 seconds. Lock raise +JOB_TIMEOUT+ error once the ttl is exceeded.
     def initialize(name, opts={})
       @name = name
       @timeout = opts[:timeout] || 10 #seconds
       @expiration = opts[:expiration] || 10  # seconds
+      @ttl = opts[:ttl] || 600 # seconds
       @logger = opts[:logger] || make_logger
       config = Config.redis_config
       raise "Can't find configuration of redis." unless config
@@ -52,7 +59,11 @@ module VCAP::Services::Base::AsyncJob
       @logger.debug("Lock #{@name} is acquired, will expire at #{@lock_expiration}")
 
       begin
-        yield if block_given?
+        Timeout::timeout(@ttl) do
+          yield if block_given?
+        end
+      rescue Timeout::Error =>e
+        raise ServiceError.new(ServiceError::JOB_TIMEOUT, @ttl)
       ensure
         release_thread(refresh_thread) if refresh_thread
         delete
