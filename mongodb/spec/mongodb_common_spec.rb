@@ -3,7 +3,7 @@ $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 require "mongo"
 
-describe "mongodb provisionedservice class" do
+describe "MongoDB Provisionedservice class" do
 
   include VCAP::Services::MongoDB
 
@@ -55,7 +55,7 @@ describe "mongodb provisionedservice class" do
     p_service.should be_nil
   end
 
-  context "a MongoDB instance created and running" do 
+  context "When a MongoDB instance created and running" do
     before (:each) do
       @p_service = Node::ProvisionedService.create({ 'port' => 27017 })
       @p_service.run
@@ -79,7 +79,7 @@ describe "mongodb provisionedservice class" do
       }.should_not raise_error
     end
 
-    context "after admin and user set" do
+    context "and when admin and user set" do
       before (:each) do
         @p_service.add_admin(@p_service.admin, @p_service.adminpass)
         @p_service.add_user(@p_service.admin, @p_service.adminpass)

@@ -2,7 +2,7 @@
 $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 
-describe "mongodb backup/restore"  do
+describe "MongoDB node backup/restore"  do
 
   before :all do
     @opts = get_node_config()
