@@ -671,10 +671,44 @@ describe "Mysql server node" do
 
       EM.add_timer(2) do
         begin
+          # server side timeout
           node.pool.with_connection do |conn|
             # simulate connection idle
             sleep (timeout * 5)
             expect{ conn.query("select 1") }.should raise_error(Mysql2::Error, /MySQL server has gone away/)
+          end
+          # client side timeout
+          node.pool.with_connection do |conn|
+            # override server side timeout
+            conn.query("set @@wait_timeout=10")
+            expect{ conn.query("select sleep(5)") }.should raise_error(Timeout::Error)
+          end
+        ensure
+          # restore original timeout
+          Mysql2::Client.default_timeout = origin_timeout
+          EM.stop
+        end
+      end
+    end
+  end
+
+  it "should works well if timeout is disabled for management mysql connection" do
+    EM.run do
+      opts = @opts.dup
+      origin_timeout = Mysql2::Client.default_timeout
+      opts.delete :connection_wait_timeout
+      node = VCAP::Services::Mysql::Node.new(opts)
+
+      EM.add_timer(2) do
+        begin
+          # server side timeout
+          node.pool.with_connection do |conn|
+            sleep (5)
+            expect{ conn.query("select 1") }.should_not raise_error
+          end
+          # client side timeout
+          node.pool.with_connection do |conn|
+            expect{ conn.query("select sleep(5)") }.should_not raise_error
           end
         ensure
           # restore original timeout
