@@ -21,7 +21,7 @@ desc "Run specs using SimpleCov"
 task "spec:ci" => ["ci:setup:rspec", "simcov"]
 
 RSpec::Core::RakeTask.new do |t|
-  t.pattern = "**/*_spec.rb"
+  t.pattern = "**/unit_test/*_spec.rb"
   t.rspec_opts = ["--format", "documentation", "--colour"]
 end
 
@@ -38,7 +38,7 @@ task "simcov" => "cleanup_coverage" do
   SimpleCov.coverage_dir('spec_coverage')
   SimpleCov.start do
     add_filter "/spec/"
-    spec_dir = File.expand_path("..", __FILE__)
+    spec_dir = File.expand_path("../unit_test/", __FILE__)
     Rspec::Core::Runner.disable_autorun!
     Rspec::Core::Runner.run([spec_dir], STDERR, STDOUT)
   end

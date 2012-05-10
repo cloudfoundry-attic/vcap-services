@@ -156,13 +156,13 @@ describe NodeTests do
       Do.sec(0) do
         node = NodeTests.create_node;
         node.stub!(:provision){ sleep 6; {"name" => "test"} }
-        node.should_receive(:unprovision)
+        node.should_receive(:provision)
       end
       Do.sec(1) { provisioner = NodeTests.create_error_provisioner}
       Do.sec(2) { provisioner.send_provision_request }
       Do.sec(10) { EM.stop }
     end
-    provisioner.response.should =~ /Node operation timeout/
+    provisioner.response["success"].should be_true
   end
 
   it "should support unprovision" do
@@ -252,13 +252,13 @@ describe NodeTests do
       Do.sec(0) do
         node = NodeTests.create_node;
         node.stub!(:bind){ sleep 6; BindResponse.new }
-        node.should_receive(:unbind)
+        node.should_receive(:bind)
       end
       Do.sec(1) { provisioner = NodeTests.create_error_provisioner}
       Do.sec(2) { provisioner.send_bind_request }
       Do.sec(10) { EM.stop }
     end
-    provisioner.response.should =~ /Node operation timeout/
+    provisioner.response["success"].should be_true
   end
 
 
