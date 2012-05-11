@@ -7,7 +7,7 @@ describe "MongoDB node backup/restore"  do
   before :all do
     @opts = get_node_config()
     @logger = @opts[:logger]
-    @opts[:local_db] = 'sqlite3:/tmp/mongo/mongodb_node1.db'
+    DB_URL = @opts[:local_db]
 
     bin_dir = File.dirname(@opts[:mongod_path])
     BINARY_DIR = bin_dir == '.' ? '' : bin_dir
@@ -48,7 +48,6 @@ describe "MongoDB node backup/restore"  do
     @node.shutdown if @node
     FileUtils.rm_f(CONFIG_FILE)
     FileUtils.rm_rf(BACKUP_DIR)
-    FileUtils.rm_rf(File.dirname(@opts[:base_dir]))
   end
 
   it "should be able to backup/restore the database" do
@@ -101,5 +100,3 @@ describe "MongoDB node backup/restore"  do
   end
 
 end
-
-

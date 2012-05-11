@@ -5,8 +5,6 @@ require "mongo"
 
 describe "MongoDB Provisionedservice class" do
 
-  include VCAP::Services::MongoDB
-
   before :all do
     @options = get_node_config()
     EM.run do
@@ -17,7 +15,6 @@ describe "MongoDB Provisionedservice class" do
 
   after :all do
     @node.shutdown if @node
-    FileUtils.rm_rf(File.dirname(@options[:base_dir])) if @options
   end
 
   def insert_testdata(p_service)
@@ -120,14 +117,14 @@ describe "MongoDB Provisionedservice class" do
 
   it "should be able to migrate old instance" do
     p_service = Node::ProvisionedService.create({ 'port' => 27017 })
-    lambda { Node.sh "umount #{p_service.data_dir}" }.should_not raise_error
-    lambda { Node.sh "mkdir -p #{p_service.data_dir}/data" }.should_not raise_error
-    lambda { Node.sh "dd if=/dev/zero of=#{p_service.data_dir}/data/admin.ns bs=1M count=68" }.should_not raise_error
+    lambda { Node.sh "umount #{p_service.base_dir}" }.should_not raise_error
+    lambda { Node.sh "mkdir -p #{p_service.base_dir}/data" }.should_not raise_error
+    lambda { Node.sh "dd if=/dev/zero of=#{p_service.base_dir}/data/admin.ns bs=1M count=68" }.should_not raise_error
     lambda { p_service.to_loopfile }.should_not raise_error
-    Dir.exist?(p_service.data_dir+"_bak").should be_true
+    Dir.exist?(p_service.base_dir+"_bak").should be_true
     File.exist?(p_service.image_file).should be_true
     File.size(p_service.image_file).should be > 100*1024*1024
-    FileUtils.rm_rf(p_service.data_dir+"_bak")
+    FileUtils.rm_rf(p_service.base_dir+"_bak")
     p_service.delete
   end
 end

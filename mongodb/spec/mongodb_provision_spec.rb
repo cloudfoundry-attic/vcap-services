@@ -16,7 +16,6 @@ describe "Mongodb Node" do
 
   after :all do
     @node.shutdown if @node
-    FileUtils.rm_rf(@opts[:base_dir])
   end
 
   it "sh method should return 0 for successful commands" do
