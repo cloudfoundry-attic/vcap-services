@@ -41,6 +41,7 @@ class NodeTests
     def initialize(options)
       super(options)
       @ready = true
+      @op_time_limit = 5
       @announcement_invoked = false
       @provision_invoked = false
       @unprovision_invoked = false

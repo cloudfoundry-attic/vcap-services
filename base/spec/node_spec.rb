@@ -3,6 +3,7 @@ require 'helper/spec_helper'
 require 'eventmachine'
 
 describe NodeTests do
+  include VCAP::Services::Internal
 
   it "should announce on startup" do
     node = nil
@@ -148,6 +149,22 @@ describe NodeTests do
     (original_capacity - node.capacity).should == 0
   end
 
+  it "should handle long time provision" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      Do.sec(0) do
+        node = NodeTests.create_node;
+        node.stub!(:provision){ sleep 6; {"name" => "test"} }
+        node.should_receive(:unprovision)
+      end
+      Do.sec(1) { provisioner = NodeTests.create_error_provisioner}
+      Do.sec(2) { provisioner.send_provision_request }
+      Do.sec(10) { EM.stop }
+    end
+    provisioner.response.should =~ /Node operation timeout/
+  end
+
   it "should support unprovision" do
     node = nil
     provisioner = nil
@@ -227,6 +244,23 @@ describe NodeTests do
     node.bind_invoked.should be_true
     provisioner.response.should =~ /Service unavailable/
   end
+
+  it "should handle long time bind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      Do.sec(0) do
+        node = NodeTests.create_node;
+        node.stub!(:bind){ sleep 6; BindResponse.new }
+        node.should_receive(:unbind)
+      end
+      Do.sec(1) { provisioner = NodeTests.create_error_provisioner}
+      Do.sec(2) { provisioner.send_bind_request }
+      Do.sec(10) { EM.stop }
+    end
+    provisioner.response.should =~ /Node operation timeout/
+  end
+
 
   it "should support unbind" do
     node = nil

@@ -20,6 +20,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @capacity_lock = Mutex.new
     @migration_nfs = options[:migration_nfs]
     @fqdn_hosts = options[:fqdn_hosts]
+    @op_time_limit = options[:op_time_limit]
 
     z_interval = options[:z_interval] || 30
     EM.add_periodic_timer(z_interval) do
@@ -53,17 +54,38 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     EM.add_periodic_timer(30) { send_node_announcement }
   end
 
+  # raise an error if operation does not finish in time limit
+  # and perform a rollback action if rollback function is provided
+  def timing_exec(time_limit, rollback=nil)
+    return unless block_given?
+
+    start = Time.now
+    response = yield
+    if response && Time.now - start > time_limit
+      rollback.call(response) if rollback
+      raise ServiceError::new(ServiceError::NODE_OPERATION_TIMEOUT)
+    end
+  end
+
   def on_provision(msg, reply)
     @logger.debug("#{service_description}: Provision request: #{msg} from #{reply}")
     response = ProvisionResponse.new
-    provision_req = ProvisionRequest.decode(msg)
-    plan = provision_req.plan
-    credentials = provision_req.credentials
-    credential = provision(plan, credentials)
-    credential['node_id'] = @node_id
-    response.credentials = credential
-    @capacity_lock.synchronize{ @capacity -= capacity_unit }
-    @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
+    rollback = lambda do |res|
+      @logger.error("#{service_description}: Provision takes too long. Rollback for #{res.inspect}")
+      unprovision(res.credentials["name"], [])
+    end
+
+    timing_exec(@op_time_limit, rollback) do
+      provision_req = ProvisionRequest.decode(msg)
+      plan = provision_req.plan
+      credentials = provision_req.credentials
+      credential = provision(plan, credentials)
+      credential['node_id'] = @node_id
+      response.credentials = credential
+      @capacity_lock.synchronize{ @capacity -= capacity_unit }
+      @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
+      response
+    end
     publish(reply, encode_success(response))
   rescue => e
     @logger.warn("Exception at on_provision #{e}")
@@ -91,11 +113,19 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_bind(msg, reply)
     @logger.debug("#{service_description}: Bind request: #{msg} from #{reply}")
     response = BindResponse.new
-    bind_message = BindRequest.decode(msg)
-    name      = bind_message.name
-    bind_opts = bind_message.bind_opts
-    credentials = bind_message.credentials
-    response.credentials = bind(name, bind_opts, credentials)
+    rollback = lambda do |res|
+      @logger.error("#{service_description}: Binding takes too long. Rollback for #{res.inspect}")
+      unbind(res.credentials)
+    end
+
+    timing_exec(@op_time_limit, rollback) do
+      bind_message = BindRequest.decode(msg)
+      name      = bind_message.name
+      bind_opts = bind_message.bind_opts
+      credentials = bind_message.credentials
+      response.credentials = bind(name, bind_opts, credentials)
+      response
+    end
     publish(reply, encode_success(response))
   rescue => e
     @logger.warn("Exception at on_bind #{e}")
