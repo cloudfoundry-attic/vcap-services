@@ -1,0 +1,5 @@
+./vendor/*
+./configs/*
+./databases/*
+*.gem
+*.db

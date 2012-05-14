@@ -1,0 +1,22 @@
+---
+cloud_controller_uri: http://api.vcap.me
+service:
+  name: memcached
+  version: "1.4.10"
+  description: 'Memcached high-performance, distributed memory object caching system'
+  plans: ['free']
+  tags: ['memcached', 'memcached-1.4', 'key-value', 'nosql']
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
+token: changememcachedtoken
+logging:
+  level: debug
+mbus: nats://nats:nats@172.16.168.10:4222/  
+#mbus: nats://nats:nats@192.168.0.124:4222/
+pid: /var/vcap/sys/run/memcached_service.pid
+# allow_over_provisioning: false
+# z_interval: 30
