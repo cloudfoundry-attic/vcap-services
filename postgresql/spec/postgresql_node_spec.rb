@@ -553,6 +553,7 @@ describe "Postgresql node normal cases" do
           c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
           # prepare 1M data
           content = (0..1000000).map{ c[rand(c.size)] }.join
+          conn.query("create temporary table temp_table (data text) on commit delete rows")
           conn.query("insert into test values('#{content}')")
           EM.add_timer(2) do
             # terminating connection due to administrator command
@@ -563,6 +564,9 @@ describe "Postgresql node normal cases" do
             # permission denied for relation test
             expect { conn.query("insert into test values('1')") }.should raise_error(PGError)
             expect { conn.query("create table test1(data text)") }.should raise_error(PGError)
+            # temp privilege should be revoked
+            expect { conn.query("create temporary table test2 (data text) on commit delete rows") }.should raise_error(PGError)
+            expect { conn.query("drop temporary table temp_table") }.should raise_error(PGError)
             new_binding = node.bind(db['name'], @default_opts)
             new_conn = connect_to_postgresql(new_binding)
             expect { new_conn.query("insert into test values('1')") }.should raise_error(PGError)
@@ -572,6 +576,9 @@ describe "Postgresql node normal cases" do
               # write privilege should restore
               expect { conn.query("insert into test values('1')") }.should_not raise_error
               expect { conn.query("create table test1(data text)") }.should_not raise_error
+              # temp privilege should be restored
+              expect { conn.query("create temporary table test2 (data text) on commit delete rows") }.should_not raise_error
+              expect { conn.query("drop temporary table temp_table") }.should raise_error
               conn.close if conn
               new_conn.close if new_conn
               EM.stop
@@ -713,6 +720,63 @@ describe "Postgresql node normal cases" do
       @db['user'] = parent.user
       @db['password'] = parent.password
       EM.stop
+    end
+  end
+
+   it "should be able to migrate(grant temp privilege) legacy instances" do
+    EM.run do
+      parent = @db['user']
+      parent_password = @db['password']
+      user1 = @node.bind(@db['name'], @default_opts)
+      user2 = @node.bind(@db['name'], @default_opts)
+      orphan = @node.bind(@db['name'], @default_opts)
+
+      @db['user'] = @opts[:postgresql]['user']
+      @db['password'] = @opts[:postgresql]['pass']
+      sys_conn = connect_to_postgresql @db
+
+      sys_conn.query "revoke temp on database #{@db['name']} from #{parent}"
+      sys_conn.query "revoke temp on database #{@db['name']} from #{user1['user']}"
+      sys_conn.query "revoke temp on database #{@db['name']} from #{user2['user']}"
+
+      sys_conn.query "revoke all on database #{@db['name']} from #{orphan['user']} cascade"
+      sys_conn.query "drop role #{orphan['user']}"
+
+      sys_conn.close if sys_conn
+
+      # reset @db
+      @db['user'] = parent
+      @db['password'] = parent_password
+
+      # connect to the db and fail to create temporary table/sequence/view
+      parent_conn = connect_to_postgresql @db
+      parent_conn.query('create table parent_table(id int, data text)')
+      expect { parent_conn.query('create temporary table parent_temp_table as select * from parent_table') }.should raise_error(PGError)
+      expect { parent_conn.query('create temporary sequence test_seq start 101') }.should raise_error(PGError)
+      parent_conn.close if parent_conn
+      user1_conn = connect_to_postgresql user1
+      expect { user1_conn.query('select * into temporary user1_temp_table from parent_table') }.should raise_error(PGError)
+      user1_conn.close if user1_conn
+      user2_conn = connect_to_postgresql user2
+      expect { user2_conn.query('create temporary view user2_temp_view as select * from parent_table') }.should raise_error(PGError)
+      user2_conn.close if user2_conn
+
+      # create a new node to migrate
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      sleep 1
+      EM.add_timer(0.1) {
+        parent_conn = connect_to_postgresql @db
+        expect { parent_conn.query('create temporary table parent_temp_table as select * from parent_table') }.should_not raise_error(PGError)
+        expect { parent_conn.query('create temporary sequence test_seq start 101') }.should_not raise_error(PGError)
+        parent_conn.close if parent_conn
+        user1_conn = connect_to_postgresql user1
+        expect { user1_conn.query('select * into temporary user1_temp_table from parent_table') }.should_not raise_error(PGError)
+        user1_conn.close if user1_conn
+        user2_conn = connect_to_postgresql user2
+        expect { user2_conn.query('create temporary view user2_temp_view as select * from parent_table') }.should_not raise_error(PGError)
+        user2_conn.close if user2_conn
+        EM.stop
+      }
     end
   end
 

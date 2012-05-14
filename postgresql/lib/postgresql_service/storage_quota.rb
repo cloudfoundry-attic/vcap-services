@@ -54,6 +54,8 @@ class VCAP::Services::Postgresql::Node
         db_connection_sys_user.close
         do_grant_query(db_connection,user,sys_user)
       end
+      db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
+      db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
     end
     db_connection.query("grant create on schema public to public")
     if get_postgres_version(db_connection) == '9'
@@ -118,6 +120,8 @@ class VCAP::Services::Postgresql::Node
       user = binduser.user
       sys_user = binduser.sys_user
       kill_user_sessions(user, name)
+      db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
+      db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
       do_revoke_query(db_connection, user, sys_user)
     end
     db_connection.close
