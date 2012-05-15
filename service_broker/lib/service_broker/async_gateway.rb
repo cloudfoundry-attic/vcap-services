@@ -283,7 +283,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
   helpers do
 
     def advertise_brokered_service(request)
-      @logger.debug("Advertise a brokerd service: #{request.inspect}")
+      @logger.debug("Advertise a brokered service: #{request.inspect}")
       label = request.label
       des = request.description
       options = request.options
