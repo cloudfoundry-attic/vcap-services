@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    vcap_services_base (0.1.9)
+    vcap_services_base (0.1.10)
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)
@@ -27,7 +27,7 @@ GEM
     builder (3.0.0)
     ci_reporter (1.6.4)
       builder (>= 2.1.2)
-    curb (0.7.16)
+    curb (0.7.18)
     daemons (1.1.8)
     data_objects (0.10.8)
       addressable (~> 2.1)
@@ -78,7 +78,7 @@ GEM
     eventmachine_httpserver (0.2.1)
     fastercsv (1.5.4)
     json (1.4.6)
-    json_pure (1.6.5)
+    json_pure (1.7.0)
     macaddr (1.5.0)
       systemu (>= 2.4.0)
     multi_json (1.0.4)
@@ -134,7 +134,7 @@ GEM
     uuid (2.3.5)
       macaddr (~> 1.0)
     uuidtools (2.1.2)
-    vcap_common (1.0.10)
+    vcap_common (1.0.11)
       eventmachine (~> 0.12.11.cloudfoundry.3)
       nats (~> 0.4.22.beta.8)
       posix-spawn (~> 0.3.6)

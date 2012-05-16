@@ -25,6 +25,7 @@ api_extensions:
 resque:
   host: localhost
   port: 5454
+download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
 
 upload_temp_dir: /tmp
 plan_management:
@@ -32,6 +33,11 @@ plan_management:
     free:
       low_water: 10
       high_water: 180
+      lifecycle:
+        snapshots:
+          quota: 5
+        serialization: enable
+        job: enable
       #allow_over_provisioning: false
 
 # z_interval: 30

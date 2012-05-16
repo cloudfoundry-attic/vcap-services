@@ -26,7 +26,7 @@ class VCAP::Services::Postgresql::Provisioner < VCAP::Services::Base::Provisione
   end
 
   def create_serialized_url_job
-    VCAP::Services::Postgresql::Serialization::CreateSerializedURLJob
+    VCAP::Services::Base::AsyncJob::Serialization::BaseCreateSerializedURLJob
   end
 
   def import_from_url_job

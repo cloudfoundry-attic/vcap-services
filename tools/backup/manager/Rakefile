@@ -33,9 +33,9 @@ end
 
 namespace "test" do
   def run_task(name)
-    sh("nats-server &")
+    sh("../../../base/bin/nats-util start")
     sh("cd spec && rake #{name}")
-    sh("killall -9 nats-server")
+    sh("../../../base/bin/nats-util stop")
   end
 
   task "spec" do |t|

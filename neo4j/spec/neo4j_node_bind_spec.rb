@@ -38,7 +38,7 @@ describe VCAP::Services::Neo4j::Node do
   after :all do
     EM.run do
       begin
-        @node.shutdown()
+        @node.shutdown() unless @node.nil?
         EM.stop
       rescue
       end
@@ -122,7 +122,6 @@ describe VCAP::Services::Neo4j::Node do
         e.should_not be_nil
       end
       EM.stop
-
     end
   end
 
@@ -130,7 +129,6 @@ describe VCAP::Services::Neo4j::Node do
   it "should be able to unprovision an existing instance" do
     EM.run do
       @node.unprovision(@resp['name'], [])
-
       e = nil
       begin
         neo4j_connect(nil,nil)

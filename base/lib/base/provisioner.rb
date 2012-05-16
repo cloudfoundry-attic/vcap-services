@@ -6,6 +6,7 @@ require "uuidtools"
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'base/base'
+require 'base/simple_aop'
 require 'base/job/async_job'
 require 'base/job/snapshot'
 require 'base/job/serialization'
@@ -16,6 +17,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::Internal
   include VCAP::Services::Base::AsyncJob
   include VCAP::Services::Base::AsyncJob::Snapshot
+  include Before
 
   BARRIER_TIMEOUT = 2
   MASKED_PASSWORD = '********'
@@ -23,13 +25,16 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def initialize(options)
     super(options)
     @opts = options
-    @version   = options[:version]
     @node_timeout = options[:node_timeout]
     @nodes     = {}
     @provision_refs = Hash.new(0)
     @prov_svcs = {}
-    @handles_for_check_orphan = {}
+    @instance_handles_CO = {}
+    @binding_handles_CO = {}
     @plan_mgmt = options[:plan_management] && options[:plan_management][:plans] || {}
+
+    init_service_extensions
+
     reset_orphan_stat
 
     z_interval = options[:z_interval] || 30
@@ -54,6 +59,20 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def flavor
     'Provisioner'
+  end
+
+  def init_service_extensions
+    @extensions = {}
+    @plan_mgmt.each do |plan, value|
+      lifecycle = value[:lifecycle]
+      next unless lifecycle
+      @extensions[plan] ||= {}
+      @extensions[plan][:snapshot] = lifecycle.has_key? :snapshot
+      %w(serialization job).each do |ext|
+        ext = ext.to_sym
+        @extensions[plan][ext] = true if lifecycle[ext] == "enable"
+      end
+    end
   end
 
   def reset_orphan_stat
@@ -145,17 +164,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Received node handles")
     response = NodeHandlesReport.decode(msg)
     nid = response.node_id
+    @staging_orphan_instances[nid] ||= []
+    @staging_orphan_bindings[nid] ||= []
     response.instances_list.each do |ins|
-      @staging_orphan_instances[nid] ||= []
-      @staging_orphan_instances[nid] << ins unless @handles_for_check_orphan.index { |h| h["service_id"] == ins }
+      @staging_orphan_instances[nid] << ins unless @instance_handles_CO.has_key?(ins)
     end
     response.bindings_list.each do |bind|
-      @staging_orphan_bindings[nid] ||= []
-      @staging_orphan_bindings[nid] << bind unless @handles_for_check_orphan.index do |h|
-        instance = h["credentials"]["name"]
-        username = h["credentials"]["username"] || h["credentials"]["user"]
-        instance == bind["name"] && username == bind["username"]
-      end
+      key = bind["name"].concat(bind["username"] || bind["user"])
+      @staging_orphan_bindings[nid] << bind unless @binding_handles_CO.has_key?(key)
     end
     oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
     ob_count = @staging_orphan_bindings.values.reduce(0) { |m, v| m += v.count }
@@ -164,10 +180,28 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.warn("Exception at on_node_handles #{e}")
   end
 
+  def indexing_handles(handles)
+    # instance handles hash's key is service_id, value is handle
+    # binding handles hash's key is credentials name & username, value is handle
+    ins_handles = {}
+    bin_handles = {}
+
+    handles.each do |h|
+      if h["service_id"] == h["credentials"]["name"]
+        ins_handles[h["service_id"]] = h
+      else
+        key = h["credentials"]["name"].concat(h["credentials"]["username"] || h["credentials"]["user"])
+        bin_handles[key] = h
+      end
+    end
+
+    [ins_handles, bin_handles]
+  end
+
   def check_orphan(handles, &blk)
     @logger.debug("[#{service_description}] Check if there are orphans")
     reset_orphan_stat
-    @handles_for_check_orphan = handles.deep_dup
+    @instance_handles_CO, @binding_handles_CO = indexing_handles(handles.deep_dup)
     @node_nats.publish("#{service_name}.check_orphan","Send Me Handles")
     blk.call(success)
   rescue => e
@@ -181,20 +215,18 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def double_check_orphan(handles)
     @logger.debug("[#{service_description}] Double check the orphan result")
+    ins_handles, bin_handles = indexing_handles(handles)
     @staging_orphan_instances.each do |nid, oi_list|
+      @final_orphan_instances[nid] ||= []
       oi_list.each do |oi|
-        @final_orphan_instances[nid] ||= []
-        @final_orphan_instances[nid] << oi unless handles.index { |h| h["service_id"] == oi }
+        @final_orphan_instances[nid] << oi unless ins_handles.has_key?(oi)
       end
     end
     @staging_orphan_bindings.each do |nid, ob_list|
+      @final_orphan_bindings[nid] ||= []
       ob_list.each do |ob|
-        @final_orphan_bindings[nid] ||= []
-        @final_orphan_bindings[nid] << ob unless handles.index do |h|
-          instance = h["credentials"]["name"]
-          username = h["credentials"]["username"] || h["credentials"]["user"]
-          instance == ob["name"] && username == ob["username"]
-        end
+        key = ob["name"].concat(ob["username"] || ob["user"])
+        @final_orphan_bindings[nid] << ob unless bin_handles.has_key?(key)
       end
     end
     oi_count = @final_orphan_instances.values.reduce(0) { |m, v| m += v.count }
@@ -661,12 +693,64 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     blk.call(success(id_list))
   end
 
+  # Snapshot apis filter
+  def before_snapshot_apis service_id, *args, &blk
+    raise "service_id can't be nil" unless service_id
+
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+
+    plan = find_service_plan(svc)
+    extensions_enabled?(plan, :snapshot)
+  rescue => e
+    handle_error(e, &blk)
+    nil # terminate evoke chain
+  end
+
+  def find_service_plan(svc)
+    config = svc[:configuration] || svc["configuration"]
+    raise "Can't find configuration for service=#{service_id} #{svc.inspect}" unless config
+    plan = config["plan"] || config[:plan]
+    raise "Can't find plan for service=#{service_id} #{svc.inspect}" unless plan
+    plan
+  end
+
+  # Serialization apis filter
+  def before_serialization_apis service_id, *args, &blk
+    raise "service_id can't be nil" unless service_id
+
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+
+    plan = find_service_plan(svc)
+    extensions_enabled?(plan, :serialization)
+  rescue => e
+    handle_error(e, &blk)
+    nil # terminate evoke chain
+  end
+
+  def before_job_apis service_id, *args, &blk
+    raise "service_id can't be nil" unless service_id
+
+    svc = @prov_svcs[service_id]
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+
+    plan = find_service_plan(svc)
+    extensions_enabled?(plan, :job)
+  rescue => e
+    handle_error(e, &blk)
+    nil # terminate evoke chain
+  end
+
+  def extensions_enabled?(plan, extension)
+    raise ServiceError.new(ServiceError::EXTENSION_NOT_IMPL, extension) unless (@extensions[plan.to_sym] && @extensions[plan.to_sym][extension.to_sym])
+    true
+  end
+
   # Create a create_snapshot job and return the job object.
   #
   def create_snapshot(service_id, &blk)
     @logger.debug("Create snapshot job for service_id=#{service_id}")
-    svc = @prov_svcs[service_id]
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     job_id = create_snapshot_job.create(:service_id => service_id, :node_id =>find_node(service_id))
     job = get_job(job_id)
     @logger.info("CreateSnapshotJob created: #{job.inspect}")
@@ -696,7 +780,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     snapshot = snapshot_details(service_id, snapshot_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    blk.call(success(snapshot))
+    blk.call(success(filter_keys(snapshot)))
   rescue => e
     handle_error(e, &blk)
   end
@@ -708,7 +792,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     svc = @prov_svcs[service_id]
     raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     snapshots = service_snapshots(service_id)
-    blk.call(success({:snapshots => snapshots}))
+    res = snapshots.map{|s| filter_keys(s)}
+    blk.call(success({:snapshots => res }))
   rescue => e
     handle_error(e, &blk)
   end
@@ -730,12 +815,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def delete_snapshot(service_id, snapshot_id, &blk)
     @logger.debug("Delete snapshot=#{snapshot_id} for service_id=#{service_id}")
-    svc = @prov_svcs[service_id]
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     snapshot = snapshot_details(service_id, snapshot_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    job_id = delete_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id,
-                  :node_id => find_node(service_id))
+    job_id = delete_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id, :node_id => find_node(service_id))
     job = get_job(job_id)
     @logger.info("DeleteSnapshotJob created: #{job.inspect}")
     blk.call(success(job))
@@ -743,14 +825,32 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     handle_error(e, &blk)
   end
 
-  # Generate a url for user to download serialized data.
-  def get_serialized_url(service_id, &blk)
-    @logger.debug("get serialized url for service_id=#{service_id}")
-    svc = @prov_svcs[service_id]
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-    job_id = create_serialized_url_job.create(:service_id => service_id, :node_id => find_node(service_id))
+  def create_serialized_url(service_id, snapshot_id, &blk)
+    @logger.debug("create serialized url for snapshot=#{snapshot_id} of service_id=#{service_id}")
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    job_id = create_serialized_url_job.create(:service_id => service_id, :node_id => find_node(service_id), :snapshot_id => snapshot_id)
     job = get_job(job_id)
     blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  # Genereate the serialized URL of service snapshot.
+  # Return NOTFOUND error if no download token is associate with service instance.
+  def get_serialized_url(service_id, snapshot_id, &blk)
+    @logger.debug("get serialized url for snapshot=#{snapshot_id} of service_id=#{service_id}")
+    snapshot = snapshot_details(service_id, snapshot_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
+    token = snapshot["token"]
+    raise ServiceError.new(ServiceError::NOT_FOUND, "Download url for service_id=#{service_id}, snapshot=#{snapshot_id}") unless token
+
+    url_template = @opts[:download_url_template]
+    service = @opts[:service][:name]
+    raise "Configuration error, can't find download_url_template" unless url_template
+    raise "Configuration error, can't find service name." unless service
+    url = url_template % {:service => service, :name => service_id, :snapshot_id => snapshot_id, :token => token}
+    blk.call(success({:url => url}))
   rescue => e
     handle_error(e, &blk)
   end
@@ -758,8 +858,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   #
   def import_from_url(service_id, url, &blk)
     @logger.debug("import serialized data from url:#{url} for service_id=#{service_id}")
-    svc = @prov_svcs[service_id]
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     job_id = import_from_url_job.create(:service_id => service_id, :url => url, :node_id => find_node(service_id))
     job = get_job(job_id)
     blk.call(success(job))
@@ -769,8 +867,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def import_from_data(service_id, req, &blk)
     @logger.debug("import serialized data from request for service_id=#{service_id}")
-    svc = @prov_svcs[service_id]
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
     temp_path = File.join(@upload_temp_dir, "#{service_id}.gz")
     # clean up previous upload
     FileUtils.rm_rf(temp_path)
@@ -890,7 +986,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   # handle request exception
   def handle_error(e, &blk)
-    @logger.warn("Exception at handle_error #{e}:"+"[#{e.backtrace.join("|")}]")
     if e.instance_of? ServiceError
       blk.call(failure(e))
     else
@@ -924,5 +1019,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   # various lifecycle jobs class
   abstract :create_snapshot_job, :rollback_snapshot_job, :delete_snapshot_job, :create_serialized_url_job, :import_from_url_job, :import_from_data_job
+
+  # register before filter
+  before [:create_snapshot, :get_snapshot, :enumerate_snapshots, :delete_snapshot, :rollback_snapshot],  :before_snapshot_apis
+
+  before [:create_serialized_url, :get_serialized_url, :import_from_url, :import_from_data], :before_serialization_apis
+
+  before :job_details, :before_job_apis
 
 end

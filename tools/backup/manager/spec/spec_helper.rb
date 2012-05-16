@@ -13,7 +13,7 @@ require 'backup_manager/manager'
 
 class BackupManagerTests
 
-  def self.create_manager(dirname)
+  def self.create_manager(dirname, target)
     root = File.join(File.dirname(__FILE__), 'test_directories', dirname)
     mgr = ManagerTest.new({
       :logger => Logger.new(STDOUT),
@@ -24,6 +24,10 @@ class BackupManagerTests
       :rotation => {
         :max_days => 7
       },
+      :cleanup => {
+        :max_days => 7
+      },
+      :target => target,
       :enable => true
     })
     mgr.root = root
@@ -36,7 +40,12 @@ class BackupManagerTests
 
     def initialize(options)
       super(options)
-      @tasks = [MockRotator.new(self,options[:rotation])]
+      @tasks = []
+      if options[:target] == "backups"
+        @tasks = [MockRotator.new(self,options[:rotation])]
+      elsif options[:target] == "snapshots"
+        @tasks = [MockSnapshotCleaner.new(self, options[:cleanup])]
+      end
       @shutdown_invoked = false
     end
 
@@ -47,6 +56,32 @@ class BackupManagerTests
 
     def time
       Time.parse("2010-01-20 09:10:20 UTC").to_i
+    end
+  end
+
+  class MockSnapshotCleaner < VCAP::Services::Backup::SnapshotCleaner
+    alias_method :ori_all_cleanup, :all_cleanup
+    alias_method :ori_mark_cleanup, :mark_cleanup
+    alias_method :ori_keep_mark, :keep_mark
+    def all_cleanup(dir, snapshots)
+      sleep 2
+      @manager.logger.debug("Test all_cleanup #{dir}")
+      ori_all_cleanup(dir, snapshots)
+    end
+
+    def mark_cleanup(dir, snapshots, latest_key=nil, previous_marktime=nil)
+      sleep 2
+      @manager.logger.debug("Test mark_cleanup #{dir}")
+      ori_mark_cleanup(dir, snapshots, latest_key, previous_marktime)
+    end
+
+    def keep_mark(dir, snapshots)
+      sleep 1
+      @manager.logger.debug("Test keep_marked #{dir}")
+      ori_keep_mark(dir, snapshots)
+    end
+
+    def rmdashr(path)
     end
   end
 
@@ -72,38 +107,13 @@ class BackupManagerTests
 end
 
 require 'backup_manager/rotator'
+require 'backup_manager/snapshot_cleaner'
 
-
-class BackupRotatorTests
+module BackupWorkerTests
 
   CC_PORT = 45678
   MAX_DAYS = 7
 
-  def self.create_rotator(root_p, opts)
-    logger = Logger.new(STDOUT)
-    complicated = root_p == 'complicated' # special handling for this one...
-    root = ''
-    if complicated
-      root = File.join('/tmp','backup_spec','test_directories',root_p)
-      require 'spec/test_directories/complicated/populate'
-      populate_complicated(root)
-    else
-      root = File.join(File.dirname(__FILE__), 'test_directories', root_p)
-    end
-    manager = MockManager.new(root, logger)
-    opts.merge!({:logger => logger})
-
-    yield RotatorTester.new(manager, opts)
-    FileUtils.rm_rf(File.join('/tmp', 'backup_spec')) if complicated
-  end
-
-  def self.validate_retained(backup, threshold)
-    path = backup[0]
-    timestamp = backup[1]
-    return true if timestamp > threshold
-    all_backup = Dir.entries(File.absolute_path('..',path))-['.','..']
-    return all_backup.max.to_i == timestamp
-  end
 
   class MockManager
     attr_reader :root, :logger
@@ -116,33 +126,6 @@ class BackupRotatorTests
     end
     def shutdown?
       false
-    end
-  end
-
-  class RotatorTester < VCAP::Services::Backup::Rotator
-    def initialize(manager, options)
-      super(manager, options)
-      @pruned = []
-      @retained = []
-      @logger = options[:logger]
-    end
-    def prune(path, timestamp=nil)
-      # IMPORTANT: by overriding this method we prevent files in
-      # 'test_directories' from actually getting deleted
-      @pruned << [path,timestamp]
-    end
-    def retain(path, timestamp)
-      @retained << [path, timestamp]
-    end
-    def pruned(relpath=nil)
-      relpath ? member(@pruned, relpath) : @pruned
-    end
-    def retained(relpath=nil)
-      relpath ? member(@retained, relpath) : @retained
-    end
-    def member(backups, relpath)
-      path = File.join(@manager.root, relpath)
-      backups.index { |a| a[0] == path }
     end
   end
 
@@ -192,6 +175,196 @@ class BackupRotatorTests
         end
         res
       end
+    end
+  end
+end
+
+class BackupRotatorTests
+
+  include BackupWorkerTests
+
+  def self.create_rotator(root_p, opts)
+    logger = Logger.new(STDOUT)
+    complicated = root_p == 'complicated' # special handling for this one...
+    root = ''
+    if complicated
+      root = File.join('/tmp','backup_spec','test_directories', 'backups',root_p)
+      require 'spec/test_directories/backups/complicated/populate'
+      populate_complicated(root)
+    else
+      root = File.join(File.dirname(__FILE__), 'test_directories', 'backups', root_p)
+    end
+    manager = MockManager.new(root, logger)
+    opts.merge!({:logger => logger})
+
+    yield RotatorTester.new(manager, opts)
+
+    FileUtils.rm_rf(File.join('/tmp', 'backup_spec')) if complicated
+  end
+
+  def self.validate_retained(backup, threshold)
+    path = backup[0]
+    timestamp = backup[1]
+    return true if timestamp > threshold
+    all_backup = Dir.entries(File.absolute_path('..',path))-['.','..']
+    return all_backup.max.to_i == timestamp
+  end
+
+  class RotatorTester < VCAP::Services::Backup::Rotator
+    def initialize(manager, options)
+      super(manager, options)
+      @pruned = []
+      @retained = []
+      @logger = options[:logger]
+    end
+    def prune(path, timestamp=nil)
+      # IMPORTANT: by overriding this method we prevent files in
+      # 'test_directories' from actually getting deleted
+      @pruned << [path,timestamp]
+    end
+    def retain(path, timestamp)
+      @retained << [path, timestamp]
+    end
+    def pruned(relpath=nil)
+      relpath ? member(@pruned, relpath) : @pruned
+    end
+    def retained(relpath=nil)
+      relpath ? member(@retained, relpath) : @retained
+    end
+    def member(backups, relpath)
+      path = File.join(@manager.root, relpath)
+      backups.index { |a| a[0] == path }
+    end
+  end
+end
+
+class BackupSnapshotCleanerTests
+
+  include BackupWorkerTests
+
+  def self.create_cleaner(root_p, opts)
+    logger = Logger.new(STDOUT)
+    complicated = root_p == 'complicated' # special handling for this one...
+    root = ''
+    if complicated
+      root = File.join('/tmp','snapshot_spec','test_directories', 'snapshots',root_p)
+      require 'spec/test_directories/snapshots/complicated/populate'
+      populate_complicated(root)
+    else
+      root = File.join(File.dirname(__FILE__), 'test_directories', 'snapshots', root_p)
+    end
+    manager = MockManager.new(root, logger)
+    opts.merge!({:logger => logger})
+
+    yield SnapshotCleanerTester.new(manager, opts)
+
+    FileUtils.rm_rf(File.join('/tmp', 'snapshot_spec')) if complicated
+  end
+
+  def self.validate_all_cleanuped(dir)
+    # the dir should not exist
+    return Dir.exists?(dir) == false
+  end
+
+  def self.validate_keep_marked(dir)
+    # the dir should has the last_clean_time file
+    if File.exists?(File.join(dir, "last_clean_time"))
+      check_file = File.join(dir, "last_clean_time")
+      last_clean_time = nil
+      previous_marktime = nil
+      mark_line = nil
+      File.open(check_file, "r") do |file|
+        mark_line = file.read()
+      end
+
+      if mark_line.nil? == false
+        tmp = mark_line.split('|')
+        last_clean_time = tmp[0] if tmp.length >= 1
+      end
+      last_clean_time
+    else
+      false
+    end
+  end
+
+  def self.validate_mark_cleanuped(dir)
+    # the dir should has the last_clean_time file
+    if File.exists?(File.join(dir, "last_clean_time"))
+      check_file = File.join(dir, "last_clean_time")
+      last_clean_time = nil
+      previous_marktime = nil
+      mark_line = nil
+      File.open(check_file, "r") do |file|
+        mark_line = file.read()
+      end
+
+      unless mark_line.nil?
+        tmp = mark_line.split('|')
+        last_clean_time = tmp[0] if tmp.length >= 1
+      end
+      last_clean_time
+    else
+      false
+    end
+  end
+
+  def self.validate_nooped(dir)
+    # has no mark file
+    File.exists?(dir) && File.exists?(File.join(dir, "last_clean_time")) == false
+  end
+
+  class SnapshotCleanerTester < VCAP::Services::Backup::SnapshotCleaner
+
+    alias_method :real_noop, :noop
+    alias_method :real_mark_cleanup, :mark_cleanup
+    alias_method :real_keep_mark, :keep_mark
+    alias_method :real_all_cleanup, :all_cleanup
+
+    def initialize(manager, options)
+      super(manager, options)
+      @all_cleanuped = []
+      @mark_cleanuped = []
+      @keep_marked = []
+      @nooped = []
+      @logger = options[:logger]
+    end
+
+    def noop(dir, need_delete_mark)
+      @nooped << dir
+    end
+    def all_cleanup(dir, snapshots)
+      # IMPORTANT: by overriding this method we prevent files in
+      # 'test_directories' from actually getting deleted
+      @all_cleanuped << dir
+    end
+
+    def keep_mark(dir, snapshots)
+      @keep_marked << dir
+    end
+
+    def mark_cleanup(dir, snapshots, latest_key=nil, previous_marktime=nil)
+      @mark_cleanuped << dir
+    end
+
+    def nooped(relpath=nil)
+      relpath ? member(@nooped, relpath) : @nooped
+    end
+
+    def all_cleanuped(relpath=nil)
+      relpath ? member(@all_cleanuped, relpath) : @all_cleanuped
+    end
+
+    def mark_cleanuped(relpath=nil)
+      relpath ? member(@mark_cleanuped, relpath) : @mark_cleanuped
+    end
+
+    def keep_marked(relpath=nil)
+      relpath ? member(@keep_marked, relpath) : @keep_marked
+    end
+
+    def member(snapshots, relpath)
+      path = File.join(@manager.root, relpath)
+      snapshots.index { |a| a == path }
     end
   end
 end

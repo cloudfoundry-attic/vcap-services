@@ -10,7 +10,8 @@ module VCAP::Services::MongoDB::Snapshot
     def execute
       dump_path = get_dump_path(name, snapshot_id)
       FileUtils.mkdir_p(dump_path)
-      dump_file_name = File.join(dump_path, "#{snapshot_id}.tgz")
+      filename = "#{snapshot_id}.tgz"
+      dump_file_name = File.join(dump_path, filename)
 
       result = dump_database(name, dump_file_name)
       raise "Failed to execute dump command to #{name}" unless result
@@ -19,7 +20,8 @@ module VCAP::Services::MongoDB::Snapshot
       complete_time = Time.now
       snapshot = {
         :snapshot_id => snapshot_id,
-        :size => dump_file_size
+        :size => dump_file_size,
+        :file => filename
       }
 
       snapshot

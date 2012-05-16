@@ -31,5 +31,6 @@ module Mysql2
         return origin_query query_str
       end
     end
+
   end
 end

@@ -15,6 +15,7 @@ module VCAP
           HTTP_FORBIDDEN       = 403
           HTTP_NOT_FOUND       = 404
           HTTP_INTERNAL        = 500
+          HTTP_NOT_IMPLEMENTED = 501
           HTTP_SERVICE_UNAVAIL = 503
           HTTP_GATEWAY_TIMEOUT = 504
 
@@ -40,6 +41,7 @@ module VCAP
 
           # 30500 - 30599  500 Internal Error
           INTERNAL_ERROR = [30500, HTTP_INTERNAL, 'Internal Error']
+          EXTENSION_NOT_IMPL = [30501, HTTP_NOT_IMPLEMENTED, "Service extension %s is not implemented."]
 
           # 30600 - 30699  503 Service Unavailable
           SERVICE_UNAVAILABLE = [30600, HTTP_SERVICE_UNAVAIL, 'Service unavailable']

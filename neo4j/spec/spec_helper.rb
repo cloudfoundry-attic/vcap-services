@@ -1,8 +1,10 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 $:.unshift File.join(File.dirname(__FILE__), '..')
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
+
 $LOAD_PATH.unshift(File.expand_path("../../../", __FILE__))
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
+
 require "rubygems"
 require "rspec"
 require 'bundler/setup'
@@ -29,14 +31,6 @@ def is_port_open?(host, port)
   end
   false
 end
-
-def shutdown(neo4j_node)
-    neo4j_node.shutdown
-    $stderr.puts "Shutting down neo4j-node #{neo4j_node}"
-    sleep 5
-    EM.stop
-end
-
 
 def symbolize_keys(hash)
   if hash.is_a? Hash
@@ -66,6 +60,25 @@ def parse_property(hash, key, type, options = {})
   end
 end
 
+def get_logger_level(logging)
+  unless logging.has_key? "level"
+    raise "Missing required option: level"
+    Logger::FATAL
+  else
+    value = logging["level"].downcase
+    logger_level = case value
+      when "debug" then Logger::DEBUG
+      when "info" then Logger::INFO
+      when "warn" then Logger::WARN
+      when "error" then Logger::ERROR
+      when "fatal" then Logger::FATAL
+      else
+        raise "Invalid logger level: please choose one from debug, info, warn, error, fatal"
+        Logger::FATAL
+    end
+  end
+end
+
 def config_base_dir
   ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
 end
@@ -91,7 +104,8 @@ def get_node_config()
     :base_dir => '/tmp/neo4j/instances',
     :local_db => 'sqlite3:/tmp/neo4j/neo4j_node.db'
   }
-  options[:logger].level = Logger::FATAL
+  options[:logger].level = get_logger_level(parse_property(config, "logging", Hash))
+  puts options[:logger].level
   options[:port_range] = (options[:port_range].last+1)..(options[:port_range].last+10)
   options
 end
@@ -137,7 +151,3 @@ def start_server(opts)
 rescue Exception => e
   $stderr.puts e
 end
-
-
-
-

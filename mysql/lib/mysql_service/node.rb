@@ -322,6 +322,7 @@ class VCAP::Services::Mysql::Node
 
       begin
         create_database_user(name, binding[:user], binding[:password])
+        enforce_instance_storage_quota(service)
       rescue Mysql2::Error => e
         raise "Could not create database user: [#{e.errno}] #{e.error}"
       end
@@ -463,6 +464,10 @@ class VCAP::Services::Mysql::Node
     cmd += " #{name}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
+      # delete the procedures and functions: security_type is definer while the definer doesn't exist
+      @pool.with_connection do |connection|
+        handle_discarded_routines(name, connection)
+      end
       return true
     else
       return nil
@@ -492,7 +497,7 @@ class VCAP::Services::Mysql::Node
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     dump_file = File.join(dump_file_path, "#{name}.sql")
     @logger.info("Dump instance #{name} content to #{dump_file}")
-    cmd = "#{@mysqldump_bin} -h #{host} -u #{user} --password=#{password} --single-transaction #{'-S '+socket if socket} #{name} > #{dump_file}"
+    cmd = "#{@mysqldump_bin} -h #{host} -u #{user} --password=#{password} -R --single-transaction #{'-S '+socket if socket} #{name} > #{dump_file}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
       return true
@@ -517,6 +522,10 @@ class VCAP::Services::Mysql::Node
     cmd = "#{@mysql_bin} --host=#{host} --user=#{user} --password=#{password} #{'-S '+socket if socket} #{name} < #{import_file}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
+      # delete the procedures and functions: security_type is definer while the definer doesn't exist
+      @pool.with_connection do |connection|
+        handle_discarded_routines(name, connection)
+      end
       return true
     else
       return nil
