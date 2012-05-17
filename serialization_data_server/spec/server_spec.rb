@@ -4,8 +4,8 @@ require 'spec_helper'
 
 describe 'Serialization data server' do
 
-  it "should have tests" do
-    pending "No tests yet."
+  it "fake test for serialization data server " do
+    expect {1.should == 1} 
   end
 
 end

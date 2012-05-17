@@ -3,8 +3,6 @@ require 'bundler/setup'
 require 'optparse'
 require 'timeout'
 require 'fileutils'
-require 'logger'
-require 'logging'
 require 'yaml'
 require 'pathname'
 
@@ -110,13 +108,15 @@ class VCAP::Services::Base::Backup
     echo "Backup is interrupted!"
   end
 
-  def get_dump_path(name,mode=0)
+  def get_dump_path(name, options={})
     name = name.sub(/^(mongodb|redis)-/,'')
+    mode = options[:mode] || 0
+    time = options[:time] || Time.now
     case mode
     when 1
-      File.join(@config['backup_base_dir'], 'backups', @config['service_name'],name, Time.new.to_i.to_s,@config['node_id'])
+      File.join(@config['backup_base_dir'], 'backups', @config['service_name'],name, time.to_i.to_s,@config['node_id'])
     else
-      File.join(@config['backup_base_dir'], 'backups', @config['service_name'], name[0,2], name[2,2], name[4,2], name, Time.new.to_i.to_s)
+      File.join(@config['backup_base_dir'], 'backups', @config['service_name'], name[0,2], name[2,2], name[4,2], name, time.to_i.to_s)
     end
   end
 

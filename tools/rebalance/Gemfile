@@ -2,3 +2,4 @@ source "http://rubygems.org"
 
 gem "nats", '~> 0.4.22.beta.4'
 gem "yajl-ruby"
+gem "rest-client"

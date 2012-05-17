@@ -5,7 +5,6 @@ require "rest-client"
 
 include VCAP::Services::Neo4j
 
-
 module VCAP
   module Services
     module Neo4j
@@ -31,11 +30,12 @@ describe VCAP::Services::Neo4j::Node do
   after :all do
     EM.run do
       begin
-      @node.shutdown()
-      EM.stop
+        @node.shutdown() unless @node.nil?
+        EM.stop
       rescue
       end
     end
+    FileUtils.rm_rf(File.dirname(@opts[:base_dir]))
   end
 
   it "should have valid response" do
@@ -76,5 +76,3 @@ describe VCAP::Services::Neo4j::Node do
   end
 
 end
-
-

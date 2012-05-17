@@ -232,13 +232,17 @@ class VCAP::Services::Rabbit::Node
     varz[:provisioned_instances_num] = 0
     varz[:max_capacity] = @max_capacity
     varz[:available_capacity] = @capacity
-    ProvisionedService.all.each do |instance|
-      varz[:provisioned_instances] << get_varz(instance)
-      varz[:provisioned_instances_num] += 1
-    end
     varz[:instances] = {}
     ProvisionedService.all.each do |instance|
       varz[:instances][instance.name.to_sym] = get_status(instance)
+    end
+    ProvisionedService.all.each do |instance|
+      varz[:provisioned_instances_num] += 1
+      begin
+        varz[:provisioned_instances] << get_varz(instance)
+      rescue => e
+        @logger.warn("Failed to get instance #{instance.name} varz details: #{e}")
+      end
     end
     varz
   rescue => e
@@ -343,6 +347,7 @@ class VCAP::Services::Rabbit::Node
 
   def save_instance(instance)
     raise RabbitError.new(RabbitError::RABBIT_SAVE_INSTANCE_FAILED, instance.inspect) unless instance.save
+    true
   end
 
   def destroy_instance(instance)
@@ -350,6 +355,7 @@ class VCAP::Services::Rabbit::Node
     # otherwise the destory operation will persist the object from memory to db without deleting it,
     # the behavior of datamapper is doing persistent work at the end of each save/update/destroy API
     raise RabbitError.new(RabbitError::RABBIT_DESTORY_INSTANCE_FAILED, instance.inspect) unless instance.new? || instance.destroy
+    true
   end
 
   def get_instance(instance_id)

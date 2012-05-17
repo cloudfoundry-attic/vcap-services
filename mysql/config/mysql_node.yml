@@ -24,6 +24,8 @@ mysql:
   user: root
   pass: root
 connection_pool_size: 5
+# connection timeout for all management mysql connection
+connection_wait_timeout: 10
 
 # z_interval: 30
 # max_nats_payload: 1048576

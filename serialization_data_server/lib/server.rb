@@ -1,8 +1,13 @@
 # Copyright (c) 2009-2011 VMware, Inc.
+require "eventmachine"
+require "vcap/common"
+require "vcap/component"
 require "sinatra"
 require "nats/client"
 require "redis"
 require "json"
+require "sys/filesystem"
+include Sys
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'mysql')
 
@@ -40,8 +45,26 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
       end
     end
     @nats = NATS.connect(:uri => opts[:mbus]) {
+      VCAP::Component.register(
+        :nats => @nats,
+        :type => "SerializationDataServer",
+        :index => opts[:index] || 0,
+        :config => opts
+      )
+
       on_connect_nats
     }
+
+    z_interval = opts[:z_interval] || 30
+    EM.add_periodic_timer(z_interval) do
+      EM.defer { update_varz }
+    end if @nats
+
+    # Defer 5 seconds to give service a change to wake up
+    EM.add_timer(5) do
+      EM.defer { update_varz }
+    end if @nats
+
     Kernel.at_exit do
       if EM.reactor_running?
         send_deactivation_notice(false)
@@ -65,6 +88,30 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
     @redis = connect_redis
   end
 
+  def varz_details()
+    varz = {}
+    # check NFS disk free space
+    free_space = 0
+    begin
+      stats = Filesystem.stat("#{@base_dir}")
+      avail_blocks = stats.blocks_available
+      total_blocks = stats.blocks
+      free_space = format("%.2f", avail_blocks.to_f / total_blocks.to_f * 100)
+    rescue => e
+      @logger.error("Failed to get filesystem info of #{@base_dir}: #{e}")
+    end
+    varz[:nfs_free_space] = free_space
+
+    varz
+  end
+
+  def update_varz()
+    varz = varz_details
+    varz.each { |k, v|
+      VCAP::Component.varz[k] = v
+    }
+  end
+
   def connect_redis()
     redis_config = %w(host port password).inject({}){|res, o| res[o.to_sym] = @opts[:redis][o]; res}
     Redis.new(redis_config)
@@ -86,41 +133,45 @@ class VCAP::Services::Serialization::Server < Sinatra::Base
   end
 
   def redis_key(service, service_id)
-    "vcap:serialization:#{service}:#{service_id}:token"
+    "vcap:snapshot:#{service_id}"
   end
 
-  def file_path(service, id, file_name)
-    File.join(@base_dir, "serialize", service, id[0,2], id[2,2], id[4,2], id, file_name)
+  def file_path(service, id, snapshot_id, file_name)
+    File.join(@base_dir, "snapshots", service, id[0,2], id[2,2], id[4,2], id, snapshot_id, file_name)
   end
 
-  def nginx_path(service, id)
-    File.join(@nginx["nginx_path"], "serialize", service, id[0,2], id[2,2], id[4,2], id, "#{id}.gz")
+  def nginx_path(service, id, snapshot_id, file_name)
+    File.join(@nginx["nginx_path"], "snapshots", service, id[0,2], id[2,2], id[4,2], id, snapshot_id, file_name)
   end
 
-  get "/serialized/:service/:service_id" do
+  get "/serialized/:service/:service_id/snapshots/:snapshot_id" do
     token = params[:token]
     error(403) unless token
     service = params[:service]
     service_id = params[:service_id]
-    @logger.debug("Get serialized data for service=#{service}, service_id=#{service_id}")
+    snapshot_id = params[:snapshot_id]
+    @logger.debug("Get serialized data for service=#{service}, service_id=#{service_id}, snapshot_id=#{snapshot_id}")
+
     key = redis_key(service, service_id)
-    result = @redis.hget(key, :token)
+    result = @redis.hget(key, snapshot_id)
     if not result
-      @logger.info("Can't find token for service=#{service}, service_id=#{service_id}")
+      @logger.info("Can't find snapshot infor for service=#{service}, service_id=#{service_id}, snapshot=#{snapshot_id}")
       error(404)
     end
-    error(403) unless token == result
-    file_name = @redis.hget(key, :file)
+    result = Yajl::Parser.parse(result)
+    error(403) unless token == result["token"]
+    file_name = result["file"]
     if not file_name
       @logger.error("Can't get serialized filename from redis using key:#{key}.")
       error(501)
     end
-    path = file_path(service, service_id, file_name)
+
+    path = file_path(service, service_id, snapshot_id, file_name)
     if (File.exists? path)
       if @nginx
         status 200
         content_type "application/octet-stream"
-        path = nginx_path(service, service_id)
+        path = nginx_path(service, service_id, snapshot_id, file_name)
         @logger.info("Serve file using nginx: #{path}")
         response["X-Accel-Redirect"] = path
       else

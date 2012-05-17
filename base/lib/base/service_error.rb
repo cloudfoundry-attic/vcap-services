@@ -15,6 +15,7 @@ module VCAP
           HTTP_FORBIDDEN       = 403
           HTTP_NOT_FOUND       = 404
           HTTP_INTERNAL        = 500
+          HTTP_NOT_IMPLEMENTED = 501
           HTTP_SERVICE_UNAVAIL = 503
           HTTP_GATEWAY_TIMEOUT = 504
 
@@ -40,12 +41,18 @@ module VCAP
 
           # 30500 - 30599  500 Internal Error
           INTERNAL_ERROR = [30500, HTTP_INTERNAL, 'Internal Error']
+          EXTENSION_NOT_IMPL = [30501, HTTP_NOT_IMPLEMENTED, "Service extension %s is not implemented."]
 
           # 30600 - 30699  503 Service Unavailable
           SERVICE_UNAVAILABLE = [30600, HTTP_SERVICE_UNAVAIL, 'Service unavailable']
 
           # 30700 - 30799  500 Gateway Timeout
           GATEWAY_TIMEOUT = [30700, HTTP_GATEWAY_TIMEOUT, 'Gateway timeout']
+
+          # 30800 - 30899 500 Lifecycle error
+          OVER_QUOTA = [30800, HTTP_INTERNAL, "Instance %s has %s snapshots. Quota is %s "]
+          JOB_QUEUE_TIMEOUT = [30801, HTTP_INTERNAL, "Job timeout after waiting for %s seconds."]
+          BAD_SERIALIZED_DATAFILE = [30801, HTTP_INTERNAL, "Invalid serialized data file from: %s"]
 
           # 31000 - 32000  Service-specific Error
           # Defined in services directory, for example mongodb/lib/mongodb_service/

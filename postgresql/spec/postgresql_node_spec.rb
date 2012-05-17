@@ -97,10 +97,10 @@ describe "Postgresql node normal cases" do
       conn2 = connect_to_postgresql(bind_cred)
       @test_dbs[@db] << bind_cred
       @node.disable_instance(@db, [bind_cred])
-      expect { conn.query('select 1') }.should raise_error
-      expect { conn2.query('select 1') }.should raise_error
-      expect { connect_to_postgresql(@db) }.should raise_error
-      expect { connect_to_postgresql(bind_cred) }.should raise_error
+      expect { conn.query('select 1') }.should raise_error  # expected exception: connection terminated
+      expect { conn2.query('select 1') }.should raise_error # expected exception: connection terminated
+      expect { connect_to_postgresql(@db) }.should_not raise_error # default user won't be blocked
+      expect { connect_to_postgresql(bind_cred) }.should raise_error #expected exception: no permission to connect
       EM.stop
     end
   end
@@ -127,6 +127,27 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should recreate bindings when update instance handles" do
+    EM.run do
+      db = @node.provision(@default_plan)
+      @test_dbs[db] = []
+      binding = @node.bind(db['name'], @default_opts)
+      @test_dbs[db] << binding
+      conn = connect_to_postgresql(binding)
+      value = {
+        "fake_service_id" => {
+          "credentials" => binding,
+          "binding_options" => @default_opts,
+        }
+      }
+      result = @node.update_instance(db, value).should be_true
+      result.should be_instance_of Array
+      expect {conn = connect_to_postgresql(binding)}.should_not raise_error
+      expect {conn = connect_to_postgresql(db)}.should_not raise_error
+      EM.stop
+    end
+  end
+
   it "should recreate bindings when enable instance" do
     EM.run do
       db = @node.provision(@default_plan)
@@ -135,16 +156,15 @@ describe "Postgresql node normal cases" do
       @test_dbs[db] << binding
       conn = connect_to_postgresql(binding)
       @node.disable_instance(db, [binding])
-      expect {conn = connect_to_postgresql(binding)}.should raise_error
-      expect {conn = connect_to_postgresql(db)}.should raise_error
+      expect {conn = connect_to_postgresql(binding)}.should raise_error # expected exception: no permission to connect
+      expect {conn = connect_to_postgresql(db)}.should_not raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
           "binding_options" => @default_opts,
         }
       }
-      result = @node.enable_instance(db, value)
-      result.should be_instance_of Array
+      @node.enable_instance(db, value).should be_true
       expect {conn = connect_to_postgresql(binding)}.should_not raise_error
       expect {conn = connect_to_postgresql(db)}.should_not raise_error
       EM.stop
@@ -196,6 +216,7 @@ describe "Postgresql node normal cases" do
   it "should be able to purge the instance & binding from the all_list" do
     EM.run do
       tmp_db = @node.provision(@default_plan)
+      @test_dbs[tmp_db] = []
       ins_list = @node.all_instances_list
       tmp_bind = @node.bind(tmp_db["name"], @default_opts)
       bind_list = @node.all_bindings_list
@@ -235,6 +256,7 @@ describe "Postgresql node normal cases" do
       db= nil
       expect {
         db=@node.provision(mal_plan)
+        @test_dbs[db] = []
       }.should raise_error(PostgresqlError, /Invalid plan .*/)
       db.should == nil
       db_num.should == @node.connection.query("select count(*) from pg_database;")[0]['count']
@@ -289,13 +311,12 @@ describe "Postgresql node normal cases" do
       db2= @node.provision(plan)
       @test_dbs[db2] = []
       fake_creds = []
-      3.times {fake_creds << @db.clone}
+      # the case to login using wrong password is discarded for it will always fail (succeed to login without any exception): rules in pg_hba.conf will make this happen
+      2.times {fake_creds << @db.clone}
       # try to login other's db
       fake_creds[0]["name"] = db2["name"]
-      # try to login using null credential
-      fake_creds[1]["password"] = db2["password"]
-      # try to login using root account
-      fake_creds[2]["user"] = db2["user"]
+      # try to login using the default account (parent role) of other's db default account
+      fake_creds[1]["user"] = db2["user"]
       fake_creds.each do |creds|
         puts creds
         expect{connect_to_postgresql(creds)}.should raise_error
@@ -313,18 +334,61 @@ describe "Postgresql node normal cases" do
       sleep 1
       EM.add_timer(0.1) do
         db = node.provision('free')
-        @test_dbs[db] = []
-        conn = connect_to_postgresql(db)
+        binding = node.bind(db['name'], @default_opts)
+        @test_dbs[db] = [binding]
+
+        # use a superuser, won't be killed
+        user = db.dup
+        user['user'] = opts[:postgresql]['user']
+        user['password'] = opts[:postgresql]['pass']
+        conn = connect_to_postgresql(user)
         # prepare a transaction and not commit
         conn.query("create table a(id int)")
         conn.query("insert into a values(10)")
         conn.query("begin")
         conn.query("select * from a for update")
         EM.add_timer(opts[:max_long_tx] * 2) {
-          expect {conn.query("select * from a for update")}.should raise_error
+          expect do
+            conn.query("select * from a for update")
+            conn.query("commit")
+          end.should_not raise_error
           conn.close if conn
-          EM.stop
         }
+
+        # use a default user (parent role), won't be killed
+        default_user = VCAP::Services::Postgresql::Node::Provisionedservice.get(db['name']).bindusers.all(:default_user => true)[0]
+        user['user'] = default_user[:user]
+        user['password'] = default_user[:password]
+        conn = connect_to_postgresql(user)
+        # prepare a transaction and not commit
+        conn.query("create table b(id int)")
+        conn.query("insert into b values(10)")
+        conn.query("begin")
+        conn.query("select * from b for update")
+        EM.add_timer(opts[:max_long_tx] * 2) {
+          expect do
+            conn.query("select * from b for update")
+            conn.query("commit")
+          end.should_not raise_error
+          conn.close if conn
+        }
+
+
+        # use a non-default user (not parent role), will be killed
+        user = db.dup
+        user['user'] = binding['user']
+        user['password'] = binding['password']
+        conn = connect_to_postgresql(user)
+        # prepare a transaction and not commit
+        conn.query("create table c(id int)")
+        conn.query("insert into c values(10)")
+        conn.query("begin")
+        conn.query("select * from c for update")
+        EM.add_timer(opts[:max_long_tx] * 2) {
+          expect {conn.query("select * from c for update")}.should raise_error
+          conn.close if conn
+        }
+        EM.stop
       end
     end
   end
@@ -458,6 +522,7 @@ describe "Postgresql node normal cases" do
         threads << Thread.new do
           db = @node.provision(@default_plan)
           binding = @node.bind(db["name"], @default_opts)
+          @test_dbs[db] = [binding]
           @node.unprovision(db["name"], [binding])
         end
       end
@@ -475,7 +540,7 @@ describe "Postgresql node normal cases" do
       opts = @opts.dup
       # new pg db takes about 5M(~5554180)
       # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6
+      opts[:max_db_size] = 6 - @opts[:db_size_overhead]
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
         node.should_not == nil
@@ -498,6 +563,10 @@ describe "Postgresql node normal cases" do
             # permission denied for relation test
             expect {conn.query("insert into test values('1')").should raise_error(PGError)}
             expect {conn.query("create table test1(data text)").should raise_error(PGError)}
+            new_binding = node.bind(db['name'], @default_opts)
+            new_conn = connect_to_postgresql(new_binding)
+            expect {new_conn.query("insert into test values('1')").should raise_error(PGError)}
+
             conn.query("delete from test")
             EM.add_timer(2) do
               # write privilege should restore
@@ -516,6 +585,7 @@ describe "Postgresql node normal cases" do
       # this test verifies that we've fixed a race condition between
       # the quota-checker and unprovision/unbind
       db = @node.provision(@default_plan)
+      @test_dbs[db] = []
       service = @node.get_service(db)
       service.should be
       @node.unprovision(db['name'], [])
@@ -586,6 +656,7 @@ describe "Postgresql node normal cases" do
       # so only set user for parent
       parent = VCAP::Services::Postgresql::Node::Binduser.new
       parent.user = @db['user']
+      parent.password = @db['password']
       @db['user'] = @opts[:postgresql]['user']
       @db['password'] = @opts[:postgresql]['pass']
       sys_conn = connect_to_postgresql @db
@@ -605,6 +676,11 @@ describe "Postgresql node normal cases" do
         num_sys_user+=1 if child.index 'su'
       end
       num_sys_user.should == 2
+
+      # reset @db or we will miss to unprovision it
+      @db['user'] = parent.user
+      @db['password'] = parent.password
+
       EM.stop
     end
   end
@@ -613,6 +689,7 @@ describe "Postgresql node normal cases" do
     EM.run do
       parent = VCAP::Services::Postgresql::Node::Binduser.new
       parent.user = @db['user']
+      parent.password = @db['password']
       bind1 = @node.bind @db['name'], @default_opts
       bind2 = VCAP::Services::Postgresql::Node::Binduser.new
       bind2.user = "u-#{UUIDTools::UUID.random_create.to_s}".gsub(/-/, '')
@@ -629,6 +706,10 @@ describe "Postgresql node normal cases" do
       sys_conn.close if sys_conn
       unruly_children.index(bind1['user']).should == nil
       unruly_children.index(bind2['user']).should_not == nil
+
+      #reset @db
+      @db['user'] = parent.user
+      @db['password'] = parent.password
       EM.stop
     end
   end
@@ -636,6 +717,7 @@ describe "Postgresql node normal cases" do
   it "should be able to migrate(manage object owner) legacy instances" do
     EM.run do
       parent = @db['user']
+      parent_password = @db['password']
       # create a regular user through node
       user1 = @node.bind(@db['name'], @default_opts)
       # connect to the db with sys credential to 'revoke' the user's role
@@ -646,6 +728,11 @@ describe "Postgresql node normal cases" do
       sys_conn.query "alter role #{user1['user']} noinherit"
       sys_conn.query "revoke #{parent} from #{user1['user']} cascade"
       sys_conn.close if sys_conn
+
+      # reset @db
+      @db['user'] = parent
+      @db['password'] = parent_password
+
       # connect to the db with revoked user
       conn1 = connect_to_postgresql user1
       conn1.query 'create table t1(i int)'
@@ -675,6 +762,7 @@ describe "Postgresql node normal cases" do
   it "should migrate(manage object owner) legacy instances, even there is *orphan* user" do
     EM.run do
       parent = @db['user']
+      parent_password = @db['password']
       # create a regular user through node
       user1 = @node.bind(@db['name'], @default_opts)
       # connect to the db with sys credential to 'revoke' the user's role
@@ -699,6 +787,10 @@ describe "Postgresql node normal cases" do
       sys_conn.query "revoke all on database #{@db['name']} from #{orphan['user']} cascade"
       sys_conn.query "drop role #{orphan['user']}"
       sys_conn.close if sys_conn
+
+      # reset @db
+      @db['user'] = parent
+      @db['password'] = parent_password
 
       # new a node class to do migration work
       node = VCAP::Services::Postgresql::Node.new(@opts)

@@ -1,3 +1,4 @@
+----------------- Backup manager ------------------------------
 The backup manager manages backups.  Currently, its only job is
 rotation: it inspects the backup directory to prune old backups.
 
@@ -17,3 +18,23 @@ it:
       -c, --config [ARG]               Configuration File
       -d, --[no-]daemon                Run as a daemon
       -h, --help                       Help
+
+------------------ Snapshot manager--------------------------------
+The snapshot manager manages snapshots, Currently, its only job is
+cleanup: it inspects the snapshot directory to cleanup the snapshots
+those belongs to the service instances which has been unprovisioned.
+
+The snapshot manager can be run in two modes:
+
+ - it can do its work once and then exit [the default]; or
+ - it can spawn a daemon process that periodically wakes up and does
+   its work
+
+The main entry point is
+"core/servies/backup/manager/bin/snapshot_manager". Here'ss how to run
+it:
+  Usage: snapshot_manager [options]
+      -c, --config [ARG]               Configuration File
+      -d, --[no-]daemon                Run as a daemon
+      -h, --help                       Help
+

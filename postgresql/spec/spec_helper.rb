@@ -42,7 +42,8 @@ def getNodeTestConfig()
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
     :max_db_conns => parse_property(config, "max_db_conns", Integer),
     :restore_bin => parse_property(config, "restore_bin", String),
-    :dump_bin => parse_property(config, "dump_bin", String)
+    :dump_bin => parse_property(config, "dump_bin", String),
+    :db_size_overhead => parse_property(config, "db_size_overhead", Float)
   }
   options
 end

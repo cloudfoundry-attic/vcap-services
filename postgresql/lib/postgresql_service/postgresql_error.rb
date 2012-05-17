@@ -7,4 +7,5 @@ class VCAP::Services::Postgresql::PostgresqlError<
     POSTGRESQL_CRED_NOT_FOUND = [32003, HTTP_NOT_FOUND, 'Postgresql credential %s not found.']
     POSTGRESQL_LOCAL_DB_ERROR = [32004, HTTP_INTERNAL, 'Postgresql node local db error.']
     POSTGRESQL_INVALID_PLAN = [32005, HTTP_INTERNAL, 'Invalid plan %s.']
+    POSTGRESQL_BAD_SERIALIZED_DATA = [32007, HTTP_INTERNAL, 'Invalid serialized data.']
 end
