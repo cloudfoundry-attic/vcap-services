@@ -55,6 +55,8 @@ module VCAP
           JOB_QUEUE_TIMEOUT = [30801, HTTP_INTERNAL, "Job timeout after waiting for %s seconds."]
           JOB_TIMEOUT = [30802, HTTP_INTERNAL, "Job is killed since it runs longer than ttl: %s seconds."]
           BAD_SERIALIZED_DATAFILE = [30803, HTTP_INTERNAL, "Invalid serialized data file from: %s"]
+          FILESIZE_TOO_LARGE = [30804, HTTP_BAD_REQUEST, "Size of file from url %s is %s, max allowed %s"]
+          TOO_MANY_REDIRECTS = [30805, HTTP_BAD_REQUEST, "Too many redirects from url:%s, max redirects allowed is %s"]
 
           # 31000 - 32000  Service-specific Error
           # Defined in services directory, for example mongodb/lib/mongodb_service/
