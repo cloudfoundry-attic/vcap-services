@@ -122,6 +122,8 @@ class VCAP::Services::Memcached::Node
     @max_clients = @options[:max_clients] || 500
     @memcached_timeout = @options[:memcached_timeout] || 2
     @memcached_memory = @options[:memcached_memory]
+    @sasl_enabled = @options[:sasl_enabled] || false
+    @run_as_user =  @options[:run_as_user] || ""
   end
 
   def pre_send_announcement
@@ -182,7 +184,7 @@ class VCAP::Services::Memcached::Node
 
     begin
       instance.pid = start_instance(instance, db_file)
-      @sasl_admin.create_user(instance.user, instance.password)
+      @sasl_admin.create_user(instance.user, instance.password) if @sasl_enabled
       save_instance(instance)
       @logger.debug("Started process #{instance.pid}")
     rescue => e1
@@ -201,7 +203,7 @@ class VCAP::Services::Memcached::Node
 
   def unprovision(instance_id, credentials_list = [])
     instance = get_instance(instance_id)
-    @logger.warn("instance: #{instance.to_s}")
+    @logger.info("unprovision instance: #{instance.to_s}")
     cleanup_instance(instance)
     {}
   end
@@ -261,7 +263,7 @@ class VCAP::Services::Memcached::Node
         pid = start_instance(instance)
         instance.pid = pid
         @logger.debug("Started Instace. pid is  #{instance.pid}")
-        @sasl_admin.create_user(instance.user, instance.password)
+        @sasl_admin.create_user(instance.user, instance.password) if @sasl_enabled
         save_instance(instance)
       rescue => e
         @logger.warn("Error starting instance #{instance.name}: #{e}")
@@ -297,7 +299,7 @@ class VCAP::Services::Memcached::Node
     str << " -p #{opt['port']}"
     str << " -c #{opt['maxclients']}"
     str << " -v"
-    str << " -S"
+    str << " -S" if @sasl_enabled
 
     return str
   end
@@ -313,7 +315,6 @@ class VCAP::Services::Memcached::Node
     opt['maxclients'] = @max_clients
 
     option_string = build_option_string(opt)
-    @logger.warn("#{@memcached_server_path} #{option_string}")
 
     log_dir = instance_log_dir(instance.name)
     log_file = File.join(log_dir, "memcached.log")
@@ -321,7 +322,10 @@ class VCAP::Services::Memcached::Node
 
     FileUtils.mkdir_p(log_dir)
 
-    cmd = "#{@memcached_server_path} #{option_string}"
+    run_as_cmd_prefix = @run_as_user.empty? ? "" : "sudo -u #{@run_as_user}"
+    cmd = "#{run_as_cmd_prefix} #{@memcached_server_path} #{option_string}"
+    @logger.info("Executing CMD =  #{cmd}")
+
     pid = Process.spawn(cmd, :out=>"#{log_file}", :err=>"#{err_file}")
     Process.detach(pid)
     return pid
@@ -346,7 +350,7 @@ class VCAP::Services::Memcached::Node
     end
     begin
       destroy_instance(instance)
-      @sasl_admin.delete_user(instance.user)
+      @sasl_admin.delete_user(instance.user) if @sasl_enabled
     rescue => e
       err_msg << e.message
     end

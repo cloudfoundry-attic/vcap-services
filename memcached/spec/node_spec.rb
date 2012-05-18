@@ -41,7 +41,8 @@ describe VCAP::Services::Memcached::Node do
       :memcached_log_dir => "/tmp/memcached_log",
       :command_rename_prefix => "protect-command",
       :max_clients => 100,
-      :memcached_memory => 16
+      :memcached_memory => 16,
+      :sasl_enabled => true
     }
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:memcached_log_dir])
