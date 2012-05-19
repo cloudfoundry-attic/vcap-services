@@ -66,8 +66,14 @@ class VCAP::Services::Mysql::Node
     @provision_served = 0
     @binding_served = 0
 
+    #locks
+    @kill_long_queries_lock = Mutex.new
+    @kill_long_transaction_lock = Mutex.new
+    @enforce_quota_lock = Mutex.new
+
     @connection_wait_timeout = options[:connection_wait_timeout]
     Mysql2::Client.default_timeout = @connection_wait_timeout
+    Mysql2::Client.logger = @logger
   end
 
   def pre_send_announcement
@@ -75,13 +81,13 @@ class VCAP::Services::Mysql::Node
     keep_alive_interval = KEEP_ALIVE_INTERVAL
     keep_alive_interval = [keep_alive_interval, @connection_wait_timeout.to_f/2].min if @connection_wait_timeout
     EM.add_periodic_timer(keep_alive_interval) {mysql_keep_alive}
-    EM.add_periodic_timer(@max_long_query.to_f/2) {kill_long_queries} if @max_long_query > 0
+    EM.add_periodic_timer(@max_long_query.to_f/2) { EM.defer{kill_long_queries} } if @max_long_query > 0
     if (@max_long_tx > 0) and (check_innodb_plugin)
-      EM.add_periodic_timer(@max_long_tx.to_f/2) {kill_long_transaction}
+      EM.add_periodic_timer(@max_long_tx.to_f/2) { EM.defer{kill_long_transaction} }
     else
       @logger.info("long transaction killer is disabled.")
     end
-    EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
+    EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) { EM.defer {enforce_storage_quota} }
 
     FileUtils.mkdir_p(@base_dir) if @base_dir
 
@@ -197,6 +203,8 @@ class VCAP::Services::Mysql::Node
   end
 
   def kill_long_queries
+    acquired = @kill_long_queries_lock.try_lock
+    return unless acquired
     @pool.with_connection do |connection|
       process_list = connection.query("show processlist")
       process_list.each do |proc|
@@ -210,9 +218,13 @@ class VCAP::Services::Mysql::Node
     end
   rescue Mysql2::Error => e
     @logger.error("MySQL error: [#{e.errno}] #{e.error}")
+  ensure
+    @kill_long_queries_lock.unlock if acquired
   end
 
   def kill_long_transaction
+    acquired = @kill_long_transaction_lock.try_lock
+    return unless acquired
     query_str = "SELECT * from ("+
                 "  SELECT trx_started, id, user, db, info, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
                 "  FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p " +
@@ -231,6 +243,8 @@ class VCAP::Services::Mysql::Node
     end
   rescue => e
     @logger.error("Error during kill long transaction: #{e}.")
+  ensure
+    @kill_long_transaction_lock.unlock if acquired
   end
 
   def provision(plan, credential=nil)

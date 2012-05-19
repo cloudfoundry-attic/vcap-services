@@ -65,7 +65,7 @@ API_VERSION = "poc"
 uri = URI.parse(@broker)
 hdrs  = {
   'Content-Type'         => 'application/json',
-  'X-VCAP-Service-Token' => @token,
+  'X-VCAP-Service-Token' => "#{@token}",
 }
 label = "#{@service[:name]}-#{@service[:version]}"
 host = uri.host
@@ -85,7 +85,7 @@ when "delete"
   body = nil
 end
 
-puts "Going to #{action} service to http://#{host}:#{port}#{url}.\nRequsest Body:#{body}" if@verbose
+puts "Going to #{action} service to http://#{host}:#{port}#{url}.\nRequest Body:#{body}" if@verbose
 
 req = klass.new(url, initheader=hdrs)
 req.body = body if body

@@ -83,6 +83,8 @@ class VCAP::Services::Mysql::Node
   end
 
   def enforce_storage_quota
+    acquired = @enforce_quota_lock.try_lock
+    return unless acquired
     sizes = nil
     @pool.with_connection do |connection|
       connection.query('use mysql')
@@ -108,9 +110,11 @@ class VCAP::Services::Mysql::Node
         @logger.warn("Fail to enfroce storage quota on #{service.name}: #{e1}" + e1.backtrace.join("|") )
       end
     end
-    rescue Mysql2::Error => e
-      @logger.warn("MySQL exception: [#{e.errno}] #{e.error} " +
+  rescue Mysql2::Error => e
+    @logger.warn("MySQL exception: [#{e.errno}] #{e.error} " +
                    e.backtrace.join("|"))
+  ensure
+    @enforce_quota_lock.unlock if acquired
   end
 
   # when binding a new application, should check whether to revoke the new user's write access for enforce_storage_quota may have set quota_exceeded already.
@@ -137,4 +141,5 @@ class VCAP::Services::Mysql::Node
       @logger.warn("Fail to enforce the storage quota on #{service.name}: #{e}" + e.backtrace.join("|") )
     end
   end
+
 end
