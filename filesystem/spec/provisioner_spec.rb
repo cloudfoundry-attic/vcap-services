@@ -4,12 +4,13 @@ require 'bundler/setup'
 require 'vcap_services_base'
 
 require File.dirname(__FILE__) + "/spec_helper"
-require "filesystem_service/provisioner"
+require "filesystem_service/nfs_provisioner"
+require "filesystem_service/local_provisioner"
 
 module VCAP
   module Services
     module Filesystem
-      class Provisioner
+      class BaseProvisioner
          attr_reader :is_first_update_handles, :staging_orphan_instances
          attr_accessor :logger, :backends
       end
@@ -17,7 +18,7 @@ module VCAP
   end
 end
 
-describe VCAP::Services::Filesystem::Provisioner do
+describe VCAP::Services::Filesystem::NFSProvisioner do
 
   before :all do
     @logger = Logger.new(STDOUT, "daily")
@@ -43,11 +44,12 @@ describe VCAP::Services::Filesystem::Provisioner do
       :logger => @logger,
       :ip_route => "127.0.0.1",
       :additional_options => {
-        :backends => backends
+        :backends => backends,
+        :fs_type => "nfs"
       }
     }
     EM.run do
-      @provisioner = VCAP::Services::Filesystem::Provisioner.new(@options)
+      @provisioner = VCAP::Services::Filesystem::NFSProvisioner.new(@options)
       EM.add_timer(1) {EM.stop}
     end
     FileUtils.mkdir_p("/tmp/backend1")
@@ -116,13 +118,14 @@ describe VCAP::Services::Filesystem::Provisioner do
         msg["response"][:credentials]["internal"]["name"].should be
         msg["response"][:credentials]["internal"]["host"].should be
         msg["response"][:credentials]["internal"]["export"].should be
+        msg["response"][:credentials]["internal"]["fs_type"].should be
         @provisioner.unprovision_service(msg["response"][:service_id]) {}
       end
     end
 
     it "should create instance directory when provision successful" do
       @provisioner.provision_service(@request) do |msg|
-        backend = @provisioner.get_backend(msg["response"][:credentials]["internal"]["host"], msg["response"][:credentials]["internal"]["export"])
+        backend = @provisioner.get_backend(msg["response"])
         File.exists?(File.join(backend["mount"], msg["response"][:service_id])).should == true
         @provisioner.unprovision_service(msg["response"][:service_id]) {}
       end
@@ -182,7 +185,7 @@ describe VCAP::Services::Filesystem::Provisioner do
 
     it "should delete the instance directory when unprovision successful" do
       @provisioner.provision_service(@request) do |prov_msg|
-        backend = @provisioner.get_backend(prov_msg["response"][:credentials]["internal"]["host"], prov_msg["response"][:credentials]["internal"]["export"])
+        backend = @provisioner.get_backend(prov_msg["response"])
         @provisioner.unprovision_service(prov_msg["response"][:service_id]) do |msg|
           File.exists?(File.join(backend["mount"], prov_msg["response"][:service_id])).should == false
         end
@@ -241,4 +244,69 @@ describe VCAP::Services::Filesystem::Provisioner do
       end
     end
   end
+end
+
+describe VCAP::Services::Filesystem::LocalProvisioner do
+  before :all do
+    @logger = Logger.new(STDOUT, "daily")
+    @logger.level = Logger::DEBUG
+    backends = [
+      {
+        "local_path" => "/tmp/backend1"
+      },
+      {
+        "local_path" => "/tmp/backend2"
+      },
+      {
+        "local_path" => "/tmp/backend3"
+      }
+    ]
+    @options = {
+      :logger => @logger,
+      :ip_route => "127.0.0.1",
+      :additional_options => {
+        :backends => backends
+      }
+    }
+    EM.run do
+      @provisioner = VCAP::Services::Filesystem::LocalProvisioner.new(@options)
+      EM.add_timer(1) {EM.stop}
+    end
+    FileUtils.mkdir_p("/tmp/backend1")
+    FileUtils.mkdir_p("/tmp/backend2")
+    FileUtils.mkdir_p("/tmp/backend3")
+    @request = VCAP::Services::Internal::ProvisionRequest.new
+    @request.plan = "free"
+  end
+
+  after :all do
+    FileUtils.rm_rf("/tmp/backend1")
+    FileUtils.rm_rf("/tmp/backend2")
+    FileUtils.rm_rf("/tmp/backend3")
+  end
+
+  it "should list all instances" do
+    service_id = ""
+    @provisioner.provision_service(@request) do |msg|
+      service_id = msg["response"][:service_id]
+    end
+    list = @provisioner.all_instances_list
+    list.size.should == 1
+    @provisioner.unprovision_service(service_id){}
+  end
+
+  it "should find correct backend" do
+    handle = nil
+    service_id = ""
+    @provisioner.provision_service(@request) do |msg|
+      handle = msg["response"]
+      service_id = msg["response"][:service_id]
+    end
+    backend = @provisioner.get_backend(handle)
+    puts ">>> #{handle}"
+    handle[:credentials]["internal"]["local_path"].should_not be_nil
+    handle[:credentials]["internal"]["local_path"].should == backend["local_path"]
+    @provisioner.unprovision_service(service_id){}
+  end
+
 end

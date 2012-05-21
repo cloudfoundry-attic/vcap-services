@@ -5,7 +5,7 @@ require "filesystem_service/common"
 require "filesystem_service/error"
 require "uuidtools"
 
-class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisioner
+class VCAP::Services::Filesystem::BaseProvisioner < VCAP::Services::Base::Provisioner
 
   include VCAP::Services::Filesystem::Common
   include VCAP::Services::Filesystem
@@ -16,6 +16,7 @@ class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisione
     super(options)
     @backends = options[:additional_options][:backends] || get_filesystem_config
     @backend_index = rand(@backends.size)
+    @fs_type = options[:additional_options][:fs_type]
     @logger.debug("backends: #{@backends.inspect}")
     @is_first_update_handles = true
   end
@@ -27,7 +28,7 @@ class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisione
       @prov_svcs.each do |_, svc|
         # Filesystem service only need process provision handles
         if svc[:credentials]["internal"]["name"] == svc[:service_id]
-          backend = get_backend(svc[:credentials]["internal"]["host"], svc[:credentials]["internal"]["export"])
+          backend = get_backend(svc)
           if backend
             next if File.exists?(get_instance_dir(svc[:service_id], backend))
           end
@@ -51,14 +52,8 @@ class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisione
     @logger.debug("[#{service_description}] Check if there are orphans")
     reset_orphan_stat
     @handles_for_check_orphan = handles.deep_dup
-    instances_list = []
-    @backends.each do |backend|
-      Dir.foreach(backend["mount"]) do |child|
-        unless child == "." || child ==".."
-          instances_list << child if File.directory?(File.join(backend["mount"], child))
-        end
-      end
-    end
+    instances_list = all_instances_list
+
     nid = "gateway"
     instances_list.each do |ins|
       @staging_orphan_instances[nid] ||= []
@@ -99,7 +94,7 @@ class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisione
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     if prov_handle
       name = prov_handle[:service_id]
-      backend = get_backend(prov_handle[:credentials]["internal"]["host"], prov_handle[:credentials]["internal"]["export"])
+      backend = get_backend(prov_handle)
     else
       name = UUIDTools::UUID.random_create.to_s
       backend = get_backend
@@ -149,9 +144,7 @@ class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisione
     @logger.debug("[#{service_description}] Attempting to unprovision instance (instance id=#{instance_id}")
     svc = @prov_svcs[instance_id]
     raise FilesystemError.new(FilesystemError::FILESYSTEM_FIND_INSTANCE_FAILED, instance_id) if svc == nil
-    host = svc[:credentials]["internal"]["host"]
-    export = svc[:credentials]["internal"]["export"]
-    backend = get_backend(host, export)
+    backend = get_backend(svc)
     raise FilesystemError.new(FilesystemError::FILESYSTEM_GET_BACKEND_BY_HOST_AND_EXPORT_FAILED, host, export) if backend == nil
     FileUtils.rm_rf(get_instance_dir(instance_id, backend))
     bindings = find_all_bindings(instance_id)
@@ -215,37 +208,6 @@ class VCAP::Services::Filesystem::Provisioner < VCAP::Services::Base::Provisione
     config_file = YAML.load_file(FILESYSTEM_CONFIG_FILE)
     config = VCAP.symbolize_keys(config_file)
     config[:backends]
-  end
-
-  def get_backend(host=nil, export=nil)
-    if host && export
-      @backends.each do |backend|
-        if backend["host"] == host && backend["export"] == export
-          return backend
-        end
-      end
-      return nil
-    else
-      # Simple round-robin load-balancing; TODO: Something smarter?
-      return nil if @backends == nil || @backends.empty?
-      index = @backend_index
-      @backend_index = (@backend_index + 1) % @backends.size
-      return @backends[index]
-    end
-  end
-
-  def get_instance_dir(name, backend)
-    File.join(backend["mount"], name)
-  end
-
-  def gen_credentials(name, backend)
-    credentials = {
-      "internal" => {
-        "name" => name,
-        "host" => backend["host"],
-        "export" => backend["export"],
-      }
-    }
   end
 
 end
