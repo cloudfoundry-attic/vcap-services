@@ -171,7 +171,6 @@ module VCAP
           rescue => e
           end
         end
-
       end
     end
   end

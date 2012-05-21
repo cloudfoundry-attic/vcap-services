@@ -83,6 +83,8 @@ class VCAP::Services::Mysql::Node
   end
 
   def enforce_storage_quota
+    acquired = @enforce_quota_lock.try_lock
+    return unless acquired
     sizes = nil
     @pool.with_connection do |connection|
       connection.query('use mysql')
@@ -108,9 +110,36 @@ class VCAP::Services::Mysql::Node
         @logger.warn("Fail to enfroce storage quota on #{service.name}: #{e1}" + e1.backtrace.join("|") )
       end
     end
-    rescue Mysql2::Error => e
-      @logger.warn("MySQL exception: [#{e.errno}] #{e.error} " +
+  rescue Mysql2::Error => e
+    @logger.warn("MySQL exception: [#{e.errno}] #{e.error} " +
                    e.backtrace.join("|"))
+  ensure
+    @enforce_quota_lock.unlock if acquired
+  end
+
+  # when binding a new application, should check whether to revoke the new user's write access for enforce_storage_quota may have set quota_exceeded already.
+  def enforce_instance_storage_quota(service)
+    begin
+      db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
+      sizes = nil
+      @pool.with_connection do |connection|
+        connection.query('use mysql')
+        sizes = dbs_size(connection, [db])
+      end
+      size = sizes[db]
+      return if size.nil?
+      if size >= @max_db_size then
+        revoke_write_access(db, service)
+        @logger.info("Instance storage quota exceeded :" + fmt_db_listing(user, db, size) +
+                     " -- access revoked")
+      elsif (size < @max_db_size) and quota_exceeded then
+        grant_write_access(db, service)
+        @logger.info("Below instance storage quota:" + fmt_db_listing(user, db, size) +
+                     " -- access restored")
+      end
+    rescue => e
+      @logger.warn("Fail to enforce the storage quota on #{service.name}: #{e}" + e.backtrace.join("|") )
+    end
   end
 
   # when binding a new application, should check whether to revoke the new user's write access for enforce_storage_quota may have set quota_exceeded already.

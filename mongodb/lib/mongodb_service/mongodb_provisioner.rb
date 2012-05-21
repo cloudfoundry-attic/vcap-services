@@ -19,7 +19,7 @@ class VCAP::Services::MongoDB::Provisioner < VCAP::Services::Base::Provisioner
   end
 
   def create_serialized_url_job
-    VCAP::Services::MongoDB::Serialization::CreateSerializedURLJob
+    VCAP::Services::Base::AsyncJob::Serialization::BaseCreateSerializedURLJob
   end
 
   def import_from_url_job

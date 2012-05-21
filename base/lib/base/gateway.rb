@@ -95,7 +95,6 @@ class VCAP::Services::Base::Gateway
       sp = provisioner_class.new(
              :logger   => @config[:logger],
              :index    => @config[:index],
-             :version  => @config[:service][:version],
              :ip_route => @config[:ip_route],
              :mbus => @config[:mbus],
              :node_timeout => node_timeout,
@@ -103,7 +102,9 @@ class VCAP::Services::Base::Gateway
              :max_nats_payload => @config[:max_nats_payload],
              :additional_options => additional_options,
              :status => @config[:status],
-             :plan_management => @config[:plan_management]
+             :plan_management => @config[:plan_management],
+             :service => @config[:service],
+             :download_url_template => @config[:download_url_template]
            )
       sg = async_gateway_class.new(
              :proxy   => @config[:proxy],

@@ -105,6 +105,10 @@ describe "Mongodb Node" do
       @node.unbind(@bind_resp).should be_true
       lambda {
         conn = Mongo::Connection.new('localhost', @resp['port'])
+        if first_conn_refused
+          sleep 1
+          first_conn_refused = false
+        end
         db = conn.db(@resp['db'])
         auth = db.authenticate(@bind_resp['username'], @bind_resp['password'])
         auth.should be_false

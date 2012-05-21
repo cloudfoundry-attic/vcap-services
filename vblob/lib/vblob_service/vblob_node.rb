@@ -11,6 +11,7 @@ require "openssl"
 require "digest/sha2"
 require "yajl"
 require "json"
+require "base64"
 
 require "nats/client"
 require "uuidtools"
@@ -350,20 +351,6 @@ class VCAP::Services::VBlob::Node
     varz[:max_capacity] = @max_capacity
     varz[:available_capacity] = @capacity
 
-    # varz[:disk]: records the side of files in each subfolder
-    du = {}
-    Dir.glob(File.join(@base_dir, "*/")).each do |sub_dir|
-      dir_size = 0
-      Find.find(sub_dir) {|f| dir_size += File.stat(f).size}
-      du[sub_dir] = dir_size
-    end
-    varz[:disk] = du
-
-    # varz[:running_services]: vblob services stats
-    stats = []
-    ProvisionedService.all.each {|provisioned_service| stats << provisioned_service.name}
-    varz[:running_services] = stats
-
     # check NFS disk free space
     free_space = 0
     begin
@@ -376,19 +363,13 @@ class VCAP::Services::VBlob::Node
     end
     varz[:nfs_free_space] = free_space
 
-    varz
-  end
-
-  def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
-    ProvisionedService.all.each do |instance|
-      healthz[instance.name.to_sym] = get_healthz(instance)
+    # check instances health status
+    varz[:instances] = {}
+    ProvisionedService.all.each do |provisioned_service|
+      varz[:instances][provisioned_service.name.to_sym] = get_healthz(provisioned_service)
     end
-    healthz
-  rescue => e
-    @logger.warn("Error get healthz details: #{e}")
-    {:self => "fail"}
+
+    varz
   end
 
   def get_healthz(instance)
@@ -436,16 +417,34 @@ class VCAP::Services::VBlob::Node
 
   def vblobgw_add_user(options)
     @logger.debug("add user #{options[:username]} in port: #{options[:port]}")
-    response = gateway_user_operations('/~bind', options)
+    credentials = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
+    response = nil
+    #FIXME the inbuilt HTTP put operation seemed to be problematic when running stac;
+    #      this has been rolled back to r10, but should fix this problem in r12
+    Timeout::timeout(VBLOB_TIMEOUT) do
+      response = Net::HTTP.start(@local_ip, options[:port]) {|http|
+        http.send_request('PUT','/~bind',credentials, auth_header(options[:admin], options[:adminpass]))
+      }
+    end
     raise VBlobError.new(VBlobError::VBLOB_ADD_USER_ERROR, options[:username]) if (response.nil? || response.code != "200")
     @logger.debug("user #{options[:username]} added")
   end
 
   def vblobgw_remove_user(options)
     @logger.debug("remove user #{options[:username]} in port: #{options[:port]}")
-    response = gateway_user_operations('/~unbind', options)
+    credentials = "{\"#{options[:username]}\":\"#{options[:password]}\"}";
+    response = nil
+    Timeout::timeout(VBLOB_TIMEOUT) do
+      response = Net::HTTP.start(@local_ip, options[:port]) {|http|
+        http.send_request('PUT','/~unbind',credentials, auth_header(options[:admin], options[:adminpass]))
+      }
+    end
     raise VBlobError.new(VBlobError::VBLOB_REMOVE_USER_ERROR, options[:username]) if (response.nil? || response.code != "200")
     @logger.debug("user #{options[:username]} removed")
+  end
+
+  def auth_header(user,passwd)
+    {"Authorization" => "Basic " + Base64.strict_encode64("#{user}:#{passwd}").strip}
   end
 
 end

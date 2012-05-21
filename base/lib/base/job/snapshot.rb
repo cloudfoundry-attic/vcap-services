@@ -9,9 +9,11 @@ require "service_error"
 
 module VCAP::Services::Base::AsyncJob
   module Snapshot
+    include VCAP::Services::Base::Error
 
     SNAPSHOT_KEY_PREFIX = "vcap:snapshot".freeze
     SNAPSHOT_ID = "maxid".freeze
+    FILTER_KEYS = %w(snapshot_id date size).freeze
 
     class << self
       attr_reader :redis
@@ -52,18 +54,32 @@ module VCAP::Services::Base::AsyncJob
     def snapshot_details(service_id, snapshot_id)
       return unless service_id && snapshot_id
       res = client.hget(redis_key(service_id), snapshot_id)
-      Yajl::Parser.parse(res) if res
+      raise ServiceError.new(ServiceError::NOT_FOUND, "snapshot #{snapshot_id}") unless res
+      Yajl::Parser.parse(res)
     end
 
-    # Generate unique id for a snapshot
-    def get_snapshot_id
+    # filter internal keys of a given snapshot object, return a new snapshot object in canonical format
+    def filter_keys(snapshot)
+      return unless snapshot.is_a? Hash
+      snapshot.select {|k,v| FILTER_KEYS.include? k.to_s}
+    end
+
+    # Generate a new unique id for a snapshot
+    def new_snapshot_id
       client.incr(redis_key(SNAPSHOT_ID)).to_s
+    end
+
+    # Get the snapshot file path that service should save the dump file to.
+    # the snapshot path structure looks like <base_dir>\snapshots\<service-name>\<aa>\<bb>\<cc>\<aabbcc-rest-of-instance-guid>\snapshot_id\<service specific data>
+    def snapshot_filepath(base_dir, service_name, service_id, snapshot_id)
+      File.join(base_dir, "snapshots", service_name, service_id[0,2], service_id[2,2], service_id[4,2], service_id, snapshot_id.to_s)
     end
 
     def save_snapshot(service_id , snapshot)
       return unless service_id && snapshot
+      sid = snapshot[:snapshot_id] || snapshot["snapshot_id"]
       msg = Yajl::Encoder.encode(snapshot)
-      client.hset(redis_key(service_id), snapshot[:snapshot_id], msg)
+      client.hset(redis_key(service_id), sid, msg)
     end
 
     def delete_snapshot(service_id , snapshot_id)
@@ -71,8 +87,10 @@ module VCAP::Services::Base::AsyncJob
       client.hdel(redis_key(name), snapshot_id)
     end
 
-    def fmt_error(e)
-      "#{e}: [#{e.backtrace.join(" | ")}]"
+
+    def fmt_time()
+      # UTC time in ISO 8601 format.
+      Time.now.utc.strftime("%FT%TZ")
     end
 
     protected
@@ -84,31 +102,35 @@ module VCAP::Services::Base::AsyncJob
     # common utils for snapshot job
     class SnapshotJob
       attr_reader :name, :snapshot_id
+
       include Snapshot
       include Resque::Plugins::Status
-      include VCAP::Services::Base::Error
 
-        class << self
-          def queue_lookup_key
-            :node_id
-          end
-
-          def select_queue(*args)
-            result = nil
-            args.each do |arg|
-              result = arg[queue_lookup_key]if (arg.is_a? Hash)&& (arg.has_key?(queue_lookup_key))
-            end
-            @logger = Config.logger
-            @logger.info("Select queue #{result} for job #{self.class} with args:#{args.inspect}") if @logger
-            result
-          end
+      class << self
+        def queue_lookup_key
+          :node_id
         end
+
+        def select_queue(*args)
+          result = nil
+          args.each do |arg|
+            result = arg[queue_lookup_key]if (arg.is_a? Hash)&& (arg.has_key?(queue_lookup_key))
+          end
+          @logger = Config.logger
+          @logger.info("Select queue #{result} for job #{self.class} with args:#{args.inspect}") if @logger
+          result
+        end
+      end
 
       def initialize(*args)
         super(*args)
         parse_config
         init_worker_logger
         Snapshot.redis_connect
+      end
+
+      def fmt_error(e)
+        "#{e}: [#{e.backtrace.join(" | ")}]"
       end
 
       def init_worker_logger
@@ -126,10 +148,8 @@ module VCAP::Services::Base::AsyncJob
         lock
       end
 
-      # the snapshot path structure looks like <base-dir>\snapshots\<service-name>\<aa>\<bb>\<cc>\
-      # <aabbcc-rest-of-instance-guid>\snapshot_id\<service specific data>
       def get_dump_path(name, snapshot_id)
-        File.join(@config["snapshots_base_dir"], "snapshots", @config["service_name"] , name[0,2],name[2,2], name[4,2], name, snapshot_id.to_s)
+        snapshot_filepath(@config["snapshots_base_dir"], @config["service_name"], name, snapshot_id)
       end
 
       def parse_config
@@ -147,7 +167,7 @@ module VCAP::Services::Base::AsyncJob
       def handle_error(e)
         @logger.error("Error in #{self.class} uuid:#{@uuid}: #{fmt_error(e)}")
         err = (e.instance_of?(ServiceError)? e : ServiceError.new(ServiceError::INTERNAL_ERROR)).to_hash
-        err_msg = Yajl::Encoder.encode(err)
+        err_msg = Yajl::Encoder.encode(err["msg"])
         failed(err_msg)
       end
     end
@@ -155,14 +175,14 @@ module VCAP::Services::Base::AsyncJob
     class BaseCreateSnapshotJob < SnapshotJob
       # workflow template
       # Sub class should implement execute method which returns hash represents of snapshot like:
-      # {:snapshot_id => 1, :size => 100}
+      # {:snapshot_id => 1, :size => 100, :file_name => "my_snapshot.tgz"}
       def perform
         begin
           required_options :service_id
           @name = options["service_id"]
           @logger.info("Launch job: #{self.class} for #{name}")
 
-          @snapshot_id = get_snapshot_id
+          @snapshot_id = new_snapshot_id
           lock = create_lock
 
           lock.lock do
@@ -176,10 +196,10 @@ module VCAP::Services::Base::AsyncJob
             snapshot = execute
             @logger.info("Results of create snapshot: #{snapshot.inspect}")
 
+            snapshot[:date] = fmt_time
             save_snapshot(name, snapshot)
 
-            job_result = { :snapshot_id => snapshot[:snapshot_id] }
-            completed(Yajl::Encoder.encode(job_result))
+            completed(Yajl::Encoder.encode(filter_keys(snapshot)))
             @logger.info("Complete job: #{self.class} for #{name}")
           end
         rescue => e

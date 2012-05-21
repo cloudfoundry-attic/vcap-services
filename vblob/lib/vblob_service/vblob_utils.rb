@@ -5,17 +5,6 @@ module VCAP
     module VBlob
       module Utils
 
-        VBLOB_TIMEOUT = 3
-
-        def gateway_user_operations(operations, options)
-          credentials = "{\"#{options[:username]}\":\"#{options[:password]}\"}"
-          http = Net::HTTP.new(@local_ip, options[:port])
-          request = Net::HTTP::Put.new(operations)
-          request.basic_auth(options[:admin], options[:adminpass])
-          http.open_timeout = http.read_timeout = VBLOB_TIMEOUT
-          response = http.request(request, credentials)
-        end
-
         def service_dir(service_id)
           File.join(@base_dir, service_id)
         end

@@ -215,6 +215,14 @@ class VCAP::Services::Redis::Node
   end
 
   def enable_instance(service_credentials, binding_credentials_map = {})
+    set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
+    true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def update_instance(service_credentials, binding_credentials_map = {})
     instance = get_instance(service_credentials["name"])
     set_config(instance.ip, @redis_port, @disable_password, "requirepass", instance.password)
     true
@@ -238,35 +246,6 @@ class VCAP::Services::Redis::Node
   rescue => e
     @logger.warn(e)
     nil
-  end
-
-  def update_instance(service_credentials, binding_credentials_map = {})
-    instance = get_instance(service_credentials["name"])
-    service_credentials = gen_credentials(instance)
-    binding_credentials_map.each do |key, _|
-      binding_credentials_map[key]["credentials"] = gen_credentials(instance)
-    end
-    [service_credentials, binding_credentials_map]
-  rescue => e
-    @logger.warn(e)
-    nil
-  end
-
-  def upgrade_instance(instance)
-    data_source_file = File.join(instance.base_dir, "data", "dump.rdb")
-    data_backup_file = "/tmp/#{instance.name}.dump.rdb"
-    if File.exist?(data_source_file)
-      FileUtils.cp(data_source_file, data_backup_file)
-      size = File.size(data_backup_file)
-      if size < (@options[:max_db_size] * 1024 * 1024)
-        instance = ProvisionedService.create(instance.port, instance.plan, instance.name, instance.password, data_backup_file)
-      else
-        instance = ProvisionedService.create(instance.port, instance.plan, instance.name, instance.password, data_backup_file, (1.05 * size / (1024 *1024)).to_i + 1)
-      end
-      FileUtils.rm_f(data_backup_file)
-    else
-      instance = ProvisionedService.create(instance.port, instance.plan, instance.name, instance.password)
-    end
   end
 
   def get_varz(instance)

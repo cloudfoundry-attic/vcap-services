@@ -57,7 +57,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     @double_check_orphan_interval = opts[:double_check_orphan_interval] || 300
     @handle_fetched = false
     @fetching_handles = false
-    @api_extensions = opts[:api_extensions] || []
     @svc_json     = {
       :label  => @service[:label],
       :url    => @service[:url],
@@ -227,7 +226,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # create a snapshot
   post "/gateway/v1/configurations/:service_id/snapshots" do
-    not_impl unless @api_extensions.include? "snapshots"
     service_id = params["service_id"]
     @logger.info("Create snapshot request for service_id=#{service_id}")
     @provisioner.create_snapshot(service_id) do |msg|
@@ -242,7 +240,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Get snapshot details
   get "/gateway/v1/configurations/:service_id/snapshots/:snapshot_id" do
-    not_impl unless @api_extensions.include? "snapshots"
     service_id = params["service_id"]
     snapshot_id = params["snapshot_id"]
     @logger.info("Get snapshot_id=#{snapshot_id} request for service_id=#{service_id}")
@@ -258,7 +255,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Enumreate snapshot
   get "/gateway/v1/configurations/:service_id/snapshots" do
-    not_impl unless @api_extensions.include? "snapshots"
     service_id = params["service_id"]
     @logger.info("Enumerate snapshots request for service_id=#{service_id}")
     @provisioner.enumerate_snapshots(service_id) do |msg|
@@ -273,7 +269,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Rollback to a snapshot
   put "/gateway/v1/configurations/:service_id/snapshots/:snapshot_id" do
-    not_impl unless @api_extensions.include? "snapshots"
     service_id = params["service_id"]
     snapshot_id = params["snapshot_id"]
     @logger.info("Rollback service_id=#{service_id} to snapshot_id=#{snapshot_id}")
@@ -289,7 +284,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Delete a snapshot
   delete "/gateway/v1/configurations/:service_id/snapshots/:snapshot_id" do
-    not_impl unless @api_extensions.include? "snapshots"
     service_id = params["service_id"]
     snapshot_id = params["snapshot_id"]
     @logger.info("Delete service_id=#{service_id} to snapshot_id=#{snapshot_id}")
@@ -303,12 +297,12 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
-  # Get serialized url
-  get "/gateway/v1/configurations/:service_id/serialized/url" do
-    not_impl unless @api_extensions.include? "serialization"
+  # Create a serialized url for a service snapshot
+  post "/gateway/v1/configurations/:service_id/serialized/url/snapshots/:snapshot_id" do
     service_id = params["service_id"]
-    @logger.info("Get serialized url for service_id=#{service_id}")
-    @provisioner.get_serialized_url(service_id) do |msg|
+    snapshot_id = params["snapshot_id"]
+    @logger.info("Create serialized url for snapshot=#{snapshot_id} of service_id=#{service_id} ")
+    @provisioner.create_serialized_url(service_id, snapshot_id) do |msg|
       if msg['success']
         async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
       else
@@ -318,10 +312,23 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     async_mode
   end
 
+  # Get serialized url for a service snapshot
+  get "/gateway/v1/configurations/:service_id/serialized/url/snapshots/:snapshot_id" do
+    service_id = params["service_id"]
+    snapshot_id = params["snapshot_id"]
+    @logger.info("Get serialized url for snapshot=#{snapshot_id} of service_id=#{service_id} ")
+    @provisioner.get_serialized_url(service_id, snapshot_id) do |msg|
+      if msg['success']
+        async_reply(VCAP::Services::Api::SerializedURL.new(msg['response']).encode)
+      else
+        async_reply_error(msg['response'])
+      end
+    end
+    async_mode
+  end
 
   # Import serialized data from url
   put "/gateway/v1/configurations/:service_id/serialized/url" do
-    not_impl unless @api_extensions.include? "serialization"
     req = VCAP::Services::Api::SerializedURL.decode(request_body)
     service_id = params["service_id"]
     @logger.info("Import serialized data from url:#{req.url} for service_id=#{service_id}")
@@ -337,7 +344,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Import serialized data from request
   put "/gateway/v1/configurations/:service_id/serialized/data" do
-    not_impl unless @api_extensions.include? "serialization"
     req = VCAP::Services::Api::SerializedData.decode(request_body)
     service_id = params["service_id"]
     @logger.info("Import data from request for service_id=#{service_id}")
@@ -353,7 +359,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
 
   # Get Job details
   get "/gateway/v1/configurations/:service_id/jobs/:job_id" do
-    not_impl unless @api_extensions.include? "jobs"
     service_id = params["service_id"]
     job_id = params["job_id"]
     @logger.info("Get job=#{job_id} for service_id=#{service_id}")
@@ -544,10 +549,6 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
     def async_reply_error(error_msg)
       err_body = error_msg['msg'].to_json()
       async_reply_raw(error_msg['status'], {'Content-Type' => Rack::Mime.mime_type('.json')}, err_body)
-    end
-
-    def not_impl
-      halt 501, {'Content-Type' => Rack::Mime.mime_type('.json') }
     end
   end
 

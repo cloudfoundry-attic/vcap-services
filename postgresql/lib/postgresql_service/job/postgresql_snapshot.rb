@@ -23,7 +23,8 @@ module VCAP::Services::Postgresql::Snapshot
       # gather the information of the snapshot
       snapshot = {
         :snapshot_id => snapshot_id,
-        :size => dump_file_size
+        :size => dump_file_size,
+        :file => "#{snapshot_id}.dump"
       }
 
       snapshot
