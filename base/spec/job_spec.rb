@@ -101,5 +101,18 @@ describe VCAP::Services::Base::AsyncJob::Lock do
     current_value = @stored_value
     sleep expiration * 2
     current_value.should == @stored_value
+    ran_once.should be_true
+  end
+
+  it "should raise error if lock exceed ttl" do
+    @redis.should_receive(:watch).with(@name).any_number_of_times
+    @redis.should_receive(:multi).any_number_of_times.and_yield
+
+    ttl = 1
+    lock = VCAP::Services::Base::AsyncJob::Lock.new(@name, :logger => @logger, :ttl => ttl)
+
+    ran_once = false
+    expect { lock.lock{ ran_once = true; sleep ttl * 2} }.should raise_error(VCAP::Services::Base::Error::ServiceError, /ttl: #{ttl} seconds/)
+    ran_once.should be_true
   end
 end

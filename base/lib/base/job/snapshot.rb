@@ -144,7 +144,8 @@ module VCAP::Services::Base::AsyncJob
 
       def create_lock
         lock_name = "lock:lifecycle:#{name}"
-        lock = Lock.new(lock_name, :logger => @logger)
+        ttl = @config[:job_ttl] || 600
+        lock = Lock.new(lock_name, :logger => @logger, :ttl => ttl)
         lock
       end
 
