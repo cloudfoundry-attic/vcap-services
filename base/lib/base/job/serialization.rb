@@ -246,6 +246,8 @@ module VCAP::Services::Base::AsyncJob
 
         File.open(file_path, "wb+") do |f|
           c = Curl::Easy.new(url)
+          # force use ipv4 dns
+          c.resolve_mode = :ipv4
           # auto redirect
           c.follow_location = true
           c.max_redirects = max_redirects
