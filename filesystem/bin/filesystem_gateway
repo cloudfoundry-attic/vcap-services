@@ -7,12 +7,22 @@ require 'bundler/setup'
 require 'vcap_services_base'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-require 'filesystem_service/provisioner'
+require 'filesystem_service/local_provisioner'
+require 'filesystem_service/nfs_provisioner'
 
 class VCAP::Services::Filesystem::Gateway < VCAP::Services::Base::Gateway
 
   def provisioner_class
-    VCAP::Services::Filesystem::Provisioner
+    case @config[:fs_type]
+    when /local/i
+      VCAP::Services::Filesystem::LocalProvisioner
+
+    when /nfs/i
+      VCAP::Services::Filesystem::NFSProvisioner
+
+    else
+      VCAP::Services::Filesystem::NFSProvisioner
+    end
   end
 
   def default_config_file
@@ -21,7 +31,10 @@ class VCAP::Services::Filesystem::Gateway < VCAP::Services::Base::Gateway
   end
 
   def additional_options
-    {:backends => @config[:backends]}
+    {
+      :backends => @config[:backends],
+      :fs_type  => @config[:fs_type] || "nfs"
+    }
   end
 end
 
