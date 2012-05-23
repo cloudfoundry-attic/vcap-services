@@ -16,6 +16,6 @@ port_range:
 memcached_log_dir: /var/vcap/sys/log/memcached
 max_clients: 500
 memcached_timeout: 2
-sasl_enabled: true
+sasl_enabled: false
 
 # z_interval: 30

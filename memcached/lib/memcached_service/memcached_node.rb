@@ -251,6 +251,7 @@ class VCAP::Services::Memcached::Node
     @logger.debug("Start provisioned instance....")
 
     ProvisionedService.all.each do |instance|
+      @capacity -= capacity_unit
       @logger.debug("instance : #{instance.inspect}")
       @free_ports_mutex.synchronize do
         @free_ports.delete(instance.port)

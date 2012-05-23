@@ -6,7 +6,7 @@ module VCAP
     module Memcached
       module Common
         def service_name
-          "MaaS"
+          "MemcachedaaS"
         end
       end
     end
