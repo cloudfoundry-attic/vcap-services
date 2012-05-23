@@ -241,11 +241,38 @@ module VCAP::Services::Base::AsyncJob
 
       # Fetch remote uri and stream content to file.
       def fetch_url(url, file_path)
-        # TODO check the file size before download?
+        max_download_size = (@config["serialization"] && @config["serialization"]["max_download_size_mb"] || 10).to_i * 1024 * 1024 # 10M by default
+        max_redirects = @config["serialization"] && @config["serialization"]["max_download_redirects"] || 5
+
         File.open(file_path, "wb+") do |f|
           c = Curl::Easy.new(url)
-          c.on_body{|data| f.write(data)}
-          c.perform
+          # auto redirect
+          c.follow_location = true
+          c.max_redirects = max_redirects
+
+          c.on_header do |header|
+            if c.downloaded_content_length > max_download_size
+              raise ServiceError.new(ServiceError::FILESIZE_TOO_LARGE, url, c.downloaded_content_length, max_download_size)
+            end
+
+            header.size
+          end
+
+          bytes_downloaded = 0
+          c.on_body do |data|
+            # calculate bytes downloaded for chucked response
+            bytes_downloaded += data.size
+            if bytes_downloaded > max_download_size
+              raise ServiceError.new(ServiceError::FILESIZE_TOO_LARGE, url, bytes_downloaded, max_download_size)
+            end
+            f.write(data)
+          end
+
+          begin
+            c.perform
+          rescue Curl::Err::TooManyRedirectsError
+            raise ServiceError.new(ServiceError::TOO_MANY_REDIRECTS, url, max_redirects)
+          end
         end
       end
 
@@ -276,7 +303,7 @@ module VCAP::Services::Base::AsyncJob
             end
 
             raise "Can't find temp file: #{@temp_file_path}" unless File.exists? temp_file_path
-            raise ServiceError.new(SerivceError::BAD_SERIALIZED_DATAFILE, "request") unless validate_input(temp_file_path)
+            raise ServiceError.new(ServiceError::BAD_SERIALIZED_DATAFILE, "request") unless validate_input(temp_file_path)
 
             @snapshot_id = new_snapshot_id
             @snapshot_path = get_dump_path(name, snapshot_id)
