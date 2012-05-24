@@ -129,7 +129,7 @@ GEM
       yajl-ruby (~> 0.8.3)
     vcap_logging (1.0.0)
       rake
-    vcap_services_base (0.1.10)
+    vcap_services_base (0.1.9)
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)
@@ -148,6 +148,8 @@ GEM
       vcap_logging (>= 0.1.3)
     vegas (0.1.11)
       rack (>= 1.0.0)
+    warden-client (0.0.1)
+      yajl-ruby
     yajl-ruby (0.8.3)
 
 PLATFORMS
@@ -174,4 +176,5 @@ DEPENDENCIES
   vcap_common (~> 1.0.8)
   vcap_logging (>= 0.1.3)
   vcap_services_base
+  warden-client
   yajl-ruby

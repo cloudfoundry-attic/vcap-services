@@ -12,6 +12,11 @@ describe "vblob_node check & purge orphan" do
     end
   end
 
+  after :all do
+    @node.shutdown if @node
+    FileUtils.rm_rf('/tmp/vblob')
+  end
+
   it "should return proper instances & bindings list" do
     EM.run do
       before_instances = @node.all_instances_list

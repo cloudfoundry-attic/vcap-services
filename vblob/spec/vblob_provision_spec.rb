@@ -1,93 +1,101 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-$:.unshift(File.dirname(__FILE__))
+
 require "spec_helper"
 
-describe "vblob_node provision" do
+describe "vblob wardenization" do
 
   before :all do
     EM.run do
       @opts = get_node_config()
       @logger = @opts[:logger]
       @node = Node.new(@opts)
-
-      EM.add_timer(2) { @resp = @node.provision("free") }
-      EM.add_timer(4) { EM.stop }
+      EM.add_timer(1) { EM.stop }
     end
   end
 
-  it "should have valid response" do
-    @resp.should_not be_nil
-    puts @resp
-    inst_name = @resp['name']
-    inst_name.should_not be_nil
-    inst_name.should_not == ""
+  after :all do
+    @node.shutdown if @node
+    FileUtils.rm_rf('/tmp/vblob')
   end
 
-  it "should be able to connect to vblob gateway" do
-    is_port_open?('127.0.0.1',@resp['port']).should be_true
+  it "should return 0 for successful 'sh' commands" do
+    status = Node.sh "ls /"
+    status.should == 0
   end
 
-  it "should return varz" do
-    EM.run do
-      stats = nil
-      10.times do
-        stats = @node.varz_details
+  it "should raise error for failed 'sh' commands" do
+    lambda { Node.sh("ls /abc") }.should raise_error()
+  end
+
+  it "should be able to provision with warden" do
+    @response = @node.provision("free")
+    @response.should_not be_nil
+    @response['name'].should_not be_nil
+    @response['name'].should_not == ""
+    @response['hostname'].should_not be_nil
+    @response['host'].should_not be_nil
+    @response['port'].should_not be_nil
+    @response['username'].should_not be_nil
+    @response['password'].should_not be_nil
+    @node.unprovision(@response['name'], [])
+  end
+
+  context "when a vblob instance was provisioned" do
+
+    before :each do
+      @response = @node.provision("free")
+      @provisioned_service = @node.get_instance(@response['name'])
+    end
+
+    after :each do
+      @node.unprovision(@response['name'], [])
+    end
+
+    it "should return varz" do
+      EM.run do
+        stats = nil
+        10.times { stats = @node.varz_details }
+        stats.should_not be_nil
+        stats[:nfs_free_space].should_not == ""
+        stats[:max_capacity].should > 0
+        stats[:available_capacity].should > 0
+        stats[:instances].has_value?("ok").should be_true
+        stats[:instances].has_value?("fail").should be_false
+        EM.stop
       end
-      stats.should_not be_nil
-      stats[:nfs_free_space].should_not == ""
-      stats[:max_capacity].should > 0
-      stats[:available_capacity].should > 0
-      stats[:instances].has_value?("ok").should be_true
-      stats[:instances].has_value?("fail").should be_false
-      EM.stop
-    end
-  end
-
-  it "should keep the result after node restart" do
-    port_open_1 = nil
-    port_open_2 = nil
-    EM.run do
-      EM.add_timer(0) { @node.shutdown }
-      EM.add_timer(1) { port_open_1 = is_port_open?('127.0.0.1', @resp['port'])
-                      }
-      EM.add_timer(2) { @node = Node.new(@opts) }
-      EM.add_timer(3) { port_open_2 = is_port_open?('127.0.0.1', @resp['port'])
-                      }
-      EM.add_timer(4) { EM.stop }
     end
 
-    port_open_1.should be_false
-    port_open_2.should be_true
-  end
-
-  it "should return error when unprovisioning a non-existent instance" do
-    EM.run do
-      e = nil
-      begin
-        @node.unprovision('not existent', [])
-      rescue => e
-      end
-      e.should_not be_nil
-      EM.stop
+    it "should contain valid container handle and ip address" do
+      @provisioned_service['ip'].should_not be_nil
+      @provisioned_service['container'].should_not be_nil
     end
-  end
 
-  # unprovision here
-  it "should be able to unprovision an existent instance" do
-    EM.run do
-      e = nil
-      begin
-        @node.unprovision(@resp['name'], [])
-      rescue => e
-      end
-      e.should be_nil
-      EM.stop
+    it "should open the port for request" do
+      is_port_open?(@provisioned_service.ip, @provisioned_service.service_port).should be_true
     end
-  end
 
-  after:all do
-    FileUtils.rm_rf Dir.glob('/tmp/vblob')
+    it "should be able to disable the instance" do
+      @node.disable_instance(@response, {'' => {'credentials' => ''}}).should be_true
+      is_port_open?(@provisioned_service.ip, @provisioned_service.service_port).should be_false
+    end
+
+    it "should be able enable the instance after disable it" do
+      @node.disable_instance(@response, {'' => {'credentials' => ''}}).should be_true
+      @node.enable_instance(@response, {'' => {'credentials' => '' }}).should be_true
+      @provisioned_service = @node.get_instance(@response['name'])
+      is_port_open?(@provisioned_service.ip, @provisioned_service.service_port).should be_true
+    end
+
+    it "should raise error when unprovisioning a non-existent instance" do
+      expect { @node.unprovision('non-existent', []) }.should raise_error
+    end
+
+    it "should keep the result after node restart" do
+      @node.shutdown
+      is_port_open?(@provisioned_service[:ip], @provisioned_service.service_port).should be_false
+      @node.pre_send_announcement
+      @provisioned_service = @node.get_instance(@response['name'])
+      is_port_open?(@provisioned_service[:ip], @provisioned_service.service_port).should be_true
+    end
   end
 end
-
-
