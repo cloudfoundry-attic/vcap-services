@@ -48,9 +48,7 @@ module VCAP
           "#{e}: [#{e.backtrace.join(" | ")}]"
         end
 
-        def dump_redis_data(instance, dump_path=nil, gzip_bin=nil, compressed_file_name=nil)
-          dir = get_config(instance.ip, @redis_port, instance.password, "dir")
-          set_config(instance.ip, @redis_port, instance.password, "dir", dump_path) if dump_path
+        def dump_redis_data(instance, dump_path=nil)
           redis = nil
           begin
             Timeout::timeout(@redis_timeout) do
@@ -61,66 +59,29 @@ module VCAP
             raise RedisError.new(RedisError::REDIS_CONNECT_INSTANCE_FAILED)
           ensure
             begin
-              set_config(instance.ip, @redis_port, instance.password, "dir", dir) if dump_path
               redis.quit if redis
             rescue => e
             end
           end
-          if gzip_bin
-            dump_file = File.join(dump_path, "dump.rdb")
-            cmd = "#{gzip_bin} -c #{dump_file} > #{dump_path}/#{compressed_file_name}"
-            on_err = Proc.new do |cmd, code, msg|
-              raise "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}"
-            end
-            res = CMDHandle.execute(cmd, nil, on_err)
-            return res
+          if dump_path
+            FileUtils.cp(File.join(instance.data_dir, "dump.rdb"), dump_path)
           end
           true
         rescue => e
           @logger.error("Error dump instance #{instance.name}: #{fmt_error(e)}")
           nil
-        ensure
-          FileUtils.rm(File.join(dump_path, "dump.rdb")) if gzip_bin
         end
 
-        def import_redis_data(instance, dump_path, base_dir, redis_server_path, gzip_bin=nil, compressed_file_name=nil)
+        def import_redis_data(instance, dump_path)
           name = instance.name
           dump_file = File.join(dump_path, "dump.rdb")
-          temp_file = nil
-          if gzip_bin
-            # add name in temp file name to prevent file overwritten by other import jobs.
-            temp_file = File.join(dump_path, "#{name}.dump.rdb")
-            zip_file = File.join(dump_path, "#{compressed_file_name}")
-            cmd = "#{gzip_bin} -dc #{zip_file} > #{temp_file}"
-            on_err = Proc.new do |cmd, code, msg|
-              raise "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}"
-            end
-            res = CMDHandle.execute(cmd, nil, on_err)
-            if res == nil
-              return nil
-            end
-            dump_file = temp_file
-          end
-          config_path = File.join(base_dir, instance.name, "redis.conf")
-          stop_redis_server(instance)
-          FileUtils.cp(dump_file, File.join(base_dir, instance.name, "data", "dump.rdb"))
-          pid = fork
-          if pid
-            @logger.debug("Service #{instance.name} started with pid #{pid}")
-            # In parent, detch the child.
-            Process.detach(pid)
-            return pid
-          else
-            $0 = "Starting Redis instance: #{instance.name}"
-            close_fds
-            exec("#{redis_server_path} #{config_path}")
-          end
+          instance.stop if instance.running?
+          FileUtils.cp(dump_file, instance.data_dir)
+          instance.run
           true
         rescue => e
           @logger.error("Failed in import dumpfile to instance #{instance.name}: #{fmt_error(e)}")
           nil
-        ensure
-          FileUtils.rm_rf temp_file if temp_file
         end
 
         def get_info(host, port, password)

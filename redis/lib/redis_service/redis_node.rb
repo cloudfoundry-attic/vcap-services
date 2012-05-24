@@ -57,6 +57,7 @@ class VCAP::Services::Redis::Node
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
     @redis_timeout = @options[:redis_timeout] || 2
+    @redis_start_timeout = @options[:redis_start_timeout] || 3
     ProvisionedService.init(options)
     @options = options
   end
@@ -81,6 +82,7 @@ class VCAP::Services::Redis::Node
 
         begin
           instance.run
+          raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_redis_server_start(instance) == false
           @logger.info("Successfully start provisioned instance #{instance.name}")
         rescue => e
           @logger.error("Error starting instance #{instance.name}: #{e}")
@@ -115,9 +117,10 @@ class VCAP::Services::Redis::Node
       instance = ProvisionedService.create(port, plan, credentials["name"], credentials["password"], db_file)
     else
       port = new_port
-      instance = ProvisionedService.create(port, plan, db_file)
+      instance = ProvisionedService.create(port, plan, nil, nil, db_file)
     end
     instance.run
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_redis_server_start(instance) == false
     gen_credentials(instance)
   rescue => e
     @logger.error("Error provision instance: #{e}")
@@ -215,14 +218,6 @@ class VCAP::Services::Redis::Node
   end
 
   def enable_instance(service_credentials, binding_credentials_map = {})
-    set_config(service_credentials["port"], @disable_password, "requirepass", service_credentials["password"])
-    true
-  rescue => e
-    @logger.warn(e)
-    nil
-  end
-
-  def update_instance(service_credentials, binding_credentials_map = {})
     instance = get_instance(service_credentials["name"])
     set_config(instance.ip, @redis_port, @disable_password, "requirepass", instance.password)
     true
@@ -243,6 +238,18 @@ class VCAP::Services::Redis::Node
     db_file = File.join(dump_dir, "dump.rdb")
     provision(plan, service_credentials, db_file)
     true
+  rescue => e
+    @logger.warn(e)
+    nil
+  end
+
+  def update_instance(service_credentials, binding_credentials_map = {})
+    instance = get_instance(service_credentials["name"])
+    service_credentials = gen_credentials(instance)
+    binding_credentials_map.each do |key, _|
+      binding_credentials_map[key]["credentials"] = gen_credentials(instance)
+    end
+    [service_credentials, binding_credentials_map]
   rescue => e
     @logger.warn(e)
     nil
@@ -323,6 +330,26 @@ class VCAP::Services::Redis::Node
       "name" => instance.name
     }
   end
+
+  def wait_redis_server_start(instance)
+    @redis_start_timeout.times do
+      sleep 1
+      redis = nil
+      begin
+        redis = Redis.new({:host => instance.ip, :port => @redis_port, :password => instance.password})
+        redis.echo("")
+        return true
+      rescue => e
+        next
+      ensure
+        begin
+          redis.quit if redis
+        rescue => e
+        end
+      end
+    end
+    false
+  end
 end
 
 class VCAP::Services::Redis::Node::ProvisionedService
@@ -361,7 +388,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
       DataMapper::auto_upgrade!
     end
 
-    def create(port, plan=nil, name=nil, password=nil, db_file=nil, db_size=nil)
+    def create(port, plan=nil, name=nil, password=nil, db_file=nil, is_upgraded=false)
       raise "Parameter missing" unless port
       # The instance could be an old instance without warden support
       instance = get(name) if name
@@ -391,13 +418,15 @@ class VCAP::Services::Redis::Node::ProvisionedService
       config = config_template.result(Kernel.binding)
       config_path = File.join(instance.base_dir, "redis.conf")
 
-      # Mount base directory to loop device for disk size limitation
-      db_size = db_size || @@max_db_size
-      instance.loop_create(db_size)
-      instance.loop_setup
-      FileUtils.mkdir_p(instance.data_dir)
-      if db_file
-        FileUtils.cp(db_file, File.join(instance.data_dir, "dump.rdb"))
+      if is_upgraded == false
+        # Mount base directory to loop device for disk size limitation
+        db_size = db_size || @@max_db_size
+        instance.loop_create(db_size)
+        instance.loop_setup
+        FileUtils.mkdir_p(instance.data_dir)
+        if db_file
+          FileUtils.cp(db_file, File.join(instance.data_dir, "dump.rdb"))
+        end
       end
       File.open(config_path, "w") {|f| f.write(config)}
       instance
@@ -414,6 +443,14 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   def logger
     Node.logger
+  end
+
+  def migration_check
+    super
+    # Need regenerate configuration file for redis server
+    if container == nil
+      VCAP::Services::Redis::Node::ProvisionedService.create(port, plan, name, password, nil, true)
+    end
   end
 
   # diretory helper

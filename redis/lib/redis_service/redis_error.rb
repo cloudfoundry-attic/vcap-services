@@ -17,6 +17,7 @@ module VCAP
         REDIS_RESTORE_FILE_NOT_FOUND      = [31109, HTTP_INTERNAL, "Could not find redis restore data file %s"]
         REDIS_BAD_SERIALIZED_DATA         = [31110, HTTP_INTERNAL, "File %s can't be verified"]
         REDIS_RUN_SYSTEM_COMMAND_FAILED   = [31111, HTTP_INTERNAL, "Failed to run system command %s, stdout: %s, stderr: %s"]
+        REDIS_START_INSTANCE_TIMEOUT       = [31322, HTTP_INTERNAL, "Timeout to start redis server for instance %s"]
       end
     end
   end
