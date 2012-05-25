@@ -25,3 +25,5 @@ rabbitmq_log_dir: /var/vcap/sys/log/rabbit
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
+max_db_size: 128
+image_dir: /var/vcap/services/rabbit/rabbitmq_image
