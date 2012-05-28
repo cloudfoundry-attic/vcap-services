@@ -3,11 +3,6 @@ require "warden/client"
 require "utils"
 
 module VCAP::Services::Base::Warden
-  @@base_dir = ''
-  @@log_dir = ''
-  @@image_dir = ''
-  @@max_db_size = 128
-
   def self.included(base)
     base.extend(ClassMethods)
   end
@@ -18,6 +13,12 @@ module VCAP::Services::Base::Warden
       warden_client.connect
       warden_client
     end
+
+    attr_reader :base_dir, :log_dir, :image_dir, :max_db_size, :logger
+  end
+
+  def logger
+    self.class.logger
   end
 
   def loop_create(max_size)
@@ -64,10 +65,10 @@ module VCAP::Services::Base::Warden
   def to_loopfile
     self.class.sh "mv #{base_dir} #{base_dir+"_bak"}"
     self.class.sh "mkdir -p #{base_dir}"
-    self.class.sh "A=`du -sm #{base_dir+"_bak"} | awk '{ print $1 }'`;A=$((A+32));if [ $A -lt #{@@max_db_size} ]; then A=#{@@max_db_size}; fi;dd if=/dev/null of=#{image_file} bs=1M seek=$A"
+    self.class.sh "A=`du -sm #{base_dir+"_bak"} | awk '{ print $1 }'`;A=$((A+32));if [ $A -lt #{self.class.max_db_size} ]; then A=#{self.class.max_db_size}; fi;dd if=/dev/null of=#{image_file} bs=1M seek=$A"
     self.class.sh "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{image_file}"
     self.class.sh "mount -n -o loop #{image_file} #{base_dir}"
-    self.class.sh "cp -af #{base_dir+"_bak"}/* #{base_dir}", :timeout => 15.0
+    self.class.sh "cp -af #{base_dir+"_bak"}/* #{base_dir}", :timeout => 60.0
   end
 
   def migration_check
@@ -75,6 +76,9 @@ module VCAP::Services::Base::Warden
       unless loop_setup?
         # for case where VM rebooted
         logger.info("Service #{self[:name]} mounting data file")
+        # incase for bosh --recreate, which will delete log dir
+        FileUtils.mkdir_p(base_dir) unless base_dir?
+        FileUtils.mkdir_p(log_dir) unless log_dir?
         loop_setup
       end
     else
@@ -158,38 +162,57 @@ module VCAP::Services::Base::Warden
     rescue => e
       return false
     ensure
-      warden.disconnect
+      warden.disconnect if warden
     end
   end
 
   # port map helper
-  def map_port(src_port, dest_ip, dest_port)
+  def iptable(add, src_port, dest_ip, dest_port)
     rule = [ "--protocol tcp",
              "--dport #{src_port}",
              "--jump DNAT",
              "--to-destination #{dest_ip}:#{dest_port}" ]
-    self.class.sh "iptables -t nat -A PREROUTING #{rule.join(" ")}"
+
+    if add
+      cmd = "iptables -t nat -A PREROUTING #{rule.join(" ")}"
+    else
+      cmd = "iptables -t nat -D PREROUTING #{rule.join(" ")}"
+    end
+
+    # iptables exit code:
+    # The exit code is 0 for correct functioning.
+    # Errors which appear to be caused by invalid or abused command line parameters cause an exit code of 2,
+    # and other errors cause an exit code of 1.
+    #
+    # we add a retry here, since iptables may return resource unavailable temporary error for mulitple
+    # iptables command issued at very close time.
+    5.times do
+      ret = self.class.sh(cmd, :raise => false)
+      logger.warn("cmd \"#{cmd}\" invalid") if ret == 2
+      break unless ret == 1
+      sleep 0.2
+    end
+  end
+
+  def map_port(src_port, dest_ip, dest_port)
+    iptable(true, src_port, dest_ip, dest_port)
   end
 
   def unmap_port(src_port, dest_ip, dest_port)
-    rule = [ "--protocol tcp",
-             "--dport #{src_port}",
-             "--jump DNAT",
-             "--to-destination #{dest_ip}:#{dest_port}" ]
-    self.class.sh "iptables -t nat -D PREROUTING #{rule.join(" ")}"
+    iptable(false, src_port, dest_ip, dest_port)
   end
 
   # directory helper
   def image_file
-    File.join(@@image_dir, "#{self[:name]}.img")
+    File.join(self.class.image_dir, "#{self[:name]}.img")
   end
 
   def base_dir
-    File.join(@@base_dir, self[:name])
+    File.join(self.class.base_dir, self[:name])
   end
 
   def log_dir
-    File.join(@@log_dir, self[:name])
+    File.join(self.class.log_dir, self[:name])
   end
 
   def image_file?

@@ -22,8 +22,8 @@ module VCAP::Services::Base::Utils
       err_buf = ''
       begin
         pid, iwr, ord, erd = POSIX::Spawn::popen4(*args)
-        status = Timeout::timeout(options[:timeout]) do
-          Process.waitpid2(pid)
+        Timeout::timeout(options[:timeout]) do
+          status = Process.waitpid2(pid)
         end
         out_buf += ord.read
         err_buf += erd.read
@@ -34,7 +34,7 @@ module VCAP::Services::Base::Utils
       end
 
       if status[1].exitstatus != 0
-        raise RuntimeError, "sh #{args} failed: \nstdout: \n#{out_buf}\nstderr: \n#{err_buf}" unless skip_raise
+        raise RuntimeError, "sh #{args} failed: \n exit with: #{status[1].exitstatus}\nstdout: \n#{out_buf}\nstderr: \n#{err_buf}" unless skip_raise
       end
       status[1].exitstatus
     end
