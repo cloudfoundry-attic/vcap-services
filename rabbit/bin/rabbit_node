@@ -27,6 +27,8 @@ class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
     options[:config_template] = File.expand_path("../../resources/rabbitmq.config.erb", __FILE__)
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options[:max_memory_factor] = parse_property(config, "max_memory_factor", Float, :optional => true)
+    options[:image_dir] = parse_property(config, "image_dir", String)
+    options[:max_db_size] = parse_property(config, "max_db_size", Integer)
     options
   end
 

@@ -51,36 +51,29 @@ def getNodeTestConfig
   config = YAML.load_file(config_file)
   options = {
     :logger => getLogger,
-    :base_dir => "/tmp/rabbit_instances",
+    :base_dir => "/tmp/rabbitmq_instances",
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
-    :local_db_file => "/tmp/rabbit_node_" + Time.now.to_i.to_s + ".db",
+    :local_db_file => "/tmp/rabbitmq_node_" + Time.now.to_i.to_s + ".db",
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :port_range => parse_property(config, "port_range", Range),
-    :admin_port_range => parse_property(config, "admin_port_range", Range),
-    :rabbitmq_server => parse_property(config, "rabbitmq_server", String),
-    :rabbitmq_log_dir => "/tmp/rabbit_instances/log",
-    :config_template => File.expand_path("../../resources/rabbitmq.config.erb", __FILE__)
+    :rabbitmq_log_dir => "/tmp/rabbitmq_instances/log",
+    :config_template => File.expand_path("../../resources/rabbitmq.config.erb", __FILE__),
+    :image_dir => "/tmp/redis_image",
+    :max_db_size => parse_property(config, "max_db_size", Integer),
+    :migration_nfs => "/tmp/migration",
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options
 end
 
-def amqp_try_connect(credentials)
-  AMQP.start(:host => credentials["host"],
-             :port => credentials["port"],
-             :vhost => credentials["vhost"],
-             :user => credentials["user"],
-             :pass => credentials["pass"])
-end
-
-def amqp_start(credentials)
+def amqp_start(credentials, instance)
   result = false
-  AMQP.start(:host => credentials["host"],
-             :port => credentials["port"],
+  AMQP.start(:host => instance.ip,
+             :port => 10001,
              :vhost => credentials["vhost"],
              :user => credentials["user"],
              :pass => credentials["pass"]) do |conn|
@@ -90,10 +83,10 @@ def amqp_start(credentials)
   result
 end
 
-def amqp_connect(credentials)
+def amqp_connect(credentials, instance)
   EM.run do
-    AMQP.connect(:host => credentials["host"],
-               :port => credentials["port"],
+    AMQP.connect(:host => instance.ip,
+               :port => 10001,
                :vhost => credentials["vhost"],
                :user => credentials["user"],
                :pass => credentials["pass"])
