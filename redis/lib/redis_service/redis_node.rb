@@ -160,6 +160,8 @@ class VCAP::Services::Redis::Node
       raise e1
     end
 
+    # Sleep 1 second to wait for redis instance start
+    sleep 1
     gen_credentials(instance)
   end
 
@@ -333,10 +335,9 @@ class VCAP::Services::Redis::Node
       @logger.debug("Service #{instance.name} started with pid #{pid}")
       # In parent, detch the child
       Process.detach(pid)
-      # Sleep 0.1 second to wait for the redis server starting, then wait enough time if need
-      sleep 0.1
+      # Wait enough time for the redis server starting
       @redis_start_timeout.times do
-        redis = nil
+        sleep 1
         begin
           redis = Redis.new({:port => instance.port, :password => instance.password})
           redis.echo("")
@@ -349,7 +350,6 @@ class VCAP::Services::Redis::Node
           rescue => e
           end
         end
-        sleep 1
       end
       @logger.error("Timeout to start redis server for instance #{instance.name}")
       # Stop the instance if it is running
