@@ -19,6 +19,8 @@ vblobd_obj_limit: 32768
 port_range:
   first: 45001
   last: 65000
+max_db_size: 128
+image_dir: /var/vcap/services/vblob/vblob_image
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false

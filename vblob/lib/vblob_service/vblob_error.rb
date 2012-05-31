@@ -13,6 +13,7 @@ module VCAP
         VBLOB_CLEANUP_ERROR = [31607, HTTP_INTERNAL, 'vBlob cleanup failed: %s']
         VBLOB_ADD_USER_ERROR = [31608, HTTP_INTERNAL, 'vBlob add user failed: %s']
         VBLOB_REMOVE_USER_ERROR = [31609, HTTP_INTERNAL, 'vBlob remove user failed: %s']
+        VBLOB_RUN_SYSTEM_COMMAND_FAILURE = [31610, HTTP_INTERNAL, 'vblob run system command failed: %s']
       end
     end
   end
