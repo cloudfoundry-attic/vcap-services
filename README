@@ -1,7 +1,7 @@
 Copyright (c) 2009-2011 VMware, Inc.
 
 == What is Cloud Foundry?
- 
+
 Cloud Foundry is an open platform-as-a-service (PaaS). The system supports
 multiple frameworks, multiple application infrastructure services and
 deployment to multiple clouds.
@@ -10,13 +10,29 @@ deployment to multiple clouds.
 
 The services repo contains a collection of sample cloud foundry services.
 The repo has a position in the overall vcap namespace at
-vcap/services and uses the git submodule mechanism to be mounted in that location. 
+vcap/services and uses the git submodule mechanism to be mounted in that location.
 The code is exposed via the vcap-services repo.
- 
+
 == License
- 
+
 Cloud Foundry uses the Apache 2 license.  See LICENSE for details.
 
 == Installation Notes
 
 Complete installation notes are present in the README for vcap
+
+== Unit Test Instructions
+
+To run the unit test of each service, go to the folder of the service, run
+
+bundle install --deployment --without development production
+
+, which will install the necessary gems for you, then do
+
+bundle exec rake spec
+
+to run the unit tests. Please note that you might need necessary binary files to
+pass the unit test. Normally these binaries are required to be installed in
+accordance to the path specified in the config file, i.e., the .yml file in
+the config directory. The nats information might also need to be updated to match
+the configuration of the nats server.
