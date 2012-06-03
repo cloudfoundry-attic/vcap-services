@@ -36,7 +36,7 @@ module VCAP
           tmp_dir = Dir.mktmpdir
           service = Node::ProvisionedService.get(service_id)
 
-          commands = [ "#{mongodump_path} -h 127.0.0.1:#{service.port} -u #{service.admin} -p #{service.adminpass} -o #{tmp_dir} ", \
+          commands = [ "#{mongodump_path} -h #{service.ip}:27017 -u #{service.admin} -p #{service.adminpass} -o #{tmp_dir} ", \
                        "#{tar_path} czf #{file} -C #{tmp_dir} ." ]
 
           on_err = Proc.new do |cmd, code, msg|
@@ -75,7 +75,7 @@ module VCAP
           tmp_dir = Dir.mktmpdir
 
           service = Node::ProvisionedService.get(service_id)
-          db = Mongo::Connection.new('127.0.0.1', service.port).db(service.db)
+          db = Mongo::Connection.new(service.ip, 27017).db(service.db)
           db.authenticate(service.admin, service.adminpass)
           db.collection_names.each do |name|
             if name != 'system.users' && name != 'system.indexes'
@@ -84,7 +84,7 @@ module VCAP
           end
 
           commands = [ "#{tar_path} xzf #{file} -C #{tmp_dir}", \
-                       "#{mongorestore_path} -h 127.0.0.1:#{service.port} -u #{service.admin} -p #{service.adminpass} #{tmp_dir}" ]
+                       "#{mongorestore_path} -h #{service.ip}:27017 -u #{service.admin} -p #{service.adminpass} #{tmp_dir}" ]
 
           on_err = Proc.new do |cmd, code, msg|
             raise "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}"
