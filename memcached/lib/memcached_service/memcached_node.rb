@@ -32,7 +32,7 @@ class VCAP::Services::Memcached::Node
 
   class SASLAdmin
     class SASLOperationError < StandardError
-      SASL_OPS_USER_ALREADY_EXITST  = 'Failed to create user. Specified user has already exists.'
+      SASL_OPS_USER_ALREADY_EXISTS  = 'Failed to create user. Specified user has already exists.'
       SASL_OPS_ILLEGAL_INPUT        = 'Illegal input.'
       SASL_OPS_UNKNOWN_ERROR        = 'Failed to create user. Unknown error.'
     end
@@ -60,7 +60,7 @@ class VCAP::Services::Memcached::Node
       users = user_list()
 
       if users.include?(user)
-        raise SASLOperationError::SASL_OPS_USER_ALREADY_EXITST
+        raise SASLOperationError::SASL_OPS_USER_ALREADY_EXISTS
       end
       ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user} -p`
 

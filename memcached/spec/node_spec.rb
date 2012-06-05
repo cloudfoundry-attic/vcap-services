@@ -1,7 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 # This code is based on Redis as a Service.
 
-require File.dirname(__FILE__) + '/spec_helper'
+require "spec_helper"
 require "memcached_service/memcached_node"
 require "memcached_service/memcached_error"
 require "dalli"
@@ -20,29 +20,10 @@ end
 describe VCAP::Services::Memcached::Node do
 
   before :all do
-    @logger = Logger.new(STDOUT, "daily")
-    @logger.level = Logger::DEBUG
-    @my_ip = `hostname -I`.chomp.strip
-    @local_db_file = "/tmp/memcached_node_" + Time.now.to_i.to_s + ".db"
-    @memcached_exe = ENV['CLOUDFOUNDRY_HOME'] + "/.deployments/devbox/deploy/memcached/bin/memcached";
-    @logger.debug("Using memcached exe from: #{@memcached_exe}")
     @capacity_unit = 1
-    @options = {
-      :logger => @logger,
-      :base_dir => "/tmp/services/memcached/instances",
-      :memcached_server_path => @memcached_exe,
-      :local_ip => @my_ip,
-      :capacity => 50,
-      :node_id => "memcached-node-1",
-      #:config_template => File.expand_path("../resources/memcached.conf.erb", File.dirname(__FILE__)),
-      :local_db => "sqlite3:" + @local_db_file,
-      :port_range => Range.new(5000, 25000),
-      :mbus => "nats://#{@my_ip}:4222",
-      :memcached_log_dir => "/tmp/memcached_log",
-      :command_rename_prefix => "protect-command",
-      :max_clients => 100,
-      :memcached_memory => 16
-    }
+    @options = get_node_config()
+    @logger = @options[:logger]
+    @local_db_file = @options[:local_db_file]
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:memcached_log_dir])
 
@@ -67,21 +48,21 @@ describe VCAP::Services::Memcached::Node do
     FileUtils.rm_rf(@options[:memcached_log_dir])
   end
 
-  describe 'SASLAdmin' do
-    before :all do
-      @admin = VCAP::Services::Memcached::Node::SASLAdmin.new(@logger)
-      @create_user = 'username'
-      @password = 'password'
-    end
-
-    it "should create new user" do
-      @admin.create_user(@create_user, @password)
-    end
-
-    it "should delete specified user" do
-      @admin.delete_user(@create_user)
-    end
-  end
+#  describe 'SASLAdmin' do
+#    before :all do
+#      @admin = VCAP::Services::Memcached::Node::SASLAdmin.new(@logger)
+#      @create_user = 'username'
+#      @password = 'password'
+#    end
+#
+#    it "should create new user" do
+#      @admin.create_user(@create_user, @password)
+#    end
+#
+#    it "should delete specified user" do
+#      @admin.delete_user(@create_user)
+#    end
+#  end
 
   describe 'Node.initialize' do
     it "should set up a base directory" do
@@ -97,7 +78,7 @@ describe VCAP::Services::Memcached::Node do
     end
 
     it "should set up an available capacity" do
-      @node.capacity.should be @options[:capacity]
+      @node.capacity.should == @options[:capacity]
     end
 
     it "should setup a free port set" do
