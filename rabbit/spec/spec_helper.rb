@@ -65,6 +65,7 @@ def getNodeTestConfig
     :image_dir => "/tmp/redis_image",
     :max_db_size => parse_property(config, "max_db_size", Integer),
     :migration_nfs => "/tmp/migration",
+    :rabbitmq_start_timeout => parse_property(config, "rabbitmq_start_timeout", Integer),
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options
