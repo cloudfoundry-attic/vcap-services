@@ -7,8 +7,5 @@ class VCAP::Services::CouchDB::Provisioner < VCAP::Services::Base::Provisioner
 
   include VCAP::Services::CouchDB::Common
 
-  def node_score(node)
-    node['available_memory']
-  end
 end
 

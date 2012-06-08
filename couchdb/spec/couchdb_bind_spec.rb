@@ -6,6 +6,7 @@ describe "couchdb_node bind" do
   before :all do
     @opts = get_node_config()
     @couchdb_config = @opts[:couchdb]
+    start_couchdb_server("#{@opts[:couchdb_install_path]}/etc/init.d/couchdb")
     delete_leftover_users
   end
 
@@ -24,6 +25,10 @@ describe "couchdb_node bind" do
     @node.unbind(@bind_resp) if @bind_resp
     @node.unprovision(@resp['name'], []) if @resp
     delete_leftover_users
+  end
+
+  after :all do
+    stop_couchdb_server("#{@opts[:couchdb_install_path]}/etc/init.d/couchdb")
   end
 
   it "should have valid response" do
@@ -51,17 +56,17 @@ describe "couchdb_node bind" do
       @node.bind('non-existed', 'rw')
     rescue => e
     end
-    e.class.should == RuntimeError
-    e.message.should == 'Could not find service: non-existed'
+    e.class.should == VCAP::Services::Base::Error::ServiceError
+    e.message.should == 'Error Code: 30300, Error Message: non-existed not found'
   end
 
   it "should allow authorized user to access the instance" do
     EM.run do
       conn = server_connection(@bind_resp)
       coll = conn.database(@bind_resp['name'])
-      before = coll.all_docs["total_rows"]
+      before = coll.documents["total_rows"]
       coll.save_doc({'a' => 1})
-      (coll.all_docs["total_rows"] - before).should == 1
+      (coll.documents["total_rows"] - before).should == 1
       EM.stop
     end
   end
@@ -73,7 +78,7 @@ describe "couchdb_node bind" do
       begin
         conn = server_connection(@bind_resp)
         coll = conn.database(another['name'])
-        before = coll.all_docs["total_rows"]
+        before = coll.documents["total_rows"]
       rescue => e
       end
       e.to_s.should == %{401 Unauthorized: {"error":"unauthorized","reason":"You are not authorized to access this db."}\n}
@@ -91,7 +96,7 @@ describe "couchdb_node bind" do
         coll.save_doc({'a' => 1})
       rescue => e
       end
-      e.to_s.should == %{401 Unauthorized: {"error":"unauthorized","reason":"Authentication required."}\n}
+      e.to_s.should == %{401 Unauthorized: {"error":"unauthorized","reason":"You are not authorized to access this db."}\n}
       EM.stop
     end
   end
@@ -138,7 +143,7 @@ describe "couchdb_node bind" do
 
       conn = server_admin_connection
       db = conn.database("_users")
-      users = db.all_docs["rows"].select { |u| u["id"] =~ /^org.couchdb.user:/ }
+      users = db.documents["rows"].select { |u| u["id"] =~ /^org.couchdb.user:/ }
       users.length.should == 1
       users[0]["id"].should == "org.couchdb.user:#{@resp['username']}"
       EM.stop
@@ -171,7 +176,7 @@ describe "couchdb_node bind" do
       begin
         conn = server_connection(@bind_resp)
         coll = conn.database(@bind_resp['name'])
-        coll.all_docs
+        coll.documents
       rescue => e
       end
       e.to_s.should == %{401 Unauthorized: {"error":"unauthorized","reason":"Name or password is incorrect."}\n}

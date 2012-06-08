@@ -11,6 +11,10 @@ require "couchdb_service/common"
 require "couchdb_service/restapi"
 require "couchdb_service/util"
 
+require 'net/http'
+
+require 'open3'
+
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require 'base/node'
 
@@ -23,11 +27,14 @@ module VCAP
   end
 end
 
+require "couchdb_service/couchdb_error"
+
 class VCAP::Services::CouchDB::Node
 
   include VCAP::Services::CouchDB::Common
   include VCAP::Services::CouchDB::RestAPI
   include VCAP::Services::CouchDB::Util
+  include VCAP::Services::CouchDB
 
   # FIXME only support rw currently
   BIND_OPT = 'rw'
@@ -39,13 +46,17 @@ class VCAP::Services::CouchDB::Node
     property :user,       String,   :required => true
     property :password,   String,   :required => true
     property :plan,       Enum[:free], :required => true
-    property :memory,     Integer
   end
 
   def initialize(options)
     super(options)
 
     @couchdb_config = options[:couchdb]
+    @logger.info("couchdb_config = #{@couchdb_config}")
+    @couchdb_bind_host_ip = @couchdb_config['host']
+
+    @logger.info("Bound to IP: #{@couchdb_bind_host_ip}")
+    @couchdb_install_path = options[:couchdb_install_path]
 
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
@@ -53,21 +64,45 @@ class VCAP::Services::CouchDB::Node
     DataMapper.setup(:default, options[:local_db])
     DataMapper::auto_upgrade!
 
-    @total_memory = options[:available_memory]
-    @available_memory = options[:available_memory]
+    @available_capacity = options[:capacity]
     ProvisionedService.all.each do |provisioned_service|
-      @available_memory -= (provisioned_service.memory || @max_memory)
+      @capacity -= capacity_unit
     end
-    @max_memory = options[:max_memory]
+
+    @couchdb_ctl = "#{@couchdb_install_path}/etc/init.d/couchdb"
+
+    # TODO: Investigate if there is a better way than this
+    # Start couchdb process if its not already started
+    @logger.info(`#{@couchdb_ctl} start`) if !couchdb_running?
+  end
+
+  def couchdb_running?
+    couch_status_cmd = "#{@couchdb_ctl} status"
+    stdin,stdout,stderr = Open3.popen3(couch_status_cmd)
+    status_out = stdout.gets
+    status_err = stderr.gets
+    status_out = status_out.chomp if status_out != nil
+    status_err = status_err.chomp if status_err != nil
+    @logger.info("CouchDB status: \n\tOUT: #{status_out}\n\tERR: #{status_err}")
+    false if status_err =~ /not running/
+    true if status_out =~ /is running/
+  end
+
+  def shutdown
+    super
+    @logger.info("Shutting down couchdb...")
+    @logger.info(`#{@couchdb_ctl} stop`) if couchdb_running?
   end
 
   def announcement
-    {
-      :available_memory => @available_memory
-    }
+    @capacity_lock.synchronize do
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
+    end
   end
 
   def provision(plan, credential = nil)
+    raise CouchDbError.new(CouchDbError::COUCHDB_INVALID_PLAN, plan) unless plan.to_s == @plan
     provisioned_service = ProvisionedService.new
     if credential
       name, user, password = %w(name user password).map{|key| credential[key]}
@@ -81,25 +116,22 @@ class VCAP::Services::CouchDB::Node
     end
     provisioned_service.port      = @couchdb_config["port"]
     provisioned_service.plan      = plan
-    provisioned_service.memory    = @max_memory
 
     unless provisioned_service.save
-      raise "Could not save entry: #{provisioned_service.errors.inspect}"
+      raise CouchDbError.new(CouchDbError::COUCHDB_SAVE_INSTANCE_FAILED, provisioned_service.inspect)
     end
 
     begin
       couchdb_add_db(provisioned_service)
       couchdb_add_database_user(provisioned_service)
     rescue => e
-      record_service_log(provisioned_service.name)
       cleanup_service(provisioned_service)
       raise e.to_s + ": Could not save admin user."
     end
 
-    @available_memory -= (provisioned_service.memory || @max_memory)
     response = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => @couchdb_bind_host_ip,
+      "host" => @couchdb_bind_host_ip,
       "port" => provisioned_service.port,
       "name" => provisioned_service.name,
       "username" => provisioned_service.user,
@@ -119,13 +151,11 @@ class VCAP::Services::CouchDB::Node
   end
 
   def cleanup_service(provisioned_service)
-    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.destroy
+    raise CouchDbError.new(CouchDbError::COUCHDB_CLEANUP_INSTANCE_FAILED, provisioned_service.errors.inspect) unless provisioned_service.destroy
 
     couchdb_delete_database_user(provisioned_service)
     couchdb_flush_bound_users(provisioned_service)
     couchdb_delete_db(provisioned_service)
-
-    @available_memory += provisioned_service.memory
 
     true
   end
@@ -135,7 +165,7 @@ class VCAP::Services::CouchDB::Node
     bind_opts ||= BIND_OPT
 
     provisioned_service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if provisioned_service.nil?
+    raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
 
     username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
@@ -143,8 +173,8 @@ class VCAP::Services::CouchDB::Node
     couchdb_add_database_user(provisioned_service, username, password)
 
     response = {
-      "hostname" => @local_ip,
-      "host" => @local_ip,
+      "hostname" => @couchdb_bind_host_ip,
+      "host" => @couchdb_bind_host_ip,
       "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
@@ -190,61 +220,7 @@ class VCAP::Services::CouchDB::Node
     {
       :running_services     => stats,
       :disk                 => du_hash,
-      :services_max_memory  => @total_memory,
-      :services_used_memory => @total_memory - @available_memory
     }
-  end
-
-  def healthz_details
-    healthz = {}
-    healthz[:self] = "ok"
-    ProvisionedService.all.each do |provisioned_service|
-      healthz[provisioned_service.name.to_sym] = get_healthz(provisioned_service)
-    end
-    healthz
-  rescue => e
-    @logger.warn("Error get healthz details: #{e}")
-    {:self => "fail"}
-  end
-
-  def memory_for_service(provisioned_service)
-    case provisioned_service.plan
-      when :free then @max_memory
-      else
-        raise "Invalid plan: #{provisioned_service.plan}"
-    end
-  end
-
-  def service_dir(service_id)
-    File.join(@base_dir, service_id)
-  end
-
-  def dump_file(to_dir)
-    File.join(to_dir, 'dump_file')
-  end
-
-  def log_file(base_dir)
-    File.join(base_dir, 'log')
-  end
-
-  def rm_lockfile(service_id)
-    lockfile = File.join(service_dir(service_id), 'data', 'couchdb.lock')
-    FileUtils.rm_rf(lockfile)
-  end
-
-  def record_service_log(service_id)
-    @logger.warn(" *** BEGIN couchdb log - instance: #{service_id}")
-    @logger.warn("")
-    base_dir = service_dir(service_id)
-    file = File.new(log_file(base_dir), 'r')
-    while (line = file.gets)
-      @logger.warn(line.chomp!)
-    end
-  rescue => e
-    @logger.warn(e)
-  ensure
-    @logger.warn(" *** END couchdb log - instance: #{service_id}")
-    @logger.warn("")
   end
 
   VALID_SALT_CHARACTERS = ("A".."Z").to_a + ("a".."z").to_a + ("0".."9").to_a

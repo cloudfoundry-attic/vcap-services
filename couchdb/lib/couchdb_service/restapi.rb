@@ -13,7 +13,7 @@ module VCAP
 
           @logger.debug("Done creating #{provisioned_service.inspect}")
         rescue => e
-          @logger.warn("Failure creating database #{provisioned_service.name}: #{e.message}")
+          @logger.error("Failure creating database #{provisioned_service.name}: #{e.message}")
         end
 
         def couchdb_delete_db(provisioned_service)
@@ -24,7 +24,7 @@ module VCAP
 
           @logger.debug("Done deleting #{provisioned_service.inspect}")
         rescue => e
-          @logger.warn("Failure deleting database #{provisioned_service.name}: #{e.message}")
+          @logger.error("Failure deleting database #{provisioned_service.name}: #{e.message}")
         end
 
         def couchdb_add_database_user(provisioned_service, user = nil, password = nil)
@@ -39,7 +39,7 @@ module VCAP
 
           @logger.info("Created credentials: #{user}/#{password} for database #{provisioned_service.name}")
         rescue => e
-          @logger.warn("Failed add user #{user}: #{e.message}")
+          @logger.error("Failed add user #{user}: #{e.message}")
           raise "Failure creating credentials #{user} for database #{provisioned_service.name}: #{e.message}"
         end
 
@@ -54,7 +54,7 @@ module VCAP
 
           @logger.info("Deleted user #{user}")
         rescue => e
-          @logger.warn("Failure deleting user #{user}: #{e.message}")
+          @logger.error("Failure deleting user #{user}: #{e.message}")
         end
 
         def couchdb_flush_bound_users(provisioned_service)
@@ -72,7 +72,7 @@ module VCAP
           server = server_user_connection(provisioned_service)
           CouchRest.get("#{server.uri}/_stats")
         rescue => e
-          @logger.warn("Failed couchdb_overall_stats: #{e.message}, #{provisioned_service.inspect}")
+          @logger.error("Failed couchdb_overall_stats: #{e.message}, #{provisioned_service.inspect}")
           "Failed couchdb_overall_stats: #{e.message}, options: #{provisioned_service.inspect}"
         end
 
@@ -80,7 +80,7 @@ module VCAP
           server = server_user_connection(provisioned_service)
           CouchRest.get("#{server.uri}/#{provisioned_service.name}")
         rescue => e
-          @logger.warn("Failed couchdb_db_stats: #{e.message}, options: #{provisioned_service.inspect}")
+          @logger.error("Failed couchdb_db_stats: #{e.message}, options: #{provisioned_service.inspect}")
           "Failed couchdb_db_stats: #{e.message}, options: #{provisioned_service.inspect}"
         end
 
@@ -145,7 +145,7 @@ module VCAP
         end
 
         def couchdb_users_for_db(db, name)
-          rows = db.all_docs(:include_docs => true)["rows"]
+          rows = db.documents(:include_docs => true)["rows"]
           rows.select { |u| u["doc"]["type"] == "user" && u["doc"]["bind_db"] == name }.map { |u| u["doc"]["name"] }
         end
       end
