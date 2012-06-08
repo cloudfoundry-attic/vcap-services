@@ -87,6 +87,9 @@ class VCAP::Services::Postgresql::Node
     # and objects. we don't need to worry about calling it more than once
     # because doing so is harmless.
     manage_object_ownership(provisionedservice.name)
+    # Services-r11 and earlier the user could not have temp privilege to
+    # create temporary tables/views/sequences. Services-r12 solves this issue.
+    manage_temp_privilege(provisionedservice.name)
   end
 
   def get_expected_children(name)
@@ -113,10 +116,7 @@ class VCAP::Services::Postgresql::Node
     children
   end
 
-  def get_unruly_children(connection, parent, children)
-    # children which are not in fact children of the parent. (we don't
-    # handle children that somehow have the *wrong* parent, but that
-    # won't happen :-)
+  def get_ruly_children(connection, parent)
     query = <<-end_of_query
       SELECT rolname
       FROM pg_roles
@@ -131,7 +131,14 @@ class VCAP::Services::Postgresql::Node
       );
     end_of_query
     ruly_children = connection.query(query).map { |row| row['rolname'] }
-    children - ruly_children
+    ruly_children
+  end
+
+  def get_unruly_children(connection, parent, children)
+    # children which are not in fact children of the parent. (we don't
+    # handle children that somehow have the *wrong* parent, but that
+    # won't happen :-)
+    children - get_ruly_children(connection, parent)
   end
 
   def manage_object_ownership(name)
@@ -168,6 +175,29 @@ class VCAP::Services::Postgresql::Node
     connection.query("REASSIGN OWNED BY #{children.join(',')} TO #{parent.user};")
   rescue => x
     @logger.warn("Exception while managing object ownership: #{x}")
+  ensure
+    connection.close if connection
+  end
+
+  def manage_temp_privilege(name)
+    return if Provisionedservice.get(name).quota_exceeded
+    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name
+    parent = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    connection.query("GRANT TEMP ON DATABASE #{name} TO #{parent.user}")
+    connection.query("GRANT TEMP ON DATABASE #{name} TO #{parent.sys_user}")
+    expected_children = get_expected_children name
+    return expected_children if expected_children.empty?
+    actual_children = get_actual_children connection, name, parent
+    children = expected_children & actual_children
+    @logger.warn "Ignoring surplus children #{actual_children-children} in #{name} when managing temp privilege" unless (actual_children-children).empty?
+    @logger.warn "Ignoring missing children #{expected_children-children} in #{name} when managing temp privilege" unless (expected_children-children).empty?
+    return if children.empty?
+    # manage_object_ownership will make all unruly children be ruly children
+    children.each do |i_c|
+      connection.query("GRANT TEMP ON DATABASE #{name} TO #{i_c}")
+    end
+  rescue => x
+    @logger.warn("Exception while managing temp privilege: #{x}")
   ensure
     connection.close if connection
   end
@@ -512,8 +542,12 @@ class VCAP::Services::Postgresql::Node
       #Ignore privileges Initializing error. Log only.
       begin
         if quota_exceeded then
+          db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
+          db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
           do_revoke_query(db_connection, user, sys_user)
         else
+          db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
+          db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
           exe_grant_user_priv(db_connection)
         end
       rescue PGError => e

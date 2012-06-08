@@ -170,7 +170,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       @staging_orphan_instances[nid] << ins unless @instance_handles_CO.has_key?(ins)
     end
     response.bindings_list.each do |bind|
-      key = bind["name"].concat(bind["username"] || bind["user"])
+      user = bind["username"] || bind["user"]
+      next unless user
+      key = bind["name"].concat(user)
       @staging_orphan_bindings[nid] << bind unless @binding_handles_CO.has_key?(key)
     end
     oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
@@ -190,7 +192,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       if h["service_id"] == h["credentials"]["name"]
         ins_handles[h["service_id"]] = h
       else
-        key = h["credentials"]["name"].concat(h["credentials"]["username"] || h["credentials"]["user"])
+        user = h["credentials"]["username"] || h["credentials"]["user"]
+        next unless user
+        key = h["credentials"]["name"].concat(user)
         bin_handles[key] = h
       end
     end
@@ -225,7 +229,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @staging_orphan_bindings.each do |nid, ob_list|
       @final_orphan_bindings[nid] ||= []
       ob_list.each do |ob|
-        key = ob["name"].concat(ob["username"] || ob["user"])
+        user = ob["username"] || ob["user"]
+        next unless user
+        key = ob["name"].concat(user)
         @final_orphan_bindings[nid] << ob unless bin_handles.has_key?(key)
       end
     end

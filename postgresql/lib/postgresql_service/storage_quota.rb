@@ -5,6 +5,22 @@ module VCAP; module Services; module Postgresql; end; end; end
 
 class VCAP::Services::Postgresql::Node
 
+  def dbs_size(dbs=[])
+    dbs = [] if dbs.nil?
+
+    result = {}
+    res = @connection.query('select datname, sum(pg_database_size(datname)) as sum_size from pg_database group by datname')
+    res.each do |x|
+      name, size = x["datname"], x["sum_size"]
+      result[name] = size.to_i
+    end
+
+    if dbs.length > 0
+      dbs.each {|db| result[db] = 0 unless result.has_key? db}
+    end
+    result
+  end
+
   def db_size(db)
     sz = @connection.query("select pg_database_size('#{db}') size")
     sum = 0
@@ -38,6 +54,8 @@ class VCAP::Services::Postgresql::Node
         db_connection_sys_user.close
         do_grant_query(db_connection,user,sys_user)
       end
+      db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
+      db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
     end
     db_connection.query("grant create on schema public to public")
     if get_postgres_version(db_connection) == '9'
@@ -102,6 +120,8 @@ class VCAP::Services::Postgresql::Node
       user = binduser.user
       sys_user = binduser.sys_user
       kill_user_sessions(user, name)
+      db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
+      db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
       do_revoke_query(db_connection, user, sys_user)
     end
     db_connection.close
@@ -145,10 +165,18 @@ class VCAP::Services::Postgresql::Node
   end
 
   def enforce_storage_quota
+
+    sizes = dbs_size()
+
     Provisionedservice.all.each do |service|
       begin
         db, quota_exceeded = service.name, service.quota_exceeded
-        size = db_size(db)
+        size = sizes[db]
+        if size.nil?
+          @logger.warn("Could not get the size of #{db} in Postgresql")
+          next
+        end
+
         if (size >= @max_db_size) and not quota_exceeded then
           revoke_write_access(db, service)
           @logger.info("Storage quota exceeded :" + fmt_db_listing(db, size) +
@@ -162,6 +190,8 @@ class VCAP::Services::Postgresql::Node
         @logger.warn("PostgreSQL Node exception: #{e} " + e.backtrace.join("|"))
       end
     end
+  rescue => e
+    @logger.warn("PostgresSQL Node exception: #{e} " + e.backtrace.join("|"))
   end
 
 end

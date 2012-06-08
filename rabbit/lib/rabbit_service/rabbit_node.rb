@@ -334,11 +334,6 @@ class VCAP::Services::Rabbit::Node
           save_instance(instance)
         rescue => e
           @logger.warn("Error starting instance #{instance.name}: #{e}")
-          begin
-            cleanup_instance(instance)
-          rescue => e2
-            # Ignore the rollback exception
-          end
         end
       end
     end

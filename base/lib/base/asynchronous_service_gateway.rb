@@ -61,6 +61,7 @@ class VCAP::Services::AsynchronousServiceGateway < Sinatra::Base
       :label  => @service[:label],
       :url    => @service[:url],
       :plans  => @service[:plans],
+      :cf_plan_id => @service[:cf_plan_id],
       :tags   => @service[:tags],
       :active => true,
       :description  => @service[:description],
