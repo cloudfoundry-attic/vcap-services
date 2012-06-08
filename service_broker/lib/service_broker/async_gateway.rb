@@ -66,6 +66,10 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       token_hdrs     => @token,
     }
 
+    driver, path = opts[:local_db].split(':')
+    db_dir = File.dirname(path)
+    FileUtils.mkdir_p(db_dir)
+
     DataMapper.setup(:default, opts[:local_db])
     DataMapper::auto_upgrade!
 
