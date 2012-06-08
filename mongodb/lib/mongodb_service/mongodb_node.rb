@@ -41,14 +41,10 @@ class VCAP::Services::MongoDB::Node
   # Quota files specify the db quota a instance can use
   QUOTA_FILES = 4
 
-  def self.logger
-    @@logger
-  end
-
   def initialize(options)
     super(options)
-    @@logger = options[:logger]
     ProvisionedService.init(options)
+    @base_dir = options[:base_dir]
     @free_ports = options[:port_range].to_a
     @mutex = Mutex.new
   end
@@ -273,20 +269,6 @@ class VCAP::Services::MongoDB::Node
     nil
   end
 
-  def enable_instance(service_credential, binding_credentials)
-    @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
-    service_id = service_credential["name"]
-    provisioned_service = ProvisionedService.get(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential["name"]) if provisioned_service.nil?
-    pid = start_instance(provisioned_service)
-    provisioned_service.pid = pid
-    raise "Cannot save provision_service" unless provisioned_service.save
-    true
-  rescue => e
-    @logger.warn(e)
-    nil
-  end
-
   def dump_instance(service_credential, binding_credentials, dump_dir)
     @logger.info("dump_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}, dump_dir=#{dump_dir}")
 
@@ -415,15 +397,16 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       @@mongorestore_path = args[:mongorestore_path] ? args[:mongorestore_path] : 'mongorestore'
       @@mongodump_path    = args[:mongodump_path] ? args[:mongodump_path] : 'mongodump'
       @@tar_path          = args[:tar_path] ? args[:tar_path] : 'tar'
-      @@base_dir          = args[:base_dir]
-      @@log_dir           = args[:mongod_log_dir]
-      @@image_dir         = args[:image_dir]
-      @@max_db_size       = args[:max_db_size] ? args[:max_db_size] : 128
+      @base_dir = args[:base_dir]
+      @log_dir  = args[:mongod_log_dir]
+      @image_dir = args[:image_dir]
+      @logger = args[:logger]
+      @max_db_size = args[:max_db_size] ? args[:max_db_size] : 128
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
-      FileUtils.mkdir_p(@@base_dir)
-      FileUtils.mkdir_p(@@log_dir)
-      FileUtils.mkdir_p(@@image_dir)
+      FileUtils.mkdir_p(base_dir)
+      FileUtils.mkdir_p(log_dir)
+      FileUtils.mkdir_p(image_dir)
     end
 
     def create(args)
@@ -440,7 +423,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
       raise "Cannot save provision service" unless p_service.save!
 
-      p_service.loop_create(@@max_db_size)
+      p_service.loop_create(self.max_db_size)
       p_service.loop_setup
       FileUtils.mkdir_p(p_service.data_dir)
       p_service
@@ -512,9 +495,9 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     FileUtils.mkdir_p(tmpdir)
     begin
       self.class.sh "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]}", :timeout => 120
-      Node.logger.warn("Service #{self[:name]} db repair done")
+      logger.warn("Service #{self[:name]} db repair done")
     rescue => e
-      Node.logger.error("Service #{self[:name]} repair failed: #{e}")
+      logger.error("Service #{self[:name]} repair failed: #{e}")
     ensure
       FileUtils.rm_rf(tmpdir)
     end
@@ -532,7 +515,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     # So to avoid these situation, and make things smooth, do it outside container.
     lockfile = File.join(data_dir, "mongod.lock")
     if File.size?(lockfile)
-      Node.logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
+      logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
       FileUtils.rm_f(lockfile)
       repair
     end
@@ -547,13 +530,9 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     "mongod_startup.sh"
   end
 
-  def logger
-    Node.logger
-  end
-
   # diretory helper
   def data_dir
-    File.join(@@base_dir, self[:name], "data")
+    File.join(base_dir, "data")
   end
 
   # user management helper

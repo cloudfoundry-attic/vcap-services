@@ -321,21 +321,21 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     include VCAP::Services::VBlob
 
     def init(options)
-      @@base_dir = options[:base_dir]
-      @@log_dir = options[:vblobd_log_dir]
-      @@image_dir = options[:image_dir]
-      @@max_db_size = options[:max_db_size]
+      @base_dir = options[:base_dir]
+      @log_dir = options[:vblobd_log_dir]
+      @image_dir = options[:image_dir]
+      @max_db_size = options[:max_db_size]
+      @logger = options[:logger]
       @@config_template = ERB.new(File.read(options[:config_template]))
       @@nodejs_path = options[:nodejs_path]
       @@vblobd_path = options[:vblobd_path]
       @@vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
       @@vblobd_obj_limit = options[:vblobd_obj_limit] || 32768  #default max obj num
       @@vblobd_quota = options[:vblobd_quota] || 2147483647 #default max bytes
-      @@logger = options[:logger]
       @@vblob_start_timeout = 10
-      FileUtils.mkdir_p(@@base_dir)
-      FileUtils.mkdir_p(@@log_dir)
-      FileUtils.mkdir_p(@@image_dir)
+      FileUtils.mkdir_p(base_dir)
+      FileUtils.mkdir_p(log_dir)
+      FileUtils.mkdir_p(image_dir)
       DataMapper.setup(:default, options[:local_db])
       DataMapper::auto_upgrade!
     end
@@ -348,7 +348,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
       provisioned_service.secretid    = password
       raise "Cannot save provision_service" unless provisioned_service.save!
 
-      provisioned_service.loop_create(@@max_db_size)
+      provisioned_service.loop_create(max_db_size)
       provisioned_service.loop_setup
 
       FileUtils.mkdir_p(provisioned_service.data_dir)
@@ -381,7 +381,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
         break
       rescue => e
         if t == @@vblob_start_timeout
-          @@logger.error("Timeout to start vBlob server for instance #{self[:name]}")
+          logger.error("Timeout to start vBlob server for instance #{self[:name]}")
           self.delete
           raise VBlobError.new(VBlobError::VBLOB_START_INSTANCE_ERROR)
         else
@@ -393,10 +393,6 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def service_port
     25001
-  end
-
-  def logger
-    @@logger
   end
 
   def service_script
@@ -412,25 +408,25 @@ class VCAP::Services::VBlob::Node::ProvisionedService
   end
 
   def add_user(username, password, bind_opts)
-    @@logger.debug("add user #{username} in port: #{self[:port]}")
+    logger.debug("add user #{username} in port: #{self[:port]}")
     credentials = "{\"#{username}\":\"#{password}\"}"
     response = Net::HTTP::start(self[:ip], service_port) do |http|
       http.open_timeout = http.read_timeout = VBLOB_TIMEOUT
       http.send_request('PUT', '/~bind', credentials, auth_header(self[:keyid], self[:secretid]))
     end
     raise VBlobError.new(VBlobError::VBLOB_ADD_USER_ERROR, options[:username]) if (response.nil? || response.code != "200")
-    @@logger.debug("user #{username} added")
+    logger.debug("user #{username} added")
   end
 
   def remove_user(username, password)
-    @@logger.debug("remove remove #{username} in port: #{self[:port]}")
+    logger.debug("remove remove #{username} in port: #{self[:port]}")
     credentials = "{\"#{username}\":\"#{password}\"}"
     response = Net::HTTP::start(self[:ip], service_port) do |http|
       http.open_timeout = http.read_timeout = VBLOB_TIMEOUT
       http.send_request('PUT', '/~unbind', credentials, auth_header(self[:keyid], self[:secretid]))
     end
     raise VBlobError.new(VBlobError::VBLOB_REMOVE_USER_ERROR, username) if (response.nil? || response.code != "200")
-    @@logger.debug("user #{username} removed")
+    logger.debug("user #{username} removed")
   end
 
   def auth_header(username, password)

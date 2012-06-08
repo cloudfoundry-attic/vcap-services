@@ -33,13 +33,8 @@ class VCAP::Services::Redis::Node
   include VCAP::Services::Redis
   include VCAP::Services::Base::Utils
 
-  def self.logger
-    @@logger
-  end
-
   def initialize(options)
     super(options)
-    @@logger = options[:logger]
     @free_ports = Set.new
     @free_ports_lock = Mutex.new
     options[:port_range].each {|port| @free_ports << port}
@@ -377,13 +372,14 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
     def init(options)
       @@options = options
-      @@base_dir = options[:base_dir]
-      @@log_dir = options[:redis_log_dir]
-      @@image_dir = options[:image_dir]
-      @@max_db_size = options[:max_db_size]
-      FileUtils.mkdir_p(@@base_dir)
-      FileUtils.mkdir_p(@@log_dir)
-      FileUtils.mkdir_p(@@image_dir)
+      @base_dir = options[:base_dir]
+      @log_dir = options[:redis_log_dir]
+      @image_dir = options[:image_dir]
+      @logger = options[:logger]
+      @max_db_size = options[:max_db_size]
+      FileUtils.mkdir_p(base_dir)
+      FileUtils.mkdir_p(log_dir)
+      FileUtils.mkdir_p(image_dir)
       DataMapper.setup(:default, options[:local_db])
       DataMapper::auto_upgrade!
     end
@@ -420,7 +416,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
       if is_upgraded == false
         # Mount base directory to loop device for disk size limitation
-        db_size = db_size || @@max_db_size
+        db_size = db_size || max_db_size
         instance.loop_create(db_size)
         instance.loop_setup
         FileUtils.mkdir_p(instance.data_dir)
@@ -439,10 +435,6 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   def service_script
     "redis_startup.sh"
-  end
-
-  def logger
-    Node.logger
   end
 
   def migration_check

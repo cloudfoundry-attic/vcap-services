@@ -33,13 +33,8 @@ class VCAP::Services::Rabbit::Node
   include VCAP::Services::Rabbit
   include VCAP::Services::Base::Utils
 
-  def self.logger
-    @@logger
-  end
-
   def initialize(options)
     super(options)
-    @@logger = options[:logger]
     @free_ports = Set.new
     @free_ports_lock = Mutex.new
     options[:port_range].each {|port| @free_ports << port}
@@ -418,10 +413,11 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
     def init(options)
       @@options = options
-      @@base_dir = options[:base_dir]
-      @@log_dir = options[:rabbitmq_log_dir]
-      @@image_dir = options[:image_dir]
-      @@max_db_size = options[:max_db_size]
+      @base_dir = options[:base_dir]
+      @log_dir = options[:rabbitmq_log_dir]
+      @image_dir = options[:image_dir]
+      @logger = options[:logger]
+      @max_db_size = options[:max_db_size]
       FileUtils.mkdir_p(options[:base_dir])
       FileUtils.mkdir_p(options[:rabbitmq_log_dir])
       FileUtils.mkdir_p(options[:image_dir])
@@ -481,7 +477,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       FileUtils.rm_rf(instance.log_dir)
       FileUtils.rm_rf(instance.image_file)
       FileUtils.mkdir_p(instance.base_dir)
-      instance.loop_create(@@options[:max_db_size])
+      instance.loop_create(max_db_size)
       instance.loop_setup
       FileUtils.mkdir_p(instance.config_dir)
       FileUtils.mkdir_p(instance.log_dir)
@@ -505,10 +501,6 @@ EOF
     "rabbitmq_startup.sh #{self[:name]}"
   end
 
-  def logger
-    Node.logger
-  end
-
   def migration_check
     super
     if container == nil
@@ -522,7 +514,7 @@ EOF
 
   # diretory helper
   def config_dir
-    File.join(@@base_dir, self[:name], "config")
+    File.join(base_dir, "config")
   end
 
 end
