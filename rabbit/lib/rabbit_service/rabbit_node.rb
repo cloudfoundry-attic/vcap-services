@@ -418,6 +418,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       @image_dir = options[:image_dir]
       @logger = options[:logger]
       @max_db_size = options[:max_db_size]
+      @quota = options[:filesystem_quota] || false
       FileUtils.mkdir_p(options[:base_dir])
       FileUtils.mkdir_p(options[:rabbitmq_log_dir])
       FileUtils.mkdir_p(options[:image_dir])
@@ -477,8 +478,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       FileUtils.rm_rf(instance.log_dir)
       FileUtils.rm_rf(instance.image_file)
       FileUtils.mkdir_p(instance.base_dir)
-      instance.loop_create(max_db_size)
-      instance.loop_setup
+      instance.prepare_filesystem(max_db_size)
       FileUtils.mkdir_p(instance.config_dir)
       FileUtils.mkdir_p(instance.log_dir)
       # Writes the RabbitMQ server erlang configuration file

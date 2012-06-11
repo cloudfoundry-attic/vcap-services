@@ -18,6 +18,7 @@ port_range:
   last: 45000
 max_db_size: 128
 migration_nfs: /mnt/migration
+filesystem_quota: false
 # max_clients: 500
 # z_interval: 30
 # max_nats_payload: 1048576

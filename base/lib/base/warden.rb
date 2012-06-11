@@ -14,31 +14,34 @@ module VCAP::Services::Base::Warden
       warden_client
     end
 
-    attr_reader :base_dir, :log_dir, :image_dir, :max_db_size, :logger
+    attr_reader :base_dir, :log_dir, :image_dir, :max_db_size, :logger, :quota
   end
 
   def logger
     self.class.logger
   end
 
-  def loop_create(max_size)
-    self.class.sh "umount #{base_dir}", :raise => false if File.exist?(base_dir)
-    if Dir.exist?(base_dir)
+  def prepare_filesystem(max_size)
+    if base_dir?
+      self.class.sh "umount #{base_dir}", :raise => false if self.class.quota
       logger.warn("Service #{self[:name]} base_dir:#{base_dir} already exists, deleting it")
       FileUtils.rm_rf(base_dir)
     end
-    if Dir.exist?(log_dir)
+    if log_dir?
       logger.warn("Service #{self[:name]} log_dir:#{log_dir} already exists, deleting it")
       FileUtils.rm_rf(log_dir)
     end
-    if File.exist?(image_file)
+    if image_file?
       logger.warn("Service #{self[:name]} image_file:#{image_file} already exists, deleting it")
       FileUtils.rm_f(image_file)
     end
     FileUtils.mkdir_p(base_dir)
     FileUtils.mkdir_p(log_dir)
-    self.class.sh "dd if=/dev/null of=#{image_file} bs=1M seek=#{max_size}"
-    self.class.sh "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{image_file}"
+    if self.class.quota
+      self.class.sh "dd if=/dev/null of=#{image_file} bs=1M seek=#{max_size}"
+      self.class.sh "mkfs.ext4 -q -F -O \"^has_journal,uninit_bg\" #{image_file}"
+      loop_setup
+    end
   end
 
   def loop_setdown
@@ -82,8 +85,10 @@ module VCAP::Services::Base::Warden
         loop_setup
       end
     else
-      logger.warn("Service #{self[:name]} need migration to quota")
-      to_loopfile
+      if self.class.quota
+        logger.warn("Service #{self[:name]} need migration to quota")
+        to_loopfile
+      end
     end
   end
 
@@ -92,8 +97,10 @@ module VCAP::Services::Base::Warden
     # stop container
     stop if running?
     # delete log and service directory
-    loop_setdown
-    FileUtils.rm_rf(image_file)
+    if self.class.quota
+      loop_setdown
+      FileUtils.rm_rf(image_file)
+    end
     FileUtils.rm_rf(base_dir)
     FileUtils.rm_rf(log_dir)
     # delete recorder
@@ -204,15 +211,18 @@ module VCAP::Services::Base::Warden
 
   # directory helper
   def image_file
-    File.join(self.class.image_dir, "#{self[:name]}.img")
+    return File.join(self.class.image_dir, "#{self[:name]}.img") if self.class.image_dir
+    ''
   end
 
   def base_dir
-    File.join(self.class.base_dir, self[:name])
+    return File.join(self.class.base_dir, self[:name]) if self.class.base_dir
+    ''
   end
 
   def log_dir
-    File.join(self.class.log_dir, self[:name])
+    return File.join(self.class.log_dir, self[:name]) if self.class.log_dir
+    ''
   end
 
   def image_file?

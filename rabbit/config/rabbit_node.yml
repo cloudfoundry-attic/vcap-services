@@ -21,7 +21,7 @@ admin_port_range:
   last: 30000
 rabbitmq_server: /home/tangrui/rabbitmq_server-2.4.1/sbin/rabbitmq-server
 rabbitmq_log_dir: /var/vcap/sys/log/rabbit
-# rabbitmq_start_timeout: 5
+rabbitmq_start_timeout: 5
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false

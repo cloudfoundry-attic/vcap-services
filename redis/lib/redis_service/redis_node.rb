@@ -377,6 +377,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
       @image_dir = options[:image_dir]
       @logger = options[:logger]
       @max_db_size = options[:max_db_size]
+      @quota = options[:filesystem_quota] || false
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
       FileUtils.mkdir_p(image_dir)
@@ -417,8 +418,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
       if is_upgraded == false
         # Mount base directory to loop device for disk size limitation
         db_size = db_size || max_db_size
-        instance.loop_create(db_size)
-        instance.loop_setup
+        instance.prepare_filesystem(db_size)
         FileUtils.mkdir_p(instance.data_dir)
         if db_file
           FileUtils.cp(db_file, File.join(instance.data_dir, "dump.rdb"))

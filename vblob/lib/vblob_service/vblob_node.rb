@@ -348,8 +348,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
       provisioned_service.secretid    = password
       raise "Cannot save provision_service" unless provisioned_service.save!
 
-      provisioned_service.loop_create(max_db_size)
-      provisioned_service.loop_setup
+      provisioned_service.prepare_filesystem(max_db_size)
 
       FileUtils.mkdir_p(provisioned_service.data_dir)
 

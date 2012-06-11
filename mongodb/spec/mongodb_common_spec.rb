@@ -116,6 +116,7 @@ describe "MongoDB Provisionedservice class" do
   end
 
   it "should be able to migrate old instance" do
+    pending("quota disabled, no loop filesystem needed") unless Node::ProvisionedService.quota
     p_service = Node::ProvisionedService.create({ 'port' => 27017 })
     lambda { Node.sh "umount #{p_service.base_dir}" }.should_not raise_error
     lambda { Node.sh "mkdir -p #{p_service.base_dir}/data" }.should_not raise_error

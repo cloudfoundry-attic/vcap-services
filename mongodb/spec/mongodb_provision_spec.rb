@@ -215,6 +215,7 @@ describe "Mongodb Node" do
       stats = @node.varz_details
       available = stats[:running_services][0]['overall']['connections']['available']
 
+      retry_count = 20
       # ruby mongo client has a issue. When making connection to mongod, it will make two
       # actual sockets, one for read, one for write. When authentication done, one of them
       # will be closed. But for here, the maximum connection test, it will cause a problem,

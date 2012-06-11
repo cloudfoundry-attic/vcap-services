@@ -185,9 +185,9 @@ class VCAP::Services::MongoDB::Node
 
   def unprovision(name, bindings)
     p_service = ProvisionedService.get(name)
-    port = p_service.port
     raise ServiceError.new(ServiceError::NOT_FOUND, name) if p_service.nil?
-    raise "Could not cleanup service #{p_service.errros.inspect}" unless p_service.delete
+    port = p_service.port
+    raise "Could not cleanup instance #{name}" unless p_service.delete
     free_port(port);
     @logger.info("Successfully fulfilled unprovision request: #{name}.")
     true
@@ -402,6 +402,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       @image_dir = args[:image_dir]
       @logger = args[:logger]
       @max_db_size = args[:max_db_size] ? args[:max_db_size] : 128
+      @quota = args[:filesystem_quota] || false
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
       FileUtils.mkdir_p(base_dir)
@@ -423,8 +424,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
       raise "Cannot save provision service" unless p_service.save!
 
-      p_service.loop_create(self.max_db_size)
-      p_service.loop_setup
+      p_service.prepare_filesystem(self.max_db_size)
       FileUtils.mkdir_p(p_service.data_dir)
       p_service
     end
