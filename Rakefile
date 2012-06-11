@@ -6,21 +6,22 @@ task "tests" do |t|
 end
 
 namespace "bundler" do
-  desc "Update base gem"
-  task "update_base" do
-    system "cd base && rm -rf pkg && rake bundler:install"
+  def exec_in_svc_dir
     SERVICES_DIR.each do |dir|
       puts ">>>>>>>> enter #{dir}"
-      system "rm -f #{dir}/vendor/cache/vcap_services_base-*.gem && cp base/pkg/vcap_services_base-*.gem #{dir}/vendor/cache && cd #{dir} && bundle install --local"
+      Dir.chdir(dir) do
+        yield dir
+      end
     end
   end
 
-  desc "Update base gem and bump version using 'bundle update vcap_services_base'"
-  task "update_base!" do
-    system "cd base && rm -rf pkg && rake bundler:install"
-    SERVICES_DIR.each do |dir|
-      puts ">>>>>>>> enter #{dir}"
-      system "rm -f #{dir}/vendor/cache/vcap_services_base-*.gem && cp base/pkg/vcap_services_base-*.gem #{dir}/vendor/cache && cd #{dir} && bundle update vcap_services_base && bundle install --local"
-    end
+  desc "Update Gemfile"
+  task :update!, :oref, :nref do |t, args|
+    exec_in_svc_dir { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
+  end
+
+  desc "Dry run update Gemfile"
+  task :update, :oref, :nref do |t, args|
+    exec_in_svc_dir { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
   end
 end
