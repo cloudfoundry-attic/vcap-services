@@ -40,7 +40,7 @@ end
 class VCAP::Services::VBlob::Node
 
   BIND_OPT = 'rw'
-  VBLOB_TIMEOUT = 3
+  VBLOB_TIMEOUT = 1
   VBLOB_MAX_SYSTEM_COMMAND_RETRY = 5
 
   include VCAP::Services::VBlob::Common
@@ -261,10 +261,7 @@ class VCAP::Services::VBlob::Node
   end
 
   def get_healthz(provisioned_service)
-    Net::HTTP.start(provisioned_service[:ip], provisioned_service.service_port) do |http|
-      http.open_timeout = http.read_timeout = VBLOB_TIMEOUT
-      response = http.get("/")
-    end
+    Timeout::timeout(VBLOB_TIMEOUT) { Net::HTTP.start(provisioned_service[:ip], provisioned_service.service_port) { |http| response = http.get("/")} }
     "ok"
   rescue => e
     @logger.warn("Getting healthz for #{provisioned_service.inspect} failed with error: #{e}")
@@ -323,19 +320,15 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     def init(options)
       @base_dir = options[:base_dir]
       @log_dir = options[:vblobd_log_dir]
-      @image_dir = options[:image_dir]
-      @max_db_size = options[:max_db_size]
+      @max_db_size = options[:max_db_size] || 2048 #default max megabytes
       @logger = options[:logger]
       @@config_template = ERB.new(File.read(options[:config_template]))
-      @@nodejs_path = options[:nodejs_path]
       @@vblobd_path = options[:vblobd_path]
       @@vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
       @@vblobd_obj_limit = options[:vblobd_obj_limit] || 32768  #default max obj num
-      @@vblobd_quota = options[:vblobd_quota] || 2147483647 #default max bytes
       @@vblob_start_timeout = 10
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
-      FileUtils.mkdir_p(image_dir)
       DataMapper.setup(:default, options[:local_db])
       DataMapper::auto_upgrade!
     end
@@ -349,7 +342,6 @@ class VCAP::Services::VBlob::Node::ProvisionedService
       raise "Cannot save provision_service" unless provisioned_service.save!
 
       provisioned_service.prepare_filesystem(max_db_size)
-
       FileUtils.mkdir_p(provisioned_service.data_dir)
 
       provisioned_service.generate_config
@@ -360,9 +352,11 @@ class VCAP::Services::VBlob::Node::ProvisionedService
   def generate_config
     provisioned_service = self
     vblob_root_dir = "/store/instance/vblob_data"
+    vblob_node_path = "/usr/bin/node"
     log_file = "/store/log/vblob.log"
     account_file = File.join("/store/instance/", "account.json")
     config_file = File.join("/store/instance/", "config.json")
+    vblobd_quota = provisioned_service.class.max_db_size * 1024 * 1024
     config = @@config_template.result(binding)
 
     config_path = File.join(provisioned_service.base_dir, "config.json")
@@ -373,10 +367,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     1.upto(@@vblob_start_timeout) do |t|
       sleep 1
       begin
-        Net::HTTP.start(self[:ip], self.service_port) do |http|
-          http.open_timeout = http.read_timeout = VBLOB_TIMEOUT
-          response = http.get("/")
-        end
+        Timeout::timeout(VBLOB_TIMEOUT) { Net::HTTP.start(self[:ip], self.service_port) { |http| response = http.get("/")} }
         break
       rescue => e
         if t == @@vblob_start_timeout

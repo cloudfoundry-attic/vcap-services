@@ -82,7 +82,6 @@ def get_node_config()
   vblob_conf_template = File.join(PWD, "../resources/vblob.conf.erb")
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    :nodejs_path => parse_property(config, "nodejs_path", String),
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
     :vblobd_path => parse_property(config, "vblobd_path", String),
@@ -97,7 +96,6 @@ def get_node_config()
     :base_dir => '/tmp/vblob/instance',
     :log_dir => '/tmp/vblob/log',
     :local_db => 'sqlite3:/tmp/vblob/vblob_node.db',
-    :image_dir => '/tmp/vblob/vblob_image'
   }
   options[:logger].level = Logger::DEBUG
   options

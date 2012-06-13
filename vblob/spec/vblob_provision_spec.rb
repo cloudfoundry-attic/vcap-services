@@ -74,11 +74,6 @@ describe "vblob wardenization" do
       is_port_open?(@provisioned_service.ip, @provisioned_service.service_port).should be_true
     end
 
-    it "should be able to disable the instance" do
-      @node.disable_instance(@response, {'' => {'credentials' => ''}}).should be_true
-      is_port_open?(@provisioned_service.ip, @provisioned_service.service_port).should be_false
-    end
-
     it "should be able enable the instance after disable it" do
       @node.disable_instance(@response, {'' => {'credentials' => ''}}).should be_true
       @node.enable_instance(@response, {'' => {'credentials' => '' }}).should be_true

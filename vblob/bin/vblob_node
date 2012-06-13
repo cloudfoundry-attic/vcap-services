@@ -23,11 +23,9 @@ class VCAP::Services::VBlob::NodeBin < VCAP::Services::Base::NodeBin
   def additional_config(options, config)
     options[:config_template] = File.expand_path("../../resources/vblob.conf.erb", __FILE__)
     options[:port_range] = parse_property(config, "port_range", Range)
-    options[:nodejs_path] = parse_property(config, "nodejs_path", String)
     options[:vblobd_log_dir] = parse_property(config, "vblobd_log_dir", String)
     options[:vblobd_path] = parse_property(config, "vblobd_path", String)
     options[:vblobd_auth] = parse_property(config, "vblobd_auth", String)
-    options[:image_dir] = parse_property(config, "image_dir", String)
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
     options
   end
