@@ -72,6 +72,9 @@ options = {
   :service_name => "BackupManager"
 }
 
+pid_file = parse_property(config, "pid", String, :optional => true)
+VCAP::PidFile.new(pid_file) if pid_file
+
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "lib")
 require 'backup_manager/manager'
 

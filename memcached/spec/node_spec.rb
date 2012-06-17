@@ -1,7 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 # This code is based on Redis as a Service.
 
-require File.dirname(__FILE__) + '/spec_helper'
+require "spec_helper"
 require "memcached_service/memcached_node"
 require "memcached_service/memcached_error"
 require "dalli"
@@ -20,29 +20,10 @@ end
 describe VCAP::Services::Memcached::Node do
 
   before :all do
-    @logger = Logger.new(STDOUT, "daily")
-    @logger.level = Logger::DEBUG
-    @my_ip = `hostname -I`.chomp.strip
-    @local_db_file = "/tmp/memcached_node_" + Time.now.to_i.to_s + ".db"
-    @memcached_exe = ENV['CLOUDFOUNDRY_HOME'] + "/.deployments/devbox/deploy/memcached/bin/memcached";
-    @logger.debug("Using memcached exe from: #{@memcached_exe}")
     @capacity_unit = 1
-    @options = {
-      :logger => @logger,
-      :base_dir => "/tmp/services/memcached/instances",
-      :memcached_server_path => @memcached_exe,
-      :local_ip => @my_ip,
-      :capacity => 50,
-      :node_id => "memcached-node-1",
-      #:config_template => File.expand_path("../resources/memcached.conf.erb", File.dirname(__FILE__)),
-      :local_db => "sqlite3:" + @local_db_file,
-      :port_range => Range.new(5000, 25000),
-      :mbus => "nats://#{@my_ip}:4222",
-      :memcached_log_dir => "/tmp/memcached_log",
-      :command_rename_prefix => "protect-command",
-      :max_clients => 100,
-      :memcached_memory => 16
-    }
+    @options = get_node_config()
+    @logger = @options[:logger]
+    @local_db_file = @options[:local_db_file]
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:memcached_log_dir])
 
@@ -67,21 +48,21 @@ describe VCAP::Services::Memcached::Node do
     FileUtils.rm_rf(@options[:memcached_log_dir])
   end
 
-  describe 'SASLAdmin' do
-    before :all do
-      @admin = VCAP::Services::Memcached::Node::SASLAdmin.new(@logger)
-      @create_user = 'username'
-      @password = 'password'
-    end
-
-    it "should create new user" do
-      @admin.create_user(@create_user, @password)
-    end
-
-    it "should delete specified user" do
-      @admin.delete_user(@create_user)
-    end
-  end
+#  describe 'SASLAdmin' do
+#    before :all do
+#      @admin = VCAP::Services::Memcached::Node::SASLAdmin.new(@logger)
+#      @create_user = 'username'
+#      @password = 'password'
+#    end
+#
+#    it "should create new user" do
+#      @admin.create_user(@create_user, @password)
+#    end
+#
+#    it "should delete specified user" do
+#      @admin.delete_user(@create_user)
+#    end
+#  end
 
   describe 'Node.initialize' do
     it "should set up a base directory" do
@@ -97,7 +78,7 @@ describe VCAP::Services::Memcached::Node do
     end
 
     it "should set up an available capacity" do
-      @node.capacity.should be @options[:capacity]
+      @node.capacity.should == @options[:capacity]
     end
 
     it "should setup a free port set" do
@@ -177,17 +158,19 @@ describe VCAP::Services::Memcached::Node do
       memcached.get("test_key").should be_nil
     end
 
-    it "should not allow null credentials to access the instance" do
-      hostname = get_hostname(@credentials)
-      memcached = Dalli::Client.new(hostname)
-      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
-    end
+# - These tests require sasl to be enabled, commenting them out for now if later on we decide
+#   to enable sasl
+#    it "should not allow null credentials to access the instance" do
+#      hostname = get_hostname(@credentials)
+#      memcached = Dalli::Client.new(hostname)
+#      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
+#    end
 
-    it "should not allow wrong credentials to access the instance" do
-      hostname, username, password = get_connect_info(@credentials)
-      memcached = Dalli::Client.new(hostname, username: username, password: 'wrong_password')
-      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
-    end
+#    it "should not allow wrong credentials to access the instance" do
+#      hostname, username, password = get_connect_info(@credentials)
+#      memcached = Dalli::Client.new(hostname, username: username, password: 'wrong_password')
+#      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
+#    end
 
     it "should delete the provisioned instance port in free port list when finish a provision" do
       @node.free_ports.include?(@credentials["port"]).should == false
@@ -282,19 +265,21 @@ describe VCAP::Services::Memcached::Node do
       memcached.get("test_key").should be_nil
     end
 
-    it "should not allow null credentials to access the instance" do
-      hostname = get_hostname(@binding_credentials)
-      memcached = Dalli::Client.new(hostname)
-      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
-    end
+# - These tests require sasl to be enabled, commenting them out for now if later on we decide
+#   to enable sasl
+#    it "should not allow null credentials to access the instance" do
+#      hostname = get_hostname(@binding_credentials)
+#      memcached = Dalli::Client.new(hostname)
+#      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
+#    end
 
-    it "should not allow wrong credentials to access the instance" do
-      hostname = get_hostname(@binding_credentials)
-      username = @binding_credentials['user']
-      password = @binding_credentials['password']
-      memcached = Dalli::Client.new(hostname, username: username, password: 'wrong_password')
-      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
-    end
+#    it "should not allow wrong credentials to access the instance" do
+#      hostname = get_hostname(@binding_credentials)
+#      username = @binding_credentials['user']
+#      password = @binding_credentials['password']
+#      memcached = Dalli::Client.new(hostname, username: username, password: 'wrong_password')
+#      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
+#    end
 
     it "should send binding message when finish a binding" do
       @binding_credentials["hostname"].should be
@@ -337,7 +322,7 @@ describe VCAP::Services::Memcached::Node do
       memcached = []
       # Create max_clients connections
       hostname, username, password = get_connect_info(@credentials)
-      for i in 1..(@options[:max_clients]-31)
+      for i in 1..(@options[:max_clients]-30)
         memcached[i] = Dalli::Client.new(hostname, username: username, password: password)
         memcached[i].set("foo", 1)
       end
@@ -345,9 +330,9 @@ describe VCAP::Services::Memcached::Node do
       # The max_clients + 1 connection will raise exception
       expect do
         Dalli::Client.new(hostname, username: username, password: password).set("foo", 1)
-      end.should raise_error(Dalli::DalliError)
+      end.should raise_error(Dalli::RingError)
       # Close the max_clients connections
-      for i in 1..(@options[:max_clients] - 31)
+      for i in 1..(@options[:max_clients] - 30)
         memcached[i].close
       end
       # Now the new connection will be successful

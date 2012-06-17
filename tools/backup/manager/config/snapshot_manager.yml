@@ -3,6 +3,7 @@ mbus: nats://localhost:4222
 z_interval: 30
 logging:
   level: debug
+pid: /var/vcap/sys/run/snapshot_manager.pid
 root: /mnt/appcloud
 enable: true
 wakeup_interval: 3600

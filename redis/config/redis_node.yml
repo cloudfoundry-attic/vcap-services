@@ -23,3 +23,4 @@ command_rename_prefix: protect-command-prefix
 max_clients: 500
 # redis_start_timeout: 3
 # fqdn_hosts: false
+# op_time_limit: 6

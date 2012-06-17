@@ -122,7 +122,7 @@ describe "Postgresql node normal cases" do
       @node.unprovision(db['name'], [])
       @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_postgresql(db)
-      expect { conn.query('select 1')}.should_not raise_error
+      expect { conn.query('select 1') }.should_not raise_error
       EM.stop
     end
   end
@@ -142,8 +142,8 @@ describe "Postgresql node normal cases" do
       }
       result = @node.update_instance(db, value).should be_true
       result.should be_instance_of Array
-      expect {conn = connect_to_postgresql(binding)}.should_not raise_error
-      expect {conn = connect_to_postgresql(db)}.should_not raise_error
+      expect { conn = connect_to_postgresql(binding) }.should_not raise_error
+      expect { conn = connect_to_postgresql(db) }.should_not raise_error
       EM.stop
     end
   end
@@ -156,8 +156,8 @@ describe "Postgresql node normal cases" do
       @test_dbs[db] << binding
       conn = connect_to_postgresql(binding)
       @node.disable_instance(db, [binding])
-      expect {conn = connect_to_postgresql(binding)}.should raise_error # expected exception: no permission to connect
-      expect {conn = connect_to_postgresql(db)}.should_not raise_error
+      expect { conn = connect_to_postgresql(binding) }.should raise_error # expected exception: no permission to connect
+      expect { conn = connect_to_postgresql(db) }.should_not raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
@@ -165,8 +165,8 @@ describe "Postgresql node normal cases" do
         }
       }
       @node.enable_instance(db, value).should be_true
-      expect {conn = connect_to_postgresql(binding)}.should_not raise_error
-      expect {conn = connect_to_postgresql(db)}.should_not raise_error
+      expect { conn = connect_to_postgresql(binding) }.should_not raise_error
+      expect { conn = connect_to_postgresql(db) }.should_not raise_error
       EM.stop
     end
   end
@@ -175,7 +175,7 @@ describe "Postgresql node normal cases" do
     EM.run do
       @db.should be_instance_of Hash
       conn = connect_to_postgresql(@db)
-      expect {conn.query("SELECT 1")}.should_not raise_error
+      expect { conn.query("SELECT 1") }.should_not raise_error
       conn.close if conn
       EM.stop
     end
@@ -184,7 +184,7 @@ describe "Postgresql node normal cases" do
   it "should prevent user from altering db property" do
     EM.run do
       conn = connect_to_postgresql(@db)
-      expect {conn.query("alter database #{@db["name"]} WITH CONNECTION LIMIT 1000")}.should raise_error(PGError, /must be owner of database .*/)
+      expect { conn.query("alter database #{@db["name"] } WITH CONNECTION LIMIT 1000")}.should raise_error(PGError, /must be owner of database .*/)
       conn.close if conn
       EM.stop
     end
@@ -267,11 +267,11 @@ describe "Postgresql node normal cases" do
   it "should not allow old credential to connect if service is unprovisioned" do
     EM.run do
       conn = connect_to_postgresql(@db)
-      expect {conn.query("SELECT 1")}.should_not raise_error
+      expect { conn.query("SELECT 1") }.should_not raise_error
       conn.close if conn
       msg = Yajl::Encoder.encode(@db)
       @node.unprovision(@db["name"], [])
-      expect {connect_to_postgresql(@db)}.should raise_error
+      expect { connect_to_postgresql(@db) }.should raise_error
       EM.stop
     end
   end
@@ -319,7 +319,7 @@ describe "Postgresql node normal cases" do
       fake_creds[1]["user"] = db2["user"]
       fake_creds.each do |creds|
         puts creds
-        expect{connect_to_postgresql(creds)}.should raise_error
+        expect{ connect_to_postgresql(creds) }.should raise_error
       end
       EM.stop
     end
@@ -385,7 +385,7 @@ describe "Postgresql node normal cases" do
         conn.query("begin")
         conn.query("select * from c for update")
         EM.add_timer(opts[:max_long_tx] * 2) {
-          expect {conn.query("select * from c for update")}.should raise_error
+          expect { conn.query("select * from c for update") }.should raise_error
           conn.close if conn
         }
         EM.stop
@@ -404,7 +404,7 @@ describe "Postgresql node normal cases" do
       binding["password"].should be
       @test_dbs[@db] << binding
       conn = connect_to_postgresql(binding)
-      expect {conn.query("Select 1")}.should_not raise_error
+      expect { conn.query("Select 1") }.should_not raise_error
       conn.close if conn
       EM.stop
     end
@@ -426,12 +426,12 @@ describe "Postgresql node normal cases" do
       binding = @node.bind(@db["name"], @default_opts)
       @test_dbs[@db] << binding
       conn = nil
-      expect {conn = connect_to_postgresql(binding)}.should_not raise_error
+      expect { conn = connect_to_postgresql(binding) }.should_not raise_error
       res = @node.unbind(binding)
       res.should be true
-      expect {connect_to_postgresql(binding)}.should raise_error
+      expect { connect_to_postgresql(binding) }.should raise_error
       # old session should be killed
-      expect {conn.query("SELECT 1")}.should raise_error
+      expect { conn.query("SELECT 1") }.should raise_error
       conn.close if conn
       EM.stop
     end
@@ -444,7 +444,7 @@ describe "Postgresql node normal cases" do
       3.times {bindings << @node.bind(@db["name"], @default_opts)}
       @test_dbs[@db] = bindings
       @node.unprovision(@db["name"], bindings)
-      bindings.each {|binding| expect {connect_to_postgresql(binding)}.should raise_error}
+      bindings.each { |binding| expect { connect_to_postgresql(binding) }.should raise_error }
       EM.stop
     end
   end
@@ -553,25 +553,34 @@ describe "Postgresql node normal cases" do
           c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
           # prepare 1M data
           content = (0..1000000).map{ c[rand(c.size)] }.join
+          conn.query("create temporary table temp_table (data text) on commit delete rows")
           conn.query("insert into test values('#{content}')")
           EM.add_timer(2) do
             # terminating connection due to administrator command
-            expect {conn.query("select version()").should raise_error(PGError)}
+            expect { conn.query("select version()") }.should raise_error(PGError)
             conn.close if conn
             conn = connect_to_postgresql(binding)
-            expect {conn.query("select version()").should_not raise_error}
+            expect { conn.query("select version()") }.should_not raise_error
             # permission denied for relation test
-            expect {conn.query("insert into test values('1')").should raise_error(PGError)}
-            expect {conn.query("create table test1(data text)").should raise_error(PGError)}
+            expect { conn.query("insert into test values('1')") }.should raise_error(PGError)
+            expect { conn.query("create table test1(data text)") }.should raise_error(PGError)
+            # temp privilege should be revoked
+            expect { conn.query("create temporary table test2 (data text) on commit delete rows") }.should raise_error(PGError)
+            expect { conn.query("drop temporary table temp_table") }.should raise_error(PGError)
             new_binding = node.bind(db['name'], @default_opts)
             new_conn = connect_to_postgresql(new_binding)
-            expect {new_conn.query("insert into test values('1')").should raise_error(PGError)}
+            expect { new_conn.query("insert into test values('1')") }.should raise_error(PGError)
 
-            conn.query("delete from test")
+            conn.query("truncate test") # delete from won't reduce the db size immediately
             EM.add_timer(2) do
               # write privilege should restore
-              expect {conn.query("insert into test values('1')").should_not raise_error}
-              expect {conn.query("create table test1(data text)").should_not raise_error}
+              expect { conn.query("insert into test values('1')") }.should_not raise_error
+              expect { conn.query("create table test1(data text)") }.should_not raise_error
+              # temp privilege should be restored
+              expect { conn.query("create temporary table test2 (data text) on commit delete rows") }.should_not raise_error
+              expect { conn.query("drop temporary table temp_table") }.should raise_error
+              conn.close if conn
+              new_conn.close if new_conn
               EM.stop
             end
           end
@@ -714,6 +723,63 @@ describe "Postgresql node normal cases" do
     end
   end
 
+   it "should be able to migrate(grant temp privilege) legacy instances" do
+    EM.run do
+      parent = @db['user']
+      parent_password = @db['password']
+      user1 = @node.bind(@db['name'], @default_opts)
+      user2 = @node.bind(@db['name'], @default_opts)
+      orphan = @node.bind(@db['name'], @default_opts)
+
+      @db['user'] = @opts[:postgresql]['user']
+      @db['password'] = @opts[:postgresql]['pass']
+      sys_conn = connect_to_postgresql @db
+
+      sys_conn.query "revoke temp on database #{@db['name']} from #{parent}"
+      sys_conn.query "revoke temp on database #{@db['name']} from #{user1['user']}"
+      sys_conn.query "revoke temp on database #{@db['name']} from #{user2['user']}"
+
+      sys_conn.query "revoke all on database #{@db['name']} from #{orphan['user']} cascade"
+      sys_conn.query "drop role #{orphan['user']}"
+
+      sys_conn.close if sys_conn
+
+      # reset @db
+      @db['user'] = parent
+      @db['password'] = parent_password
+
+      # connect to the db and fail to create temporary table/sequence/view
+      parent_conn = connect_to_postgresql @db
+      parent_conn.query('create table parent_table(id int, data text)')
+      expect { parent_conn.query('create temporary table parent_temp_table as select * from parent_table') }.should raise_error(PGError)
+      expect { parent_conn.query('create temporary sequence test_seq start 101') }.should raise_error(PGError)
+      parent_conn.close if parent_conn
+      user1_conn = connect_to_postgresql user1
+      expect { user1_conn.query('select * into temporary user1_temp_table from parent_table') }.should raise_error(PGError)
+      user1_conn.close if user1_conn
+      user2_conn = connect_to_postgresql user2
+      expect { user2_conn.query('create temporary view user2_temp_view as select * from parent_table') }.should raise_error(PGError)
+      user2_conn.close if user2_conn
+
+      # create a new node to migrate
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      sleep 1
+      EM.add_timer(0.1) {
+        parent_conn = connect_to_postgresql @db
+        expect { parent_conn.query('create temporary table parent_temp_table as select * from parent_table') }.should_not raise_error(PGError)
+        expect { parent_conn.query('create temporary sequence test_seq start 101') }.should_not raise_error(PGError)
+        parent_conn.close if parent_conn
+        user1_conn = connect_to_postgresql user1
+        expect { user1_conn.query('select * into temporary user1_temp_table from parent_table') }.should_not raise_error(PGError)
+        user1_conn.close if user1_conn
+        user2_conn = connect_to_postgresql user2
+        expect { user2_conn.query('create temporary view user2_temp_view as select * from parent_table') }.should_not raise_error(PGError)
+        user2_conn.close if user2_conn
+        EM.stop
+      }
+    end
+  end
+
   it "should be able to migrate(manage object owner) legacy instances" do
     EM.run do
       parent = @db['user']
@@ -808,7 +874,7 @@ describe "Postgresql node normal cases" do
       opts = @opts.dup
       # new pg db takes about 5M(~5554180)
       # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6
+      opts[:max_db_size] = 6 - opts[:db_size_overhead]
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
         node.should_not == nil
@@ -824,23 +890,23 @@ describe "Postgresql node normal cases" do
           conn.query("insert into test values('#{content}')")
           EM.add_timer(2) do
             # terminating connection due to administrator command
-            expect {conn.query("select version()").should raise_error(PGError)}
+            expect { conn.query("select version()") }.should raise_error(PGError)
             conn.close if conn
             conn = connect_to_postgresql(binding)
-            expect {conn.query("select version()").should_not raise_error}
+            expect { conn.query("select version()") }.should_not raise_error(PGError)
             # permission denied for relation test
-            expect {conn.query("insert into test values('1')").should raise_error(PGError)}
-            expect {conn.query("create table test1(data text)").should raise_error(PGError)}
+            expect { conn.query("insert into test values('1')") }.should raise_error(PGError)
+            expect { conn.query("create table test1(data text)") }.should raise_error(PGError)
             # user2 deletes data
             binding_2 = node.bind(db['name'], @default_opts)
             conn2 = connect_to_postgresql(binding_2)
-            conn2.query("delete from test")
+            conn2.query("truncate test")
             EM.add_timer(2) do
               # write privilege should restore
-              expect {conn.query("insert into test values('1')").should_not raise_error}
-              expect {conn.query("create table test1(data text)").should_not raise_error}
-              expect {conn2.query("insert into test values('1')").should_not raise_error}
-              expect {conn2.query("create table test1(data text)").should_not raise_error}
+              expect { conn.query("insert into test values('1')") }.should_not raise_error
+              expect { conn.query("create table test1(data text)") }.should_not raise_error
+              expect { conn2.query("insert into test values('1')") }.should_not raise_error
+              expect { conn2.query("create table test2(data text)") }.should_not raise_error
               conn.close if conn
               conn2.close if conn2
               EM.stop
@@ -883,8 +949,8 @@ describe "Postgresql node special cases" do
     end
     db = node.provision('free')
     conn = connect_to_postgresql(db)
-    expect {conn.query("SELECT 1")}.should_not raise_error
-    expect {connect_to_postgresql(db)}.should raise_error(PGError, /too many connections for database .*/)
+    expect { conn.query("SELECT 1") }.should_not raise_error
+    expect { connect_to_postgresql(db) }.should raise_error(PGError, /too many connections for database .*/)
     conn.close if conn
     node.unprovision(db["name"], [])
   end
@@ -900,7 +966,7 @@ describe "Postgresql node special cases" do
     # drop connection
     node.connection.close
     varz = nil
-    expect {varz = node.varz_details}.should_not raise_error
+    expect { varz = node.varz_details }.should_not raise_error
     varz.should == {}
   end
 

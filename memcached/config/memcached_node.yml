@@ -6,15 +6,16 @@ base_dir: /var/vcap/services/memcached/instances
 logging:
   level: debug
 pid: /var/vcap/sys/run/memcached_node.pid
-capacity: 5
+capacity: 50
 node_id: memcached_node_1
 memcached_server_path: memcached
 memcached_memory: 16
 port_range:
-  first: 11000
-  last: 11050
+  first: 5000
+  last: 25000
 memcached_log_dir: /var/vcap/sys/log/memcached
 max_clients: 500
 memcached_timeout: 2
+sasl_enabled: false
 
 # z_interval: 30

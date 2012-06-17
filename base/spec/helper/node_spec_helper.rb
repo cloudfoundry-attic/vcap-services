@@ -41,6 +41,7 @@ class NodeTests
     def initialize(options)
       super(options)
       @ready = true
+      @op_time_limit = 5
       @announcement_invoked = false
       @provision_invoked = false
       @unprovision_invoked = false
@@ -64,6 +65,9 @@ class NodeTests
     end
     def service_name
       SERVICE_NAME
+    end
+    def nats=(mock_nats)
+      @node_nats = mock_nats
     end
     def set_ready(r)
       @ready = r
@@ -286,6 +290,9 @@ class NodeTests
     def announcement
       @announcement_invoked = true
       Hash.new
+    end
+    def nats=(mock_nats)
+      @node_nats = mock_nats
     end
     def provision(plan, credential)
       @provision_invoked = true

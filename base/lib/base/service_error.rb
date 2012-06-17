@@ -42,6 +42,7 @@ module VCAP
           # 30500 - 30599  500 Internal Error
           INTERNAL_ERROR = [30500, HTTP_INTERNAL, 'Internal Error']
           EXTENSION_NOT_IMPL = [30501, HTTP_NOT_IMPLEMENTED, "Service extension %s is not implemented."]
+          NODE_OPERATION_TIMEOUT = [30502, HTTP_INTERNAL, "Node operation timeout"]
 
           # 30600 - 30699  503 Service Unavailable
           SERVICE_UNAVAILABLE = [30600, HTTP_SERVICE_UNAVAIL, 'Service unavailable']
@@ -52,7 +53,10 @@ module VCAP
           # 30800 - 30899 500 Lifecycle error
           OVER_QUOTA = [30800, HTTP_INTERNAL, "Instance %s has %s snapshots. Quota is %s "]
           JOB_QUEUE_TIMEOUT = [30801, HTTP_INTERNAL, "Job timeout after waiting for %s seconds."]
-          BAD_SERIALIZED_DATAFILE = [30801, HTTP_INTERNAL, "Invalid serialized data file from: %s"]
+          JOB_TIMEOUT = [30802, HTTP_INTERNAL, "Job is killed since it runs longer than ttl: %s seconds."]
+          BAD_SERIALIZED_DATAFILE = [30803, HTTP_INTERNAL, "Invalid serialized data file from: %s"]
+          FILESIZE_TOO_LARGE = [30804, HTTP_BAD_REQUEST, "Size of file from url %s is %s, max allowed %s"]
+          TOO_MANY_REDIRECTS = [30805, HTTP_BAD_REQUEST, "Too many redirects from url:%s, max redirects allowed is %s"]
 
           # 31000 - 32000  Service-specific Error
           # Defined in services directory, for example mongodb/lib/mongodb_service/
