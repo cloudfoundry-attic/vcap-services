@@ -563,8 +563,28 @@ class VCAP::Services::MongoDB::Node
     "fail"
   end
 
+  def repair_instance(provisioned_service)
+    tmpdir = File.join("/var/vcap/store/tmp", provisioned_service.name)
+    FileUtils.mkdir_p(tmpdir)
+    begin
+      `#{@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir(service_dir(provisioned_service.name))}`
+      @logger.warn("Service #{provisioned_service.name} db repair done")
+    rescue => e
+      @logger.error("Service #{provisioned_service.name} repair failed: #{e}")
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
   def start_instance(provisioned_service)
     @logger.info("Starting: #{provisioned_service.inspect}")
+
+    lockfile = File.join(data_dir(service_dir(provisioned_service.name)), "mongod.lock")
+    if File.size?(lockfile)
+      @logger.warn("Service #{provisioned_service.name} not properly shutdown, try repairing its db...")
+      FileUtils.rm_f(lockfile)
+      repair_instance(provisioned_service)
+    end
 
     pid = fork
     if pid
