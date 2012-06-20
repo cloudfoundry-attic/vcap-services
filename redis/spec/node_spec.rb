@@ -127,7 +127,7 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should not access the instance after unprovision" do
-      expect {redis_echo(@instance.ip, @redis_port, @credentials["password"])}.should raise_error(Timeout::Error)
+      expect {redis_echo(@instance.ip, @redis_port, @credentials["password"])}.should raise_error
     end
 
     it "should add the provisioned instance port in free port set when finish an unprovision" do
