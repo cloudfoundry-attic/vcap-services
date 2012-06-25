@@ -45,6 +45,7 @@ class VCAP::Services::VBlob::Node
 
   include VCAP::Services::VBlob::Common
   include VCAP::Services::Base::Utils
+  include VCAP::Services::VBlob
 
   def initialize(options)
     super(options)
@@ -299,6 +300,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
   include DataMapper::Resource
   include VCAP::Services::Base::Utils
   include VCAP::Services::Base::Warden
+  include VCAP::Services::VBlob
 
   VBLOB_TIMEOUT = 3
 
