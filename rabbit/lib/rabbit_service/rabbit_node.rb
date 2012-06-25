@@ -97,6 +97,7 @@ class VCAP::Services::Rabbit::Node
     @initial_username = "guest"
     @initial_password = "guest"
     @hostname = get_host
+    @supported_versions = ["2.4"]
   end
 
   def pre_send_announcement
@@ -124,7 +125,7 @@ class VCAP::Services::Rabbit::Node
     end
   end
 
-  def provision(plan, credentials = nil)
+  def provision(plan, credentials = nil, version=nil)
     raise RabbitError.new(RabbitError::RABBIT_INVALID_PLAN, plan) unless plan.to_s == @plan
     instance = ProvisionedService.new
     instance.plan = 1

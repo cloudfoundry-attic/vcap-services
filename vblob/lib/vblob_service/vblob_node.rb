@@ -108,6 +108,7 @@ class VCAP::Services::VBlob::Node
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
     @mutex = Mutex.new
+    @supported_versions = ["1.0"]
   end
 
   def fetch_port(port=nil)
@@ -208,7 +209,7 @@ class VCAP::Services::VBlob::Node
   end
 
   # will be re-used by restore codes; thus credential could be none null
-  def provision(plan, credential = nil)
+  def provision(plan, credential = nil, version=nil)
     @logger.debug("Provision a service instance")
 
     port = credential && credential['port'] ? fetch_port(credential['port']) : fetch_port
