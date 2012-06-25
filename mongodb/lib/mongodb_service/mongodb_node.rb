@@ -108,6 +108,7 @@ class VCAP::Services::MongoDB::Node
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
     @mutex = Mutex.new
+    @supported_versions = ["1.8"]
   end
 
   def fetch_port(port=nil)
@@ -203,7 +204,7 @@ class VCAP::Services::MongoDB::Node
     list
   end
 
-  def provision(plan, credential = nil)
+  def provision(plan, credential = nil, version=nil)
     @logger.info("Provision request: plan=#{plan}")
     raise ServiceError.new(MongoDBError::MONGODB_INVALID_PLAN, plan) unless plan == @plan
     port = credential && credential['port'] ? fetch_port(credential['port']) : fetch_port

@@ -74,6 +74,7 @@ class VCAP::Services::ElasticSearch::Node
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
     @mutex = Mutex.new
+    @supported_versions = ["0.19"]
   end
 
   def pre_send_announcement
@@ -182,7 +183,7 @@ class VCAP::Services::ElasticSearch::Node
     }
   end
 
-  def provision(plan, credentials = nil)
+  def provision(plan, credentials = nil, version=nil)
     provisioned_service = ProvisionedService.new
     if credentials
       provisioned_service.name = credentials["name"]

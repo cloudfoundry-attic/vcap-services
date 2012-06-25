@@ -124,6 +124,7 @@ class VCAP::Services::Memcached::Node
     @memcached_memory = @options[:memcached_memory]
     @sasl_enabled = @options[:sasl_enabled] || false
     @run_as_user =  @options[:run_as_user] || ""
+    @supported_versions =["1.4"]
   end
 
   def pre_send_announcement
@@ -154,7 +155,7 @@ class VCAP::Services::Memcached::Node
     end
   end
 
-  def provision(plan, credentials = nil, db_file = nil)
+  def provision(plan, credentials = nil, version=nil)
     instance = ProvisionedService.new
     instance.plan = plan
     if credentials
@@ -183,7 +184,7 @@ class VCAP::Services::Memcached::Node
     end
 
     begin
-      instance.pid = start_instance(instance, db_file)
+      instance.pid = start_instance(instance)
       @sasl_admin.create_user(instance.user, instance.password) if @sasl_enabled
       save_instance(instance)
       @logger.debug("Started process #{instance.pid}")
@@ -305,7 +306,7 @@ class VCAP::Services::Memcached::Node
     return str
   end
 
-  def start_instance(instance, db_file = nil)
+  def start_instance(instance)
     @logger.debug("Starting: #{instance.inspect}")
 
     opt = {}
