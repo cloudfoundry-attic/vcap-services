@@ -4,9 +4,6 @@ require 'fileutils'
 require 'redis'
 require 'base64'
 
-require 'base/provisioner'
-require 'base/job/async_job'
-
 require 'postgresql_service/common'
 require 'postgresql_service/job'
 

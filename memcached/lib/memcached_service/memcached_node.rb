@@ -9,10 +9,6 @@ require "uuidtools"
 require 'dalli'
 require "thread"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require "datamapper_l"
-
 module VCAP
   module Services
     module Memcached

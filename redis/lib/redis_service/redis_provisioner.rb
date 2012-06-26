@@ -2,8 +2,6 @@
 require "fileutils"
 require "redis"
 require "base64"
-require "base/provisioner"
-require "base/job/async_job"
 
 $LOAD_PATH.unshift File.join(File.dirname __FILE__)
 require "common"

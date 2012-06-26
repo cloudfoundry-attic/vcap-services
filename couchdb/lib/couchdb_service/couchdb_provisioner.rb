@@ -1,7 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-require "base/provisioner"
 require "couchdb_service/common"
-
 
 class VCAP::Services::CouchDB::Provisioner < VCAP::Services::Base::Provisioner
 

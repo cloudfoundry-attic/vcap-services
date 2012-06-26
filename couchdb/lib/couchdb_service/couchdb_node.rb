@@ -15,9 +15,6 @@ require 'net/http'
 
 require 'open3'
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-
 module VCAP
   module Services
     module CouchDB
