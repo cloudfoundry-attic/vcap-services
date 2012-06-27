@@ -60,7 +60,6 @@ namespace "bundler" do
         else
           if File.directory? gname
             Dir.chdir(gname) { yield if block_given? }
-            `mv #{File.join(gname,gname)}*.gem .`
           else
             abort
           end
@@ -69,13 +68,12 @@ namespace "bundler" do
     end
 
     exec_in_gem_dir(working_dir, gem_name) do
-      `git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec`
+      `git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec && gem install #{gem_name}*.gem`
     end
 
     exec_in_svc_dir do |dir|
-      `cp #{File.join(working_dir, "#{gem_name}*.gem")} vendor/cache`
       prune_git('Gemfile', gem_name)
-      sh 'bundle install --local'
+      sh 'bundle install'
     end
 
     FileUtils.rm_rf(working_dir)
