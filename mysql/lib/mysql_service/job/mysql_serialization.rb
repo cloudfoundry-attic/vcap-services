@@ -10,11 +10,9 @@ module VCAP::Services::Mysql::Serialization
   include VCAP::Services::Base::AsyncJob::Serialization
 
   # Validate the serialized data file.
-  # TODO add more validation
-  def validate_input(file_path)
-    File.open(file_path) do |f|
-      return nil unless f.size > 0
-    end
+  def validate_input(files, manifest)
+    raise "Doesn't contains any snapshot file." if files.empty?
+    raise "Invalide version:#{version}" if manifest[:version] != 1
     true
   end
 
@@ -24,17 +22,9 @@ module VCAP::Services::Mysql::Serialization
 
   class ImportFromURLJob < BaseImportFromURLJob
     include VCAP::Services::Mysql::Serialization
-
-    def snapshot_filename name, snapshot_id
-      "#{snapshot_id}.sql.gz"
-    end
   end
 
   class ImportFromDataJob < BaseImportFromDataJob
     include VCAP::Services::Mysql::Serialization
-
-    def snapshot_filename name, snapshot_id
-      "#{snapshot_id}.sql.gz"
-    end
   end
 end

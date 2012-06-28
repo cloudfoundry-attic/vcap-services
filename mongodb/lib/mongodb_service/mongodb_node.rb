@@ -565,7 +565,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def repair_instance(provisioned_service)
-    tmpdir = File.join("/var/vcap/store/tmp", provisioned_service.name)
+    tmpdir = File.join(@base_dir, 'tmp', provisioned_service.name)
     FileUtils.mkdir_p(tmpdir)
     begin
       `#{@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir(service_dir(provisioned_service.name))}`

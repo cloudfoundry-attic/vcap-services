@@ -5,7 +5,7 @@ service:
   version: "1.8"
   description: 'MongoDB NoSQL store'
   plans: ['free']
-  tags: ['mongodb', 'mongodb-1.8', 'nosql']
+  tags: ['mongodb', 'mongodb-1.8', 'nosql', 'document']
 ip_route: localhost
 #proxy:
 #   host: proxy

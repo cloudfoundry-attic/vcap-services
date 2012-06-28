@@ -21,7 +21,10 @@ module VCAP::Services::MongoDB::Snapshot
       snapshot = {
         :snapshot_id => snapshot_id,
         :size => dump_file_size,
-        :file => filename
+        :files => [filename],
+        :manifest => {
+          :version => 1
+        }
       }
 
       snapshot
@@ -32,8 +35,7 @@ module VCAP::Services::MongoDB::Snapshot
     include VCAP::Services::MongoDB::Util
 
     def execute
-      dump_path = get_dump_path(name, snapshot_id)
-      dump_file_path = File.join(dump_path, "#{snapshot_id}.tgz")
+      dump_file_path = @snapshot_files[0]
       raise "Snapshot file #{dump_file_path} doesn't exist" unless File.exists?(dump_file_path)
 
       result = restore_database(name, dump_file_path)

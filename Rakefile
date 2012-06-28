@@ -34,12 +34,12 @@ namespace "bundler" do
 
   # usage: rake bundler:update![oldref,newref]
   desc "Update git ref in Gemfile"
-  task :update!, :oref, :nref do |t, args|
+  task :update, :oref, :nref do |t, args|
     exec_in_svc_dir { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
   end
 
   desc "Dry run update"
-  task :update, :oref, :nref do |t, args|
+  task :update_dry, :oref, :nref do |t, args|
     exec_in_svc_dir { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
   end
 

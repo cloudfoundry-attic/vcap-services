@@ -24,7 +24,10 @@ module VCAP::Services::Postgresql::Snapshot
       snapshot = {
         :snapshot_id => snapshot_id,
         :size => dump_file_size,
-        :file => "#{snapshot_id}.dump"
+        :files => ["#{snapshot_id}.dump"],
+        :manifest => {
+          :version => 1
+        }
       }
 
       snapshot
@@ -81,8 +84,7 @@ module VCAP::Services::Postgresql::Snapshot
       default_user = service.bindusers.all(:default_user => true)[0]
       raise "No default user for service #{name}." unless default_user
 
-      dump_path = get_dump_path(name, snapshot_id)
-      dump_file_name = File.join( dump_path, "#{snapshot_id}.dump" )
+      dump_file_name = @snapshot_files[0]
       raise "Can't find snapshot file #{snapshot_file_path}" unless File.exists?(dump_file_name)
 
       host, port, vcap_user, vcap_pass = %w(host port user pass).map{ |k| @config["postgresql"][k]}
