@@ -26,7 +26,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
   end
 
   REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
-  API_VERSION   = "poc"
+  API_VERSION   = "v1"
 
   set :raise_errors, Proc.new {false}
   set :show_exceptions, false
@@ -48,7 +48,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri])
     @external_uri          = opts[:external_uri]
     @offering_uri          = "#{@cld_ctrl_uri}/services/v1/offerings/"
-    @service_list_uri      = "#{@cld_ctrl_uri}/brokered_services/poc/offerings"
+    @service_list_uri      = "#{@cld_ctrl_uri}/brokered_services/#{API_VERSION}/offerings"
     @router_start_channel  = nil
     @proxy_opts            = opts[:proxy]
     @ready_to_serve        = false
