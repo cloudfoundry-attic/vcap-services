@@ -42,8 +42,6 @@ class VCAP::Services::Rabbit::Node
     options[:max_memory_factor] ||= 0.5
     options[:max_capacity] = @max_capacity
     # Configuration used in warden
-    options[:instance_base_dir] = "/store/instance"
-    options[:instance_log_dir] = "/store/log"
     @rabbitmq_port = options[:instance_port] = 10001
     @rabbitmq_admin_port = options[:instance_admin_port] = 20001
     # Timeout for redis client operations, node cannot be blocked on any redis instances.

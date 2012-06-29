@@ -41,7 +41,6 @@ class VCAP::Services::Redis::Node
     options[:max_clients] ||= 500
     options[:persistent] ||= false
     # Configuration used in warden
-    options[:instance_base_dir] = "/store/instance"
     options[:instance_data_dir] = "/store/instance/data"
     options[:instance_log_dir] = "/store/log"
     @redis_port = options[:instance_port] = 25001
