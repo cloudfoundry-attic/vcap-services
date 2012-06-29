@@ -1,0 +1,12 @@
+---
+plan: free
+capacity: 100
+local_db: sqlite3:/var/vcap/services/echo/echo_node.db
+mbus: nats://localhost:4222
+base_dir: /var/vcap/services/echo/
+index: 0
+logging:
+  level: debug
+pid: /var/vcap/sys/run/echo_node.pid
+node_id: echo_node_1
+port: 5002

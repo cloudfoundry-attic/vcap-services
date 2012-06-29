@@ -1,0 +1,49 @@
+require 'rake'
+require 'tempfile'
+
+require 'rubygems'
+require 'bundler/setup'
+Bundler.require(:default, :test)
+
+require 'rspec'
+require 'rspec/core/rake_task'
+require 'ci/reporter/rake/rspec'
+
+require "simplecov"
+require "simplecov-rcov"
+
+coverage_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_coverage"))
+reports_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_reports"))
+
+ENV['CI_REPORTS'] = reports_dir
+
+desc "Run specs using SimpleCov"
+task "spec:ci" => ["ci:setup:rspec", "simcov"]
+
+RSpec::Core::RakeTask.new do |t|
+  t.pattern = "**/*_spec.rb"
+  t.rspec_opts = ["--format", "documentation", "--colour"]
+end
+
+desc "Run spec with coverage"
+task "simcov" => "cleanup_coverage" do
+  class SimpleCov::Formatter::CombinedFormatter
+    def format(result)
+      SimpleCov::Formatter::RcovFormatter.new.format(result)
+    end
+  end
+
+  SimpleCov.formatter = SimpleCov::Formatter::CombinedFormatter
+  SimpleCov.root('..')
+  SimpleCov.coverage_dir('spec_coverage')
+  SimpleCov.start do
+    add_filter "/spec/"
+    spec_dir = File.expand_path("..", __FILE__)
+    Rspec::Core::Runner.disable_autorun!
+    Rspec::Core::Runner.run([spec_dir], STDERR, STDOUT)
+  end
+end
+
+task "cleanup_coverage" do
+  rm_rf coverage_dir
+end
