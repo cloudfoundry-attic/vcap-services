@@ -8,8 +8,9 @@ describe "mongodb backup/restore"  do
     @app_id = "myapp"
     @opts = get_node_config()
     @logger = @opts[:logger]
+    @default_version = @opts[:default_version]
 
-    @opts[:mongod_path].match "(.+#{File::SEPARATOR}).+"
+    @opts[:mongod_path][@default_version].match "(.+#{File::SEPARATOR}).+"
     BINARY_DIR = $1
 
     @config_template = ERB.new(File.read(TEMPLATE_FILE))
@@ -25,7 +26,7 @@ describe "mongodb backup/restore"  do
   end
 
   before :each do
-    @resp = @node.provision("free")
+    @resp = @node.provision("free", nil, @default_version)
     sleep 1
     @bind_resp = @node.bind(@resp['name'], 'rw')
     # Write some data in database
@@ -100,7 +101,7 @@ describe "mongodb backup/restore"  do
       @node.unprovision(@resp['name'], [])
       EM.add_timer(5) { EM.stop }
     end
-    @node.provision('free', @resp)
+    @node.provision('free', @resp, @default_version)
     @node.restore(@resp['name'], dir)
     @node.bind(@resp['name'], 'rw', @bind_resp)
 

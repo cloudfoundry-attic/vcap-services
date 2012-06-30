@@ -11,8 +11,15 @@ logging:
 mongod_log_dir: /var/vcap/sys/log/mongodb
 pid: /var/vcap/sys/run/mongodb_node.pid
 node_id: mongodb_node_free_1
-mongod_path: mongod
-mongorestore_path: mongorestore
+
+supported_versions: ["1.8"]
+default_version: "1.8"
+
+mongod_path:
+  "1.8": "mongod"
+mongorestore_path:
+  "1.8": "mongorestore"
+
 port_range:
   first: 25001
   last: 45000

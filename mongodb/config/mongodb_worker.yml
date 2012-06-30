@@ -10,8 +10,12 @@ serialization:
 service_base_dir: /var/vcap/services/mongodb/instances/
 download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
 node_id: mongodb_node_free_1
-mongodump_path: mongodump
-mongorestore_path: mongorestore
+
+mongod_path:
+  "1.8": "mongod"
+mongorestore_path:
+  "1.8": "mongorestore"
+
 tar_path: tar
 logging:
   level: debug
