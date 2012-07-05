@@ -5,12 +5,10 @@ require "rest-client"
 
 include VCAP::Services::Neo4j
 
-
 module VCAP
   module Services
     module Neo4j
       class Node
-        attr_reader :available_memory
       end
     end
   end
@@ -22,23 +20,22 @@ describe VCAP::Services::Neo4j::Node do
     EM.run do
       @opts = get_node_config()
       @logger = @opts[:logger]
-      @node = Node.new(@opts)
-      @original_memory = @node.available_memory
 
-      @resp = @node.provision("free")
-      sleep 1
-      EM.stop
+      @node = Node.new(@opts)
+      EM.add_timer(2) { @resp = @node.provision("free") }
+      EM.add_timer(4) { EM.stop }
     end
   end
 
   after :all do
     EM.run do
       begin
-      @node.shutdown()
-      EM.stop
+        @node.shutdown() unless @node.nil?
+        EM.stop
       rescue
       end
     end
+    FileUtils.rm_rf(File.dirname(@opts[:base_dir]))
   end
 
   it "should have valid response" do
@@ -46,10 +43,6 @@ describe VCAP::Services::Neo4j::Node do
     inst_name = @resp['name']
     inst_name.should_not be_nil
     inst_name.should_not == ""
-  end
-
-  it "should consume node's memory" do
-    (@original_memory - @node.available_memory).should > 0
   end
 
   it "should be able to connect to neo4j" do
@@ -82,13 +75,4 @@ describe VCAP::Services::Neo4j::Node do
     end
   end
 
-  it "should release memory" do
-    EM.run do
-      @original_memory.should == @node.available_memory
-      EM.stop
-    end
-  end
-
 end
-
-

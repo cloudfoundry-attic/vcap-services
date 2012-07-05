@@ -2,8 +2,8 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
-$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
-require 'base/backup'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
 require "mongodb_service/mongodb_node"
@@ -33,24 +33,29 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       user = service.admin
       pass = service.adminpass
       port = service.port
-
       path = get_dump_path(service.name)
 
       # Run mongodump
       command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
-      res = CMDHandle.execute( command,cmd_timeout)
+      on_err = Proc.new do |cmd, code, msg|
+        echo "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}",true
+        cleanup(path)
+      end
+      res = CMDHandle.execute(command, cmd_timeout, on_err)
       echo "#{command} result: #{res}", !res
 
       # Delete system.user.bson
       command = "find #{path} -name system.users.bson -exec rm -f '{}' \\;"
-      res = CMDHandle.execute( command,cmd_timeout)
+      res = CMDHandle.execute(command, cmd_timeout)
       echo "#{command} result: #{res}", !res
 
-      if @shutdown
-        raise Interrupt, "Interrupted"
-      end
+      raise Interrupt, "Interrupted" if @shutdown
     end
     0
+  end
+
+  def cleanup(path)
+    FileUtils.rm_rf(path) if path
   end
 end
 

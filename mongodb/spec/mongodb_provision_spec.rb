@@ -10,7 +10,6 @@ describe "mongodb_node provision" do
       @opts = get_node_config()
       @logger = @opts[:logger]
       @node = Node.new(@opts)
-      @original_memory = @node.available_memory
       @node.max_clients = MAX_CONNECTION
 
       EM.add_timer(2) { @resp = @node.provision("free") }
@@ -24,10 +23,6 @@ describe "mongodb_node provision" do
     inst_name = @resp['name']
     inst_name.should_not be_nil
     inst_name.should_not == ""
-  end
-
-  it "should consume node's memory" do
-    (@original_memory - @node.available_memory).should > 0
   end
 
   it "should be able to connect to mongodb" do
@@ -57,7 +52,6 @@ describe "mongodb_node provision" do
       stats = nil
       10.times do
         stats = @node.varz_details
-        @node.healthz_details
       end
       stats.should_not be_nil
       stats[:running_services].length.should > 0
@@ -65,18 +59,9 @@ describe "mongodb_node provision" do
       stats[:running_services][0]['db'].should_not be_nil
       stats[:running_services][0]['overall']['connections']['current'].should == 1
       stats[:disk].should_not be_nil
-      stats[:services_max_memory].should > 0
-      stats[:services_used_memory].should > 0
-      EM.stop
-    end
-  end
-
-  it "should return healthz" do
-    EM.run do
-      stats = @node.healthz_details
-      stats.should_not be_nil
-      stats[:self].should == "ok"
-      stats[@resp['name'].to_sym].should == "ok"
+      stats[:max_capacity].should > 0
+      stats[:available_capacity].should > 0
+      stats[:instances].length.should > 0
       EM.stop
     end
   end
@@ -100,17 +85,42 @@ describe "mongodb_node provision" do
 
     stats = @node.varz_details
     available = stats[:running_services][0]['overall']['connections']['available']
-    available.times do
+
+    # A issue here:
+    # There are two socket connection used in each iteration of the following loop.
+    #    1. One created in "Mongo::Connection.new". This one is temperory, it's closed when return from new.
+    #       But this close is not a syncornized close. It doesn't wait the tcp close ack from mongod. So there
+    #       are one connection occupied in server side in short time, this will cause the following connection
+    #       fails when maxConn reached.
+    #    2. The other socket connection created in "db.authenticate()", this socket is a persistent one.
+    #
+    #  So the solution here is when we meet a connection failure and maxConn reached, we insert a sleep after
+    #  first connection close. So that client and mongod can sync the state.
+    #
+    retry_count = 20
+    available.times do |i|
       begin
-        connections << Mongo::Connection.new('localhost', @resp['port'])
+        conn = Mongo::Connection.new('localhost', @resp['port'])
+        if first_conn_refused
+          sleep 1
+          first_conn_refused = false
+        end
+        db = conn.db(@resp['db'])
+        auth = db.authenticate(@resp['username'], @resp['password'])
+        connections << conn
       rescue Mongo::ConnectionFailure => e
         first_conn_refused = true
+        retry_count -= 1
+        retry if ( (i >= (available-1)) && (retry_count > 0))
       end
     end
 
     # max+1's connection should fail
     begin
-      connections << Mongo::Connection.new('localhost', @resp['port'])
+      conn = Mongo::Connection.new('localhost', @resp['port'])
+      db = conn.db(@resp['db'])
+      auth = db.authenticate(@resp['username'], @resp['password'])
+      connections << conn
     rescue Mongo::ConnectionFailure => e
       max_conn_refused = true
     end
@@ -212,14 +222,6 @@ describe "mongodb_node provision" do
       EM.stop
     end
   end
-
-  it "should release memory" do
-    EM.run do
-      @original_memory.should == @node.available_memory
-      EM.stop
-    end
-  end
-
 end
 
 

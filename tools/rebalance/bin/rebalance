@@ -9,6 +9,7 @@ require "yajl"
 require "logger"
 require "optparse"
 require "eventmachine"
+require "rest_client"
 
 class Runner
   def initialize(args=[])
@@ -20,266 +21,105 @@ class Runner
   end
 
   def run
-    trap('TERM') { puts "\nInterupted"; exit(1)}
-    trap('INT') { puts "\nInterupted"; exit(1)}
+    trap("TERM") { puts "\nInterupted"; exit(1)}
+    trap("INT") { puts "\nInterupted"; exit(1)}
     parse_opt
-    unless @args.size==2
+    unless @args.size == 2
       puts "Need source and destination node name.\n Use -h for help."
       exit 1
     end
     @options[:source] = @args.shift
     @options[:target] = @args.shift
-    @verbose = @options[:verbose] if @options.has_key?(:verbose)
+    if @options[:source] == @options[:target]
+      puts "ERROR: source node and destination node is the same"
+      exit 1
+    end
     srv, src, dst = %w(service source target).map{|key| @options[key.to_sym]}
-    @nats = NATS.connect(:uri => @options[:nat])
-    @nats.on_error{|err| puts "NATs Server error #{err}"; exit 1}
-    # Prepare channel names
-    @channel[:handles]= "#{srv}.handles"
-    @channel[:update_handle] = "#{srv}.update_service_handle"
-    @channel[:disable] = "#{srv}.disable_instance.#{src}"
-    @channel[:import] = "#{srv}.import_instance.#{dst}"
-    @channel[:enable_src] = "#{srv}.enable_instance.#{src}"
-    @channel[:enable_dst] = "#{srv}.enable_instance.#{dst}"
-    @channel[:unprovision_src] = "#{srv}.unprovision.#{src}"
-    @channel[:unprovision_dst] = "#{srv}.unprovision.#{dst}"
-    @channel[:cleanup_nfs] = "#{srv}.cleanup_nfs.#{src}"
-    nat_request(@channel[:handles]) do |response|
-      @handles = Yajl::Parser.parse response
-      puts "All handles from CC: #{response}" if @verbose
-      @instances =[]
-      if @options[:percent]
-        # find all instances on source node
-        all_instances = []
-        @handles.each do |k,v|
-          config = v["credentials"]
-          id = config["name"]
-          all_instances << config["name"] if (id == v["service_id"] && config["node_id"] == @options[:source])
+    @http_params = {
+      :content_type => "application/json",
+      :x_vcap_service_token => @options[:token],
+      :timeout => @options["timeout"]
+    }
+    @url_prefix = "#{@options[:gateway]}/service/internal/v1/migration"
+    @instances = []
+    if @options[:id]
+      begin
+        RestClient.post("#{@url_prefix}/#{@options[:source]}/#{@options[:id]}/check", "", @http_params)
+      rescue => e
+        if e.instance_of? RestClient::ResourceNotFound || e.http_code == 404
+          puts "ERROR: Instance #{@options[:id]} is not belong to source node #{@options[:source]}"
+        else
+          puts "ERROR: #{e}"
         end
-        @instances = all_instances[0, (all_instances.size * @options[:percent]/100)]
-        puts "#{@instances.size} instances will be migrated."
-      else
-        @instances << @options[:id]
+        exit 1
       end
-      # control handle the shutdown process of EM when all instances are migrated.
-      @control = control(@instances.dup) do
-        puts "Migration complete."
-        # In case NATS stop before message send out.
-        EM.add_timer(2) {EM.stop}
-      end
-      puts "\nMigration begin."
-      @control.call()
-    end
-  end
-
-  def control(instances, &blk)
-    lambda do
-      if instances.empty?
-        blk.call()
-        return nil
-      else
-        @current_instance = instances.shift
-        migrate_instance(@current_instance)
+      @instances << @options[:id]
+    else
+      response = RestClient.get("#{@url_prefix}/#{@options[:source]}/instances", @http_params)
+      @instances = Yajl::Parser.parse(response)
+      if @options[:percent]
+        @instances = @instances[0, (@instances.size * @options[:percent]/100)]
       end
     end
+    puts "Migration begin..."
+    puts
+    @instances.each do |instance|
+      migrate_instance(instance)
+      puts
+    end
+    puts "Migration complete."
   end
 
   def migrate_instance(instance)
-    puts "Migrate instance #{instance}."
-    prov_cred = nil
-    binding_creds =[]
-    puts "All handles #{@handles}" if @verbose
-    @handles.each do |k, v|
-      if v['service_id'] == instance
-        prov_cred = v['credentials']
-      else
-        binding_creds << v['credentials'] if v['credentials']['name'] == instance
-      end
-    end
-    unless prov_cred
-      puts "Can't find instance #{instance}."
-      @control.call
-      return
-    end
-    if @options[:check] && prov_cred["node_id"] != @options[:source]
-      puts "ERROR: Instance #{instance} not belongs to source node #{@options[:source]}"
-      return @control.call()
-    end
-    msg = Yajl::Encoder.encode([prov_cred, binding_creds])
-    disable_source(instance, msg)
+    puts "Migrate instance #{instance}:"
+    puts "Disable instance on source node."
+    RestClient.post("#{@url_prefix}/#{@options[:source]}/#{instance}/disable", "", @http_params)
+    RestClient.post("#{@url_prefix}/#{@options[:source]}/#{instance}/enable", "", @http_params)
+    puts "Import instance on destination node."
+    RestClient.post("#{@url_prefix}/#{@options[:target]}/#{instance}/import", "", @http_params)
+    puts "Update instance handles on destination node."
+    RestClient.post("#{@url_prefix}/#{@options[:target]}/#{instance}/update", "", @http_params)
+    puts "Unprovision instance on source node."
+    RestClient.post("#{@url_prefix}/#{@options[:source]}/#{instance}/unprovision", "", @http_params)
+    puts "Cleanup NFS."
+    RestClient.post("#{@url_prefix}/#{@options[:source]}/#{instance}/cleanupnfs", "", @http_params)
+  rescue => e
+    puts "Error when migrate instance #{instance}: #{e.backtrace} "
+    restore(instance)
   end
 
-  # enable_instance method needs binding credentials contained into Hash other than Array
-  def gen_enable_instance_data(instance)
-    prov_cred = nil
-    binding_creds_hash = {}
-    @handles.each do |k, v|
-      if v['service_id'] == instance
-        prov_cred = v['credentials']
-      else
-        if v['credentials']['name'] == instance
-          value = {
-            :credentials => v['credentials'],
-            :binding_options => nil
-          }
-          value[:binding_options] = v['configuration']['data']['binding_options'] if v['configuration'].has_key?('data')
-          binding_creds_hash[k] = value
-        end
-      end
-    end
-    msg = Yajl::Encoder.encode([prov_cred, binding_creds_hash])
-    return msg
-  end
   # restore instance on source node if any exception
-  def restore(instance, msg)
-    puts "Failed in migration instance #{instance}, begin to restore...."
+  def restore(instance)
+    puts "Restore begin ..."
     puts "Cleanup instance on destination node if there is any."
-    unprovision_node(instance, msg, node="dst")
+    begin
+      RestClient.post("#{@url_prefix}/#{@options[:target]}/#{instance}/unprovision", "", @http_params)
+    rescue => e
+      # Ignore restore exception
+    end
     puts "Re-enable instance on source node."
-    # We can't use wrapped nat_request since infinite loop
-    sid = @nats.request(@channel[:enable_src], data = gen_enable_instance_data(instance)) do |response|
-      puts "Fatal: Can't Re-enable instance on source node!" unless response
-      # launch next migration
-      @control.call()
+    begin
+      RestClient.post("#{@url_prefix}/#{@options[:source]}/#{instance}/enable", "", @http_params)
+    rescue => e
+      puts "Error, failed to re-enable instance #{instance} on node #{@options[:source]}"
     end
-    timeout = @options[:timeout] || 5
-    @nats.timeout(sid, timeout) do
-      puts "Fatal: Timeout when restore instance #{instance} on source node."
-      @control.call()
-    end
-  end
-
-  def disable_source(instance, msg)
-    puts "Disable instance #{instance} on source node."
-    puts "D: Msg send to disable channel #{msg.class}:#{msg}" if @verbose
-    nat_request(@channel[:disable], instance, data = msg) do |response|
-      puts "Disable instance response #{response}." if @verbose
-      begin
-        raise "Failed to disable instance." if response == 'null'
-        import(instance, msg)
-      rescue => e
-        puts "#{e}"
-        restore(instance, msg)
-      end
-    end
-  end
-
-  def import(instance, msg)
-    puts "Import instance #{instance} on destination node."
-    puts "D: Msg send to import channel #{msg.class}:#{msg}" if @verbose
-    # Get plan for given instance
-    prov_handle = @handles[instance]
-    plan = prov_handle['configuration']['plan']
-    data = gen_enable_instance_data(instance)
-    prov_cred, binding_creds_hash = Yajl::Parser.parse(data)
-    new_msg = Yajl::Encoder.encode([plan, prov_cred, binding_creds_hash])
-    nat_request(@channel[:import], instance, data = new_msg) do |response|
-      puts "Import instance response #{response}." if @verbose
-      begin
-        raise "Failed to import instance." if response == 'null'
-        enable_dst(instance, msg)
-      rescue => e
-        puts "#{e}"
-        restore(instance, msg)
-      end
-    end
-  end
-
-  def enable_dst(instance, msg)
-    puts "Enable instance #{instance} on destination node."
-    puts "D: Msg send to enable channel: #{msg.class}:#{msg}" if @verbose
-    nat_request(@channel[:enable_dst], instance, data = gen_enable_instance_data(instance)) do |response|
-      puts "Enable instance response #{response}." if @verbose
-      begin
-        raise "Failed to enable instance." if response == 'null'
-        prov_cred, binding_creds = Yajl::Parser.parse(response)
-        # update all handles
-        binding_creds[instance] = {'credentials' => prov_cred}
-        binding_creds.each do |k,v|
-          h = @handles[k]
-          if not h
-            puts "Can't find handle #{k}."
-            next
-          end
-          handle = h.dup
-          handle['credentials'] = v['credentials']
-          handle_msg = Yajl::Encoder.encode(handle)
-          nat_request(@channel[:update_handle], instance, data = handle_msg) do |res|
-            puts "Update handle #{handle} result #{res}" if @verbose
-          end
-        end
-        unprovision_node(instance, msg)
-        clean_nfs(instance, msg)
-        # launch next migration
-        @control.call()
-      rescue => e
-        puts "#{e}"
-        restore(instance, msg)
-      end
-    end
-  end
-
-  def clean_nfs(instance, msg)
-    puts "Cleanup on NFS..."
-    clean_msg = {
-      'name' => instance,
-    }
-    clean_msg = Yajl::Encoder.encode(clean_msg)
-    @nats.publish(@channel[:cleanup_nfs], clean_msg)
-    true
-  end
-
-  #
-  #===== Helpers ====
-  #
-
-  # Wrapper of nats request with timeout
-  def nat_request(channel, instance=nil, msg=nil, &blk)
-    sid = @nats.request(channel, data=msg, &blk)
-    if @options[:timeout]
-      @nats.timeout(sid, @options[:timeout]) do
-        puts "Error: Request to #{channel} timeout in #{@options[:timeout]} seconds."
-        restore(instance, msg)
-      end
-    end
-  end
-
-  def unprovision_node(instance, msg, node="src")
-    puts "Unprovision instance #{instance} on #{node} node"
-    puts "D: Msg send to node #{msg.class}:#{msg}" if @verbose
-    channel = nil
-    if node == "src"
-      channel = @channel[:unprovision_src]
-    else
-      channel = @channel[:unprovision_dst]
-    end
-    handles = Yajl::Parser.parse msg
-    prov_cred, binding_creds = handles
-    unprov_msg = {
-        :name => instance,
-        :bindings => binding_creds,
-    }
-    puts "Unprovision msg #{unprov_msg.inspect} send to channel '#{channel}'" if @verbose
-    msg = Yajl::Encoder.encode(unprov_msg)
-    @nats.publish(channel, msg)
+  ensure
+    puts "Restore complete."
   end
 
   def parse_opt
     parser = OptionParser.new do |opts|
       opts.banner = "\nUsage: #{$0} [options] source_node_id destination_node_id\n"
-      opts.on('-n', '--nat NAT', 'NAT server URL. Such as "mbus://localhost:4222"') {|nat| @options[:nat]=nat}
-      opts.on('-s', '--service SERVICE', 'Service label.') {|service| @options[:service] = service}
-      opts.on('-i', '--id [ID]', 'id of the instance to be migrated.') {|id| @options[:id] = id}
-      opts.on('-p', '--percent [PERCENT]', Integer, 'how many percent of instances to be migrated. The option overwrite instance given by -i/--id.') {|percent| @options[:percent] = percent}
-      opts.on('-t', '--timeout TIMEOUT', Integer, 'Timeout in seconds for NAT request method.') {|timeout| @options[:timeout]= timeout }
-      opts.on('-c', '--check','Check whether instance belongs to source node. Default is not checking.') {@options[:check]= true }
-      opts.on('-v', '--verbose', 'verbose mode, will output debug information.') {@options[:verbose] = true; @logger.level = Logger::DEBUG}
-      opts.on('-h', '--help', 'Show this help message.') { puts opts; exit}
+      opts.on("-g", "--gateway GATEWAY", "Service gateway URL") {|gateway| @options[:gateway] = gateway}
+      opts.on("-i", "--id [ID]", "id of the instance to be migrated.") {|id| @options[:id] = id}
+      opts.on("-p", "--percent [PERCENT]", Integer, "how many percent of instances to be migrated. The option overwrite instance given by -i/--id.") {|percent| @options[:percent] = percent}
+      opts.on("-t", "--timeout TIMEOUT", Integer, "Timeout in seconds for NAT request method.") {|timeout| @options[:timeout]= timeout }
+      opts.on("-k", "--token TOKEN", "Service gateway API access token") {|token| @options[:token] = token }
+      opts.on("-h", "--help", "Show this help message.") { puts opts; exit}
     end
     parser.parse!(@args)
   end
 end
 
-EM.run do
-  runner = Runner.new(ARGV.dup)
-  runner.run
-end
+runner = Runner.new(ARGV.dup)
+runner.run

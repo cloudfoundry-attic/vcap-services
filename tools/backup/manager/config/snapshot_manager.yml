@@ -1,0 +1,24 @@
+---
+mbus: nats://localhost:4222
+z_interval: 30
+logging:
+  level: debug
+pid: /var/vcap/sys/run/snapshot_manager.pid
+root: /mnt/appcloud
+enable: true
+wakeup_interval: 3600
+cleanup:
+  max_days: 7
+  greedy_mark: false
+  cloud_controller_uri: api.vcap.me
+  services:
+    mongodb:
+      version: "1.8"
+      token: "0xdeadbeef"
+    redis:
+      version: "2.2"
+      token: "0xdeadbeef"
+    mysql:
+      version: "5.1"
+      token: "0xdeadbeef"
+

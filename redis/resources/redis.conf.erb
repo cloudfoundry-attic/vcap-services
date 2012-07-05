@@ -17,16 +17,13 @@ save 300 10
 save 60 10000
 maxclients <%= maxclients %>
 appendonly no
-vm-enabled yes
-vm-page-size 32
-glueoutputbuf yes
 hash-max-zipmap-entries 64
 hash-max-zipmap-value 512
 activerehashing yes
 
 rename-command CONFIG <%= config_command %>
 rename-command MONITOR ""
-rename-command SAVE ""
+rename-command SAVE <%= save_command %>
 rename-command BGSAVE ""
 rename-command SHUTDOWN <%= shutdown_command %>
 rename-command BGREWRITEAOF ""

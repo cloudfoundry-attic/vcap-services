@@ -8,6 +8,8 @@ $:.unshift File.join(PWD, '..', 'lib')
 
 require "rubygems"
 require "rspec"
+require 'bundler/setup'
+require "vcap_services_base"
 require "socket"
 require "timeout"
 require "mongo"
@@ -100,21 +102,34 @@ def parse_property(hash, key, type, options = {})
   end
 end
 
+def config_base_dir()
+  config_path = File.join(PWD, "../config/")
+  # detect dev_setup
+  dev_local = File.expand_path("~/.cloudfoundry_deployment_local")
+  if File.exist?(dev_local)
+    File.open(dev_local, "r") do |f|
+      f.read.match('CLOUD_FOUNDRY_CONFIG_PATH=([[:graph:]]+)')
+      config_path = $1
+    end
+  end
+  config_path
+end
+
 def get_node_config()
-  config_file = File.join(PWD, "../config/mongodb_node.yml")
+  config_file = File.join(config_base_dir, "mongodb_node.yml")
   config = YAML.load_file(config_file)
   mongodb_conf_template = File.join(PWD, "../resources/mongodb.conf.erb")
   options = {
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
+    :plan => parse_property(config, "plan", String),
+    :capacity => parse_property(config, "capacity", Integer),
     :mongod_path => parse_property(config, "mongod_path", String),
     :mongorestore_path => parse_property(config, "mongorestore_path", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :available_memory => parse_property(config, "available_memory", Integer),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
     :config_template => mongodb_conf_template,
     :port_range => parse_property(config, "port_range", Range),
-    :max_memory => parse_property(config, "max_memory", Integer),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :base_dir => '/tmp/mongo/instances',
     :mongod_log_dir => '/tmp/mongo/mongod_log',

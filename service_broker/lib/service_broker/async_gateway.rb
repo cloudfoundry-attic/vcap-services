@@ -1,8 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/asynchronous_service_gateway'
 require 'fiber'
-require 'datamapper_l'
 require 'dm-types'
 require 'nats/client'
 require 'uuidtools'
@@ -25,7 +22,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     property :name,        String,   :required => true
     property :version,     String,   :required => true
     property :credentials, Json,     :required => true
-    property :acls,        Json,     :required => true
+    property :acls,        Json
   end
 
   REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
@@ -68,6 +65,10 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       'Content-Type' => 'application/json',
       token_hdrs     => @token,
     }
+
+    driver, path = opts[:local_db].split(':')
+    db_dir = File.dirname(path)
+    FileUtils.mkdir_p(db_dir)
 
     DataMapper.setup(:default, opts[:local_db])
     DataMapper::auto_upgrade!
@@ -286,7 +287,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
   helpers do
 
     def advertise_brokered_service(request)
-      @logger.debug("Advertise a brokerd service: #{request.inspect}")
+      @logger.debug("Advertise a brokered service: #{request.inspect}")
       label = request.label
       des = request.description
       options = request.options
@@ -422,7 +423,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         success(svc)
       else
         @logger.warn("Can't find service label=#{request.label}")
-        raise ServiceError.new(ServiceError::NOT_FOUND, req.label)
+        raise ServiceError.new(ServiceError::NOT_FOUND, request.label)
       end
     rescue => e
       if e.instance_of? ServiceError

@@ -2,8 +2,8 @@
 # -*- mode: ruby -*-
 # Copyright (c) 2009-2011 VMware, Inc.
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
-$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
-require 'base/backup'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 module VCAP
   module Services
@@ -38,7 +38,11 @@ class VCAP::Services::Redis::Backup < VCAP::Services::Base::Backup
               # If no timeout option, set a default value
               @config["timeout"] = 600
             end
-            if !CMDHandle.execute(cmd,@config["timeout"])
+            on_err = Proc.new do |cmd, code, msg|
+              echo "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}",true
+              cleanup(new_dirname_nfs)
+            end
+            if !CMDHandle.execute(cmd, @config["timeout"], on_err)
               echo "Got errors when doing copy",true
             end
           else
@@ -51,11 +55,9 @@ class VCAP::Services::Redis::Backup < VCAP::Services::Base::Backup
           else
             echo "Could not copy dumpfile: #{e}",true
           end
-          next
+          cleanup(new_dirname_nfs)
         ensure
-          if @shutdown
-            raise Interrupt, "Interrupted"
-          end
+          raise Interrupt, "Interrupted" if @shutdown
         end
       end
     else
@@ -64,9 +66,11 @@ class VCAP::Services::Redis::Backup < VCAP::Services::Base::Backup
     end
     0
   end
+
+  def cleanup(path)
+    FileUtils.rm_rf(path) if path
+  end
 end
+
 VCAP::Services::Redis::Backup.new.start
-
-
-
 

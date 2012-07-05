@@ -4,11 +4,11 @@
 # This script is used to backup mysql instances used in MyaaS.
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
-$:.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
-require 'base/backup'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
-require 'mysql'
+require 'mysql2'
 
 module VCAP
   module Services
@@ -46,11 +46,10 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     # Optional backup timeout config, default is no timeout
     opts[:timeout] = @config["timeout"] || 0
 
-    conn = Mysql.real_connect(opts[:host], opts[:user], opts[:passwd], 'mysql',
-                              opts[:port].to_i, opts[:socket])
+    conn = Mysql2::Client.new(:host => opts[:host], :username => opts[:user], :password => opts[:passwd], :database => 'mysql', :port => opts[:port].to_i, :socket => opts[:socket])
     result = conn.query("show databases;")
     dbs = []
-    result.each {|db| dbs << db[0] }
+    result.each {|db| dbs << db["Database"] }
     current_time = Time.now
 
     echo "Begin backup at #{current_time}"
@@ -67,9 +66,7 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
       else
       end
 
-      if @shutdown
-        raise Interrupt, "Interrupted"
-      end
+      raise Interrupt, "Interrupted" if @shutdown
     end
     echo "Backup begins at #{current_time} complete. Success: #{success}. Failed #{failed}. Ignored #{ignored}."
     0
@@ -84,11 +81,11 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     elsif SYSTEM_DB.include?(name)
       # for system database, dir structure looks like \backups\<service-name>\
       # <db-name>\<seconds_since_epoc>\<node_id>\<service specific data>
-      full_path = get_dump_path(name,1)
+      full_path = get_dump_path(name, :mode => 1, :time => ts)
     else
       # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
       # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-      full_path = get_dump_path(name)
+      full_path = get_dump_path(name, :time => ts)
     end
     opts.merge!({:full_path => full_path})
     # options substitution
@@ -114,13 +111,10 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     return 1
   end
 
-  def self.cleanup(path)
-    FileUtils.rm_rf(path)
+  def cleanup(path)
+    FileUtils.rm_rf(path) if path
   end
-
-
 end
 
 VCAP::Services::Mysql::Backup.new.start
-
 

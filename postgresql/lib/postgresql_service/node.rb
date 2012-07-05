@@ -6,11 +6,6 @@ require "pp"
 require "uuidtools"
 require "pg"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require 'base/service_error'
-require "datamapper_l"
-
 module VCAP
   module Services
     module Postgresql
@@ -22,6 +17,7 @@ end
 
 require "postgresql_service/common"
 require "postgresql_service/util"
+require "postgresql_service/model"
 require "postgresql_service/storage_quota"
 require "postgresql_service/postgresql_error"
 
@@ -34,30 +30,11 @@ class VCAP::Services::Postgresql::Node
   include VCAP::Services::Postgresql::Common
   include VCAP::Services::Postgresql
 
-  class Provisionedservice
-    include DataMapper::Resource
-    property :name,       String,   :key => true
-    property :plan,       Enum[:free], :required => true
-    property :quota_exceeded,  Boolean, :default => false
-    has n, :bindusers
-  end
-
-  class Binduser
-    include DataMapper::Resource
-    property :user,       String,   :key => true
-    property :sys_user,    String,    :required => true
-    property :password,   String,   :required => true
-    property :sys_password,    String,    :required => true
-    property :default_user,  Boolean, :default => false
-    belongs_to :provisionedservice
-  end
-
   def initialize(options)
     super(options)
-
     @postgresql_config = options[:postgresql]
 
-    @max_db_size = options[:max_db_size] * 1024 * 1024
+    @max_db_size = ((options[:max_db_size] + options[:db_size_overhead]) * 1024 * 1024).round
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
     @max_db_conns = options[:max_db_conns]
@@ -69,27 +46,23 @@ class VCAP::Services::Postgresql::Node
     @restore_bin = options[:restore_bin]
     @dump_bin = options[:dump_bin]
 
-    @available_storage = options[:available_storage] * 1024 * 1024
-    @node_capacity = @available_storage
-
     @long_queries_killed = 0
     @long_tx_killed = 0
     @provision_served = 0
     @binding_served = 0
-
-    @mutex_available_storage = Mutex.new
   end
 
   def pre_send_announcement
-    DataMapper.setup(:default, @local_db)
-    DataMapper::auto_upgrade!
-
+    Node.setup_datamapper(:default, @local_db)
     @connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],@postgresql_config["database"])
-
-    Provisionedservice.all.each do |provisionedservice|
-      @available_storage -= storage_for_service(provisionedservice)
-    end
     check_db_consistency()
+
+    @capacity_lock.synchronize do
+      Provisionedservice.all.each do |provisionedservice|
+        migrate_instance provisionedservice
+        @capacity -= capacity_unit
+      end
+    end
 
     EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
     EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
@@ -97,21 +70,163 @@ class VCAP::Services::Postgresql::Node
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
   end
 
-  def get_available_storage
-    @mutex_available_storage.synchronize do
-      return @available_storage
+  # This method performs whatever 'migration' (upgrade/downgrade)
+  # steps are required due to incompatible code changes.  There is no
+  # concept of an instance's "version", so migration code may need to
+  # inspect the instance to determine what migrations are required.
+  def migrate_instance(provisionedservice)
+    # Services-r7 and earlier had a bug whereby database objects were
+    # owned by the users created by bind operations, which caused
+    # various problems (eg these objects were discarded on an 'unbind'
+    # operation, only the original creator of an object could modify
+    # it, etc).  Services-r8 fixes this problem by granting all 'children'
+    # bind users to a 'parent' role, and setting all 'children' bind users'
+    # default connection session to be 'parent' role's configuration parameter.
+    # But this fix only works for newly created users and objects, so we
+    # need to call this object-ownership method to migration 'old' users
+    # and objects. we don't need to worry about calling it more than once
+    # because doing so is harmless.
+    manage_object_ownership(provisionedservice.name)
+    # Services-r11 and earlier the user could not have temp privilege to
+    # create temporary tables/views/sequences. Services-r12 solves this issue.
+    manage_temp_privilege(provisionedservice.name)
+    # In earlier releases, users should not have create privilege to create schmea in databases.
+    manage_create_privilege(provisionedservice.name)
+  end
+
+  def get_expected_children(name)
+    # children according to Provisionedservice
+    children = Provisionedservice.get(name).bindusers.all(:default_user => false)
+    children = children.map { |child| child.user } + children.map { |child| child.sys_user }
+    children
+  end
+
+  def get_actual_children(connection, name, parent)
+    # children according to postgres itself
+    children = []
+    rows = connection.query("SELECT datacl FROM pg_database WHERE datname='#{name}'")
+    raise "Can't get datacl" if rows.nil? || rows.num_tuples < 1
+    datacl = rows[0]['datacl']
+    # a typical pg_database.datacl value:
+    # {vcap=CTc/vcap,suf4f57864f519412b82ffd0b75d02dcd1=c/vcap,u2e47852f15544536b2f69c0f72052847=c/vcap,su76f8095858e742d1954544c722b277f8=c/vcap,u02b45d2974644895b1b03a92749250b2=c/vcap,su7950e259bbe946328ba4e3540c141f4b=c/vcap,uaf8982bc76324c6e9a09596fa1e57fc3=c/vcap}
+    raise "Datacl is nil/deformed" if datacl.nil? || datacl.length < 2
+    nonchildren = [@postgresql_config["user"], parent.user, parent.sys_user, '']
+    datacl[1,datacl.length-1].split(',').each do |aclitem|
+      child = aclitem.split('=')[0]
+      children << child unless nonchildren.include?(child)
     end
+    children
+  end
+
+  def get_ruly_children(connection, parent)
+    query = <<-end_of_query
+      SELECT rolname
+      FROM pg_roles
+      WHERE oid IN (
+        SELECT member
+        FROM pg_auth_members
+        WHERE roleid IN (
+          SELECT oid
+          FROM pg_roles
+          WHERE rolname='#{parent.user}'
+        )
+      );
+    end_of_query
+    ruly_children = connection.query(query).map { |row| row['rolname'] }
+    ruly_children
+  end
+
+  def get_unruly_children(connection, parent, children)
+    # children which are not in fact children of the parent. (we don't
+    # handle children that somehow have the *wrong* parent, but that
+    # won't happen :-)
+    children - get_ruly_children(connection, parent)
+  end
+
+  def manage_object_ownership(name)
+    # figure out which children *should* exist
+    expected_children = get_expected_children name
+    # optimization: the set of children we need to take action for is
+    # a subset of the expected childen, so if there are no expected
+    # children we can stop right now
+    return if expected_children.empty?
+    # the parent role
+    parent = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    # connect as the system user (not the parent or any of the
+    # children) to ensure we don't have ACL problems
+    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true
+    raise "Fail to connect to database #{name}" unless connection
+    # figure out which children *actually* exist
+    actual_children = get_actual_children connection, name, parent
+    # log but ignore children that aren't both expected and actually exist
+    children = expected_children & actual_children
+    @logger.warn "Ignoring surplus children #{actual_children-children} in #{name}" unless (actual_children-children).empty?
+    @logger.warn "Ignoring missing children #{expected_children-children} in #{name}" unless (expected_children-children).empty?
+    # if there are no children, then there is nothing to do
+    return if children.empty?
+    # ensure that all children and in fact children of their parents
+    unruly_children = get_unruly_children(connection, parent, children)
+    unless unruly_children.empty?
+      unruly_children.each do |u_c|
+        connection.query("alter role #{u_c} inherit")
+        connection.query("alter role #{u_c} set role=#{parent.user}")
+      end
+      connection.query("GRANT #{parent.user} TO #{unruly_children.join(',')};")
+      @logger.info("New children #{unruly_children} of parent #{parent.user}")
+    end
+    # make all current objects owned by the parent
+    connection.query("REASSIGN OWNED BY #{children.join(',')} TO #{parent.user};")
+  rescue => x
+    @logger.warn("Exception while managing object ownership: #{x}")
+  ensure
+    connection.close if connection
+  end
+
+  def manage_temp_privilege(name)
+    return if Provisionedservice.get(name).quota_exceeded
+    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true
+    raise "Fail to connect to database #{name}" unless connection
+    parent = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    connection.query("GRANT TEMP ON DATABASE #{name} TO #{parent.user}")
+    connection.query("GRANT TEMP ON DATABASE #{name} TO #{parent.sys_user}")
+    expected_children = get_expected_children name
+    return expected_children if expected_children.empty?
+    actual_children = get_actual_children connection, name, parent
+    children = expected_children & actual_children
+    @logger.warn "Ignoring surplus children #{actual_children-children} in #{name} when managing temp privilege" unless (actual_children-children).empty?
+    @logger.warn "Ignoring missing children #{expected_children-children} in #{name} when managing temp privilege" unless (expected_children-children).empty?
+    return if children.empty?
+    # manage_object_ownership will make all unruly children be ruly children
+    children.each do |i_c|
+      connection.query("GRANT TEMP ON DATABASE #{name} TO #{i_c}")
+    end
+  rescue => x
+    @logger.warn("Exception while managing temp privilege on database #{name}: #{x}")
+  ensure
+    connection.close if connection
+  end
+
+  def manage_create_privilege(name)
+    return if Provisionedservice.get(name).quota_exceeded
+    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true
+    raise "Fail to connect to database #{name}" unless connection
+    parent = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    connection.query("GRANT CREATE ON DATABASE #{name} TO #{parent.user}")
+  rescue => x
+    @logger.warn("Exception while managing create privilege on database #{name}: #{x}")
+  ensure
+    connection.close if connection
   end
 
   def announcement
-    a = {
-      :available_storage => get_available_storage
-    }
-    a
+    @capacity_lock.synchronize do
+      { :available_capacity => @capacity,
+        :capacity_unit => capacity_unit }
+    end
   end
 
   def all_instances_list
-    Provisionedservice.all.map{|s| s.name}
+    Provisionedservice.all.map{ |s| s.name }
   end
 
   def all_bindings_list
@@ -130,7 +245,7 @@ class VCAP::Services::Postgresql::Node
 
   def check_db_consistency()
     db_list = []
-    @connection.query('select datname,datacl from pg_database').each{|message|
+    @connection.query('select datname,datacl from pg_database').each{ |message|
       datname = message['datname']
       datacl = message['datacl']
       if not datacl==nil
@@ -155,34 +270,6 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
-  def storage_for_service(provisionedservice)
-    case provisionedservice.plan
-    when :free then @max_db_size
-    else
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_INVALID_PLAN, provisionedservice.plan)
-    end
-  end
-
-  def postgresql_connect(host, user, password, port, database)
-    5.times do
-      begin
-        @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database}")
-        connect = PGconn.connect(host, port, nil, nil, database, user, password)
-        version = get_postgres_version(connect)
-        @logger.info("PostgreSQL server version: #{version}")
-        @logger.info("Connected")
-        return connect
-      rescue PGError => e
-        @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}")
-        sleep(2)
-      end
-    end
-
-    @logger.fatal("PostgreSQL connection unrecoverable")
-    shutdown
-    exit
-  end
-
   #keep connection alive, and check db liveness
   def postgresql_keep_alive
     if connection_exception
@@ -191,10 +278,18 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
+  def is_default_bind_user(user_name)
+    user = Binduser.get(user_name)
+    !user.nil? && user.default_user
+  end
+
   def kill_long_queries
-    process_list = @connection.query("select * from pg_stat_activity")
+    # (extract(epoch from current_timestamp) - extract(epoch from query_start)) as runtime
+    # Notice: we should use current_timestamp or timeofday, the difference is that the current_timestamp only executed once at the beginning of the transaction, while dayoftime will return a text string of wall-clock time and advances during the transaction
+    # Filtering the long queries in the pg statement is better than filtering using the iteration of ruby after select all activties
+    process_list = @connection.query("select * from (select procpid, datname, query_start, usename, (extract(epoch from current_timestamp) - extract(epoch from query_start)) as run_time from pg_stat_activity where query_start is not NULL and usename != '#{@postgresql_config['user']}' and current_query !='<IDLE>') as inner_table  where run_time > #{@max_long_query}")
     process_list.each do |proc|
-      if (proc["query_start"] != nil and Time.now.to_i - Time::parse(proc["query_start"]).to_i >= @max_long_query) and (proc["current_query"] != "<IDLE>") and (proc["usename"] != @postgresql_config["user"]) then
+      unless is_default_bind_user(proc["usename"])
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{Time.now.to_i - Time::parse(proc['query_start']).to_i} info:#{proc['current_query']}")
         @long_queries_killed += 1
@@ -205,9 +300,10 @@ class VCAP::Services::Postgresql::Node
   end
 
   def kill_long_transaction
-    process_list = @connection.query("select * from pg_stat_activity")
+    # see kill_long_queries
+    process_list = @connection.query("select * from (select procpid, datname, xact_start, usename, (extract(epoch from current_timestamp) - extract(epoch from xact_start)) as run_time from pg_stat_activity where xact_start is not NULL and usename != '#{@postgresql_config['user']}') as inner_table where run_time > #{@max_long_tx}")
     process_list.each do |proc|
-      if (proc["xact_start"] != nil and Time.now.to_i - Time::parse(proc["xact_start"]).to_i >= @max_long_tx) and (proc["usename"] != @postgresql_config["user"]) then
+      unless is_default_bind_user(proc["usename"])
         @connection.query("select pg_terminate_backend(#{proc['procpid']})")
         @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{Time.now.to_i - Time::parse(proc['xact_start']).to_i}")
         @long_tx_killed += 1
@@ -218,18 +314,14 @@ class VCAP::Services::Postgresql::Node
   end
 
   def provision(plan, credential=nil)
+    raise PostgresqlError.new(PostgresqlError::POSTGRESQL_INVALID_PLAN, plan) unless plan == @plan
     provisionedservice = Provisionedservice.new
-    provisionedservice.plan = plan
-    storage = storage_for_service(provisionedservice)
+    provisionedservice.plan = 1
 
     begin
-      @mutex_available_storage.synchronize do
-        @available_storage -= storage
-      end
-
       binduser = Binduser.new
       if credential
-        name, user, password = %w(name user password).map{|key| credential[key]}
+        name, user, password = %w(name user password).map{ |key| credential[key] }
         res = Provisionedservice.get(name)
         return gen_credential(name, res.bindusers[0].user, res.bindusers[0].password) if res
         provisionedservice.name = name
@@ -262,10 +354,6 @@ class VCAP::Services::Postgresql::Node
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
     rescue => e
-      storage = storage_for_service(provisionedservice)
-      @mutex_available_storage.synchronize do
-        @available_storage += storage
-      end
       delete_database(provisionedservice) if provisionedservice
       raise e
     end
@@ -283,7 +371,6 @@ class VCAP::Services::Postgresql::Node
       # ignore
     end
     delete_database(provisionedservice)
-    storage = storage_for_service(provisionedservice)
 
     provisionedservice.bindusers.all.each do |binduser|
       if not binduser.destroy
@@ -292,11 +379,6 @@ class VCAP::Services::Postgresql::Node
     end
     if not provisionedservice.destroy
       @logger.error("Could not delete entry: #{provisionedservice.errors.inspect}")
-    else
-      # restore quota only if provisionedservice is deleted from local db
-      @mutex_available_storage.synchronize do
-        @available_storage += storage
-      end
     end
     @logger.info("Successfully fulfilled unprovision request: #{name}")
     true
@@ -356,7 +438,7 @@ class VCAP::Services::Postgresql::Node
   def unbind(credential)
     return if credential.nil?
     @logger.info("Unbind service: #{credential.inspect}")
-    name, user, bind_opts = %w(name user bind_opts).map{|k| credential[k]}
+    name, user, bind_opts = %w(name user bind_opts).map{ |k| credential[k] }
     provisionedservice = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless provisionedservice
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
@@ -385,8 +467,6 @@ class VCAP::Services::Postgresql::Node
       if not create_database_user(name, bindusers[0], false) then
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
-      storage = storage_for_service(provisionedservice)
-      raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DISK_FULL) if get_available_storage < storage
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
     rescue PGError => e
@@ -403,24 +483,28 @@ class VCAP::Services::Postgresql::Node
 
   def exe_grant_user_priv(db_connection)
     db_connection.query("grant create on schema public to public")
-    if get_postgres_version(db_connection) == '9'
+    if pg_version(db_connection) == '9'
       db_connection.query("grant all on all tables in schema public to public")
       db_connection.query("grant all on all sequences in schema public to public")
       db_connection.query("grant all on all functions in schema public to public")
     else
-      querys = db_connection.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
-      querys.each do |query_to_do|
+      queries = db_connection.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
+      queries.each do |query_to_do|
         p query_to_do['query_to_do'].to_s
         db_connection.query(query_to_do['query_to_do'].to_s)
       end
-      querys = db_connection.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
-      querys.each do |query_to_do|
+      queries = db_connection.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
+      queries.each do |query_to_do|
         db_connection.query(query_to_do['query_to_do'].to_s)
       end
     end
   end
 
   def create_database_user(name, binduser, quota_exceeded)
+    # setup parent as long as it's not the 'default user'
+    parent_binduser = Provisionedservice.get(name).bindusers.all(:default_user => true)[0] unless binduser.default_user
+    parent = parent_binduser.user if parent_binduser
+
     user = binduser.user
     password = binduser.password
     sys_user = binduser.sys_user
@@ -432,20 +516,36 @@ class VCAP::Services::Postgresql::Node
         @logger.warn("Role: #{user} already exists")
       else
         @logger.info("Create role: #{user}/#{password}")
-        @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}'")
+        if parent
+          # set parent role for normal binding users
+          @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}' inherit in role #{parent}")
+          @connection.query("ALTER ROLE #{user} SET ROLE=#{parent}")
+        else
+          @connection.query("CREATE ROLE #{user} LOGIN PASSWORD '#{password}'")
+        end
       end
       @logger.info("Create sys_role: #{sys_user}/#{sys_password}")
       @connection.query("CREATE ROLE #{sys_user} LOGIN PASSWORD '#{sys_password}'")
 
       @logger.info("Grant proper privileges ...")
-      db_connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],name)
+      db_connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],name,true)
+      raise PGError("Fail to connect to database #{name}") unless db_connection
       db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{sys_user}")
       db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{user}")
       #Ignore privileges Initializing error. Log only.
       begin
         if quota_exceeded then
+          # revoke create privilege on database to parent role
+          # In fact, this is a noop, for the create privilege of parent user should be revoked in revoke_write_access when quota is exceeded.
+          db_connection.query("REVOKE CREATE ON DATABASE #{name} FROM #{user}") unless parent
+          db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
+          db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
           do_revoke_query(db_connection, user, sys_user)
         else
+          # grant create privilege on database to parent role
+          db_connection.query("GRANT CREATE ON DATABASE #{name} TO #{user}") unless parent
+          db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
+          db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
           exe_grant_user_priv(db_connection)
         end
       rescue PGError => e
@@ -464,6 +564,9 @@ class VCAP::Services::Postgresql::Node
     begin
       exe_drop_database(name)
       default_binduser = bindusers.all(:default_user => true)[0]
+      # should drop objects owned by the default user, such as created schemas
+      @connection.query("DROP OWNED BY #{default_binduser.user}")
+      @connection.query("DROP OWNED BY #{default_binduser.sys_user}")
       @connection.query("DROP ROLE IF EXISTS #{default_binduser.user}") if default_binduser
       @connection.query("DROP ROLE IF EXISTS #{default_binduser.sys_user}") if default_binduser
       true
@@ -485,7 +588,8 @@ class VCAP::Services::Postgresql::Node
 
   def delete_database_user(binduser,db)
     @logger.info("Delete user #{binduser.user}/#{binduser.sys_user}")
-    db_connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],db)
+    db_connection = postgresql_connect(@postgresql_config["host"],@postgresql_config["user"],@postgresql_config["pass"],@postgresql_config["port"],db,true)
+    raise PGError("Fail to connect to database #{db}") unless db_connection
     begin
       db_connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
     rescue PGError => e
@@ -495,7 +599,7 @@ class VCAP::Services::Postgresql::Node
     begin
       db_connection.query("DROP OWNED BY #{binduser.user}")
       db_connection.query("DROP OWNED BY #{binduser.sys_user}")
-      if get_postgres_version(db_connection) == '9'
+      if pg_version(db_connection) == '9'
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
@@ -503,20 +607,20 @@ class VCAP::Services::Postgresql::Node
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
       else
-        querys = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
-        querys = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
-        querys = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
-        querys = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
-        querys.each do |query_to_do|
+        queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{binduser.sys_user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
+        queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
       end
@@ -537,37 +641,16 @@ class VCAP::Services::Postgresql::Node
   end
 
   def gen_credential(name, user, passwd)
+    host = get_host
     response = {
       "name" => name,
-      "host" => @local_ip,
-      "hostname" => @local_ip,
+      "host" => host,
+      "hostname" => host,
       "port" => @postgresql_config['port'],
       "user" => user,
       "username" => user,
       "password" => passwd,
     }
-  end
-
-  def get_postgres_version(db_connection)
-    version = db_connection.query("select version()")
-    reg = /([0-9.]{5})/
-    return version[0]['version'].scan(reg)[0][0][0]
-  end
-
-  def block_user_from_db(db_connection, service)
-    name = service.name
-    service.bindusers.all.each do |binduser|
-      db_connection.query("revoke connect on database #{name} from #{binduser.user}")
-      db_connection.query("revoke connect on database #{name} from #{binduser.sys_user}")
-    end
-  end
-
-  def unblock_user_from_db(db_connection, service)
-    name = service.name
-    service.bindusers.all.each do |binduser|
-      db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.user}")
-      db_connection.query("GRANT CONNECT ON DATABASE #{name} to #{binduser.sys_user}")
-    end
   end
 
   def bind_all_creds(name, binding_creds_hash)
@@ -587,37 +670,33 @@ class VCAP::Services::Postgresql::Node
     @logger.debug("Restore db #{name} using backup at #{backup_path}")
     service = Provisionedservice.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless service
+    default_user = service.bindusers.all(:default_user => true)[0]
+    raise "No default user for provisioned service #{name}" unless default_user
 
-    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
-    block_user_from_db(db_connection, service)
-    db_connection.close
-    exe_drop_database(name)
-    exe_create_database(name)
+    host, port, vcap_user, vcap_pass =  %w{host port user pass}.map { |opt| @postgresql_config[opt] }
+    reset_db(host, port, vcap_user, vcap_pass, name, service)
 
-    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
-    exe_grant_user_priv(db_connection)
-    unblock_user_from_db(db_connection, service)
-    db_connection.close
-
-    host, user, port =  %w{host user port}.map { |opt| @postgresql_config[opt] }
+    user =  default_user[:user]
+    passwd = default_user[:password]
     path = File.join(backup_path, "#{name}.dump")
-    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} #{path}"
+    archive_list(path, { :restore_bin => @restore_bin })
+
+    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -L #{path}.archive_list -d #{name} #{path}"
     o, e, s = exe_cmd(cmd)
-    if s.exitstatus == 0
-      return true
-    else
-      return nil
-    end
+    s.exitstatus == 0
   rescue => e
-    @logger.error("Error during restore #{e}")
+    @logger.error("Error during restore: #{e}")
     nil
+  ensure
+    FileUtils.rm_rf("#{path}.archive_list")
   end
 
   # kill user session & block all user
   def disable_instance(prov_cred, binding_creds)
     @logger.debug("Disable instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
-    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true)
+    raise PGError("Fail to connect to database #{name}") unless db_connection
     service = Provisionedservice.get(name)
     block_user_from_db(db_connection, service)
     @connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
@@ -629,22 +708,20 @@ class VCAP::Services::Postgresql::Node
 
   # Dump db content into given path
   def dump_instance(prov_cred, binding_creds, dump_file_path)
-    @logger.debug("Dump instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
-    host, user, password, port =  %w{host user pass port}.map { |opt| @postgresql_config[opt] }
-    dump_file = File.join(dump_file_path, "#{name}.dump")
-    @logger.info("Dump instance #{name} content to #{dump_file}")
-    cmd = "#{@dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
-    o, e, s = exe_cmd(cmd)
-    if s.exitstatus == 0
-      @logger.debug("Unbind user in #{prov_cred["name"]}.")
-      binding_creds << prov_cred
-      binding_creds.each do |cred|
-        unbind(cred)
-      end
-      return true
+    @logger.debug("Dump instance #{name} request.")
+    host, port =  %w{host port}.map { |opt| @postgresql_config[opt] }
+    default_user = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    if default_user.nil?
+      raise "No default user to dump instance."
     else
-      return nil
+      user = default_user[:user]
+      passwd = default_user[:password]
+      dump_file = File.join(dump_file_path, "#{name}.dump")
+      @logger.info("Dump instance #{name} content to #{dump_file}")
+      cmd = "#{@dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
+      o, e, s = exe_cmd(cmd)
+      return s.exitstatus == 0
     end
   rescue => e
     @logger.error("Error during dump_instance #{e}")
@@ -654,58 +731,62 @@ class VCAP::Services::Postgresql::Node
   # Provision and import dump files
   # Refer to #dump_instance
   def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
-    @logger.debug("Import instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
+    @logger.debug("Import instance #{name} request.")
     @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
     provision(plan, prov_cred)
     bind_all_creds(name, binding_creds_hash)
-    name = prov_cred["name"]
-    import_file = File.join(dump_file_path, "#{name}.dump")
-    host, user, password, port =  %w{host user pass port}.map { |opt| @postgresql_config[opt] }
-    @logger.info("Import data from #{import_file} to database #{name}")
-    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} #{import_file}"
-    o, e, s = exe_cmd(cmd)
-    if s.exitstatus == 0
-      return true
+    host, port =  %w{host port}.map { |opt| @postgresql_config[opt] }
+    default_user = Provisionedservice.get(name).bindusers.all(:default_user => true)[0]
+    if default_user.nil?
+      raise "No default user to import instance"
     else
-      return nil
+      user = default_user[:user]
+      passwd = default_user[:password]
+      import_file = File.join(dump_file_path, "#{name}.dump")
+      @logger.info("Import data from #{import_file} to database #{name}")
+      archive_list(import_file, { :restore_bin => @restore_bin })
+      cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} -L #{import_file}.archive_list #{import_file}"
+      o, e, s = exe_cmd(cmd)
+      return s.exitstatus == 0
     end
   rescue => e
     @logger.error("Error during import_instance #{e}")
     nil
+  ensure
+    FileUtils.rm_rf("#{import_file}.archive_list")
   end
 
-  # This function might run at new node or original node
-  # New node: update credentials
-  # Original node: restore from the migration
   def enable_instance(prov_cred, binding_creds_hash)
     @logger.debug("Enable instance #{prov_cred["name"]} request.")
-    name = prov_cred["name"]
-    if prov_cred["hostname"] == @local_ip
-      # Original
-      bind_all_creds(name, binding_creds_hash)
-      db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name)
-      service = Provisionedservice.get(name)
-      unblock_user_from_db(db_connection, service)
-    else
-      # New
-      prov_cred = gen_credential(name, prov_cred["user"], prov_cred["password"])
-      binding_creds_hash.each_value do |v|
-        v["credentials"] = gen_credential(name, v["credentials"]["username"], v["credentials"]["password"])
-      end
-    end
-    return [prov_cred, binding_creds_hash]
+    db_connection = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], prov_cred["name"], true)
+    raise PGError("Fail to connect to database #{prov_cred["name"]}") unless db_connection
+    service = Provisionedservice.get(prov_cred["name"])
+    unblock_user_from_db(db_connection, service)
+    true
   rescue => e
     @logger.error("Error during enable_instance #{e}")
+    nil
+  end
+
+  def update_instance(prov_cred, binding_creds_hash)
+    @logger.debug("Update instance #{prov_cred["name"]} handles request.")
+    prov_cred = gen_credential(prov_cred["name"], prov_cred["user"], prov_cred["password"])
+    binding_creds_hash.each_value do |v|
+      v["credentials"] = gen_credential(prov_cred["name"], v["credentials"]["username"], v["credentials"]["password"])
+    end
+    [prov_cred, binding_creds_hash]
+  rescue => e
+    @logger.error("Error during update_instance #{e}")
     []
   end
 
   # shell CMD wrapper and logger
-  def exe_cmd(cmd, stdin=nil)
+  def exe_cmd(cmd, env={}, stdin=nil)
     @logger.debug("Execute shell cmd:[#{cmd}]")
-    o, e, s = Open3.capture3(cmd, :stdin_data => stdin)
+    o, e, s = Open3.capture3(env, cmd, :stdin_data => stdin)
     if s.exitstatus == 0
-      @logger.info("Execute cmd:[#{cmd}] successd.")
+      @logger.info("Execute cmd:[#{cmd}] succeeded.")
     else
       @logger.error("Execute cmd:[#{cmd}] failed. Stdin:[#{stdin}], stdout: [#{o}], stderr:[#{e}]")
     end
@@ -718,16 +799,23 @@ class VCAP::Services::Postgresql::Node
     varz[:pg_version] = @connection.query('select version()')[0]["version"]
     # db stat
     varz[:db_stat] = get_db_stat
-    # node capacity
-    # (no need to synchronize @available_storage here since varz is not in critical path)
-    varz[:node_storage_capacity] = @node_capacity
-    varz[:node_storage_used] = @node_capacity - @available_storage
+    varz[:max_capacity] = @max_capacity
+    varz[:available_capacity] = @capacity
     # how many long queries and long txs are killed.
     varz[:long_queries_killed] = @long_queries_killed
     varz[:long_transactions_killed] = @long_tx_killed
     # how many provision/binding operations since startup.
     varz[:provision_served] = @provision_served
     varz[:binding_served] = @binding_served
+    # get instances status
+    varz[:instances] = {}
+    begin
+      Provisionedservice.all.each do |instance|
+        varz[:instances][instance.name.to_sym] = get_status(instance)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
     varz
   rescue => e
     @logger.warn("Error during generate varz: #{e}")
@@ -761,25 +849,7 @@ class VCAP::Services::Postgresql::Node
     []
   end
 
-  def healthz_details()
-    healthz = {:self => "ok"}
-    if connection_exception
-      @logger.warn("PostgreSQL connection lost, healthz fail.")
-      healthz[:self] = "fail"
-      return healthz
-    end
-    begin
-      Provisionedservice.all.each do |instance|
-        healthz[instance.name.to_sym] = get_instance_healthz(instance)
-      end
-    rescue => e
-      @logger.error("Error get instance list: #{e}")
-      healthz[:self] = "fail"
-    end
-    healthz
-  end
-
-  def get_instance_healthz(instance)
+  def get_status(instance)
     res = 'ok'
     host, port = %w{host port}.map { |opt| @postgresql_config[opt] }
     begin

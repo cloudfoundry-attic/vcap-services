@@ -1,10 +1,13 @@
 require 'rake'
 
 desc "Run specs"
-task "spec" => ["bundler:install:test", "test:spec"]
+task "spec" => ["test:spec"]
 
-desc "Run specs using RCov"
-task "spec:rcov" => ["bundler:install:test", "test:spec:rcov"]
+desc "Run specs using SimpleCov"
+task "spec:rcov" => ["test:spec:rcov"]
+
+desc "Run ci using SimpleCov"
+task "spec:ci" => ["test:spec:ci"]
 
 namespace "bundler" do
   desc "Install gems"
@@ -29,11 +32,21 @@ namespace "bundler" do
 end
 
 namespace "test" do
-  task "spec" do |t|
-    sh("cd spec && rake spec")
+  def run_spec
+    sh "nats-server &"
+    Dir.chdir("spec"){ yield }
+    sh "pkill -f nats-server"
   end
 
- task "spec:rcov" do |t|
-    sh("cd spec && rake spec:rcov")
+  task "spec" do |t|
+    run_spec{ sh "rake spec" }
+  end
+
+  task "spec:rcov" do |t|
+    run_spec{ sh "rake simcov" }
+  end
+
+  task "spec:ci" do |t|
+    run_spec{ sh "rake spec:ci" }
   end
 end

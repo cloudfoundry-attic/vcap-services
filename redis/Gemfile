@@ -1,8 +1,8 @@
 source :rubygems
 
-gem "eventmachine"
+gem 'eventmachine', :git => 'git://github.com/cloudfoundry/eventmachine.git', :branch => 'release-0.12.11-cf'
 gem "em-http-request"
-gem "nats", '>= 0.4.10'
+gem "nats"
 gem "ruby-hmac"
 gem "uuidtools"
 gem "datamapper", ">= 0.10.2"
@@ -11,13 +11,18 @@ gem "do_sqlite3"
 gem "sinatra"
 gem "thin"
 gem "redis"
+gem "rake"
+gem "curb"
 
-gem 'vcap_common', :require => ['vcap/common', 'vcap/component']
-gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
+gem 'vcap_common', :require => ['vcap/common', 'vcap/component'], :git => 'git://github.com/cloudfoundry/vcap-common.git', :ref => '07205d81'
+gem 'vcap_logging', :require => ['vcap/logging'], :git => 'git://github.com/cloudfoundry/common.git', :ref => 'b96ec1192'
+gem 'vcap_services_base', :git => 'git://github.com/cloudfoundry/vcap-services-base.git', :ref => 'b6507821'
 
 group :test do
   gem "rake"
   gem "rspec"
   gem "rcov"
+  gem "simplecov"
+  gem "simplecov-rcov"
   gem "ci_reporter"
 end

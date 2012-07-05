@@ -4,6 +4,8 @@ $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
 require 'rubygems'
 require 'rspec'
+require 'bundler/setup'
+require 'vcap_services_base'
 
 require 'postgresql_service/util'
 require 'postgresql_service/provisioner'
@@ -28,7 +30,8 @@ def getNodeTestConfig()
   options = {
     :logger => getLogger,
     :base_dir => parse_property(config, "base_dir", String),
-    :available_storage => parse_property(config, "available_storage", Integer),
+    :plan => parse_property(config, "plan", String),
+    :capacity => parse_property(config, "capacity", Integer),
     :max_db_size => parse_property(config, "max_db_size", Integer),
     :max_long_query => parse_property(config, "max_long_query", Integer),
     :node_id => parse_property(config, "node_id", String),
@@ -39,7 +42,8 @@ def getNodeTestConfig()
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
     :max_db_conns => parse_property(config, "max_db_conns", Integer),
     :restore_bin => parse_property(config, "restore_bin", String),
-    :dump_bin => parse_property(config, "dump_bin", String)
+    :dump_bin => parse_property(config, "dump_bin", String),
+    :db_size_overhead => parse_property(config, "db_size_overhead", Float)
   }
   options
 end
@@ -52,6 +56,7 @@ def getProvisionerTestConfig()
     :logger   => getLogger,
     :version  => config[:service][:version],
     :local_ip => config[:host],
+    :plan_management => config[:plan_management],
     :mbus => config[:mbus]
   }
   options

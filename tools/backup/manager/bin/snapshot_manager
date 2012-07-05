@@ -1,0 +1,83 @@
+#!/usr/bin/env ruby
+# Copyright (c) 2009-2011 VMware, Inc.
+
+ENV["BUNDLE_GEMFILE"] ||= File.join(File.dirname(__FILE__), "..", "Gemfile")
+
+require "rubygems"
+require "bundler/setup"
+require "set"
+require 'vcap_services_base'
+require 'vcap/logging'
+
+DEFAULT_CLEANUP_MAX_DAYS = 7
+DEFAULT_WAKEUP_INTERVAL = 60 * 60 # one hour
+DEFAULT_Z_INTERVAL = 30
+
+once = false
+config_file = File.join(File.dirname(__FILE__), "..", "config", "snapshot_manager.yml")
+
+def parse_property(hash, key, type, options = {})
+  obj = hash[key]
+  if obj.nil?
+    raise "Missing required option: #{key}" unless options[:optional]
+    nil
+  elsif type == Range
+    raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
+    first, last = obj["first"], obj["last"]
+    raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
+    Range.new(first, last)
+  else
+    raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
+    obj
+  end
+end
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: snapshot_manager [options]"
+  opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+    config_file = opt
+  end
+  opts.on("-o", "--once", "Run once") do |opt|
+    once = opt
+  end
+  opts.on("-h", "--help", "Help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+begin
+  config = YAML.load_file(config_file)
+rescue => e
+  raise "Could not read configuration file:  #{e}"
+end
+
+VCAP::Logging.setup_from_config(config["logging"])
+logger = VCAP::Logging.logger(File.basename($0))
+
+cleanup = parse_property(config, "cleanup", Hash, :optional => true) || {}
+cleanup = cleanup.inject({}){|m,(k,v)| m[k.to_sym] = v;m}
+cleanup[:max_days] ||= DEFAULT_CLEANUP_MAX_DAYS
+
+options = {
+  :once => once,
+  :logger => logger,
+  :root => parse_property(config, "root", String),
+  :wakeup_interval => parse_property(config, "wakeup_interval", Integer, :optional => true) || DEFAULT_WAKEUP_INTERVAL,
+  :cleanup => cleanup,
+  :mbus => parse_property(config, "mbus", String),
+  :z_interval => parse_property(config, "z_interval", Integer, :optional => true) || DEFAULT_Z_INTERVAL,
+  :enable => parse_property(config, "enable", Object, :optional => true) || false,
+  :target => "snapshots",
+  :service_name => "SnapshotManager"
+}
+
+pid_file = parse_property(config, "pid", String, :optional => true)
+VCAP::PidFile.new(pid_file) if pid_file
+
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "lib")
+require 'backup_manager/manager'
+
+EM.run do
+  VCAP::Services::Backup::Manager.new(options).start
+end

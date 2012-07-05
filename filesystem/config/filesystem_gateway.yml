@@ -13,6 +13,7 @@ logging:
   level: debug
 mbus: nats://localhost:4222
 pid: /var/vcap/sys/run/filesystem_service.pid
+#fs_type: nfs
 #backends:
 #  - host: 10.0.0.1
 #    export: /home/nfs/backend
