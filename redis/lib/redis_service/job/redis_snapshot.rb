@@ -55,7 +55,10 @@ module VCAP::Services::Redis::Snapshot
       snapshot = {
         :snapshot_id => snapshot_id,
         :size => dump_file_size,
-        :file => filename
+        :files => [filename],
+        :manifest => {
+          :version => 1
+        }
       }
 
       snapshot
@@ -75,7 +78,7 @@ module VCAP::Services::Redis::Snapshot
       init_setting(@config["command_rename_prefix"])
 
       srv = redis_provisioned_service.get(name)
-      snapshot_file_path = File.join(get_dump_path(name, snapshot_id) , "dump.rdb")
+      snapshot_file_path = @snapshot_files[0]
       raise "Can't snapshot file #{snapshot_file_path}" unless File.exists?(snapshot_file_path)
 
       result = import_redis_data(srv, get_dump_path(name, snapshot_id))

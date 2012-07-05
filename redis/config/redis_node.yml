@@ -26,3 +26,4 @@ max_clients: 500
 max_db_size: 128
 image_dir: /var/vcap/services/redis/redis_image
 persistent: true
+# op_time_limit: 6

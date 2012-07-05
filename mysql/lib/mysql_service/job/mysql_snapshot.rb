@@ -26,7 +26,10 @@ module VCAP::Services::Mysql::Snapshot
       snapshot = {
         :snapshot_id => snapshot_id,
         :size => dump_file_size,
-        :file => filename
+        :files => [filename],
+        :manifest => {
+          :version => 1
+        }
       }
 
       snapshot
@@ -39,8 +42,10 @@ module VCAP::Services::Mysql::Snapshot
 
     def execute
       mysql_conf = @config["mysql"]
-      snapshot_file_path = File.join(get_dump_path(name, snapshot_id) , "#{snapshot_id}.sql.gz")
+      snapshot_file_path = @snapshot_files[0]
       raise "Can't find snapshot file #{snapshot_file_path}" unless File.exists?(snapshot_file_path)
+      manifest = @manifest
+      @logger.debug("Manifest for snapshot: #{manifest}")
 
       result = import_dumpfile(name, mysql_conf, mysql_conf["user"], mysql_conf["pass"], snapshot_file_path, :mysql_bin => @config["mysql_bin"], :gzip_bin => @config["gzip_bin"])
       raise "Failed execute import command to #{name}" unless result

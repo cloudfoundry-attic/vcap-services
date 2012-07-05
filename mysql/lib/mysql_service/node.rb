@@ -356,6 +356,9 @@ class VCAP::Services::Mysql::Node
       raise MysqlError.new(MysqlError::MYSQL_CRED_NOT_FOUND, credential.inspect) if res.count() <= 0
     end
     delete_database_user(user)
+    @pool.with_connection do |connection|
+      handle_discarded_routines(name, connection)
+    end
     true
   end
 

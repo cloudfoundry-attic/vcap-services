@@ -4,6 +4,10 @@ snapshots_base_dir: /var/vcap/services/
 serialization_base_dir: /var/vcap/services/
 local_db: sqlite3:/var/vcap/services/postgresql/postgresql_node.db
 snapshot_quota: 5
+# optional download tuning
+serialization:
+  max_download_size_mb: 10
+  max_download_redirects: 5
 # Temp directory to save uploaded file
 tmp_dir: /tmp
 resque:

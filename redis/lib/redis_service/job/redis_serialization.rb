@@ -9,20 +9,21 @@ require "redis_service/redis_node"
 module VCAP::Services::Redis::Serialization
   include VCAP::Services::Base::AsyncJob::Serialization
 
+  # Validate the serialized data file.
+  def validate_input(files, manifest)
+    raise "Doesn't contains any snapshot file." if files.empty?
+    raise "Invalide version:#{version}" if manifest[:version] != 1
+    true
+  end
+
   # Download serialized data from url and import into database
   class ImportFromURLJob < BaseImportFromURLJob
-    def snapshot_filename name, snapshot_id
-      "dump.rdb"
-    end
+    include VCAP::Services::Redis::Serialization
   end
 
   # Import serailzed data, which is saved in temp file, into database
   class ImportFromDataJob < BaseImportFromDataJob
     include VCAP::Services::Redis::Util
     include VCAP::Services::Redis::Serialization
-
-    def snapshot_filename name, snapshot_id
-      "dump.rdb"
-    end
   end
 end

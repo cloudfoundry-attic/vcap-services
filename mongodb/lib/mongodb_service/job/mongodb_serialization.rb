@@ -5,17 +5,19 @@ require "mongodb_service/mongodb_error"
 module VCAP::Services::MongoDB::Serialization
   include VCAP::Services::Base::AsyncJob::Serialization
 
+  # Validate the serialized data file.
+  def validate_input(files, manifest)
+    raise "Doesn't contains any snapshot file." if files.empty?
+    raise "Invalide version:#{version}" if manifest[:version] != 1
+    true
+  end
+
   class ImportFromURLJob < BaseImportFromURLJob
-    def snapshot_filename name, snapshot_id
-      "#{snapshot_id}.tgz"
-    end
+    include VCAP::Services::MongoDB::Serialization
   end
 
   class ImportFromDataJob < BaseImportFromDataJob
-    def snapshot_filename name, snapshot_id
-      "#{snapshot_id}.tgz"
-    end
+    include VCAP::Services::MongoDB::Serialization
   end
-
 end
 

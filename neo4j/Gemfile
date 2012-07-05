@@ -3,7 +3,7 @@ source :rubygems
 gem "datamapper", ">= 0.10.2"
 gem "dm-sqlite-adapter"
 gem "do_sqlite3"
-gem "eventmachine"
+gem 'eventmachine', :git => 'git://github.com/cloudfoundry/eventmachine.git', :branch => 'release-0.12.11-cf'
 gem "em-http-request"
 gem "nats"
 gem "ruby-hmac"
@@ -12,9 +12,9 @@ gem "rest-client"
 gem "sinatra"
 gem "thin"
 
-gem 'vcap_common', '>= 1.0.8', :require => ['vcap/common', 'vcap/component']
-gem 'vcap_logging', '>=0.1.3', :require => ['vcap/logging']
-gem "vcap_services_base"
+gem 'vcap_common', :require => ['vcap/common', 'vcap/component'], :git => 'git://github.com/cloudfoundry/vcap-common.git', :ref => '07205d81'
+gem 'vcap_logging', :require => ['vcap/logging'], :git => 'git://github.com/cloudfoundry/common.git', :ref => 'b96ec1192'
+gem 'vcap_services_base', :git => 'git://github.com/cloudfoundry/vcap-services-base.git', :ref => 'b6507821'
 
 group :test do
   gem "rake"

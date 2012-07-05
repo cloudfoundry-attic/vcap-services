@@ -1,6 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require "mysql2"
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
 require "mysql_service/util"
 
 module VCAP; module Services; module Mysql; end; end; end

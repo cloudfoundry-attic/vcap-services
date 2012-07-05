@@ -9,10 +9,6 @@ require "uuidtools"
 require 'dalli'
 require "thread"
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..', 'base', 'lib')
-require 'base/node'
-require "datamapper_l"
-
 module VCAP
   module Services
     module Memcached
@@ -32,7 +28,7 @@ class VCAP::Services::Memcached::Node
 
   class SASLAdmin
     class SASLOperationError < StandardError
-      SASL_OPS_USER_ALREADY_EXITST  = 'Failed to create user. Specified user has already exists.'
+      SASL_OPS_USER_ALREADY_EXISTS  = 'Failed to create user. Specified user has already exists.'
       SASL_OPS_ILLEGAL_INPUT        = 'Illegal input.'
       SASL_OPS_UNKNOWN_ERROR        = 'Failed to create user. Unknown error.'
     end
@@ -60,7 +56,7 @@ class VCAP::Services::Memcached::Node
       users = user_list()
 
       if users.include?(user)
-        raise SASLOperationError::SASL_OPS_USER_ALREADY_EXITST
+        raise SASLOperationError::SASL_OPS_USER_ALREADY_EXISTS
       end
       ret = `echo '#{password}' | saslpasswd2 -a memcached -c #{user} -p`
 
@@ -122,6 +118,8 @@ class VCAP::Services::Memcached::Node
     @max_clients = @options[:max_clients] || 500
     @memcached_timeout = @options[:memcached_timeout] || 2
     @memcached_memory = @options[:memcached_memory]
+    @sasl_enabled = @options[:sasl_enabled] || false
+    @run_as_user =  @options[:run_as_user] || ""
   end
 
   def pre_send_announcement
@@ -182,7 +180,7 @@ class VCAP::Services::Memcached::Node
 
     begin
       instance.pid = start_instance(instance, db_file)
-      @sasl_admin.create_user(instance.user, instance.password)
+      @sasl_admin.create_user(instance.user, instance.password) if @sasl_enabled
       save_instance(instance)
       @logger.debug("Started process #{instance.pid}")
     rescue => e1
@@ -201,7 +199,7 @@ class VCAP::Services::Memcached::Node
 
   def unprovision(instance_id, credentials_list = [])
     instance = get_instance(instance_id)
-    @logger.warn("instance: #{instance.to_s}")
+    @logger.info("unprovision instance: #{instance.to_s}")
     cleanup_instance(instance)
     {}
   end
@@ -249,6 +247,7 @@ class VCAP::Services::Memcached::Node
     @logger.debug("Start provisioned instance....")
 
     ProvisionedService.all.each do |instance|
+      @capacity -= capacity_unit
       @logger.debug("instance : #{instance.inspect}")
       @free_ports_mutex.synchronize do
         @free_ports.delete(instance.port)
@@ -261,7 +260,7 @@ class VCAP::Services::Memcached::Node
         pid = start_instance(instance)
         instance.pid = pid
         @logger.debug("Started Instace. pid is  #{instance.pid}")
-        @sasl_admin.create_user(instance.user, instance.password)
+        @sasl_admin.create_user(instance.user, instance.password) if @sasl_enabled
         save_instance(instance)
       rescue => e
         @logger.warn("Error starting instance #{instance.name}: #{e}")
@@ -297,7 +296,7 @@ class VCAP::Services::Memcached::Node
     str << " -p #{opt['port']}"
     str << " -c #{opt['maxclients']}"
     str << " -v"
-    str << " -S"
+    str << " -S" if @sasl_enabled
 
     return str
   end
@@ -313,7 +312,6 @@ class VCAP::Services::Memcached::Node
     opt['maxclients'] = @max_clients
 
     option_string = build_option_string(opt)
-    @logger.warn("#{@memcached_server_path} #{option_string}")
 
     log_dir = instance_log_dir(instance.name)
     log_file = File.join(log_dir, "memcached.log")
@@ -321,7 +319,10 @@ class VCAP::Services::Memcached::Node
 
     FileUtils.mkdir_p(log_dir)
 
-    cmd = "#{@memcached_server_path} #{option_string}"
+    run_as_cmd_prefix = @run_as_user.empty? ? "" : "sudo -u #{@run_as_user}"
+    cmd = "#{run_as_cmd_prefix} #{@memcached_server_path} #{option_string}"
+    @logger.info("Executing CMD =  #{cmd}")
+
     pid = Process.spawn(cmd, :out=>"#{log_file}", :err=>"#{err_file}")
     Process.detach(pid)
     return pid
@@ -346,7 +347,7 @@ class VCAP::Services::Memcached::Node
     end
     begin
       destroy_instance(instance)
-      @sasl_admin.delete_user(instance.user)
+      @sasl_admin.delete_user(instance.user) if @sasl_enabled
     rescue => e
       err_msg << e.message
     end

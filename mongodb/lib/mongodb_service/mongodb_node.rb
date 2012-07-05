@@ -214,6 +214,7 @@ class VCAP::Services::MongoDB::Node
       "password" => password,
       "name"     => p_service.name,
       "db"       => p_service.db
+      "url"      => "mongodb://#{username}:#{password}@#{host}:#{p_service.port}/#{p_service.db}"
     }
 
     @logger.debug("Bind response: #{response}")

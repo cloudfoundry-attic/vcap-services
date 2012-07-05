@@ -411,16 +411,25 @@ describe "Mysql server node" do
       conn.query("create table test(id INT)")
       conn.query("create procedure defaultfunc(out defaultcount int) begin select count(*) into defaultcount from test; end")
       binding = @node.bind(db['name'], @default_opts)
+      new_binding = @node.bind(db['name'], @default_opts)
       @test_dbs[db] << binding
+      @test_dbs[db] << new_binding
+
       # create stored procedure
       bind_conn = connect_to_mysql(binding)
+      new_bind_conn = connect_to_mysql(new_binding)
       bind_conn.query("create procedure myfunc(out mycount int) begin  select count(*) into mycount from test ; end")
       bind_conn.query("create procedure myfunc2(out mycount int) SQL SECURITY invoker begin select count(*) into mycount from test;end")
+      new_bind_conn.query("create procedure myfunc3(out mycount int) begin select count(*) into mycount from test; end")
+      new_bind_conn.close if new_bind_conn
+      @node.unbind(new_binding)
       conn.query("call defaultfunc(@testcount)")
       conn.query("select @testcount")
       conn.query("call myfunc(@testcount)")
       conn.query("select @testcount")
       conn.query("call myfunc2(@testcount)")
+      conn.query("select @testcount")
+      conn.query("call myfunc3(@testcount)")
       conn.query("select @testcount")
       bind_conn.query("call defaultfunc(@testcount)")
       bind_conn.query("select @testcount")
@@ -428,6 +437,9 @@ describe "Mysql server node" do
       bind_conn.query("select @testcount")
       bind_conn.query("call myfunc2(@testcount)")
       bind_conn.query("select @testcount")
+      bind_conn.query("call myfunc3(@testcount)")
+      bind_conn.query("select @testcount")
+
 
       # backup current db
       host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
@@ -437,7 +449,7 @@ describe "Mysql server node" do
       bind_conn.query("drop procedure myfunc")
       conn.query("drop table test")
       res = bind_conn.query("show procedure status")
-      res.count().should == 2
+      res.count().should == 3
       res = conn.query("show tables")
       res.count.should == 0
 
@@ -452,7 +464,7 @@ describe "Mysql server node" do
       res.count().should == 1
       res.first["Tables_in_#{db['name']}"].should == "test"
       res = conn.query("show procedure status")
-      res.count().should == 3
+      res.count().should == 4
       expect do
         conn.query("call defaultfunc(@testcount)")
         conn.query("select @testcount")
@@ -463,6 +475,10 @@ describe "Mysql server node" do
       end.should_not raise_error # secuirty type should be invoker or a error will be raised.
       expect do
         conn.query("call myfunc2(@testcount)")
+        conn.query("select @testcount")
+      end.should_not raise_error
+      expect do
+        conn.query("call myfunc3(@testcount)")
         conn.query("select @testcount")
       end.should_not raise_error
       EM.stop
