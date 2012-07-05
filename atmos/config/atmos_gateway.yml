@@ -5,6 +5,7 @@ service:
   version: "1.4"
   description: 'Atmos object store'
   plans: ['free']
+  default_plan: free
   tags: ['atmos', 'atmos-1.4', 'object store']
 ip_route: localhost
 #proxy:

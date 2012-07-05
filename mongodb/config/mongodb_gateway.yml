@@ -5,6 +5,7 @@ service:
   version: "1.8"
   description: 'MongoDB NoSQL store'
   plans: ['free']
+  default_plan: free
   tags: ['mongodb', 'mongodb-1.8', 'nosql', 'document']
   supported_versions: ["1.8"]
   version_aliases:

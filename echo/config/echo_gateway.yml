@@ -5,6 +5,7 @@ service:
   version: "1.0"
   description: 'Echo service'
   plans: ['free']
+  default_plan: free
   tags: ['echo', 'echo-1.0', 'echobased', 'demo']
 ip_route: localhost
 index: 0
