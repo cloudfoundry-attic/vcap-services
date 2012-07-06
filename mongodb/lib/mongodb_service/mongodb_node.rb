@@ -320,7 +320,8 @@ class VCAP::Services::MongoDB::Node
       "username" => username,
       "password" => password,
       "name"     => provisioned_service.name,
-      "db"       => provisioned_service.db
+      "db"       => provisioned_service.db,
+      "url"      => "mongodb://#{username}:#{password}@#{host}:#{provisioned_service.port}/#{provisioned_service.db}"
     }
 
     @logger.debug("Bind response: #{response}")

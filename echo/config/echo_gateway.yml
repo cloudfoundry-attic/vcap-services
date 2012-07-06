@@ -1,0 +1,16 @@
+---
+cloud_controller_uri: api.vcap.me
+service:
+  name: echo
+  version: "1.0"
+  description: 'Echo service'
+  plans: ['free']
+  tags: ['echo', 'echo-1.0', 'echobased', 'demo']
+ip_route: localhost
+index: 0
+token: changeechotoken
+logging:
+  level: debug
+mbus: nats://localhost:4222
+pid: /var/vcap/sys/run/echo_service.pid
+node_timeout: 2

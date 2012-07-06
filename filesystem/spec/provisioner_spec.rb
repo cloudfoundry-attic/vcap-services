@@ -303,7 +303,6 @@ describe VCAP::Services::Filesystem::LocalProvisioner do
       service_id = msg["response"][:service_id]
     end
     backend = @provisioner.get_backend(handle)
-    puts ">>> #{handle}"
     handle[:credentials]["internal"]["local_path"].should_not be_nil
     handle[:credentials]["internal"]["local_path"].should == backend["local_path"]
     @provisioner.unprovision_service(service_id){}

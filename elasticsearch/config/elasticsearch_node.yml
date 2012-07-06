@@ -11,8 +11,8 @@ pid: /var/vcap/sys/run/elasticsearch_node.pid
 max_memory: 512
 node_id: elasticsearch_node_1
 elasticsearch_log_dir: /var/vcap/sys/log/elasticsearch
-elasticsearch_path: /var/vcap/package/elasticsearch/bin/elasticsearch
-elasticsearch_plugin_dir: /var/vcap/package/elasticsearch/plugins
+elasticsearch_path: /var/vcap/packages/elasticsearch/bin/elasticsearch
+elasticsearch_plugin_dir: /var/vcap/packages/elasticsearch/plugins
 port_range:
   first: 45001
   last: 55000

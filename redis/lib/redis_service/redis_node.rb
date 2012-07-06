@@ -343,6 +343,7 @@ class VCAP::Services::Redis::Node
           redis.echo("")
           return pid
         rescue => e
+          sleep 0.1
           next
         ensure
           begin
@@ -350,7 +351,6 @@ class VCAP::Services::Redis::Node
           rescue => e
           end
         end
-        sleep 0.1
       end
       @logger.error("Timeout to start redis server for instance #{instance.name}")
       # Stop the instance if it is running

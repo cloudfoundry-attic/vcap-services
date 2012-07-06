@@ -4,9 +4,6 @@
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 
-$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', 'base', 'lib')
-require 'base/node_bin'
-
 $LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
 require "couchdb_service/couchdb_node"
 
