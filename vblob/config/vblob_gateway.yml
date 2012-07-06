@@ -1,11 +1,11 @@
 ---
 # cloud_controller_uri: api.vcap.me
 service:
-  name: vblob
-  version: "1.0"
+  name: blob
+  version: "0.51"
   description: 'vBlob service'
   plans: ['free']
-  tags: ['vblob', 'vblob-1.0', 'nosql']
+  tags: ['blob', 'blob-0.51', 'nosql']
 ip_route: localhost
 #proxy:
 #   host: proxy
