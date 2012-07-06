@@ -495,7 +495,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     tmpdir = File.join("/var/vcap/store/tmp", self[:name])
     FileUtils.mkdir_p(tmpdir)
     begin
-      self.class.sh "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]}", :timeout => 120
+      self.class.sh "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]} --smallfiles --noprealloc", :timeout => 120
       logger.warn("Service #{self[:name]} db repair done")
     rescue => e
       logger.error("Service #{self[:name]} repair failed: #{e}")
