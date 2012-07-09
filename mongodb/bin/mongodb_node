@@ -31,7 +31,7 @@ class VCAP::Services::MongoDB::NodeBin < VCAP::Services::Base::NodeBin
 
     options[:supported_versions] = parse_property(config, "supported_versions", Array)
     options[:default_version] = parse_property(config, "default_version", String)
-
+    options[:mongod_options] = parse_property(config, "mongod_options", Hash)
     options
   end
 

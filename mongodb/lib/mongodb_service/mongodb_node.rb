@@ -95,6 +95,7 @@ class VCAP::Services::MongoDB::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @mongod_path = options[:mongod_path]
+    @mongod_options = options[:mongod_options]
     @mongorestore_path = options[:mongorestore_path]
     @mongod_log_dir = options[:mongod_log_dir]
 
@@ -637,6 +638,7 @@ class VCAP::Services::MongoDB::Node
       config_path = File.join(dir, "mongodb.conf")
 
       executable = mongod_exe_path(get_version(provisioned_service))
+      options = mongod_exe_options(get_version(provisioned_service))
 
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
@@ -644,8 +646,8 @@ class VCAP::Services::MongoDB::Node
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
-      @logger.debug("Mongo Executable: #{executable}")
-      cmd = "#{executable} -f #{config_path}"
+      @logger.debug("Mongo Executable: #{executable}, Options: #{options}")
+      cmd = "#{executable} #{options} -f #{config_path}"
 
       close_fds
 
@@ -789,6 +791,10 @@ class VCAP::Services::MongoDB::Node
 
   def mongod_exe_path(version)
     @mongod_path[version]
+  end
+
+  def mongod_exe_options(version)
+    @mongod_options[version]
   end
 
   def mongorestore_exe_path(version)

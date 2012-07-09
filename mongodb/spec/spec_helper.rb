@@ -124,6 +124,7 @@ def get_node_config()
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
     :mongod_path => parse_property(config, "mongod_path", Hash),
+    :mongod_options => parse_property(config, "mongod_options", Hash),
     :mongorestore_path => parse_property(config, "mongorestore_path", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :node_id => parse_property(config, "node_id", String),

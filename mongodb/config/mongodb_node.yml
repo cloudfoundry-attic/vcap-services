@@ -20,6 +20,9 @@ mongod_path:
 mongorestore_path:
   "1.8": "mongorestore"
 
+mongod_options:
+  "1.8": ""
+
 port_range:
   first: 25001
   last: 45000
