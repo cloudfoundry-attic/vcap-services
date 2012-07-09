@@ -112,7 +112,7 @@ class VCAP::Services::MongoDB::Node
     super
     @logger.info("Shutting down instances..")
     ProvisionedService.all.each do |p_service|
-      @logger.debug("Try to terminate mongod container:#{p_service.pid}")
+      @logger.debug("Try to terminate mongod container:#{p_service.container}")
       p_service.stop if p_service.running?
     end
   end
@@ -492,7 +492,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def repair
-    tmpdir = File.join("/var/vcap/store/tmp", self[:name])
+    tmpdir = File.join(self.class.base_dir, "tmp", self[:name])
     FileUtils.mkdir_p(tmpdir)
     begin
       self.class.sh "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]} --smallfiles --noprealloc", :timeout => 120
