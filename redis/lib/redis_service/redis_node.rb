@@ -35,9 +35,7 @@ class VCAP::Services::Redis::Node
 
   def initialize(options)
     super(options)
-    @free_ports = Set.new
-    @free_ports_lock = Mutex.new
-    options[:port_range].each {|port| @free_ports << port}
+    init_ports(options[:port_range])
     options[:max_clients] ||= 500
     options[:persistent] ||= false
     # Configuration used in warden
@@ -51,38 +49,14 @@ class VCAP::Services::Redis::Node
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
     @redis_timeout = @options[:redis_timeout] || 2
-    @redis_start_timeout = @options[:redis_start_timeout] || 3
+    @service_start_timeout = @options[:service_start_timeout] || 3
     ProvisionedService.init(options)
     @options = options
   end
 
   def pre_send_announcement
     @capacity_lock.synchronize do
-      ProvisionedService.all.each do |instance|
-        @capacity -= capacity_unit
-        del_port(instance.port)
-
-        if instance.running? then
-          @logger.warn("Service #{instance.name} already listening on port #{instance.port}")
-          next
-        end
-
-        unless instance.base_dir?
-          @logger.warn("Service #{instance.name} in local DB, but not in file system")
-          next
-        end
-
-        instance.migration_check()
-
-        begin
-          instance.run
-          raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_redis_server_start(instance) == false
-          @logger.info("Successfully start provisioned instance #{instance.name}")
-        rescue => e
-          @logger.error("Error starting instance #{instance.name}: #{e}")
-          instance.stop
-        end
-      end
+      start_instances(ProvisionedService.all)
     end
   end
 
@@ -114,7 +88,7 @@ class VCAP::Services::Redis::Node
       instance = ProvisionedService.create(port, plan, nil, nil, db_file)
     end
     instance.run
-    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_redis_server_start(instance) == false
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
     gen_credentials(instance)
   rescue => e
     @logger.error("Error provision instance: #{e}")
@@ -282,30 +256,8 @@ class VCAP::Services::Redis::Node
     end
   end
 
-  def new_port(port=nil)
-    @free_ports_lock.synchronize do
-      raise "No ports available." if @free_ports.empty?
-      if port.nil? || !@free_ports.include?(port)
-        port = @free_ports.first
-        @free_ports.delete(port)
-      else
-        @free_ports.delete(port)
-      end
-    end
-    port
-  end
-
-  def free_port(port)
-    @free_ports_lock.synchronize do
-      raise "port #{port} already freed!" if @free_ports.include?(port)
-      @free_ports.add(port)
-    end
-  end
-
-  def del_port(port)
-    @free_ports_lock.synchronize do
-      @free_ports.delete(port)
-    end
+  def is_service_started(instance)
+    get_status(instance) == "ok" ? true : false
   end
 
   def get_instance(name)
@@ -325,25 +277,6 @@ class VCAP::Services::Redis::Node
     }
   end
 
-  def wait_redis_server_start(instance)
-    @redis_start_timeout.times do
-      sleep 1
-      redis = nil
-      begin
-        redis = Redis.new({:host => instance.ip, :port => @redis_port, :password => instance.password})
-        redis.echo("")
-        return true
-      rescue => e
-        next
-      ensure
-        begin
-          redis.quit if redis
-        rescue => e
-        end
-      end
-    end
-    false
-  end
 end
 
 class VCAP::Services::Redis::Node::ProvisionedService

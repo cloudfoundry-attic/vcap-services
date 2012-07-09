@@ -21,7 +21,6 @@ migration_nfs: /mnt/appcloud
 redis_log_dir: /var/vcap/sys/log/redis
 command_rename_prefix: protect-command-prefix
 max_clients: 500
-# redis_start_timeout: 3
 # fqdn_hosts: false
 max_db_size: 128
 image_dir: /var/vcap/services/redis/redis_image

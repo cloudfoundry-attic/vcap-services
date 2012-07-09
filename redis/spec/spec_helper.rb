@@ -19,7 +19,7 @@ require "redis_service/redis_error"
 
 def getLogger
   logger = Logger.new(STDOUT)
-  logger.level = Logger::ERROR
+  logger.level = Logger::DEBUG
   logger
 end
 

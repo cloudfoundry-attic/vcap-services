@@ -34,10 +34,6 @@ describe "vblob_node exception test" do
   end
 
   it "should be able to raise vblob_start_instance_error when it is diabled" do
-    expect { @provisioned_service.check_start }.should raise_error(VCAP::Services::VBlob::VBlobError)
-  end
-
-  it "should be removed from sqlite db when the instance has been disabled" do
-    @node.get_instance(@response['name']).should be_nil
+    @node.is_service_started(@provisioned_service).should == false
   end
 end

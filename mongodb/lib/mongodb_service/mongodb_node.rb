@@ -45,66 +45,13 @@ class VCAP::Services::MongoDB::Node
     super(options)
     ProvisionedService.init(options)
     @base_dir = options[:base_dir]
-    @free_ports = options[:port_range].to_a
-    @mutex = Mutex.new
-  end
-
-  def new_port(port=nil)
-    @mutex.synchronize do
-      raise "No ports available." if @free_ports.empty?
-      return @free_ports.shift if port.nil?
-      raise "port #{port} is already taken!" unless @free_ports.include?(port)
-      @free_ports.delete(port)
-      port
-    end
-  end
-
-  def free_port(port)
-    @mutex.synchronize do
-      raise "port #{port} already freed!" if @free_ports.include?(port)
-      @free_ports << port
-    end
-  end
-
-  def del_port(port)
-    @mutex.synchronize do
-      @free_ports.delete(port)
-    end
-  end
-
-  def port_occupied?(port)
-    begin
-      TCPSocket.open('localhost', port).close
-      return true
-    rescue => e
-      return false
-    end
+    init_ports(options[:port_range])
+    @service_start_timeout = @options[:service_start_timeout] || 3
   end
 
   def pre_send_announcement
     @capacity_lock.synchronize do
-      ProvisionedService.all.each do |p_service|
-        @capacity -= capacity_unit
-        del_port(p_service.port)
-        if p_service.running? then
-          @logger.warn("Service #{p_service.name} already listening on port #{p_service.port}")
-          next
-        end
-
-        unless p_service.base_dir?
-          @logger.warn("Service #{p_service.name} in local DB, but not in file system")
-          next
-        end
-
-        p_service.migration_check()
-
-        begin
-          p_service.run
-        rescue => e
-          @logger.error("Error starting service #{p_service.name}: #{e}")
-          p_service.stop
-        end
-      end
+      start_instances(ProvisionedService.all)
     end
   end
 

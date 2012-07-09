@@ -32,7 +32,7 @@ namespace "bundler" do
     open(path, 'w') { |f| f.write(out) }
   end
 
-  # usage: rake bundler:update![oldref,newref]
+  # usage: rake bundler:update[oldref,newref]
   desc "Update git ref in Gemfile"
   task :update, :oref, :nref do |t, args|
     exec_in_svc_dir { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }

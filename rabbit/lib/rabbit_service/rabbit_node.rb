@@ -35,9 +35,7 @@ class VCAP::Services::Rabbit::Node
 
   def initialize(options)
     super(options)
-    @free_ports = Set.new
-    @free_ports_lock = Mutex.new
-    options[:port_range].each {|port| @free_ports << port}
+    init_ports(options[:port_range])
     options[:max_clients] ||= 500
     options[:max_memory_factor] ||= 0.5
     options[:max_capacity] = @max_capacity
@@ -47,7 +45,7 @@ class VCAP::Services::Rabbit::Node
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
     @rabbitmq_timeout = @options[:rabbitmq_timeout] || 2
-    @rabbitmq_start_timeout = @options[:rabbitmq_start_timeout] || 5
+    @service_start_timeout = @options[:service_start_timeout] || 5
     @default_permissions = '{"configure":".*","write":".*","read":".*"}'
     @initial_username = "guest"
     @initial_password = "guest"
@@ -58,31 +56,7 @@ class VCAP::Services::Rabbit::Node
 
   def pre_send_announcement
     @capacity_lock.synchronize do
-      ProvisionedService.all.each do |instance|
-        @capacity -= capacity_unit
-        del_port(instance.port)
-
-        if instance.running? then
-          @logger.warn("Service #{instance.name} already listening on port #{instance.port}")
-          next
-        end
-
-        unless instance.base_dir?
-          @logger.warn("Service #{instance.name} in local DB, but not in file system")
-          next
-        end
-
-        instance.migration_check
-
-        begin
-          instance.run
-          raise RabbitmqError.new(RabbitmqError::RABBITMQ_START_INSTANCE_TIMEOUT, instance.name) if wait_rabbitmq_server_start(instance, false) == false
-          @logger.info("Successfully start provisioned instance #{instance.name}")
-        rescue => e
-          @logger.error("Error starting instance #{instance.name}: #{e}")
-          instance.stop
-        end
-      end
+      start_instances(ProvisionedService.all)
     end
   end
 
@@ -113,8 +87,14 @@ class VCAP::Services::Rabbit::Node
       instance = ProvisionedService.create(port, get_admin_port(port), plan)
     end
     instance.run
-    # Wait enough time for the RabbitMQ server starting
-    raise RabbitmqError.new(RabbitmqError::RABBITMQ_START_INSTANCE_TIMEOUT, instance.name) if wait_rabbitmq_server_start(instance) == false
+    # Wait enough time for the RabbitMQ server starting, need use initial username and password to check
+    admin_username = instance.admin_username
+    admin_password = instance.admin_password
+    instance.admin_username = @initial_username
+    instance.admin_password = @initial_username
+    raise RabbitmqError.new(RabbitmqError::RABBITMQ_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
+    instance.admin_username = admin_username
+    instance.admin_password = admin_password
     # Use initial credentials to create provision user
     credentials = {"username" => @initial_username, "password" => @initial_password, "hostname" => instance.ip}
     add_vhost(credentials, instance.vhost)
@@ -274,32 +254,6 @@ class VCAP::Services::Rabbit::Node
     res
   end
 
-  def new_port(port=nil)
-    @free_ports_lock.synchronize do
-      raise "No ports available." if @free_ports.empty?
-      if port.nil? || !@free_ports.include?(port)
-        port = @free_ports.first
-        @free_ports.delete(port)
-      else
-        @free_ports.delete(port)
-      end
-    end
-    port
-  end
-
-  def free_port(port)
-    @free_ports_lock.synchronize do
-      raise "port #{port} already freed!" if @free_ports.include?(port)
-      @free_ports.add(port)
-    end
-  end
-
-  def del_port(port)
-    @free_ports_lock.synchronize do
-      @free_ports.delete(port)
-    end
-  end
-
   def get_varz(instance)
     varz = {}
     varz[:name] = instance.name
@@ -361,24 +315,16 @@ class VCAP::Services::Rabbit::Node
     instance
   end
 
-  def wait_rabbitmq_server_start(instance, is_init=true)
-    @rabbitmq_start_timeout.times do
-      sleep 1
-      if is_init # A new instance
-        credentials = {"username" => @initial_username, "password" => @initial_password, "hostname" => instance.ip}
-      else # An existed instance
-        credentials = {"username" => instance.admin_username, "password" => instance.admin_password, "hostname" => instance.ip}
-      end
-      begin
-        # Try to call management API, if success, then return
-        response = create_resource(credentials)["users"].get
-        JSON.parse(response)
-        return true
-      rescue => e
-        next
-      end
+  def is_service_started(instance)
+    credentials = {"username" => instance.admin_username, "password" => instance.admin_password, "hostname" => instance.ip}
+    begin
+      # Try to call management API, if success, then return
+      response = create_resource(credentials)["users"].get
+      JSON.parse(response)
+      return true
+    rescue => e
+      return false
     end
-    false
   end
 
 end
