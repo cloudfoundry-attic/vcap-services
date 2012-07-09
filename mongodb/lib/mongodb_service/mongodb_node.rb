@@ -138,7 +138,18 @@ class VCAP::Services::MongoDB::Node
     end
   end
 
+  def migrate_saved_instances_on_startup
+    ProvisionedService.all.each do |provisioned_service|
+      if provisioned_service.version.to_s.empty?
+        provisioned_service.version = @default_version
+        @logger.warn("Unable to set version for: #{provisioned_service.inspect}") unless provisioned_service.save
+      end
+    end
+  end
+
   def pre_send_announcement
+    migrate_saved_instances_on_startup
+
     @capacity_lock.synchronize do
       ProvisionedService.all.each do |provisioned_service|
         @capacity -= capacity_unit
@@ -475,9 +486,9 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.adminpass = stored_service.adminpass
     provisioned_service.db        = stored_service.db
     provisioned_service.port      = port
-    provisioned_service.pid       = start_instance(provisioned_service)
+    provisioned_service.version   = stored_service.version
 
-    provisioned_service.version   = @default_version # TODO: use the version from dump manifest
+    provisioned_service.pid       = start_instance(provisioned_service)
 
     @logger.debug("Provisioned_service: #{provisioned_service}")
 
