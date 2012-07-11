@@ -27,6 +27,7 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
     options[:max_long_query] = parse_property(config, "max_long_query", Integer)
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
+    options[:kill_long_tx] = parse_property(config, "kill_long_tx", Boolean, :optional => true)
     options[:max_user_conns] = parse_property(config, "max_user_conns", Integer, :optional => true)
     options[:mysql] = parse_property(config, "mysql", Hash)
     options[:socket] = parse_property(config, "socket", String, :optional => true)

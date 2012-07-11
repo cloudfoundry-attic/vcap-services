@@ -52,6 +52,7 @@ class VCAP::Services::Mysql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
+    @kill_long_tx = options[:kill_long_tx] || true
     @max_user_conns = options[:max_user_conns] || 0
     @mysqldump_bin = options[:mysqldump_bin]
     @gzip_bin = options[:gzip_bin]
@@ -62,6 +63,8 @@ class VCAP::Services::Mysql::Node
 
     @long_queries_killed = 0
     @long_tx_killed = 0
+    @long_tx_count = 0
+    @long_tx_ids = []
     @statistics_lock = Mutex.new
     @provision_served = 0
     @binding_served = 0
@@ -235,12 +238,22 @@ class VCAP::Services::Mysql::Node
                 "WHERE inner_table.active_time > #{@max_long_tx}"
     @pool.with_connection do |connection|
       result = connection.query(query_str)
+      current_long_tx_ids = []
       result.each do |trx|
         trx_started, id, user, db, info, active_time = %w(trx_started id user db info active_time).map{|o| trx[o]}
-        connection.query("KILL QUERY #{id}")
-        @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
-        @long_tx_killed += 1
+        if @kill_long_tx
+          connection.query("KILL QUERY #{id}")
+          @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
+          @long_tx_killed += 1
+        else
+          @logger.warn("Log but not kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}}")
+          current_long_tx_ids << id
+          unless @long_tx_ids.include?(id)
+            @long_tx_count += 1
+          end
+        end
       end
+      @long_tx_ids = current_long_tx_ids
     end
   rescue => e
     @logger.error("Error during kill long transaction: #{e}.")
@@ -596,6 +609,7 @@ class VCAP::Services::Mysql::Node
     # how many long queries and long txs are killed.
     varz[:long_queries_killed] = @long_queries_killed
     varz[:long_transactions_killed] = @long_tx_killed
+    varz[:long_transactions_count] = @long_tx_count #logged but not killed
     # how many provision/binding operations since startup.
     @statistics_lock.synchronize do
       varz[:provision_served] = @provision_served

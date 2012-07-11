@@ -283,10 +283,29 @@ describe "Mysql server node" do
           conn.query("insert into a value(10)")
           conn.query("begin")
           conn.query("select * from a for update")
+          old_killed = node.varz_details[:long_transactions_killed]
           EM.add_timer(opts[:max_long_tx] * 5) {
             expect {conn.query("select * from a for update")}.should raise_error(Mysql2::Error)
             conn.close
-            EM.stop
+            node.varz_details[:long_transactions_killed].should > old_killed
+
+            node.instance_variable_set(:@kill_long_tx, false)
+            conn = connect_to_mysql(@db)
+            # prepare a transaction and not commit
+            conn.query("begin")
+            conn.query("select * from a for update")
+            old_counter = node.varz_details[:long_transactions_count]
+            EM.add_timer(opts[:max_long_tx] * 5) {
+              expect {conn.query("select * from a for update")}.should_not raise_error(Mysql2::Error)
+              node.varz_details[:long_transactions_count].should > old_counter
+              old_counter = node.varz_details[:long_transactions_count]
+              EM.add_timer(opts[:max_long_tx] * 5) {
+                #counter should not double-count the same long transaction
+                node.varz_details[:long_transactions_count].should == old_counter
+                conn.close
+                EM.stop
+              }
+            }
           }
         end
       end
