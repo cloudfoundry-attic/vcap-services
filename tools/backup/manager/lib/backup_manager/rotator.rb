@@ -27,8 +27,6 @@ class VCAP::Services::Backup::Rotator
 
   def scan(service)
     @manager.logger.info("#{self.class}: Scanning #{service}");
-    mysql_extra_prunes = []
-    mysql_extra_saves = []
     ins_list = @serv_ins[File.basename(service)]
     # we are expecting the directory structure to look like this
     # root/service/ab/cd/ef/abcdef.../timestamp/data
@@ -36,17 +34,7 @@ class VCAP::Services::Backup::Rotator
       each_subdirectory(ab) do |cd|
         each_subdirectory(cd) do |ef|
           each_subdirectory(ef) do |guid|
-            if ins_list && !ins_list.include?(File.basename(guid))
-              if 'mysql' == File.basename(service)
-                mysql_extra_prunes |= Dir.entries(guid).delete_if{|x| dotty(x)}
-              end
-              prune(guid)
-            else
-              if 'mysql' == File.basename(service)
-                mysql_extra_saves |= Dir.entries(guid).delete_if{|x| dotty(x)}
-              end
-              rotate(guid)
-            end
+            rotate(guid, :orphaned => ins_list && !ins_list.include?(File.basename(guid)))
           end
         end
       end
@@ -54,11 +42,6 @@ class VCAP::Services::Backup::Rotator
     # special case: for mysql we should take care of system data
     # $root/mysql/{information_schema|mysql}/timestamp
     if service == File.join(@manager.root, "mysql")
-      mysql_extra_prunes -= mysql_extra_saves
-      mysql_extra_prunes.each do |p|
-        prune(File.join(service,"information_schema",p))
-        prune(File.join(service,"mysql",p))
-      end
       rotate(File.join(service, "information_schema"))
       rotate(File.join(service, "mysql"))
     end
@@ -68,7 +51,9 @@ class VCAP::Services::Backup::Rotator
     @manager.logger.error("#{self.class}: Exception while running: #{x.message}, #{x.backtrace.join(', ')}")
   end
 
-  def rotate(dir)
+  # options:
+  #   :orphaned -- This option indicates if this backup is known by CC
+  def rotate(dir, opt={})
     if File.directory? dir then
       backups = {}
       each_subdirectory(dir) do |backup|
@@ -79,7 +64,7 @@ class VCAP::Services::Backup::Rotator
           @manager.logger.warn("Ignoring invalid backup #{backup}")
         end
       end
-      prune_all(backups)
+      prune_all(backups, opt)
     else
       @manager.logger.error("#{self.class}: #{dir} does not exist");
     end
@@ -98,12 +83,14 @@ class VCAP::Services::Backup::Rotator
     nil
   end
 
-  def prune_all(backups)
-    ancient = n_midnights_ago(@options[:max_days])
+  def prune_all(backups, opt={})
+    maxdays = @options[:max_days]
+    maxdays = @options[:unprovisioned_max_days] if opt[:orphaned]
+
+    ancient = n_midnights_ago(maxdays)
     latest_time = backups.keys.max
-    if latest_time && latest_time<ancient
-      #if no backup has been taken place in max_days, then retain
-      #the latest one and prune all others
+
+    if !opt[:orphaned] && latest_time && latest_time < ancient
       retain(backups[latest_time],latest_time)
       backups.each do |timestamp,path|
         prune(path,timestamp) if timestamp != latest_time
@@ -113,7 +100,7 @@ class VCAP::Services::Backup::Rotator
       backups.each do |timestamp, path|
         retain(path, timestamp) if timestamp >= midnight
       end
-      bucketize(backups).each do |bucket|
+      bucketize(backups, maxdays).each do |bucket|
         newest = bucket.max
         bucket.each do |timestamp|
           path = backups[timestamp]
@@ -127,7 +114,7 @@ class VCAP::Services::Backup::Rotator
     end
   end
 
-  def bucketize(backups)
+  def bucketize(backups, maxdays)
     # put the timestamps into maxdays + 1 buckets:
     # bucket[maxdays] <-- timestamps older than midnight maxdays ago
     #   ...
@@ -135,7 +122,6 @@ class VCAP::Services::Backup::Rotator
     #   ...
     # bucket[0]       <-- timestamps older than midnight today and newer than midnight yesterday
     # note that timestamps since midnight today are excluded from all buckets
-    maxdays = @options[:max_days]
     buckets = []
     (0 .. maxdays).each { |i|
       buckets << backups.keys.select { |timestamp|
