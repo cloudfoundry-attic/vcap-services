@@ -31,10 +31,12 @@ class VCAP::Services::Echo::Node
 
     @local_db = options[:local_db]
     @port = options[:port]
+    @base_dir = options[:base_dir]
   end
 
   def pre_send_announcement
     super
+    FileUtils.mkdir_p(@base_dir) if @base_dir
     start_db
     @capacity_lock.synchronize do
       ProvisionedService.all.each do |instance|
