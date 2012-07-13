@@ -20,10 +20,4 @@ module VCAP::Services::Redis::Serialization
   class ImportFromURLJob < BaseImportFromURLJob
     include VCAP::Services::Redis::Serialization
   end
-
-  # Import serailzed data, which is saved in temp file, into database
-  class ImportFromDataJob < BaseImportFromDataJob
-    include VCAP::Services::Redis::Util
-    include VCAP::Services::Redis::Serialization
-  end
 end

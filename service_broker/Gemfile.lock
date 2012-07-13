@@ -15,13 +15,16 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: b0cc19d5520c9849600dbd8cf2883bff66d7643e
-  ref: b0cc19d5
+  revision: 1dca468ec017ea5d296aeac1aa2fb7a70affba63
+  ref: 1dca468ec0
   specs:
     vcap_common (2.0.4)
+      em-http-request (~> 1.0.0.beta3)
       eventmachine
       httpclient
       membrane (~> 0.0.2)
+      mime-types
+      multipart-post
       nats (~> 0.4.22.beta.8)
       posix-spawn (~> 0.3.6)
       thin (~> 1.3.1)
@@ -29,10 +32,10 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: b8a47d1bc7d8901362db938a146107ccfb4f92e4
-  ref: b8a47d1b
+  revision: 8d7925decea67467dcc119f6c008cc9a324cb2e2
+  ref: 8d7925dece
   specs:
-    vcap_services_base (0.1.12)
+    vcap_services_base (0.1.13)
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)
@@ -136,7 +139,9 @@ GEM
     macaddr (1.6.1)
       systemu (~> 2.5.0)
     membrane (0.0.2)
+    mime-types (1.19)
     multi_json (1.0.4)
+    multipart-post (1.1.5)
     nats (0.4.24)
       daemons (>= 1.1.5)
       eventmachine (>= 0.12.10)

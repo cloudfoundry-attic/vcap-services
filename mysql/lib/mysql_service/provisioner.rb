@@ -30,7 +30,4 @@ class VCAP::Services::Mysql::Provisioner < VCAP::Services::Base::Provisioner
     VCAP::Services::Mysql::Serialization::ImportFromURLJob
   end
 
-  def import_from_data_job
-    VCAP::Services::Mysql::Serialization::ImportFromDataJob
-  end
 end

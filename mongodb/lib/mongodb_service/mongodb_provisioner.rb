@@ -26,9 +26,4 @@ class VCAP::Services::MongoDB::Provisioner < VCAP::Services::Base::Provisioner
     VCAP::Services::MongoDB::Serialization::ImportFromURLJob
   end
 
-  def import_from_data_job
-    VCAP::Services::MongoDB::Serialization::ImportFromDataJob
-  end
-
 end
-

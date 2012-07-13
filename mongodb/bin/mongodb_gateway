@@ -23,8 +23,7 @@ class VCAP::Services::MongoDB::Gateway < VCAP::Services::Base::Gateway
 
   def additional_options
     {
-      :resque => @config[:resque],
-      :upload_temp_dir => @config[:upload_temp_dir]
+      :resque => @config[:resque]
     }
   end
 end
