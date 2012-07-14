@@ -61,7 +61,7 @@ end
 @broker = @config[:service_broker]
 @service = @config[:service]
 
-API_VERSION = "poc"
+API_VERSION = "v1"
 uri = URI.parse(@broker)
 hdrs  = {
   'Content-Type'         => 'application/json',
