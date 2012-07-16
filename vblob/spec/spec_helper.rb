@@ -42,6 +42,10 @@ class VCAP::Services::VBlob::Node
   def get_instance(name)
     ProvisionedService.get(name)
   end
+
+  def get_free_ports_size
+    @free_ports.size
+  end
 end
 
 def is_port_open?(host, port)
@@ -85,7 +89,6 @@ def get_node_config()
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
     :vblobd_path => parse_property(config, "vblobd_path", String),
-    :vblobd_log_dir => parse_property(config, "vblobd_log_dir", String),
     :vblobd_auth => parse_property(config, "vblobd_auth", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :node_id => parse_property(config, "node_id", String),
@@ -95,6 +98,7 @@ def get_node_config()
     :max_db_size => parse_property(config, "max_db_size", Integer),
     :base_dir => '/tmp/vblob/instance',
     :log_dir => '/tmp/vblob/log',
+    :vblobd_log_dir => '/tmp/vblob/service-log',
     :local_db => 'sqlite3:/tmp/vblob/vblob_node.db',
   }
   options[:logger].level = Logger::DEBUG

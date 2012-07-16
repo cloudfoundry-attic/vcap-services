@@ -40,6 +40,27 @@ describe "vblob wardenization" do
     @node.unprovision(@response['name'], [])
   end
 
+  it "should raise error when two instances with the same name were provisioned and return the port" do
+    credential1 = {
+      'name' => 'fakename',
+      'port' => 46001,
+      'username' => 'fake-keyid1',
+      'password' => 'fake-secretid1'
+    }
+    credential2 = {
+      'name' => 'fakename',
+      'port' => 46002,
+      'username' => 'fake-keyid2',
+      'password' => 'fake-secretid2'
+    }
+    @node.get_free_ports_size.should == 20000
+    lambda { @node.provision("free", credential1) }.should_not raise_error()
+    @node.get_free_ports_size.should == 19999
+    lambda { @node.provision("free", credential2) }.should raise_error()
+    @node.get_free_ports_size.should == 19999
+    @node.unprovision('fakename', [])
+  end
+
   context "when a vblob instance was provisioned" do
 
     before :each do

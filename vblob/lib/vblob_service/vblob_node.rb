@@ -135,8 +135,8 @@ class VCAP::Services::VBlob::Node
     return response
   rescue => e
     @logger.error("Error provision instance: #{e}")
-    # FIXME: need recycle the port here, will fixed by Yang
     provisioned_service.delete unless provisioned_service.nil?
+    free_port(port) unless port.nil?
     raise e
   end
 
@@ -243,8 +243,6 @@ class VCAP::Services::VBlob::Node
     raise VBlobError.new(VBlobError::VBLOB_START_INSTANCE_ERROR) if wait_service_start(provisioned_service) == false
     true
   rescue => e
-    provisioned_service.delete if provisioned_service
-    # FIXME: need recycle the port here, will fixed by Yang
     @logger.warn(e)
     nil
   end
