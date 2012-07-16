@@ -443,10 +443,16 @@ EOF
       end
     end
     @logger.error("Timeout to start RabbitMQ server for instance #{instance.name}")
-    # Stop the instance if it is running
-    instance.pid = pid
-    stop_instance(instance) if instance.running?
-    raise RabbitError.new(RabbitError::RABBIT_START_INSTANCE_FAILED, instance.inspect)
+    if instance.pid
+      # For existed instance, just return the pid, the instance will finish starting eventually
+      # and varz will report its status
+      return pid
+    else
+      # For new instance, stop the instance if it is running
+      instance.pid = pid
+      stop_instance(instance) if instance.running?
+      raise RabbitError.new(RabbitError::RABBIT_START_INSTANCE_FAILED, instance.inspect)
+    end
   end
 
   def stop_instance(instance)
