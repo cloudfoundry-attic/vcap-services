@@ -97,6 +97,7 @@ class VCAP::Services::Rabbit::Node
     @initial_username = "guest"
     @initial_password = "guest"
     @hostname = get_host
+    @supported_versions = ["2.4"]
   end
 
   def pre_send_announcement
@@ -124,7 +125,7 @@ class VCAP::Services::Rabbit::Node
     end
   end
 
-  def provision(plan, credentials = nil)
+  def provision(plan, credentials = nil, version=nil)
     raise RabbitError.new(RabbitError::RABBIT_INVALID_PLAN, plan) unless plan.to_s == @plan
     instance = ProvisionedService.new
     instance.plan = 1
@@ -442,10 +443,16 @@ EOF
       end
     end
     @logger.error("Timeout to start RabbitMQ server for instance #{instance.name}")
-    # Stop the instance if it is running
-    instance.pid = pid
-    stop_instance(instance) if instance.running?
-    raise RabbitError.new(RabbitError::RABBIT_START_INSTANCE_FAILED, instance.inspect)
+    if instance.pid
+      # For existed instance, just return the pid, the instance will finish starting eventually
+      # and varz will report its status
+      return pid
+    else
+      # For new instance, stop the instance if it is running
+      instance.pid = pid
+      stop_instance(instance) if instance.running?
+      raise RabbitError.new(RabbitError::RABBIT_START_INSTANCE_FAILED, instance.inspect)
+    end
   end
 
   def stop_instance(instance)

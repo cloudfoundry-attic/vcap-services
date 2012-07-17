@@ -74,6 +74,7 @@ class VCAP::Services::Mysql::Node
     @connection_wait_timeout = options[:connection_wait_timeout]
     Mysql2::Client.default_timeout = @connection_wait_timeout
     Mysql2::Client.logger = @logger
+    @supported_versions = ["5.1"]
   end
 
   def pre_send_announcement
@@ -247,7 +248,7 @@ class VCAP::Services::Mysql::Node
     @kill_long_transaction_lock.unlock if acquired
   end
 
-  def provision(plan, credential=nil)
+  def provision(plan, credential=nil, version=nil)
     raise MysqlError.new(MysqlError::MYSQL_INVALID_PLAN, plan) unless plan == @plan
     provisioned_service = ProvisionedService.new
     provisioned_service.plan = 1
