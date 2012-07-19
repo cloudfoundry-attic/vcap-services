@@ -9,6 +9,7 @@ enable: true
 wakeup_interval: 3600
 rotation:
   max_days: 7
+  unprovisioned_max_days: 10
   cloud_controller_uri: api.vcap.me
   services:
     mongodb:
