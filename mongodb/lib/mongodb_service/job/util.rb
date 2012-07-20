@@ -26,15 +26,13 @@ module VCAP
             return 1
           end
 
-          mongodump_path = @config['mongodump_path'] ? @config['mongodump_path'] : 'mongodump'
           tar_path = @config['tar_path'] ? @config['tar_path'] : 'tar'
           cmd_timeout = @config['timeout'].to_f
 
-          DataMapper.setup(:default, @config['local_db'])
-          DataMapper::auto_upgrade!
-
           tmp_dir = Dir.mktmpdir
           service = Node::ProvisionedService.get(service_id)
+          version = service.version || @config["default_version"]
+          mongodump_path = @config['mongodump_path'] ? @config['mongodump_path'][version.to_s] : 'mongodump'
 
           commands = [ "#{mongodump_path} -h 127.0.0.1:#{service.port} -u #{service.admin} -p #{service.adminpass} -o #{tmp_dir} ", \
                        "#{tar_path} czf #{file} -C #{tmp_dir} ." ]
@@ -56,6 +54,16 @@ module VCAP
           nil
         end
 
+        def setup_localdb
+          DataMapper.setup(:default, @config['local_db'])
+          DataMapper::auto_upgrade!
+        end
+
+        def instance_version(service_id)
+          service = Node::ProvisionedService.get(service_id)
+          version = service.version || @config["default_version"]
+        end
+
         def restore_database(service_id, file)
           raise ArgumentError, "Missing options." unless service_id && file
           make_logger
@@ -65,12 +73,12 @@ module VCAP
             return 1
           end
 
-          mongorestore_path = @config['mongorestore_path'] ? @config['mongorestore_path'] : 'mongorestore'
+          @logger.debug("Manifest in snapshot: #{@manifest}")
+          version = @manifest["service_version"] || @config['default_version']
+          mongorestore_path = @config['mongorestore_path'] ? @config['mongorestore_path'][version.to_s] : 'mongorestore'
           tar_path = @config['tar_path'] ? @config['tar_path'] : 'tar'
           cmd_timeout = @config['timeout'].to_f
 
-          DataMapper.setup(:default, @config['local_db'])
-          DataMapper::auto_upgrade!
 
           tmp_dir = Dir.mktmpdir
 

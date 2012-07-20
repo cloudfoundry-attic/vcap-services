@@ -53,6 +53,10 @@ class VCAP::Services::MongoDB::Node
     property :adminpass,  String,   :required => true
     property :db,         String,   :required => true
 
+    # Making this false for backwards compatibility
+    # Also Refer: get_version
+    property :version,    String,   :required => false
+
     def listening?
       begin
         TCPSocket.open('localhost', port).close
@@ -91,6 +95,7 @@ class VCAP::Services::MongoDB::Node
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir)
     @mongod_path = options[:mongod_path]
+    @mongod_options = options[:mongod_options]
     @mongorestore_path = options[:mongorestore_path]
     @mongod_log_dir = options[:mongod_log_dir]
 
@@ -108,7 +113,9 @@ class VCAP::Services::MongoDB::Node
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
     @mutex = Mutex.new
-    @supported_versions = ["1.8"]
+
+    @supported_versions = options[:supported_versions]
+    @default_version = options[:default_version]
   end
 
   def fetch_port(port=nil)
@@ -132,7 +139,18 @@ class VCAP::Services::MongoDB::Node
     end
   end
 
+  def migrate_saved_instances_on_startup
+    ProvisionedService.all.each do |provisioned_service|
+      if provisioned_service.version.to_s.empty?
+        provisioned_service.version = @default_version
+        @logger.warn("Unable to set version for: #{provisioned_service.inspect}") unless provisioned_service.save
+      end
+    end
+  end
+
   def pre_send_announcement
+    migrate_saved_instances_on_startup
+
     @capacity_lock.synchronize do
       ProvisionedService.all.each do |provisioned_service|
         @capacity -= capacity_unit
@@ -205,8 +223,10 @@ class VCAP::Services::MongoDB::Node
   end
 
   def provision(plan, credential = nil, version=nil)
-    @logger.info("Provision request: plan=#{plan}")
+    @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise ServiceError.new(MongoDBError::MONGODB_INVALID_PLAN, plan) unless plan == @plan
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) if !@supported_versions.include?(version)
+
     port = credential && credential['port'] ? fetch_port(credential['port']) : fetch_port
     name = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
     db   = credential && credential['db']   ? credential['db']   : 'db'
@@ -218,6 +238,7 @@ class VCAP::Services::MongoDB::Node
     provisioned_service           = ProvisionedService.new
     provisioned_service.name      = name
     provisioned_service.port      = port
+    provisioned_service.version   = version
     provisioned_service.plan      = 1
     provisioned_service.password  = UUIDTools::UUID.random_create.to_s
     provisioned_service.pid       = start_instance(provisioned_service)
@@ -369,7 +390,7 @@ class VCAP::Services::MongoDB::Node
     end
 
     # Run mongorestore
-    command = "#{@mongorestore_path} -u #{username} -p#{password} --port #{port} #{backup_file}"
+    command = "#{mongorestore_exe_path(get_version(provisioned_service))} -u #{username} -p#{password} --port #{port} #{backup_file}"
     output = `#{command}`
     res = $?.success?
     @logger.debug(output)
@@ -466,7 +487,10 @@ class VCAP::Services::MongoDB::Node
     provisioned_service.adminpass = stored_service.adminpass
     provisioned_service.db        = stored_service.db
     provisioned_service.port      = port
+    provisioned_service.version   = stored_service.version
+
     provisioned_service.pid       = start_instance(provisioned_service)
+
     @logger.debug("Provisioned_service: #{provisioned_service}")
 
     raise "Cannot save provisioned_service" unless provisioned_service.save
@@ -511,6 +535,7 @@ class VCAP::Services::MongoDB::Node
       stat['overall'] = overall_stats
       stat['db'] = db_stats
       stat['name'] = provisioned_service.name
+      stat['version'] = get_version(provisioned_service)
       stats << stat
     end
 
@@ -568,8 +593,10 @@ class VCAP::Services::MongoDB::Node
   def repair_instance(provisioned_service)
     tmpdir = File.join(@base_dir, 'tmp', provisioned_service.name)
     FileUtils.mkdir_p(tmpdir)
+    executable = mongod_exe_path(get_version(provisioned_service))
+    @logger.info("Repairing: #{provisioned_service.inspect}, using mongo: #{executable}")
     begin
-      `#{@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir(service_dir(provisioned_service.name))} --smallfiles --noprealloc`
+      `#{executable} --repair --repairpath #{tmpdir} --dbpath #{data_dir(service_dir(provisioned_service.name))} --smallfiles --noprealloc`
       @logger.warn("Service #{provisioned_service.name} db repair done")
     rescue => e
       @logger.error("Service #{provisioned_service.name} repair failed: #{e}")
@@ -579,7 +606,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def start_instance(provisioned_service)
-    @logger.info("Starting: #{provisioned_service.inspect}")
+    @logger.info("Starting: #{provisioned_service.inspect}, Version: #{get_version(provisioned_service)}")
 
     lockfile = File.join(data_dir(service_dir(provisioned_service.name)), "mongod.lock")
     if File.size?(lockfile)
@@ -596,7 +623,6 @@ class VCAP::Services::MongoDB::Node
       pid
     else
       $0 = "Starting MongoDB service: #{provisioned_service.name}"
-      close_fds
 
       port = provisioned_service.port
       password = provisioned_service.password
@@ -611,13 +637,20 @@ class VCAP::Services::MongoDB::Node
       config = @config_template.result(binding)
       config_path = File.join(dir, "mongodb.conf")
 
+      executable = mongod_exe_path(get_version(provisioned_service))
+      options = mongod_exe_options(get_version(provisioned_service))
+
       FileUtils.mkdir_p(dir)
       FileUtils.mkdir_p(data_dir)
       FileUtils.mkdir_p(log_dir)
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
-      cmd = "#{@mongod_path} -f #{config_path}"
+      @logger.debug("Mongo Executable: #{executable}, Options: #{options}")
+      cmd = "#{executable} #{options} -f #{config_path}"
+
+      close_fds
+
       exec(cmd) rescue @logger.error("exec(#{cmd}) failed!")
     end
   end
@@ -754,6 +787,26 @@ class VCAP::Services::MongoDB::Node
   def rm_lockfile(service_id)
     lockfile = File.join(service_dir(service_id), 'data', 'mongod.lock')
     FileUtils.rm_rf(lockfile)
+  end
+
+  def mongod_exe_path(version)
+    @mongod_path[version]
+  end
+
+  def mongod_exe_options(version)
+    @mongod_options[version]
+  end
+
+  def mongorestore_exe_path(version)
+    @mongorestore_path[version]
+  end
+
+  def get_version(provisioned_service)
+    if provisioned_service.version.to_s.empty? # Handle nil / empty case (backwards compatibility)
+      @default_version
+    else
+      provisioned_service.version
+    end
   end
 
   def record_service_log(service_id)

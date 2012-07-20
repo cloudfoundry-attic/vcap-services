@@ -9,10 +9,12 @@ describe "mongodb_node provision" do
     EM.run do
       @opts = get_node_config()
       @logger = @opts[:logger]
+      @default_version = @opts[:default_version]
+
       @node = Node.new(@opts)
       @node.max_clients = MAX_CONNECTION
 
-      EM.add_timer(2) { @resp = @node.provision("free") }
+      EM.add_timer(2) { @resp = @node.provision("free", nil, @default_version) }
       EM.add_timer(4) { EM.stop }
     end
   end
