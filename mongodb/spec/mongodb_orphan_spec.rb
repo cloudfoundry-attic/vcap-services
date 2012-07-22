@@ -8,6 +8,7 @@ describe "mongodb_node check & purge orphan" do
       @opts = get_node_config
       @logger = @opts[:logger]
       @node = Node.new(@opts)
+      @default_version = @opts[:default_version]
       EM.stop
     end
   end
@@ -16,7 +17,7 @@ describe "mongodb_node check & purge orphan" do
     EM.run do
       before_instances = @node.all_instances_list
       before_bindings = @node.all_bindings_list
-      oi = @node.provision("free")
+      oi = @node.provision("free", nil, @default_version)
       ob = @node.bind(oi["name"],'rw')
       after_instances = @node.all_instances_list
       after_bindings = @node.all_bindings_list
@@ -29,7 +30,7 @@ describe "mongodb_node check & purge orphan" do
 
   it "should be able to purge the orphan" do
     EM.run do
-      oi = @node.provision("free")
+      oi = @node.provision("free", nil, @default_version)
       ob = @node.bind(oi["name"],'rw')
       @node.purge_orphan([oi["name"]],[ob])
       @node.all_instances_list.include?(oi["name"]).should be_false

@@ -8,9 +8,10 @@ describe "mongodb_node bind" do
       @app_id = "myapp"
       @opts = get_node_config()
       @logger = @opts[:logger]
+      @default_version = @opts[:default_version]
 
       @node = Node.new(@opts)
-      @resp = @node.provision("free")
+      @resp = @node.provision("free", nil, @default_version)
 
       EM.add_timer(1) do
         @bind_resp = @node.bind(@resp['name'], 'rw')
