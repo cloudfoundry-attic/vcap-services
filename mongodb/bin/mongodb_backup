@@ -22,7 +22,7 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       return 1
     end
 
-    mongodump_path = @config['mongodump_path'] || 'mongodump'
+    mongodump_paths = @config['mongodump_path']
     cmd_timeout = @config['timeout'].to_f
 
     DataMapper.setup(:default, @config['local_db'])
@@ -34,7 +34,9 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       pass = service.adminpass
       port = service.port
       path = get_dump_path(service.name)
+      version = service.version
 
+      mongodump_path = mongodump_paths[version]
       # Run mongodump
       command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
       on_err = Proc.new do |cmd, code, msg|
