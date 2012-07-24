@@ -85,8 +85,6 @@ class VCAP::Services::Postgresql::Node
         return
       end
 
-      default_user = service.bindusers.all(:default_user => true)[0]
-
       if (size >= @max_db_size) and not quota_exceeded then
           if revoke_write_access(name, service)
             @logger.info("Storage quota exceeded :" + fmt_db_listing(name, size) +
