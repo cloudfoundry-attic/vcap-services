@@ -507,8 +507,10 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   # user management helper
   def add_admin(username, password)
     warden = self.class.warden_connect
-    warden.call(["run", self[:container], "mongo localhost:27017/admin --eval 'db.addUser(\"#{userna
-me}\", \"#{password}\")'"])
+    req = Warden::Protocol::RunRequest.new
+    req.handle = self[:container]
+    req.script = "mongo localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
+    rsp = warden.call(req)
     warden.disconnect
   rescue => e
     raise "Could not add admin user \'#{username}\'"

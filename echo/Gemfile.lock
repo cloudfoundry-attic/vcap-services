@@ -52,17 +52,20 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/warden.git
-  revision: 84dcc3acb0bc3155c66dbfa972686ad83dcd70a0
-  ref: 84dcc3acb0
+  revision: d8334ce8a383cee65a1b1d568ed5cc40b20669cb
+  ref: d8334ce8a3
   specs:
-    warden-client (0.0.2)
-      yajl-ruby
+    warden-client (0.0.4)
+      warden-protocol
+    warden-protocol (0.0.3)
+      beefcake
 
 GEM
   remote: http://rubygems.org/
   specs:
     addressable (2.2.8)
     bcrypt-ruby (2.1.4)
+    beefcake (0.3.7)
     builder (3.0.0)
     ci_reporter (1.7.0)
       builder (>= 2.1.2)
@@ -205,3 +208,4 @@ DEPENDENCIES
   vcap_logging!
   vcap_services_base!
   warden-client!
+  warden-protocol!

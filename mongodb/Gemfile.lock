@@ -27,14 +27,14 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: e58c168d65393a09f845044a27370ab5686bd5c9
-  ref: e58c168d65
+  revision: 4db4cc92ce5dc83d2cce95999508dbda51b34f0b
+  ref: 4db4cc92ce5d
   specs:
-    vcap_services_base (0.1.11)
+    vcap_services_base (0.1.12)
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)
-      em-http-request (~> 0.3.0)
+      em-http-request (~> 1.0.0.beta.3)
       eventmachine (~> 0.12.11.cloudfoundry.3)
       eventmachine_httpserver (~> 0.2.1)
       json (~> 1.4.6)
@@ -48,21 +48,25 @@ GIT
       uuidtools (~> 2.1.2)
       vcap_common (>= 1.0.8)
       vcap_logging (>= 1.0.2)
-      warden-client (~> 0.0.2)
+      warden-client (~> 0.0.4)
+      warden-protocol (~> 0.0.3)
 
 GIT
   remote: git://github.com/cloudfoundry/warden.git
-  revision: 84dcc3acb0bc3155c66dbfa972686ad83dcd70a0
-  ref: 84dcc3acb0
+  revision: d8334ce8a383cee65a1b1d568ed5cc40b20669cb
+  ref: d8334ce8a3
   specs:
-    warden-client (0.0.2)
-      yajl-ruby
+    warden-client (0.0.4)
+      warden-protocol
+    warden-protocol (0.0.3)
+      beefcake
 
 GEM
   remote: http://rubygems.org/
   specs:
     addressable (2.2.8)
     bcrypt-ruby (2.1.4)
+    beefcake (0.3.7)
     bson (1.5.2)
     bson_ext (1.5.2)
       bson (= 1.5.2)
@@ -117,13 +121,16 @@ GEM
       dm-core (~> 1.1.0)
     do_sqlite3 (0.10.8)
       data_objects (= 0.10.8)
-    em-http-request (0.3.0)
-      addressable (>= 2.0.0)
-      escape_utils
-      eventmachine (>= 0.12.9)
-    escape_utils (0.2.4)
+    em-http-request (1.0.0.beta.3)
+      addressable (>= 2.2.3)
+      em-socksify
+      eventmachine
+      http_parser.rb (>= 0.5.1)
+    em-socksify (0.1.0)
+      eventmachine
     eventmachine_httpserver (0.2.1)
     fastercsv (1.5.5)
+    http_parser.rb (0.5.3)
     json (1.4.6)
     json_pure (1.7.3)
     macaddr (1.6.1)
@@ -186,8 +193,6 @@ GEM
     uuidtools (2.1.2)
     vegas (0.1.11)
       rack (>= 1.0.0)
-    warden-client (0.0.2)
-      yajl-ruby
     yajl-ruby (0.8.3)
 
 PLATFORMS
@@ -217,3 +222,4 @@ DEPENDENCIES
   vcap_logging!
   vcap_services_base!
   warden-client!
+  warden-protocol!
