@@ -6,28 +6,33 @@ require "redis_error"
 # Redis client library doesn't support renamed command, so we override the functions here.
 class Redis
   def config(config_command_name, action, *args)
-    synchronize do
-      reply = @client.call [config_command_name.to_sym, action, *args]
-
-      if reply.kind_of?(Array) && action == :get
-        Hash[*reply]
-      else
-        reply
+    synchronize do |client|
+      client.call [config_command_name.to_sym, action, *args] do |reply|
+        if reply.kind_of?(Array) && action == :get
+          Hash[*reply]
+        else
+          reply
+        end
       end
     end
   end
 
   def shutdown(shutdown_command_name)
-    synchronize do
-      @client.call [shutdown_command_name.to_sym]
+    synchronize do |client|
+      client.with_reconnect(false) do
+        begin
+          client.call [shutdown_command_name.to_sym]
+        rescue ConnectionError
+          # This means Redis has probably exited.
+          nil
+        end
+      end
     end
-  rescue Errno::ECONNREFUSED => e
-    # Since the shutdown is successful, it will raise this connect refused exception by redis client library.
   end
 
   def save(save_command_name)
-    synchronize do
-      @client.call [save_command_name.to_sym]
+    synchronize do |client|
+      client.call [save_command_name.to_sym]
     end
   end
 end
