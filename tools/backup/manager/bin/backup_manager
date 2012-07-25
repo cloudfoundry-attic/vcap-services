@@ -10,6 +10,7 @@ require 'vcap_services_base'
 require 'vcap/logging'
 
 DEFAULT_ROTATION_MAX_DAYS = 7
+DEFAULT_ROTATION_UNPROVISIONED_MAX_DAYS = 10
 DEFAULT_WAKEUP_INTERVAL = 60 * 60 # one hour
 DEFAULT_Z_INTERVAL = 30
 
@@ -58,6 +59,7 @@ logger = VCAP::Logging.logger(File.basename($0))
 rotation = parse_property(config, "rotation", Hash, :optional => true) || {}
 rotation = rotation.inject({}){|m,(k,v)| m[k.to_sym] = v;m}
 rotation[:max_days] ||= DEFAULT_ROTATION_MAX_DAYS
+rotation[:unprovisioned_max_days] ||= DEFAULT_ROTATION_UNPROVISIONED_MAX_DAYS
 
 options = {
   :once => once,

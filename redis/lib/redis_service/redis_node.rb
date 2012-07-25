@@ -52,6 +52,7 @@ class VCAP::Services::Redis::Node
     @service_start_timeout = @options[:service_start_timeout] || 3
     ProvisionedService.init(options)
     @options = options
+    @supported_versions = ["2.2"]
   end
 
   def pre_send_announcement
@@ -77,7 +78,7 @@ class VCAP::Services::Redis::Node
   end
 
   def provision(plan = nil, credentials = nil, db_file = nil)
-    raise RedisError.new(RedisError::RABBIT_INVALID_PLAN, plan) unless plan.to_s == @plan
+    raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
     port = nil
     instance = nil
     if credentials
@@ -204,7 +205,9 @@ class VCAP::Services::Redis::Node
 
   def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
-    provision(plan, service_credentials, db_file)
+    # FIXME: We set the version to nil here so that the instance is imported to the default version of redis.
+    # TODO: Fix this behaviour (E.g. add version information to dump so that a correct version of redis can be provisioned
+    provision(plan, service_credentials, nil, db_file)
     true
   rescue => e
     @logger.warn(e)

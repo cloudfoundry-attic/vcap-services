@@ -125,8 +125,9 @@ def get_node_config()
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
-    :mongod_path => parse_property(config, "mongod_path", String),
-    :mongorestore_path => parse_property(config, "mongorestore_path", String),
+    :mongod_path => parse_property(config, "mongod_path", Hash),
+    :mongod_options => parse_property(config, "mongod_options", Hash),
+    :mongorestore_path => parse_property(config, "mongorestore_path", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),
@@ -137,8 +138,10 @@ def get_node_config()
     :mongod_log_dir => '/tmp/mongo/logs',
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db',
     :image_dir => '/tmp/mongo/images',
-    :max_db_size => 128
+    :max_db_size => 128,
+    :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version => parse_property(config, "default_version", String)
   }
-  options[:logger].level = Logger::FATAL
+  options[:logger].level = Logger::DEBUG
   options
 end

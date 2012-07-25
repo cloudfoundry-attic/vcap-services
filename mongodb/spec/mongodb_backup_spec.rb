@@ -12,6 +12,8 @@ describe "MongoDB node backup/restore"  do
     bin_dir = File.dirname(@opts[:mongod_path])
     BINARY_DIR = bin_dir == '.' ? '' : bin_dir
     MONGOD_LOG = @opts[:mongod_log_dir]
+    @default_version = @opts[:default_version]
+    @opts[:mongod_path][@default_version].match "(.+#{File::SEPARATOR}).+"
 
     @config_template = ERB.new(File.read(TEMPLATE_FILE))
     config = @config_template.result(binding)
@@ -27,7 +29,7 @@ describe "MongoDB node backup/restore"  do
   end
 
   before :each do
-    @resp = @node.provision("free")
+    @resp = @node.provision("free", nil, @default_version)
     @bind_resp = @node.bind(@resp['name'], 'rw')
     @p_service = @node.get_instance(@resp['name'])
     # Write some data in database
@@ -85,7 +87,7 @@ describe "MongoDB node backup/restore"  do
     @node.unbind(@bind_resp)
     @node.unprovision(@resp['name'], [])
 
-    @resp = @node.provision('free', @resp)
+    @resp = @node.provision('free', @resp, @default_version)
     @p_service = @node.get_instance(@resp['name'])
     @node.restore(@resp['name'], dir)
     @node.bind(@resp['name'], 'rw', @bind_resp)

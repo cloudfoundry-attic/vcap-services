@@ -50,6 +50,7 @@ class VCAP::Services::Postgresql::Node
     @long_tx_killed = 0
     @provision_served = 0
     @binding_served = 0
+    @supported_versions = ["9.0"]
   end
 
   def pre_send_announcement
@@ -313,7 +314,7 @@ class VCAP::Services::Postgresql::Node
     @logger.warn("PostgreSQL error: #{e}")
   end
 
-  def provision(plan, credential=nil)
+  def provision(plan, credential=nil, version=nil)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_INVALID_PLAN, plan) unless plan == @plan
     provisionedservice = Provisionedservice.new
     provisionedservice.plan = 1

@@ -32,7 +32,7 @@ describe "Service Broker" do
       "CONTENT_TYPE" => Rack::Mime.mime_type('.json'),
       "HTTP_X_VCAP_SERVICE_TOKEN" =>  @config[:token],
     }
-    @api_version = "poc"
+    @api_version = "v1"
   end
 
   it "should return bad request if request type is not json " do

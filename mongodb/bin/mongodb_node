@@ -23,12 +23,15 @@ class VCAP::Services::MongoDB::NodeBin < VCAP::Services::Base::NodeBin
   def additional_config(options, config)
     options[:config_template] = File.expand_path("../../resources/mongodb.conf.erb", __FILE__)
     options[:port_range] = parse_property(config, "port_range", Range)
-    options[:mongod_path] = parse_property(config, "mongod_path", String)
-    options[:mongorestore_path] = parse_property(config, "mongorestore_path", String)
+    options[:mongod_path] = parse_property(config, "mongod_path", Hash)
+    options[:mongorestore_path] = parse_property(config, "mongorestore_path", Hash)
     options[:mongod_log_dir] = parse_property(config, "mongod_log_dir", String)
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options[:image_dir] = parse_property(config, "image_dir", String)
     options[:max_db_size] = parse_property(config, "max_db_size", Integer)
+    options[:supported_versions] = parse_property(config, "supported_versions", Array)
+    options[:default_version] = parse_property(config, "default_version", String)
+    options[:mongod_options] = parse_property(config, "mongod_options", Hash)
     options
   end
 

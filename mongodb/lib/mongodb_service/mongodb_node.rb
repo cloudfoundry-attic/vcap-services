@@ -46,10 +46,23 @@ class VCAP::Services::MongoDB::Node
     ProvisionedService.init(options)
     @base_dir = options[:base_dir]
     init_ports(options[:port_range])
-    @service_start_timeout = @options[:service_start_timeout] || 3
+    @service_start_timeout = options[:service_start_timeout] || 3
+    @supported_versions = options[:supported_versions]
+    @default_version = options[:default_version]
+  end
+
+  def migrate_saved_instances_on_startup
+    ProvisionedService.all.each do |provisioned_service|
+      if provisioned_service.version.to_s.empty?
+        provisioned_service.version = @default_version
+        @logger.warn("Unable to set version for: #{provisioned_service.inspect}") unless provisioned_service.save
+      end
+    end
   end
 
   def pre_send_announcement
+    migrate_saved_instances_on_startup
+
     @capacity_lock.synchronize do
       start_instances(ProvisionedService.all)
     end
@@ -98,11 +111,14 @@ class VCAP::Services::MongoDB::Node
     list
   end
 
-  def provision(plan, credential = {})
-    @logger.info("Provision request: plan=#{plan}")
+  def provision(plan, credential = nil, version = nil)
+    @logger.info("Provision request: plan=#{plan}, version=#{version}")
+    raise ServiceError.new(MongoDBError::MONGODB_INVALID_PLAN, plan) unless plan == @plan
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) if !@supported_versions.include?(version)
     credential = {} if credential.nil?
     credential['plan'] = plan
     credential['port'] = new_port(credential['port'])
+    credential['version'] = version
     p_service = ProvisionedService.create(credential)
     p_service.run
 
@@ -288,6 +304,7 @@ class VCAP::Services::MongoDB::Node
       stat['overall'] = p_service.overall_stats
       stat['db']      = p_service.db_stats
       stat['name']    = p_service.name
+      stat['version'] = p_service.version
       stat
     end
 
@@ -327,6 +344,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   property :db,         String,   :required => true
   property :container,  String
   property :ip,         String
+  property :version,    String,   :required => false
 
   private_class_method :new
 
@@ -369,6 +387,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       p_service.admin     = args['admin'] ? args['admin'] : 'admin'
       p_service.adminpass = args['adminpass'] ? args['adminpass'] : UUIDTools::UUID.random_create.to_s
       p_service.db        = args['db'] ? args['db'] : 'db'
+      p_service.version   = args['version']
 
       raise "Cannot save provision service" unless p_service.save!
 
@@ -441,6 +460,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   def repair
     tmpdir = File.join(self.class.base_dir, "tmp", self[:name])
     FileUtils.mkdir_p(tmpdir)
+    executable = mongod_exe_path(get_version(provisioned_service))
+    @logger.info("Repairing: #{provisioned_service.inspect}, using mongo: #{executable}")
     begin
       self.class.sh "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]} --smallfiles --noprealloc", :timeout => 120
       logger.warn("Service #{self[:name]} db repair done")
@@ -486,7 +507,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   # user management helper
   def add_admin(username, password)
     warden = self.class.warden_connect
-    warden.call(["run", self[:container], "mongo localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"])
+    warden.call(["run", self[:container], "mongo localhost:27017/admin --eval 'db.addUser(\"#{userna
+me}\", \"#{password}\")'"])
     warden.disconnect
   rescue => e
     raise "Could not add admin user \'#{username}\'"

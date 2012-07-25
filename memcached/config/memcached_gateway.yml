@@ -5,6 +5,7 @@ service:
   version: "1.4"
   description: 'Memcached in-memory object cache service'
   plans: ['free']
+  default_plan: free
   tags: ['memcached', 'memcached-1.4', 'key-value', 'nosql']
 ip_route: localhost
 index: 0

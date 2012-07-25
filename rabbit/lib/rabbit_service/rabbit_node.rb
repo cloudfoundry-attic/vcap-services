@@ -52,6 +52,7 @@ class VCAP::Services::Rabbit::Node
     @hostname = get_host
     ProvisionedService.init(options)
     @options = options
+    @supported_versions = ["2.4"]
   end
 
   def pre_send_announcement
@@ -76,9 +77,11 @@ class VCAP::Services::Rabbit::Node
     end
   end
 
-  def provision(plan = nil, credentials = nil)
+  def provision(plan = nil, credentials = nil, version = nil)
+    raise RabbitError.new(RabbitError::RABBIT_INVALID_PLAN, plan) unless plan.to_s == @plan
     port = nil
     instance = nil
+
     if credentials
       port = new_port(credentials["port"])
       instance = ProvisionedService.create(port, get_admin_port(port), plan, credentials)

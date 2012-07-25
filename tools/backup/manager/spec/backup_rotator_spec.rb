@@ -6,7 +6,8 @@ describe BackupRotatorTests do
 
   before :all do
     @options = {
-      :max_days => BackupRotatorTests::MAX_DAYS
+      :max_days => BackupRotatorTests::MAX_DAYS,
+      :unprovisioned_max_days => BackupRotatorTests::UNPROVISIONED_MAX_DAYS
     }
   end
 
@@ -74,7 +75,7 @@ describe BackupRotatorTests do
         rotator.n_midnights_ago(9)+20 => "9+20",
         rotator.n_midnights_ago(9)+30 => "9+30",
       }
-      buckets = rotator.bucketize(backups)
+      buckets = rotator.bucketize(backups, @options[:max_days])
       buckets.length.should == 8
       buckets[0].length.should == 3
       buckets[0].include?(rotator.n_midnights_ago(1)+10).should be_true
@@ -132,13 +133,12 @@ describe BackupRotatorTests do
     end
   end
 
-  it "should prune the backup that CC don't know" do
+  it "should rotate the backup whose handles are not known by CC" do
     EM.run do
-
       cc = BackupRotatorTests::MockCloudController.new
       cc.start
       EM.add_timer(1) do
-        Fiber.new {
+        Fiber.new do
           opts = @options.merge({
           :cloud_controller_uri => "localhost:#{BackupRotatorTests::CC_PORT}",
           :services => {
@@ -149,9 +149,12 @@ describe BackupRotatorTests do
         })
         BackupRotatorTests.create_rotator('cc_test',opts) do |rotator|
           rotator.run.should be_true
-          rotator.pruned.length.should == 4
+          # retain the unknown backup that is within unprovisioned_max_days (9 days ago)
+          rotator.retained('mysql/d1/47/c8/d147c836e304443d1919020da1306a755/1263222000').should be_true
+          # prune the unknown backup that is outdated even it is the last one
+          rotator.pruned('mongodb/73/12/9c/73129c3a-734e-4f3e-a60e-bdefd371f1e6/1163978520').should be_true
         end
-        }.resume
+        end.resume
       end
       EM.add_timer(4) do
         cc.stop

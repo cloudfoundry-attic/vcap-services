@@ -8,6 +8,7 @@ describe "Mongodb Node" do
   before :all do
     @opts = get_node_config()
     @logger = @opts[:logger]
+    @default_version = @opts[:default_version]
     EM.run do
       @node = Node.new(@opts)
       EM.add_timer(1) { EM.stop }
@@ -41,7 +42,7 @@ describe "Mongodb Node" do
 
   context "When a MongoDB instance provisioned" do
     before (:each) do
-      @resp = @node.provision("free")
+      @resp = @node.provision("free", nil, @default_version)
       @p_service = @node.get_instance(@resp['name'])
     end
 

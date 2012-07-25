@@ -1,6 +1,6 @@
 require 'tmpdir'
 
-SERVICES_DIR = %w(atmos couchdb elasticsearch filesystem memcached mongodb mysql neo4j postgresql rabbit redis service_broker vblob tools/backup/manager)
+SERVICES_DIR = %w(atmos couchdb echo elasticsearch filesystem memcached mongodb mysql neo4j postgresql rabbit redis service_broker vblob tools/backup/manager)
 
 desc "Run integration tests."
 task "tests" do |t|
@@ -68,12 +68,12 @@ namespace "bundler" do
     end
 
     exec_in_gem_dir(working_dir, gem_name) do
-      `git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec && gem install #{gem_name}*.gem`
+      abort unless system "git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec && gem install #{gem_name}*.gem"
     end
 
     exec_in_svc_dir do |dir|
       prune_git('Gemfile', gem_name)
-      sh 'bundle install'
+      sh "rm -f vendor/cache/#{gem_name}*.gem && bundle install"
     end
 
     FileUtils.rm_rf(working_dir)

@@ -109,7 +109,7 @@ class VCAP::Services::VBlob::Node
   end
 
   # will be re-used by restore codes; thus credential could be none null
-  def provision(plan, credential = nil)
+  def provision(plan, credential = nil, version=nil)
     @logger.debug("Provision a service instance")
 
     port     = credential && credential['port'] ? new_port(credential['port']) : new_port

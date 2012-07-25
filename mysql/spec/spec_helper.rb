@@ -10,6 +10,9 @@ require "mysql_service/util"
 require 'mysql_service/provisioner'
 require 'mysql_service/node'
 
+module Boolean; end
+class ::TrueClass; include Boolean; end
+class ::FalseClass; include Boolean; end
 
 def getLogger()
   logger = Logger.new( STDOUT)
@@ -66,6 +69,7 @@ def getNodeTestConfig()
     :mysql => parse_property(config, "mysql", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :max_long_tx => parse_property(config, "max_long_tx", Integer),
+    :kill_long_tx => parse_property(config, "kill_long_tx", Boolean, :optional => true),
     :max_user_conns => parse_property(config, "max_user_conns", Integer, :optional => true),
     :connection_wait_timeout => 10,
   }

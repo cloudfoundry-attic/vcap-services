@@ -19,7 +19,7 @@ port_range:
 admin_port_range:
   first: 20001
   last: 30000
-rabbitmq_server: /home/tangrui/rabbitmq_server-2.4.1/sbin/rabbitmq-server
+rabbitmq_server: rabbitmq-server
 rabbitmq_log_dir: /var/vcap/sys/log/rabbit
 service_start_timeout: 30
 # z_interval: 30

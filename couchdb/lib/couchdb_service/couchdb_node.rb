@@ -71,6 +71,8 @@ class VCAP::Services::CouchDB::Node
     # TODO: Investigate if there is a better way than this
     # Start couchdb process if its not already started
     @logger.info(`#{@couchdb_ctl} start`) if !couchdb_running?
+
+    @supported_versions = ["1.2"]
   end
 
   def couchdb_running?
@@ -98,7 +100,7 @@ class VCAP::Services::CouchDB::Node
     end
   end
 
-  def provision(plan, credential = nil)
+  def provision(plan, credential = nil, version=nil)
     raise CouchDbError.new(CouchDbError::COUCHDB_INVALID_PLAN, plan) unless plan.to_s == @plan
     provisioned_service = ProvisionedService.new
     if credential

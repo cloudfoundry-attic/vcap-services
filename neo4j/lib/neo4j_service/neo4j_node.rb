@@ -75,6 +75,7 @@ class VCAP::Services::Neo4j::Node
     @free_ports = Set.new
     options[:port_range].each {|port| @free_ports << port}
     @mutex = Mutex.new
+    @supported_versions = ["1.4"]
   end
 
   def fetch_port(port=nil)
@@ -152,7 +153,7 @@ class VCAP::Services::Neo4j::Node
     end
   end
 
-  def provision(plan, credentials=nil)
+  def provision(plan, credentials=nil, version=nil)
     port = fetch_port
 
     provisioned_service             = ProvisionedService.new
