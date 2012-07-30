@@ -77,7 +77,7 @@ class VCAP::Services::Redis::Node
     end
   end
 
-  def provision(plan = nil, credentials = nil, db_file = nil)
+  def provision(plan = nil, credentials = nil, version = nil, db_file = nil)
     raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
     port = nil
     instance = nil

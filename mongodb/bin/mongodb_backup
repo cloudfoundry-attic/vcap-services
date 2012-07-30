@@ -23,7 +23,6 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       return 1
     end
 
-    mongodump_path = @config['mongodump_path'] || 'mongodump'
     cmd_timeout = @config['timeout'].to_f
     config = VCAP.symbolize_keys(@config)
 

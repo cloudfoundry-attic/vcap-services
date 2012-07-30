@@ -44,7 +44,7 @@ describe "MongoDB Provisionedservice class" do
   end
 
   it "should be able to create/delete instance" do
-    p_service = Node::ProvisionedService.create({ 'port' => 27017 })
+    p_service = Node::ProvisionedService.create({ 'port' => 27017, 'version' => "1.8" })
     name = p_service.name
     p_service.delete
     p_service = nil
@@ -52,9 +52,17 @@ describe "MongoDB Provisionedservice class" do
     p_service.should be_nil
   end
 
+  it "should be able to select right path for specified version" do
+    p_service = Node::ProvisionedService.create({ 'port' => 27017, 'version' => "1.8" })
+    p_service.mongod.should be_a_kind_of(String)
+    p_service.mongorestore.should be_a_kind_of(String)
+    p_service.mongodump.should be_a_kind_of(String)
+    p_service.delete
+  end
+
   context "When a MongoDB instance created and running" do
     before (:each) do
-      @p_service = Node::ProvisionedService.create({ 'port' => 27017 })
+      @p_service = Node::ProvisionedService.create({ 'port' => 27017, 'version' => "1.8" })
       @p_service.run
     end
 
@@ -117,7 +125,7 @@ describe "MongoDB Provisionedservice class" do
 
   it "should be able to migrate old instance" do
     pending("quota disabled, no loop filesystem needed") unless Node::ProvisionedService.quota
-    p_service = Node::ProvisionedService.create({ 'port' => 27017 })
+    p_service = Node::ProvisionedService.create({ 'port' => 27017, 'version' => "1.8" })
     lambda { Node.sh "umount #{p_service.base_dir}" }.should_not raise_error
     lambda { Node.sh "mkdir -p #{p_service.base_dir}/data" }.should_not raise_error
     lambda { Node.sh "dd if=/dev/zero of=#{p_service.base_dir}/data/admin.ns bs=1M count=68" }.should_not raise_error

@@ -47,15 +47,15 @@ class VCAP::Services::MongoDB::Node
     @base_dir = options[:base_dir]
     init_ports(options[:port_range])
     @service_start_timeout = options[:service_start_timeout] || 3
-    @supported_versions = options[:supported_versions]
+    @supported_versions  = options[:supported_versions]
     @default_version = options[:default_version]
   end
 
   def migrate_saved_instances_on_startup
-    ProvisionedService.all.each do |provisioned_service|
-      if provisioned_service.version.to_s.empty?
-        provisioned_service.version = @default_version
-        @logger.warn("Unable to set version for: #{provisioned_service.inspect}") unless provisioned_service.save
+    ProvisionedService.all.each do |p_service|
+      if p_service.version.to_s.empty?
+        p_service.version = @default_version
+        @logger.warn("Unable to set version for: #{p_service.inspect}") unless p_service.save
       end
     end
   end
@@ -114,7 +114,7 @@ class VCAP::Services::MongoDB::Node
   def provision(plan, credential = nil, version = nil)
     @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise ServiceError.new(MongoDBError::MONGODB_INVALID_PLAN, plan) unless plan == @plan
-    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) if !@supported_versions.include?(version)
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
     credential = {} if credential.nil?
     credential['plan'] = plan
     credential['port'] = new_port(credential['port'])
@@ -359,16 +359,16 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       raise "Parameter :mongod_log_dir missing" unless args[:mongod_log_dir]
       raise "Parameter :image_dir missing" unless args[:image_dir]
       raise "Parameter :local_db missing" unless args[:local_db]
-      @@mongod_path = args[:mongod_path] ? args[:mongod_path] : 'mongod'
-      @@mongorestore_path = args[:mongorestore_path] ? args[:mongorestore_path] : 'mongorestore'
-      @@mongodump_path    = args[:mongodump_path] ? args[:mongodump_path] : 'mongodump'
+      @base_dir            = args[:base_dir]
+      @log_dir             = args[:mongod_log_dir]
+      @image_dir           = args[:image_dir]
+      @logger              = args[:logger]
+      @max_db_size         = args[:max_db_size] ? args[:max_db_size] : 128
+      @quota               = args[:filesystem_quota] || false
+      @@mongod_path       = args[:mongod_path] ? args[:mongod_path] : { args[:default_version] => 'mongod' }
+      @@mongorestore_path = args[:mongorestore_path] ? args[:mongorestore_path] : { args[:default_version] => 'mongorestore' }
+      @@mongodump_path    = args[:mongodump_path] ? args[:mongodump_path] : { args[:default_version] => 'mongodump' }
       @@tar_path          = args[:tar_path] ? args[:tar_path] : 'tar'
-      @base_dir = args[:base_dir]
-      @log_dir  = args[:mongod_log_dir]
-      @image_dir = args[:image_dir]
-      @logger = args[:logger]
-      @max_db_size = args[:max_db_size] ? args[:max_db_size] : 128
-      @quota = args[:filesystem_quota] || false
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
       FileUtils.mkdir_p(base_dir)
@@ -377,7 +377,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     end
 
     def create(args)
-      raise "Parameter missing" unless args['port']
+      raise "Parameter missing" unless args['port'] && args['version']
       p_service           = new
       p_service.name      = args['name'] ? args['name'] : UUIDTools::UUID.random_create.to_s
       p_service.port      = args['port']
@@ -413,7 +413,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
                          'memory'    => s_service.memory,
                          'admin'     => s_service.admin,
                          'adminpass' => s_service.adminpass,
-                         'db'        => s_service.db)
+                         'db'        => s_service.db,
+                         'version'   => s_service.version)
       FileUtils.cp_r(File.join(dir, 'data'), p_service.base_dir)
       FileUtils.rm_rf(p_service.log_dir)
       FileUtils.cp_r(File.join(dir, 'log'), p_service.log_dir)
@@ -442,16 +443,17 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     end
     disconnect(conn)
 
-    output = %x{ #{@@mongorestore_path} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 #{dir} }
+    cmd = "#{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 #{dir}"
+    output = %x{ #{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 #{dir} }
     res = $?.success?
     raise "\"#{cmd}\" failed" unless res
     true
   end
 
   def d_dump(dir, fake=true)
-    cmd = "#{@@mongodump_path} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir}"
+    cmd = "#{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir}"
     return cmd if fake
-    output = %x{ #{@@mongodump_path} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir} }
+    output = %x{ #{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir} }
     res = $?.success?
     raise "\"#{cmd}\" failed" unless res
     true
@@ -460,10 +462,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   def repair
     tmpdir = File.join(self.class.base_dir, "tmp", self[:name])
     FileUtils.mkdir_p(tmpdir)
-    executable = mongod_exe_path(get_version(provisioned_service))
-    @logger.info("Repairing: #{provisioned_service.inspect}, using mongo: #{executable}")
     begin
-      self.class.sh "#{@@mongod_path} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]} --smallfiles --noprealloc", :timeout => 120
+      self.class.sh "#{mongod} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]} --smallfiles --noprealloc", :timeout => 120
       logger.warn("Service #{self[:name]} db repair done")
     rescue => e
       logger.error("Service #{self[:name]} repair failed: #{e}")
@@ -579,5 +579,17 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     "ok"
   rescue => e
     "fail"
+  end
+
+  def mongod
+    @@mongod_path[version] || @@mongod_path[version.to_sym]
+  end
+
+  def mongorestore
+    @@mongorestore_path[version] || @@mongorestore_path[version.to_sym]
+  end
+
+  def mongodump
+    @@mongodump_path[version] || @@mongodump_path[version.to_sym]
   end
 end

@@ -9,6 +9,7 @@ describe "Mongodb Node" do
     @opts = get_node_config()
     @logger = @opts[:logger]
     @default_version = @opts[:default_version]
+    @supported_versions = @opts[:supported_versions]
     EM.run do
       @node = Node.new(@opts)
       EM.add_timer(1) { EM.stop }
@@ -29,7 +30,7 @@ describe "Mongodb Node" do
   end
 
   it "should be able to do provision" do
-    @resp = @node.provision("free")
+    @resp = @node.provision("free", nil, @default_version)
     @resp.should_not be_nil
     @resp['name'].should_not be_nil
     @resp['name'].should_not == ""
@@ -172,7 +173,7 @@ describe "Mongodb Node" do
 
   describe "MongoDB provisioned instance" do
     before (:each) do
-      @resp = @node.provision("free")
+      @resp = @node.provision("free", nil, @default_version)
       @p_service = @node.get_instance(@resp['name'])
     end
 
@@ -209,6 +210,7 @@ describe "Mongodb Node" do
     end
 
     it "should enforce no more than max connection to be accepted" do
+      pending 'Some version of MongoDB might not ensure max connection'
       first_conn_refused = false
       max_conn_refused = false
       connections = []
@@ -262,7 +264,7 @@ describe "Mongodb Node" do
 
   describe "MongoDB provisioned and binded instance" do
     before (:each) do
-      @resp = @node.provision("free")
+      @resp = @node.provision("free", nil, @default_version)
       @p_service = @node.get_instance(@resp['name'])
       @bind_resp = @node.bind(@resp['name'], 'rw')
     end
@@ -310,7 +312,7 @@ describe "Mongodb Node" do
 
   describe "MongoDB node shutdown/start function" do
     before (:each) do
-      @resp = @node.provision("free")
+      @resp = @node.provision("free", nil, @default_version)
     end
 
     after (:each) do
@@ -350,6 +352,26 @@ describe "Mongodb Node" do
         coll.count().should == 1
         conn.close if conn
       }.should_not raise_error
+    end
+  end
+
+  describe "MongoDB node multi-version support" do
+    it "should allow provision all supported versions" do
+      @supported_versions.each do |v|
+        rsp = @node.provision("free", nil, v)
+        p_service = @node.get_instance(rsp['name'])
+        conn = Mongo::Connection.new(p_service.ip, '27017')
+        version = conn.server_version.to_s
+        conn.close
+        version.start_with?(v).should be == true
+        @node.unprovision(rsp['name'], [])
+      end
+    end
+
+    it "should raise exception if unsupported version requested" do
+      lambda {
+        @node.provision("free", nil, "non_exist")
+      }.should raise_error(VCAP::Services::Base::Error::ServiceError.new(VCAP::Services::Base::Error::ServiceError::UNSUPPORTED_VERSION, "non_exist").to_s)
     end
   end
 end
