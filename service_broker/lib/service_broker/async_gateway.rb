@@ -415,7 +415,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       bsvc = BrokeredService.get(request.label)
       if bsvc
         svc = {
-          :data => {:plan => request.plan},
+          :configuration => {:plan => request.plan},
           :credentials => bsvc.credentials,
           :service_id => UUIDTools::UUID.random_create.to_s,
         }

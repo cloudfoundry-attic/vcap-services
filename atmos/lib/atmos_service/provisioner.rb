@@ -45,20 +45,13 @@ class VCAP::Services::Atmos::Provisioner < VCAP::Services::Base::Provisioner
       shared_secret = @atmos_helper.create_user(token, st_name)
 
       svc = {
-        :data => {:subtenant_name => st_name, :subtenant_id => st_id, :host => @host},
-        :service_id => st_name,
-        :credentials => {:host => @host, :port => @port, :token => token,
-          :shared_secret => shared_secret, :subtenant_id => st_id}
-      }
-      # set 'configuration' instead of 'data' to keep local hash consistent
-      svc_local = {
         :configuration => {"subtenant_name" => st_name, "subtenant_id" => st_id, "host" => @host},
         :service_id => st_name,
         :credentials => {"host" => @host, "port" => @port, "token" => token,
           "shared_secret" => shared_secret, "subtenant_id" => st_id}
       }
       @logger.debug("Service provisioned: #{svc.inspect}")
-      @prov_svcs[svc[:service_id]] = svc_local
+      @prov_svcs[svc[:service_id]] = svc
       blk.call(success(svc))
     rescue => e
       # roll back work

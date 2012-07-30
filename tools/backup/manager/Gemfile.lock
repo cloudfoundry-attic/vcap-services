@@ -15,11 +15,13 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: b7e3508eb96b86162ca385f1f46a13ecfcce359d
-  ref: b7e3508eb9
+  revision: b0cc19d5520c9849600dbd8cf2883bff66d7643e
+  ref: b0cc19d5
   specs:
-    vcap_common (1.0.14)
+    vcap_common (2.0.4)
       eventmachine
+      httpclient
+      membrane (~> 0.0.2)
       nats (~> 0.4.22.beta.8)
       posix-spawn (~> 0.3.6)
       thin (~> 1.3.1)
@@ -27,8 +29,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 4db4cc92ce5dc83d2cce95999508dbda51b34f0b
-  ref: 4db4cc92ce
+  revision: b8a47d1bc7d8901362db938a146107ccfb4f92e4
+  ref: b8a47d1b
   specs:
     vcap_services_base (0.1.12)
       curb (~> 0.7.16)
@@ -122,10 +124,12 @@ GEM
     eventmachine_httpserver (0.2.1)
     fastercsv (1.5.5)
     http_parser.rb (0.5.3)
+    httpclient (2.2.5)
     json (1.4.6)
     json_pure (1.7.3)
     macaddr (1.6.1)
       systemu (~> 2.5.0)
+    membrane (0.0.2)
     metaclass (0.0.1)
     mocha (0.10.0)
       metaclass (~> 0.0.1)
