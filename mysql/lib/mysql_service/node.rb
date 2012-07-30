@@ -52,7 +52,7 @@ class VCAP::Services::Mysql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
-    @kill_long_tx = options[:kill_long_tx] || true
+    @kill_long_tx = options[:kill_long_tx]
     @max_user_conns = options[:max_user_conns] || 0
     @mysqldump_bin = options[:mysqldump_bin]
     @gzip_bin = options[:gzip_bin]
