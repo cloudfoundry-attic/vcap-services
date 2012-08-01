@@ -68,7 +68,10 @@ class VCAP::Services::VBlob::Node
     @logger.info("Shutting down instances..")
     ProvisionedService.all.each do |provisioned_service|
       @logger.debug("Trying to terminate vblobd container: #{provisioned_service.name}")
-      provisioned_service.stop if provisioned_service.running?
+      provisioned_service.pre_stop if provisioned_service.running?
+    end
+    ProvisionedService.all.each do |provisioned_service|
+      provisioned_service.post_stop if provisioned_service.running?
     end
   end
 

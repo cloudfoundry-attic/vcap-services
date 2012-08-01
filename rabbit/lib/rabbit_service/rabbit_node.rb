@@ -66,7 +66,10 @@ class VCAP::Services::Rabbit::Node
     @logger.info("Shutting down instances..")
     ProvisionedService.all.each do |instance|
       @logger.debug("Try to terminate rabbitmq container: #{instance.name}")
-      instance.stop if instance.running?
+      instance.pre_stop if instance.running?
+    end
+    ProvisionedService.all.each do |instance|
+      instance.post_stop if instance.running?
     end
   end
 
