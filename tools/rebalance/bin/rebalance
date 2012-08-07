@@ -74,7 +74,6 @@ class Runner
     puts "Migrate instance #{instance}:"
     puts "Disable instance on source node."
     RestClient.post("#{@url_prefix}/#{@options[:source]}/#{instance}/disable", "", @http_params)
-    RestClient.post("#{@url_prefix}/#{@options[:source]}/#{instance}/enable", "", @http_params)
     puts "Import instance on destination node."
     RestClient.post("#{@url_prefix}/#{@options[:target]}/#{instance}/import", "", @http_params)
     puts "Update instance handles on destination node."

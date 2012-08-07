@@ -15,9 +15,5 @@ module VCAP::Services::MongoDB::Serialization
   class ImportFromURLJob < BaseImportFromURLJob
     include VCAP::Services::MongoDB::Serialization
   end
-
-  class ImportFromDataJob < BaseImportFromDataJob
-    include VCAP::Services::MongoDB::Serialization
-  end
 end
 

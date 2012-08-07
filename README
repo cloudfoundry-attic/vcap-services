@@ -36,3 +36,8 @@ pass the unit test. Normally these binaries are required to be installed in
 accordance to the path specified in the config file, i.e., the .yml file in
 the config directory. The nats information might also need to be updated to match
 the configuration of the nats server.
+
+== File a Bug
+
+To file a bug against Cloud Foundry Open Source and its components, sign up and use our
+bug tracking system: http://cloudfoundry.atlassian.net

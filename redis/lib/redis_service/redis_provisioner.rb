@@ -30,8 +30,4 @@ class VCAP::Services::Redis::Provisioner < VCAP::Services::Base::Provisioner
     VCAP::Services::Redis::Serialization::ImportFromURLJob
   end
 
-  def import_from_data_job
-    VCAP::Services::Redis::Serialization::ImportFromDataJob
-  end
-
 end

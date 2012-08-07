@@ -7,6 +7,7 @@ service:
   plans: ['free']
   default_plan: free
   tags: ['blob', 'blob-0.51', 'nosql']
+  supported_versions: ['0.51']
 ip_route: localhost
 #proxy:
 #   host: proxy

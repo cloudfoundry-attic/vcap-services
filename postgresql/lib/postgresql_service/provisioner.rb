@@ -30,8 +30,4 @@ class VCAP::Services::Postgresql::Provisioner < VCAP::Services::Base::Provisione
     VCAP::Services::Postgresql::Serialization::ImportFromURLJob
   end
 
-  def import_from_data_job
-    VCAP::Services::Postgresql::Serialization::ImportFromDataJob
-  end
-
 end

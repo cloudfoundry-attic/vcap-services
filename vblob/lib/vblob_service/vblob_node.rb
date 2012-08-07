@@ -53,7 +53,6 @@ class VCAP::Services::VBlob::Node
     init_ports(options[:port_range])
     @service_start_timeout = @options[:service_start_timeout] || 3
     ProvisionedService.init(options)
-    @supported_versions = ["1.0"]
   end
 
   # handle the cases which has already been in the local sqlite database

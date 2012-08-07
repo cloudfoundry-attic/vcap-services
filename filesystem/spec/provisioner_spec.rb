@@ -112,7 +112,7 @@ describe VCAP::Services::Filesystem::NFSProvisioner do
     it "should return the credentials when provision successful" do
       @provisioner.provision_service(@request) do |msg|
         msg["success"].should == true
-        msg["response"][:data][:plan].should == "free"
+        msg["response"][:configuration][:plan].should == "free"
         msg["response"][:service_id].should be
         msg["response"][:credentials]["internal"].should be
         msg["response"][:credentials]["internal"]["name"].should be
