@@ -22,7 +22,7 @@ redis_log_dir: /var/vcap/sys/log/redis
 command_rename_prefix: protect-command-prefix
 max_clients: 500
 # fqdn_hosts: false
-max_db_size: 128
+max_disk: 128
 image_dir: /var/vcap/services/redis/redis_image
 persistent: true
 # op_time_limit: 6

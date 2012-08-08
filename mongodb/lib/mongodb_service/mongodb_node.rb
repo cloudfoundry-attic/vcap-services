@@ -366,12 +366,12 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       @log_dir             = args[:mongod_log_dir]
       @image_dir           = args[:image_dir]
       @logger              = args[:logger]
-      @max_db_size         = args[:max_db_size] ? args[:max_db_size] : 128
+      @max_disk            = args[:max_disk] ? args[:max_disk] : 128
       @quota               = args[:filesystem_quota] || false
-      @@mongod_path       = args[:mongod_path] ? args[:mongod_path] : { args[:default_version] => 'mongod' }
-      @@mongorestore_path = args[:mongorestore_path] ? args[:mongorestore_path] : { args[:default_version] => 'mongorestore' }
-      @@mongodump_path    = args[:mongodump_path] ? args[:mongodump_path] : { args[:default_version] => 'mongodump' }
-      @@tar_path          = args[:tar_path] ? args[:tar_path] : 'tar'
+      @@mongod_path        = args[:mongod_path] ? args[:mongod_path] : { args[:default_version] => 'mongod' }
+      @@mongorestore_path  = args[:mongorestore_path] ? args[:mongorestore_path] : { args[:default_version] => 'mongorestore' }
+      @@mongodump_path     = args[:mongodump_path] ? args[:mongodump_path] : { args[:default_version] => 'mongodump' }
+      @@tar_path           = args[:tar_path] ? args[:tar_path] : 'tar'
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
       FileUtils.mkdir_p(base_dir)
@@ -394,7 +394,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
       raise "Cannot save provision service" unless p_service.save!
 
-      p_service.prepare_filesystem(self.max_db_size)
+      p_service.prepare_filesystem(self.max_disk)
       FileUtils.mkdir_p(p_service.data_dir)
       p_service
     end

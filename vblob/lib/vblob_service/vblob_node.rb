@@ -283,7 +283,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     def init(options)
       @base_dir = options[:base_dir]
       @log_dir = options[:vblobd_log_dir]
-      @max_db_size = options[:max_db_size] || 2048 #default max megabytes
+      @max_disk = options[:max_disk] || 2048 #default max megabytes
       @logger = options[:logger]
       @@config_template = ERB.new(File.read(options[:config_template]))
       @@vblobd_path = options[:vblobd_path]
@@ -303,7 +303,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
       provisioned_service.secretid    = password
       raise "Cannot save provision_service" unless provisioned_service.save!
 
-      provisioned_service.prepare_filesystem(max_db_size)
+      provisioned_service.prepare_filesystem(max_disk)
       FileUtils.mkdir_p(provisioned_service.data_dir)
 
       provisioned_service.generate_config
@@ -318,7 +318,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     log_file = "/store/log/vblob.log"
     account_file = File.join("/store/instance/", "account.json")
     config_file = File.join("/store/instance/", "config.json")
-    vblobd_quota = provisioned_service.class.max_db_size * 1024 * 1024
+    vblobd_quota = provisioned_service.class.max_disk * 1024 * 1024
     config = @@config_template.result(binding)
 
     config_path = File.join(provisioned_service.base_dir, "config.json")

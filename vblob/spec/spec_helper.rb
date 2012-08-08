@@ -95,7 +95,7 @@ def get_node_config()
     :mbus => parse_property(config, "mbus", String),
     :config_template => vblob_conf_template,
     :port_range => parse_property(config, "port_range", Range),
-    :max_db_size => parse_property(config, "max_db_size", Integer),
+    :max_disk => parse_property(config, "max_disk", Integer),
     :base_dir => '/tmp/vblob/instance',
     :log_dir => '/tmp/vblob/log',
     :vblobd_log_dir => '/tmp/vblob/service-log',

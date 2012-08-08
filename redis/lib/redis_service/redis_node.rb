@@ -93,6 +93,7 @@ class VCAP::Services::Redis::Node
     end
     instance.run
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
+    @logger.info("Successfully fulfilled provision request: #{instance.name}.")
     gen_credentials(instance)
   rescue => e
     @logger.error("Error provision instance: #{e}")
@@ -314,7 +315,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
       @log_dir = options[:redis_log_dir]
       @image_dir = options[:image_dir]
       @logger = options[:logger]
-      @max_db_size = options[:max_db_size]
+      @max_disk = options[:max_disk]
       @quota = options[:filesystem_quota] || false
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
@@ -355,7 +356,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
       if is_upgraded == false
         # Mount base directory to loop device for disk size limitation
-        db_size = db_size || max_db_size
+        db_size = db_size || max_disk
         instance.prepare_filesystem(db_size)
         FileUtils.mkdir_p(instance.data_dir)
         if db_file

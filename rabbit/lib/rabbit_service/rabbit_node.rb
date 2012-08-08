@@ -46,6 +46,7 @@ class VCAP::Services::Rabbit::Node
     # Default value is 2 seconds.
     @rabbitmq_timeout = @options[:rabbitmq_timeout] || 2
     @service_start_timeout = @options[:service_start_timeout] || 5
+    @instance_parallel_start_count = 3
     @default_permissions = '{"configure":".*","write":".*","read":".*"}'
     @initial_username = "guest"
     @initial_password = "guest"
@@ -367,7 +368,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       @log_dir = options[:rabbitmq_log_dir]
       @image_dir = options[:image_dir]
       @logger = options[:logger]
-      @max_db_size = options[:max_db_size]
+      @max_disk = options[:max_disk]
       @quota = options[:filesystem_quota] || false
       FileUtils.mkdir_p(options[:base_dir])
       FileUtils.mkdir_p(options[:rabbitmq_log_dir])
@@ -427,8 +428,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       FileUtils.rm_rf(instance.base_dir)
       FileUtils.rm_rf(instance.log_dir)
       FileUtils.rm_rf(instance.image_file)
-      FileUtils.mkdir_p(instance.base_dir)
-      instance.prepare_filesystem(max_db_size)
+      instance.prepare_filesystem(max_disk)
       FileUtils.mkdir_p(instance.config_dir)
       FileUtils.mkdir_p(instance.log_dir)
       # Writes the RabbitMQ server erlang configuration file

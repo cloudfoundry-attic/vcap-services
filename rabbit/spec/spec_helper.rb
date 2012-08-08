@@ -18,7 +18,7 @@ require "rabbit_service/rabbit_error"
 
 def getLogger
   logger = Logger.new(STDOUT)
-  logger.level = Logger::ERROR
+  logger.level = Logger::DEBUG
   logger
 end
 
@@ -63,7 +63,7 @@ def getNodeTestConfig
     :rabbitmq_log_dir => "/tmp/rabbitmq_instances/log",
     :config_template => File.expand_path("../../resources/rabbitmq.config.erb", __FILE__),
     :image_dir => "/tmp/redis_image",
-    :max_db_size => parse_property(config, "max_db_size", Integer),
+    :max_disk => parse_property(config, "max_disk", Integer),
     :migration_nfs => "/tmp/migration",
     :service_start_timeout => parse_property(config, "service_start_timeout", Integer, :optional => true),
   }

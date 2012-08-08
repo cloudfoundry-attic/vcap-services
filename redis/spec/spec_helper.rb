@@ -64,7 +64,7 @@ def getNodeTestConfig
     :command_rename_prefix => parse_property(config, "command_rename_prefix", String),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :image_dir => "/tmp/redis_image",
-    :max_db_size => parse_property(config, "max_db_size", Integer),
+    :max_disk => parse_property(config, "max_disk", Integer),
     :migration_nfs => "/tmp/migration",
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]

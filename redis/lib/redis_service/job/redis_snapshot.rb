@@ -25,7 +25,7 @@ module VCAP::Services::Redis::Snapshot
       :base_dir => @config["base_dir"],
       :redis_log_dir => @config["redis_log_dir"],
       :image_dir => @config["image_dir"],
-      :max_db_size => @config["max_db_size"],
+      :max_disk => @config["max_disk"],
       :local_db => @config["local_db"]
     }
     redis_provisioned_service.init(options)

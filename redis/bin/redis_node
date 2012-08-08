@@ -30,7 +30,7 @@ class VCAP::Services::Redis::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options[:redis_start_timeout] = parse_property(config, "redis_start_timeout", Integer, :optional => true)
     options[:image_dir] = parse_property(config, "image_dir", String)
-    options[:max_db_size] = parse_property(config, "max_db_size", Integer)
+    options[:max_disk] = parse_property(config, "max_disk", Integer)
     options[:persistent] = parse_property(config, "persistent", Boolean, :optional => true)
     options
   end
