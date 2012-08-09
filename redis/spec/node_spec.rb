@@ -122,7 +122,7 @@ describe VCAP::Services::Redis::Node do
       @instance.pid = @node.start_instance(@instance)
       @instance.plan = 1
       @instance.save
-      @node.stop_instance(@instance)
+      @node.stop_redis_server(@instance)
       sleep 1
       @node.start_provisioned_instances
       sleep 1
