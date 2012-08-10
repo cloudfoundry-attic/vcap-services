@@ -230,7 +230,7 @@ class VCAP::Services::Mysql::Node
     acquired = @kill_long_transaction_lock.try_lock
     return unless acquired
     query_str = "SELECT * from ("+
-                "  SELECT trx_started, id, user, db, info, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
+                "  SELECT trx_started, id, user, db, trx_query, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
                 "  FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p " +
                 "  ON t.trx_mysql_thread_id = p.ID " +
                 "  WHERE trx_state='RUNNING' and user!='root' " +
@@ -240,13 +240,13 @@ class VCAP::Services::Mysql::Node
       result = connection.query(query_str)
       current_long_tx_ids = []
       result.each do |trx|
-        trx_started, id, user, db, info, active_time = %w(trx_started id user db info active_time).map{|o| trx[o]}
+        trx_started, id, user, db, trx_query, active_time = %w(trx_started id user db trx_query active_time).map{|o| trx[o]}
         if @kill_long_tx
           connection.query("KILL QUERY #{id}")
-          @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
+          @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}")
           @long_tx_killed += 1
         else
-          @logger.warn("Log but not kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}}")
+          @logger.warn("Log but not kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}}")
           current_long_tx_ids << id
           unless @long_tx_ids.include?(id)
             @long_tx_count += 1
