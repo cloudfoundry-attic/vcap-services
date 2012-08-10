@@ -135,10 +135,13 @@ module VCAP
 
         class Connection
           attr_reader :conn
+          attr_accessor :last_active_time
 
           def initialize(opts)
             @opts = opts
             @conn = Mysql2::Client.new(@opts)
+            @last_active_time = Time.now
+            @expire = opts[:expire]
           end
 
           def active?
@@ -151,9 +154,18 @@ module VCAP
           end
 
           # Verify the embedded mysql connection. Reconnect if necessary
-          def verify!
-            reconnect unless active?
-            self
+          # close expired connection
+          def verify!(check_expire)
+            if check_expire && expire?
+              close if @conn
+            else
+              reconnect unless active?
+              self
+            end
+          end
+
+          def expire?
+            (Time.now - @last_active_time).to_i > @expire
           end
 
           def close
@@ -168,7 +180,11 @@ module VCAP
           def initialize(options)
             @options = options
             @timeout = options[:wait_timeout] || 10
-            @size = (options[:pool] && options[:pool].to_i) || 5
+            @size = (options[:pool] && options[:pool].to_i) || 1
+            @min = (options[:pool_min] && options[:pool_min].to_i) || 1
+            @max = (options[:pool_max] && options[:pool_max].to_i) || 5
+            @size = @size < @min ? @min : (@size > @max ? @max : @size)
+            @options[:expire] ||= 300 #seconds
             @logger = options[:logger] || make_logger
             @connections = []
             @connections.extend(MonitorMixin)
@@ -185,15 +201,16 @@ module VCAP
             fresh_connection = !@reserved_connections.has_key?(connection_id)
             connection = (@reserved_connections[connection_id] ||= checkout)
             yield connection.conn
+            connection.last_active_time = Time.now
           ensure
             release_connection(connection_id) if fresh_connection
           end
 
-          # verify all pooled connections
+          # verify all pooled connections, remove the expired ones
           def keep_alive
             @connections.synchronize do
               (@connections - @checked_out).each do |conn|
-                conn.verify!
+                @connections.delete(conn) unless conn.verify!(@connections.size > @min)
               end
             end
             true
@@ -239,7 +256,14 @@ module VCAP
               loop do
                 if @checked_out.size < @connections.size
                   conn = (@connections - @checked_out).first
-                  conn.verify!
+                  conn.verify!(false)
+                  @checked_out << conn
+                  return conn
+                end
+
+                if @connections.size < @max
+                  conn = Connection.new(@options)
+                  @connections << conn
                   @checked_out << conn
                   return conn
                 end
@@ -251,7 +275,7 @@ module VCAP
                 else
                   clear_stale_cached_connections!
                   if @checked_out.size == @connections.size
-                    raise Mysql2::Error, "could not obtain a database connection within #{@timeout} seconds.  The max pool size is currently #{@size}; consider increasing it."
+                    raise Mysql2::Error, "could not obtain a database connection within #{@timeout} seconds.  The max pool size is currently #{@max}; consider increasing it."
                   end
                 end
               end

@@ -21,6 +21,7 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def additional_config(options, config)
+    options[:config_template] = File.expand_path("../../resources/my.conf.erb", __FILE__)
     options[:mysqldump_bin] = parse_property(config, "mysqldump_bin", String)
     options[:gzip_bin] = parse_property(config, "gzip_bin", String)
     options[:mysql_bin] = parse_property(config, "mysql_bin", String)
@@ -33,6 +34,19 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
     options[:socket] = parse_property(config, "socket", String, :optional => true)
     options[:connection_pool_size] = parse_property(config, "connection_pool_size", Integer, :optional => true)
     options[:connection_wait_timeout] = parse_property(config, "connection_wait_timeout", Integer, :optional => true)
+    options[:disk_overhead] = parse_property(config, "disk_overhead", Float, :default => 0.0)
+    options[:use_warden] = parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
+    if options[:use_warden]
+      warden_config = parse_property(config, "warden", Hash, :optional => true)
+      options[:log_dir] = parse_property(warden_config, "log_dir", String)
+      options[:port_range] = parse_property(warden_config, "port_range", Range)
+      options[:image_dir] = parse_property(warden_config, "image_dir", String)
+      options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
+      options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
+      options[:max_heap_table_size] = parse_property(warden_config, "max_heap_table_size", Integer, :optional => true)
+      options[:micro] = parse_property(warden_config, "micro", Boolean, :optional => true)
+      options[:production] = parse_property(warden_config, "production", Boolean, :optional => true)
+    end
     options
   end
 
