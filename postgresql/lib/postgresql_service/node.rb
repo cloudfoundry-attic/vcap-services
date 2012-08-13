@@ -93,6 +93,9 @@ class VCAP::Services::Postgresql::Node
     manage_temp_privilege(provisionedservice.name)
     # In earlier releases, users should not have create privilege to create schmea in databases.
     manage_create_privilege(provisionedservice.name)
+    # Fix the bug: when restoring database, the max connection limit is set to -1
+    # https://www.pivotaltracker.com/story/show/34260725
+    manage_maxconnlimit(provisionedservice.name)
   end
 
   def get_expected_children(name)
@@ -217,6 +220,12 @@ class VCAP::Services::Postgresql::Node
     @logger.warn("Exception while managing create privilege on database #{name}: #{x}")
   ensure
     connection.close if connection
+  end
+
+  def manage_maxconnlimit(name)
+    @connection.query("update pg_database set datconnlimit=#{@max_db_conns} where datname='#{name}' and datconnlimit=-1")
+  rescue => x
+    @logger.warn("Exception while managing maxconnlimit on database #{name}: #{x}")
   end
 
   def announcement
