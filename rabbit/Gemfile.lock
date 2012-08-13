@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 995685a52216a365d014dabc74766c19b4aebc8f
-  ref: 995685a522
+  revision: 6d7ed7d5e6180167fc323d0aea5ba67f1ddfa235
+  ref: 6d7ed7d5e6
   specs:
     vcap_services_base (0.1.13)
       curb (~> 0.7.16)
@@ -53,17 +53,17 @@ GIT
       uuidtools (~> 2.1.2)
       vcap_common (>= 1.0.8)
       vcap_logging (>= 1.0.2)
-      warden-client (~> 0.0.4)
-      warden-protocol (~> 0.0.3)
+      warden-client (~> 0.0.6)
+      warden-protocol (~> 0.0.5)
 
 GIT
   remote: git://github.com/cloudfoundry/warden.git
-  revision: d8334ce8a383cee65a1b1d568ed5cc40b20669cb
-  ref: d8334ce8a3
+  revision: 21f9a32ab501a6485c9a4e7aff4f9b6f40e31e3c
+  ref: 21f9a32ab5
   specs:
-    warden-client (0.0.4)
+    warden-client (0.0.6)
       warden-protocol
-    warden-protocol (0.0.3)
+    warden-protocol (0.0.5)
       beefcake
 
 GEM
@@ -154,7 +154,7 @@ GEM
     rake (0.9.2.2)
     rcov (0.9.9)
     redis (3.0.1)
-    redis-namespace (1.2.0)
+    redis-namespace (1.2.1)
       redis (~> 3.0.0)
     redisk (0.2.2)
       redis (>= 0.1.1)
