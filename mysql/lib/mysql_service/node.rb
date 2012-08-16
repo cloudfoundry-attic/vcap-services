@@ -242,11 +242,11 @@ class VCAP::Services::Mysql::Node
       result.each do |trx|
         trx_started, id, user, db, trx_query, active_time = %w(trx_started id user db trx_query active_time).map{|o| trx[o]}
         if @kill_long_tx
-          connection.query("KILL QUERY #{id}")
+          connection.query("KILL #{id}")
           @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}")
           @long_tx_killed += 1
         else
-          @logger.warn("Log but not kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}}")
+          @logger.warn("Log but not kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}")
           current_long_tx_ids << id
           unless @long_tx_ids.include?(id)
             @long_tx_count += 1
