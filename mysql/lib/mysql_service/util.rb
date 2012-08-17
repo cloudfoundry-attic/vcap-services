@@ -40,7 +40,7 @@ module VCAP
           gzip_bin = opts[:gzip_bin] || "gzip"
 
           socket_str = "-S #{socket}"
-          cmd = "#{mysql_dump_bin} -h#{host} -u#{user} -p#{password} -P#{port} #{socket_str if socket} -R --single-transaction #{db}| #{gzip_bin} - > #{dump_file_path}"
+          cmd = "#{mysql_dump_bin} -h#{host} --user='#{user}' --password='#{password}' -P#{port} #{socket_str if socket} -R --single-transaction #{db}| #{gzip_bin} - > #{dump_file_path}"
           @logger.info("Take snapshot command:#{cmd}")
 
           on_err = Proc.new do |cmd, code, msg|
@@ -95,7 +95,7 @@ module VCAP
           restore_privileges(db) if @connection
 
           socket_str = "-S #{socket}"
-          cmd = "#{gzip_bin} -dc #{dump_file_path}| #{mysql_bin} -h#{host} -P#{port} -u#{import_user} -p#{import_pass} #{socket_str if socket} #{db}"
+          cmd = "#{gzip_bin} -dc #{dump_file_path}| #{mysql_bin} -h#{host} -P#{port} --user='#{import_user}' --password='#{import_pass}' #{socket_str if socket} #{db}"
           @logger.info("import dump file cmd: #{cmd}")
           on_err = Proc.new do |cmd, code, msg|
             raise "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}"

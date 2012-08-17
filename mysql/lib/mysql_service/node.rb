@@ -476,7 +476,7 @@ class VCAP::Services::Mysql::Node
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     path = File.join(backup_path, "#{name}.sql.gz")
     cmd = "#{@gzip_bin} -dc #{path}|" +
-      "#{@mysql_bin} -h #{host} -P #{port} -u #{user} --password=#{pass}"
+      "#{@mysql_bin} -h #{host} -P #{port} --user='#{user}' --password='#{pass}'"
     cmd += " -S #{socket}" unless socket.nil?
     cmd += " #{name}"
     o, e, s = exe_cmd(cmd)
@@ -514,7 +514,7 @@ class VCAP::Services::Mysql::Node
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     dump_file = File.join(dump_file_path, "#{name}.sql")
     @logger.info("Dump instance #{name} content to #{dump_file}")
-    cmd = "#{@mysqldump_bin} -h #{host} -u #{user} --password=#{password} -R --single-transaction #{'-S '+socket if socket} #{name} > #{dump_file}"
+    cmd = "#{@mysqldump_bin} -h #{host} --user='#{user}' --password='#{password}' -R --single-transaction #{'-S '+socket if socket} #{name} > #{dump_file}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
       return true
@@ -536,7 +536,7 @@ class VCAP::Services::Mysql::Node
     import_file = File.join(dump_file_path, "#{name}.sql")
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     @logger.info("Import data from #{import_file} to database #{name}")
-    cmd = "#{@mysql_bin} --host=#{host} --user=#{user} --password=#{password} #{'-S '+socket if socket} #{name} < #{import_file}"
+    cmd = "#{@mysql_bin} --host=#{host} --user='#{user}' --password='#{password}' #{'-S '+socket if socket} #{name} < #{import_file}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
       # delete the procedures and functions: security_type is definer while the definer doesn't exist
