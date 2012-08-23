@@ -13,3 +13,4 @@ ci-working-dir
 .rvmrc
 nats-server.pid
 base/pkg
+coverage

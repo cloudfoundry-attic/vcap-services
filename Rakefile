@@ -1,6 +1,6 @@
 require 'tmpdir'
 
-SERVICES_DIR = %w(atmos couchdb echo elasticsearch filesystem memcached mongodb mysql neo4j postgresql rabbit redis service_broker vblob tools/backup/manager)
+SERVICES_DIR = %w(atmos couchdb echo elasticsearch filesystem memcached mongodb mysql neo4j postgresql rabbit redis service_broker vblob tools/backup/manager marketplace)
 
 desc "Run integration tests."
 task "tests" do |t|

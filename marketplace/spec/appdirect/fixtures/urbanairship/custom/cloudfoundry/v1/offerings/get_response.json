@@ -1,0 +1,57 @@
+[
+    {
+        "id":"mongolab",
+        "name":"MongoLab",
+        "description":"MongoLab is awesome",
+        "versions" : ["1.8", "2.0", "2.4"],
+        "version_aliases" : {
+            "previous" : "1.8",
+            "current" : "2.0",
+            "next" : "2.4"
+        },
+        "plans":[
+            {
+                "id":"small",
+                "name":"Small",
+                "description":"Small"
+            },
+            {
+                "id":"medium",
+                "name":"Medium",
+                "description":"Medium"
+            }
+        ],
+        "development":true,
+        "active" : true,
+        "developers":[
+            {
+                "email":"christophe.levesque@appdirect.com"
+            }
+        ]
+    },
+    {
+        "id":"urbanairship",
+        "name":"Urban Airship",
+        "description":"Urban Airship: powering modern mobile",
+        "plans":[
+            {
+                "id":"small",
+                "name":"Small",
+                "description":"Small"
+            },
+            {
+                "id":"medium",
+                "name":"Medium",
+                "description":"Medium"
+            },
+            {
+                "id":"large",
+                "name":"Lage",
+                "description":"Lage"
+            }
+        ],
+        "development":false,
+        "active" : true,
+        "developers":[]
+    }
+]

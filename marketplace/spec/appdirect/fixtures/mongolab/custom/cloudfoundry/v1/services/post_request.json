@@ -1,0 +1,17 @@
+{
+    "user" : {
+        "uuid" : null,
+        "email" : "mwilkinson@vmware.com"
+    },
+    "offering" : {
+        "id" : "mongolab_dev",
+        "version" : "2.0"
+    },
+    "configuration" : {
+        "plan" : "free",
+        "name" : "def",
+        "options" : {
+            "cloud" : "joyent-cloud"
+        }
+    }
+}

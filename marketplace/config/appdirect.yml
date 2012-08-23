@@ -1,0 +1,16 @@
+---
+
+classname: "VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace"
+
+node_timeout: 15
+
+# appdirect configuration
+# Not configured by default as it would require revealing
+# credentials to a non-local resource.
+appdirect:
+  scheme: https
+  host: "dev3cloudfoundry.appdirect.com"
+  port: "443"
+  key: "k"
+  secret: "s"
+

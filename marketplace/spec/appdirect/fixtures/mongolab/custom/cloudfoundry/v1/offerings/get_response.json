@@ -1,0 +1,75 @@
+[
+    {
+        "name":"New Relic (Dev)",
+        "id" : "newrelic_development",
+        "tiers" : [
+            {
+                "id": "free",
+                "name" : "free",
+                "description" : "Basic plan"
+            }
+        ],
+        "development" : true,
+        "developers" : [
+            {
+                "email": "peter@newrelic.com"
+            }
+        ]
+    },
+    {
+        "name":"New Relic",
+        "id" : "newrelic_production",
+        "tiers" : [
+            {
+                "id": "free",
+                "name" : "free",
+                "description" : "Basic plan"
+            }
+        ],
+        "development" : false,
+        "developers" : [
+            {
+                "email": "peter@newrelic.com"
+            }
+        ]
+    },
+    {
+        "name":"MongoLab",
+        "id" : "mongolab_production",
+        "description":"MongoLab: Cloud MongoDB Hosting",
+        "active" : true,
+        "tiers" :
+            [
+                {
+                    "id": "free",
+                    "name" : "free",
+                    "description" : "Basic plan"
+                }
+            ],
+            "development" : false,
+            "developers" : [
+                {
+                    "email": "jared@mongolab.com"
+                }
+            ]
+    },
+    {
+        "name":"Sendgrid",
+        "id" : "sendgrid",
+        "description":"Email Delivery. Simplified.",
+        "tiers" :
+            [
+                {
+                    "id": "free",
+                    "name" : "free",
+                    "description" : "Basic plan"
+                }
+            ],
+            "development" : false,
+            "developers" : [
+                {
+                    "email": "tim@sendgrid.com"
+                }
+            ]
+    }
+]

@@ -1,0 +1,16 @@
+{
+    "user" : {
+        "uuid" : null,
+        "email" : "mwilkinson@vmware.com"
+    },
+    "offering" : {
+        "id" : "asms_dev",
+        "version" : "1.0"
+    },
+    "configuration" : {
+        "plan" : "free",
+        "name" : "my-asms",
+        "options" : {
+        }
+    }
+}

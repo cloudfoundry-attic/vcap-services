@@ -1,0 +1,82 @@
+[
+    {
+        "id":"mongolab_dev",
+        "version":"2.0",
+        "name":"MongoLab",
+        "description":"Cloud hosted and managed MongoDB",
+        "plans":[
+            {
+                "id":"free",
+                "name":"Free Edition",
+                "description":"Free Edition"
+            }
+        ],
+        "development":true,
+        "developers":[
+            {
+                "email":"jared@objectlabs.com"
+            }
+        ],
+        "active":true
+    },
+    {
+        "id":"mongolab",
+        "version":"2.0",
+        "name":"MongoLab",
+        "description":"Cloud hosted and managed MongoDB",
+        "plans":[
+            {
+                "id":"free",
+                "name":"Free Edition",
+                "description":"Free Edition"
+            }
+        ],
+        "development":false,
+        "developers":[
+            {
+                "email":"jared@objectlabs.com"
+            }
+        ],
+        "active":true
+    },
+    {
+        "id":"asms_dev",
+        "version":"1.0",
+        "name":"Activity Streams",
+        "description":"Activity Streams Engine",
+        "plans":[
+            {
+                "id":"FREE",
+                "name":"Free Edition",
+                "description":"Free Edition"
+            }
+        ],
+        "development":true,
+        "developers":[
+            {
+                "email":"mwilkinson@vmware.com"
+            }
+        ],
+        "active":true
+    },
+    {
+        "id":"james_dev",
+        "version":"0.1",
+        "name":"James",
+        "description":"James",
+        "plans":[
+            {
+                "id":"FREE",
+                "name":"Free Edition",
+                "description":"Free Edition"
+            }
+        ],
+        "development":true,
+        "developers":[
+            {
+                "email":"mwilkinson@vmware.com"
+            }
+        ],
+        "active":true
+    }
+]

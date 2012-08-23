@@ -1,0 +1,8 @@
+{
+    "uuid" :"2c3d8f56-f269-425f-9831-2faf3d26e686",
+    "id" : "140134ad-c830-4e22-8636-d252778bfe57",
+    "options" :{},
+    "credentials": {
+        "MONGOLAB_URI":"mongodb://140134ad-c830-4e22-8636-d252778bfe57:76b749d4-af99-49f8-9c84-aef56878cabd@ds031607-a.mongolab.com:31607/cloudfoundry_q2vjavga_ag0lsggd"
+    }
+}
