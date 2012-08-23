@@ -244,7 +244,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     Fiber.new {
       msg = provision_brokered_service(req)
       if msg['success']
-        async_reply(VCAP::Services::Api::GatewayProvisionResponse.new(msg['response']).encode)
+        async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
       else
         async_reply_error(msg['response'])
       end
@@ -260,7 +260,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     Fiber.new {
       msg = bind_brokered_service_instance(req.label, req.service_id, req.binding_options)
       if msg['success']
-        async_reply(VCAP::Services::Api::GatewayBindResponse.new(msg['response']).encode)
+        async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
       else
         async_reply_error(msg['response'])
       end
