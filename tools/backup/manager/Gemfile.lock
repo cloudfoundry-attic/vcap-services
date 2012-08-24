@@ -32,10 +32,10 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: e54a821c72f1733a333442c7b123a17941c8ed1e
-  ref: e54a821c
+  revision: db367f3166b7ee63c8a4b4d40fd948babc407370
+  ref: db367f31
   specs:
-    vcap_services_base (0.1.14)
+    vcap_services_base (0.1.16)
       curb (~> 0.7.16)
       datamapper (~> 1.1.0)
       do_sqlite3 (~> 0.10.3)
@@ -154,7 +154,7 @@ GEM
     redisk (0.2.2)
       redis (>= 0.1.1)
       redis-namespace (>= 0.1.0)
-    resque (1.21.0)
+    resque (1.22.0)
       multi_json (~> 1.0)
       redis-namespace (~> 1.0)
       sinatra (>= 0.9.2)
