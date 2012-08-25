@@ -7,20 +7,18 @@ module VCAP
     module Marketplace
       class MarketplaceAsyncServiceGateway < VCAP::Services::AsynchronousServiceGateway
 
-        REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
+        REQ_OPTS      = %w(mbus url token cloud_controller_uri).map {|o| o.to_sym}
 
         set :raise_errors, Proc.new {false}
         set :show_exceptions, false
 
-        attr_reader :ready_to_serve       
- 
         def initialize(opts)
-          super(opts)          
+          super(opts)
         end
 
         def load_marketplace(opts)
           marketplace_lib_path = File.join(File.dirname(__FILE__), '..', 'marketplaces', opts[:marketplace])
-	  @logger.info("Loading marketplace: #{opts[:marketplace]} from: #{marketplace_lib_path}")
+          @logger.info("Loading marketplace: #{opts[:marketplace]} from: #{marketplace_lib_path}")
 
           $LOAD_PATH.unshift(marketplace_lib_path)
           Dir[marketplace_lib_path + '/*.rb'].each do |file|
@@ -28,9 +26,11 @@ module VCAP
             require f
           end
 
-          # HACK?? Is there a better way?
-          eval "class VCAP::Services::Marketplace::MarketplaceClient < #{opts[:classname]} ; end"
-          VCAP::Services::Marketplace::MarketplaceClient.new(opts)
+          # To minimize the amount of marketplace-specific code, the config file specifies the class that
+          # implements MarketplaceBase's abstract methods for this marketplace. So we need to translate the
+          # name of the class into the actual class object, and then create an instance of it.
+          klass = eval(opts[:classname])
+          klass.new(opts)
         end
 
         def setup(opts)
@@ -43,21 +43,12 @@ module VCAP
           @logger                = opts[:logger] || make_logger()
           @token                 = opts[:token]
           @hb_interval           = opts[:heartbeat_interval] || 60
-          @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri] || default_cloud_controller_uri)
-          @external_uri          = opts[:external_uri]
+          @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri] || "api.vcap.me")
           @offering_uri          = "#{@cld_ctrl_uri}/services/v1/offerings/"
-          @router_start_channel  = nil
           @proxy_opts            = opts[:proxy]
           @handle_fetched        = true # set to true in order to compatible with base asycn gateway.
 
           @marketplace_client = load_marketplace(opts)
-
-          @router_register_json  = {
-            :host => @host,
-            :port => @port,
-            :uris => [ @external_uri ],
-            :tags => {:components =>  @marketplace_client.name},
-          }.to_json
 
           @catalog = {}
 
@@ -150,7 +141,6 @@ module VCAP
         # Binding a service
         post "/gateway/v1/configurations/:service_id/handles" do
           @logger.info("Got request_body=#{request_body}")
-          #req = JSON.parse(request_body)
           req = VCAP::Services::Api::GatewayBindRequest.decode(request_body)
           @logger.info("Binding request for service=#{params['service_id']} options=#{req.inspect}")
 
@@ -203,7 +193,7 @@ module VCAP
         helpers do
 
           def advertise_service_to_cc(offering)
-            @logger.debug("advertise service offering to cloud_controller:#{offering.inspect}")
+            @logger.debug("advertise service offering #{offering.inspect} to cloud_controller: #{@offering_uri}")
             return false unless offering
 
             req = create_http_request(
@@ -213,9 +203,7 @@ module VCAP
 
             f = Fiber.current
             http = EM::HttpRequest.new(@offering_uri).post(req)
-            http.callback do
-              f.resume(http)
-            end
+            http.callback { f.resume(http) }
             http.errback { f.resume(http) }
             Fiber.yield
 
@@ -259,10 +247,9 @@ module VCAP
           def fmt_error(e)
             "#{e} [#{e.backtrace.join("|")}]"
           end
-
         end
+
       end
     end
   end
 end
-

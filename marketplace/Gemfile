@@ -3,11 +3,7 @@ source :rubygems
 gem 'eventmachine', :git => 'git://github.com/cloudfoundry/eventmachine.git', :branch => 'release-0.12.11-cf'
 gem "em-http-request"
 gem "ruby-hmac"
-gem "uuidtools"
-gem "datamapper", "~> 1.1.0"
 gem "dm-core", "= 1.1.0"
-gem "do_sqlite3"
-gem "dm-sqlite-adapter"
 gem "sinatra", "~> 1.2.3"
 gem "oauth"
 gem "json", "~> 1.4.6"

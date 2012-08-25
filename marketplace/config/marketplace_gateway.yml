@@ -2,7 +2,7 @@
 cloud_controller_uri: api.vcap.me
 ip_route: localhost
 index: 0
-token: changebrokertoken
+token: changemarketplacetoken
 mbus: nats://localhost:4222
 logging:
   level: debug
@@ -13,3 +13,5 @@ pid: /var/vcap/sys/run/marketplace.pid
 # since this value is specific to interactions with #{marketplace}
 
 marketplace: appdirect
+
+acls: [ "*@example.com" ]

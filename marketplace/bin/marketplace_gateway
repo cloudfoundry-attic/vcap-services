@@ -6,14 +6,12 @@ ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
 require 'bundler/setup'
 require 'vcap_services_base'
 
+require 'optparse'
+
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 require 'base/marketplace_async_gateway'
 
 class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
-
-  def default_config_file
-    File.join(File.dirname(__FILE__), '..', 'config', 'marketplace_gateway.yml')
-  end
 
   def additional_options
   end
@@ -23,7 +21,18 @@ class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
   end
 
   def load_config
-    config_file = default_config_file
+    config_file = File.join(File.dirname(__FILE__), '..', 'config', 'marketplace_gateway.yml')
+
+    OptionParser.new do |opts|
+      opts.banner = "Usage: $0 [options]"
+      opts.on("-c", "--config [ARG]", "Configuration File") do |opt|
+        config_file = opt
+      end
+      opts.on("-h", "--help", "Help") do
+        puts opts
+        exit
+      end
+    end.parse!
 
     begin
       @config = parse_gateway_config(config_file)
@@ -33,7 +42,7 @@ class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
     end
 
     marketplace = @config[:marketplace]
-    marketplace_config = YAML.load_file(File.join(File.dirname(__FILE__), '..', 'config', "#{marketplace}.yml"))
+    marketplace_config = YAML.load_file(File.join(File.dirname(config_file), "#{marketplace}.yml"))
     marketplace_config = VCAP.symbolize_keys(marketplace_config)
 
     @config = @config.merge(marketplace_config)
@@ -45,8 +54,8 @@ class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
       setup_pid
 
       @config[:host] = VCAP.local_ip(@config[:ip_route])
-      @config[:port] ||= VCAP.grab_ephemeral_port      
-      @config[:external_uri] = "#{@config[:host]}:#{@config[:port]}"
+      @config[:port] ||= VCAP.grab_ephemeral_port
+      @config[:url] = "http://#{@config[:host]}:#{@config[:port]}"
 
       EM.run do
         sg = async_gateway_class.new(@config)

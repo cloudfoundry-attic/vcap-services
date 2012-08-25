@@ -4,8 +4,6 @@ module VCAP
     module Marketplace
       class Base
 
-        VMWARE_ACLS   = ["*@vmware.com", "*@rbcon.com"]
-
         def initialize(opts_unused)
         end
 
@@ -16,7 +14,7 @@ module VCAP
         def get_catalog
           {}
         end
- 
+
         def generate_cc_advertise_request(name, bsvc, active = true)
           {}
         end

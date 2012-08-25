@@ -77,11 +77,10 @@ def load_config()
   appdirect_config = symbolize_keys(appdirect_config)
 
   config = config.merge(appdirect_config)
-  config[:external_uri] = 
   config[:logger] = make_logger()
   config[:host] = VCAP.local_ip(config[:ip_route])
   config[:port] ||= VCAP.grab_ephemeral_port
-  config[:external_uri] = "#{config[:host]}:#{config[:port]}"
+  config[:url] = "http://#{config[:host]}:#{config[:port]}"
 
   config
 end

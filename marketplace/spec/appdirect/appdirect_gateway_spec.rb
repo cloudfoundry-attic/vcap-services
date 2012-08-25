@@ -30,7 +30,7 @@ describe "AppDirect Gateway" do
       puts "Initializing..."
       sleep 1
     end
-    
+
     @app_session = Rack::Test::Session.new(Rack::MockSession.new(@gateway))
 
     @rack_env = {
