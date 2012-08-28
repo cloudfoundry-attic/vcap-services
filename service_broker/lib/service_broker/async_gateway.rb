@@ -46,7 +46,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @token                 = opts[:token]
     @hb_interval           = opts[:heartbeat_interval] || 60
     @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri])
-    @external_uri          = opts[:external_uri]
+    @external_uri          = parse_uri(opts[:external_uri])
     @offering_uri          = "#{@cld_ctrl_uri}/services/v1/offerings/"
     @service_list_uri      = "#{@cld_ctrl_uri}/proxied_services/#{API_VERSION}/offerings"
     @router_start_channel  = nil
@@ -56,7 +56,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @router_register_json  = {
       :host => @host,
       :port => @port,
-      :uris => [ @external_uri ],
+      :uris => [ @external_uri.host ],
       :tags => {:components =>  "ServiceBroker"},
     }.to_json
 
@@ -119,6 +119,14 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     abort_request(error_msg)
   end
 
+  def parse_uri(uri_str)
+    uri = URI.parse(uri_str)
+    uri = URI.parse('http://' + uri_str) unless uri.scheme
+
+    raise "Invalid external uri: #{uri_str}" unless uri.scheme.start_with? 'http'
+    uri
+  end
+
   def start_nats(uri)
     f = Fiber.current
     @nats = NATS.connect(:uri => uri) do
@@ -166,13 +174,16 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
 
   def advertise_saved_services(active=true)
     BrokeredService.all.each do |bsvc|
-      req = {}
-      req[:label] = bsvc.label
-      req[:active] = active
-      req[:acls] = bsvc.acls
-      req[:url] = "http://#{@external_uri}"
-      req[:plans] = ["default"]
-      req[:tags] = ["default"]
+      req = VCAP::Services::Api::ServiceOfferingRequest.new({
+        :label                => bsvc.label,
+        :active               => active,
+        :acls                 => bsvc.acls,
+        :url                  => @external_uri.to_s,
+        :plans                => ["default"],
+        :tags                 => [],
+        :supported_versions   => [bsvc.version],
+        :version_aliases      => {:current => bsvc.version},
+      }).extract
       advertise_brokered_service_to_cc(req)
     end
   end
@@ -296,16 +307,18 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         opt = VCAP.symbolize_keys(opt)
         svc = {}
         name, version = VCAP::Services::Api::Util.parse_label(label)
-        svc[:label] = "#{name}_#{opt[:name]}-#{version}"
-        svc[:active] = true
-        svc[:description] = "#{des} (option '#{opt[:name]}')"
-        # Add required fields
-        svc[:acls] = opt[:acls]
-        svc[:url] = "http://#{@external_uri}"
-        svc[:plans] = ["default"]
-        svc[:tags] = ["default"]
-        svc[:supported_versions] = [ version ]
-        svc[:version_aliases] = { "current" => version }
+
+        svc = VCAP::Services::Api::ServiceOfferingRequest.new({
+          :label                => "#{name}_#{opt[:name]}-#{version}",
+          :active               => true,
+          :description          => "#{des} (option '#{opt[:name]}')",
+          :acls                 => opt[:acls],
+          :url                  => @external_uri.to_s,
+          :plans                => ["default"],
+          :tags                 => [],
+          :supported_versions   => [version],
+          :version_aliases      => {:current => version},
+        }).extract
 
         # update or create local database entry
         bsvc = BrokeredService.get(svc[:label])
