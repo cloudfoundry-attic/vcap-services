@@ -71,13 +71,7 @@ class VCAP::Services::MongoDB::Node
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    ProvisionedService.all.each do |p_service|
-      @logger.debug("Try to terminate mongod container:#{p_service.container}")
-      p_service.pre_stop if p_service.running?
-    end
-    ProvisionedService.all.each do |p_service|
-      p_service.post_stop if p_service.running?
-    end
+    stop_instances(ProvisionedService.all)
   end
 
   def announcement

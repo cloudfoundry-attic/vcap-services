@@ -64,13 +64,7 @@ class VCAP::Services::Redis::Node
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    ProvisionedService.all.each do |instance|
-      @logger.debug("Try to terminate redis container: #{instance.name}")
-      instance.pre_stop if instance.running?
-    end
-    ProvisionedService.all.each do |instance|
-      instance.post_stop if instance.running?
-    end
+    stop_instances(ProvisionedService.all)
   end
 
   def announcement
