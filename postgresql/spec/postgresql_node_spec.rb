@@ -72,6 +72,7 @@ describe "Postgresql node normal cases" do
       tmp_db = @node.provision(@default_plan)
       @test_dbs[tmp_db] = []
       conn = connect_to_postgresql(tmp_db)
+      old_db_info = @node.get_db_info(conn, tmp_db["name"])
       conn.query("create table test1(id int)")
       conn.query("insert into test1 values(1)")
       conn.query("create schema test_schema")
@@ -91,6 +92,8 @@ describe "Postgresql node normal cases" do
       conn.query("create table test_schema.test2(id int)")
       @node.restore(tmp_db["name"], "/tmp").should == true
       conn = connect_to_postgresql(tmp_db)
+      new_db_info = @node.get_db_info(conn, tmp_db["name"])
+      new_db_info["datconnlimit"].should == old_db_info["datconnlimit"]
       res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
       res.count.should == 1
       res[0]["tablename"].should == "test1"
@@ -784,6 +787,23 @@ describe "Postgresql node normal cases" do
       @db['user'] = parent.user
       @db['password'] = parent.password
       EM.stop
+    end
+  end
+
+  it "should be able to migrate(max_conns_limit) legacy instances" do
+    EM.run do
+      ori_db_info = @node.get_db_info(@node.connection, @db['name'])
+      ori_limit = ori_db_info['datconnlimit']
+      ori_limit.should_not == '-1'
+      @node.connection.query("update pg_database set datconnlimit=-1 where datname = '#{@db['name']}'")
+      @node.get_db_info(@node.connection, @db['name'])['datconnlimit'].should == '-1'
+      node = VCAP::Services::Postgresql::Node.new(@opts)
+      sleep(1)
+      EM.add_timer(0.1) {
+        @node.get_db_info(@node.connection, @db['name'])['datconnlimit'].should == ori_limit
+        node.get_db_info(node.connection, @db['name'])['datconnlimit'].should == ori_limit
+        EM.stop
+      }
     end
   end
 

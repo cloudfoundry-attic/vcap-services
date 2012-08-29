@@ -1,0 +1,21 @@
+{
+    "uuid" : "this-came-from-appdirect",
+    "id" : "this-came-from-asms",
+    "user" : {
+        "uuid" : "ifweknowtheuuid",
+        "email" : "mwilkinson@vmware.com"
+    },
+    "offering" : {
+        "id" : "asms_dev",
+        "version" : "1.0"
+    },
+    "configuration" : {
+        "plan" : "free",
+        "name" : "my-db",
+        "options" : {
+        }
+    },
+    "credentials": {
+        "name": "d8aca7a7dc1984da49abf58c033a38b24"
+    }
+}

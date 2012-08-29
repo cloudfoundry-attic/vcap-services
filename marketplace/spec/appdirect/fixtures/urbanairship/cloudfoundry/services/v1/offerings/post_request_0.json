@@ -1,0 +1,9 @@
+{
+  "label": "mongolab",
+  "url": "http://appdirect.vcap.me",
+  "description": "MongoLab is awesome",
+  "tags": ["default"],
+  "plans": ["small", "medium"],
+  "acls": {"users": ["christophe.levesque@appdirect.com"], "wildcards": ["*@vmware.com", "*@rubicon.com"]},
+  "active": true
+}

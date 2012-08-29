@@ -1,0 +1,8 @@
+{
+  "label": "urbanairship",
+  "url": "http://appdirect.vcap.me",
+  "description": "Urban Airship: powering modern mobile",
+  "tags": ["default"],
+  "plans": ["small", "medium", "large"],
+  "active": true
+}

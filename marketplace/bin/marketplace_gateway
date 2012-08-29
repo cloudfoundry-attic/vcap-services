@@ -1,0 +1,58 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+#
+# Copyright (c) 2009-2012 VMware, Inc.
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+require 'bundler/setup'
+require 'vcap_services_base'
+
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
+require 'base/marketplace_async_gateway'
+
+class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
+
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'marketplace_gateway.yml')
+  end
+
+  def additional_options
+  end
+
+  def async_gateway_class
+    VCAP::Services::Marketplace::MarketplaceAsyncServiceGateway
+  end
+
+  def load_config
+    config_file = default_config_file
+
+    begin
+      @config = parse_gateway_config(config_file)
+    rescue => e
+      puts "Couldn't read config file: #{e}"
+      exit
+    end
+
+    marketplace = @config[:marketplace]
+    marketplace_config = YAML.load_file(File.join(File.dirname(__FILE__), '..', 'config', "#{marketplace}.yml"))
+    marketplace_config = VCAP.symbolize_keys(marketplace_config)
+
+    @config = @config.merge(marketplace_config)
+  end
+
+  def start
+      load_config
+      setup_vcap_logging
+      setup_pid
+
+      @config[:host] = VCAP.local_ip(@config[:ip_route])
+      @config[:port] ||= VCAP.grab_ephemeral_port      
+      @config[:external_uri] = "#{@config[:host]}:#{@config[:port]}"
+
+      EM.run do
+        sg = async_gateway_class.new(@config)
+        Thin::Server.start(@config[:host], @config[:port], sg)
+      end
+    end
+end
+
+VCAP::Services::Marketplace::Gateway.new.start

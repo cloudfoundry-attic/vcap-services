@@ -48,7 +48,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri])
     @external_uri          = opts[:external_uri]
     @offering_uri          = "#{@cld_ctrl_uri}/services/v1/offerings/"
-    @service_list_uri      = "#{@cld_ctrl_uri}/brokered_services/#{API_VERSION}/offerings"
+    @service_list_uri      = "#{@cld_ctrl_uri}/proxied_services/#{API_VERSION}/offerings"
     @router_start_channel  = nil
     @proxy_opts            = opts[:proxy]
     @ready_to_serve        = false
@@ -150,8 +150,8 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       if http.response_header.status == 200
         # For V1, we can't get enough information such as services credentials from CC.
         # If CC return a service label that not known by SB, we simply print it out rather than serve it.
-        resp = VCAP::Services::Api::ListBrokeredServicesResponse.decode(http.response)
-        resp.brokered_services.each {|bsvc| @logger.info("Fetch brokered service from CC: label=#{bsvc["label"]}")}
+        resp = VCAP::Services::Api::ListProxiedServicesResponse.decode(http.response)
+        resp.proxied_services.each {|bsvc| @logger.info("Fetch brokered service from CC: label=#{bsvc["label"]}")}
         return true
       else
         @logger.warn("Failed to fetch brokered services, status=#{http.response_header.status}")
@@ -180,7 +180,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
   def advertise_pre_defined_services(services)
     services[:label] = "#{services[:name]}-#{services[:version]}"
     %w(name version).each {|key| services.delete(key.to_sym)}
-    req = VCAP::Services::Api::BrokeredServiceOfferingRequest.new(services)
+    req = VCAP::Services::Api::ProxiedServiceOfferingRequest.new(services)
     advertise_brokered_service(req)
   rescue => e
     @logger.warn("Failed to advertise pre-defined services #{services.inspect}: #{e}")
@@ -206,7 +206,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
 
   # Advertise or modify a brokered service offerings
   post "/service-broker/#{API_VERSION}/offerings" do
-    req = VCAP::Services::Api::BrokeredServiceOfferingRequest.decode(request_body)
+    req = VCAP::Services::Api::ProxiedServiceOfferingRequest.decode(request_body)
     @logger.debug("Advertise brokered service for label=#{req.label}")
 
     Fiber.new {
@@ -244,7 +244,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     Fiber.new {
       msg = provision_brokered_service(req)
       if msg['success']
-        async_reply(VCAP::Services::Api::GatewayProvisionResponse.new(msg['response']).encode)
+        async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
       else
         async_reply_error(msg['response'])
       end
@@ -260,7 +260,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     Fiber.new {
       msg = bind_brokered_service_instance(req.label, req.service_id, req.binding_options)
       if msg['success']
-        async_reply(VCAP::Services::Api::GatewayBindResponse.new(msg['response']).encode)
+        async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
       else
         async_reply_error(msg['response'])
       end

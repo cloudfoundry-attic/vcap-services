@@ -334,7 +334,7 @@ module VCAP
         # Create database
         def create_db(conn, db, db_info)
           return unless conn
-          if db_info["datconnlimit"].nil?
+          if db_info["datconnlimit"]
             conn.query("create database #{db} with connection limit = #{db_info["datconnlimit"]}")
           else
             conn.query("create database #{db}")

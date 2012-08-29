@@ -464,7 +464,7 @@ describe "Mysql server node" do
       host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
       tmp_file = "/tmp/#{db['name']}.sql.gz"
       @tmpfiles << tmp_file
-      result = `mysqldump -h #{host} -P #{port} -u #{user} --password=#{password} -R #{db['name']} | gzip > #{tmp_file}`
+      result = `mysqldump -h #{host} -P #{port} --user='#{user}' --password='#{password}' -R #{db['name']} | gzip > #{tmp_file}`
       bind_conn.query("drop procedure myfunc")
       conn.query("drop table test")
       res = bind_conn.query("show procedure status")
