@@ -15,3 +15,5 @@ pid: /var/vcap/sys/run/marketplace.pid
 marketplace: appdirect
 
 acls: [ "*@example.com" ]
+
+refresh_interval: 300

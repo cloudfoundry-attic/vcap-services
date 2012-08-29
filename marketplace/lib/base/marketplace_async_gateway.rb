@@ -48,6 +48,8 @@ module VCAP
           @proxy_opts            = opts[:proxy]
           @handle_fetched        = true # set to true in order to compatible with base asycn gateway.
 
+          @refresh_interval      = opts[:refresh_interval] || 300
+
           @marketplace_client = load_marketplace(opts)
 
           @catalog = {}
@@ -66,22 +68,15 @@ module VCAP
             end
           end
 
+          @refresh_timer = EM::PeriodicTimer.new(@refresh_interval) do
+            refresh_catalog_and_update_cc
+          end
+
           ##### Start up
           @ready_to_serve = false
-          f = Fiber.new do
-            begin
-              # get all service offerings
-              refresh_catalog
-              # active services in local database
-              advertise_services
-              # Ready to serve
-              @logger.info("#{@marketplace_client.name} Marketplace Gateway is ready to serve incoming request.")
-              @ready_to_serve = true
-            rescue => e
-              @logger.fatal("Error when start up: #{fmt_error(e)}")
-            end
-          end
-          f.resume
+
+          refresh_catalog_and_update_cc
+          @ready_to_serve = true
         end
 
         error [JsonMessage::ValidationError, JsonMessage::ParseError] do
@@ -92,6 +87,22 @@ module VCAP
         not_found do
           error_msg = ServiceError.new(ServiceError::NOT_FOUND, request.path_info).to_hash
           abort_request(error_msg)
+        end
+
+        def refresh_catalog_and_update_cc
+          f = Fiber.new do
+            begin
+              # get all service offerings
+              refresh_catalog
+              # active services in local database
+              advertise_services
+              # Ready to serve
+              @logger.info("#{@marketplace_client.name} Marketplace Gateway is ready to serve incoming request.")
+            rescue => e
+              @logger.fatal("Error when refreshing #{@marketplace_client.name} catalog: #{fmt_error(e)}")
+            end
+          end
+          f.resume
         end
 
         def refresh_catalog
@@ -107,6 +118,7 @@ module VCAP
 
         def on_exit(stop_event_loop=true)
           @ready_to_serve = false
+          @refresh_timer.cancel
           Fiber.new {
             # Since the services are not being stored locally
             refresh_catalog
