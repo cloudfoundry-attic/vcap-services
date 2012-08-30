@@ -64,7 +64,6 @@ module VCAP
               req[:plans] = ["default"]
             end
 
-            req[:tags] = ["default"] # No tags coming from AppDirect yet
             req[:timeout] = 5 + @node_timeout
             req
           end

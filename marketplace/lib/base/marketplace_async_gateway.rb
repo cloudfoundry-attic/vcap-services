@@ -99,7 +99,7 @@ module VCAP
               # Ready to serve
               @logger.info("#{@marketplace_client.name} Marketplace Gateway is ready to serve incoming request.")
             rescue => e
-              @logger.fatal("Error when refreshing #{@marketplace_client.name} catalog: #{fmt_error(e)}")
+              @logger.warn("Error when refreshing #{@marketplace_client.name} catalog: #{fmt_error(e)}")
             end
           end
           f.resume
