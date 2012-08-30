@@ -304,6 +304,8 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         svc[:url] = "http://#{@external_uri}"
         svc[:plans] = ["default"]
         svc[:tags] = ["default"]
+        svc[:supported_versions] = [ version ]
+        svc[:version_aliases] = { "current" => version }
 
         # update or create local database entry
         bsvc = BrokeredService.get(svc[:label])
