@@ -1,6 +1,5 @@
 # Copyright (c) 2009-2012 VMware, Inc.
 require 'fiber'
-require 'dm-types'
 require 'service_error'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
@@ -19,7 +18,7 @@ module VCAP
             super(opts)
 
             @logger       = opts[:logger]
-            @url          = opts[:url]
+            @external_uri = "http://#{opts[:external_uri]}"
             @node_timeout = opts[:node_timeout]
             @acls         = opts[:acls]
             @helper       = AppdirectHelper.new(opts, @logger)
@@ -52,7 +51,7 @@ module VCAP
               req[:acls][:users] = acls
             end
 
-            req[:url] = @url
+            req[:url] = @external_uri
 
             if bsvc["plans"] and bsvc["plans"].count > 0
               req[:plans] = []

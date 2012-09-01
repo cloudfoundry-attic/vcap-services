@@ -13,9 +13,6 @@ require 'base/marketplace_async_gateway'
 
 class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
 
-  def additional_options
-  end
-
   def async_gateway_class
     VCAP::Services::Marketplace::MarketplaceAsyncServiceGateway
   end
@@ -55,7 +52,6 @@ class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
 
       @config[:host] = VCAP.local_ip(@config[:ip_route])
       @config[:port] ||= VCAP.grab_ephemeral_port
-      @config[:url] = "http://#{@config[:host]}:#{@config[:port]}"
 
       EM.run do
         sg = async_gateway_class.new(@config)

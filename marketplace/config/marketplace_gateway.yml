@@ -16,4 +16,5 @@ marketplace: appdirect
 
 acls: [ "*@example.com" ]
 
+external_uri: appdirect-mpgw.vcap.me
 refresh_interval: 300

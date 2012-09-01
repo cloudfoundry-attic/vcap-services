@@ -1,13 +1,13 @@
 # Copyright (c) 2009-2012 VMware, Inc.
 require 'fiber'
-require 'dm-types'
+require 'nats/client'
 
 module VCAP
   module Services
     module Marketplace
       class MarketplaceAsyncServiceGateway < VCAP::Services::AsynchronousServiceGateway
 
-        REQ_OPTS      = %w(mbus url token cloud_controller_uri).map {|o| o.to_sym}
+        REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
 
         set :raise_errors, Proc.new {false}
         set :show_exceptions, false
@@ -39,6 +39,7 @@ module VCAP
 
           @host                  = opts[:host]
           @port                  = opts[:port]
+          @external_uri          = opts[:external_uri]
           @node_timeout          = opts[:node_timeout]
           @logger                = opts[:logger] || make_logger()
           @token                 = opts[:token]
@@ -51,6 +52,13 @@ module VCAP
           @refresh_interval      = opts[:refresh_interval] || 300
 
           @marketplace_client = load_marketplace(opts)
+
+          @router_register_json = {
+            :host => @host,
+            :port => @port,
+            :uris => [ @external_uri ],
+            :tags => {:components => "#{@marketplace_client.name}MarketplaceGateway" }
+          }.to_json
 
           @catalog = {}
 
@@ -72,11 +80,12 @@ module VCAP
             refresh_catalog_and_update_cc
           end
 
-          ##### Start up
-          @ready_to_serve = false
+          f = Fiber.new do
+            start_nats(opts[:mbus])
+          end
+          f.resume
 
           refresh_catalog_and_update_cc
-          @ready_to_serve = true
         end
 
         error [JsonMessage::ValidationError, JsonMessage::ParseError] do
@@ -116,13 +125,37 @@ module VCAP
           end
         end
 
+        def start_nats(uri)
+          f = Fiber.current
+          @nats = NATS.connect(:uri => uri) do
+            on_connect_nats;
+            f.resume
+          end
+          Fiber.yield
+       end
+
+        def on_connect_nats()
+          @logger.info("Register #{@marketplace_client.name} marketplace gateway: #{@router_register_json}")
+          @nats.publish('router.register', @router_register_json)
+          @router_start_channel = @nats.subscribe('router.start') {
+            @nats.publish('router.register', @router_register_json)
+          }
+        end
+
+        def stop_nats()
+          @nats.unsubscribe(@router_start_channel) if @router_start_channel
+          @logger.debug("Unregister #{@marketplace_client.name} marketplace gateway: #{@router_register_json}")
+          @nats.publish("router.unregister", @router_register_json)
+          @nats.close
+        end
+
         def on_exit(stop_event_loop=true)
-          @ready_to_serve = false
           @refresh_timer.cancel
           Fiber.new {
             # Since the services are not being stored locally
             refresh_catalog
             advertise_services(false)
+            stop_nats
             EM.stop if stop_event_loop
           }.resume
         end
@@ -130,7 +163,7 @@ module VCAP
         #################### Handlers ###################
 
         get "/" do
-          return {"offerings" => @catalog, "ready_to_serve" => @ready_to_serve}.to_json
+          return {"marketplace" => @marketplace_client.name, "offerings" => @catalog}.to_json
         end
 
         # Provision a marketplace service

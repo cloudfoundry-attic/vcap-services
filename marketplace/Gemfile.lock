@@ -200,7 +200,6 @@ PLATFORMS
 
 DEPENDENCIES
   ci_reporter
-  dm-core (= 1.1.0)
   em-http-request
   eventmachine!
   json (~> 1.4.6)
