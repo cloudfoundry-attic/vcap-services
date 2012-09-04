@@ -3,13 +3,14 @@ require "oauth"
 require "json"
 require "fiber"
 
+$:.unshift(File.dirname(__FILE__))
+require "appdirect_error"
+
 module VCAP
   module Services
     module Marketplace
       module Appdirect
           class AppdirectHelper
-
-            include VCAP::Services::Marketplace::Appdirect
 
             OFFERINGS_PATH = "custom/cloudfoundry/v1/offerings"
             SERVICES_PATH = "custom/cloudfoundry/v1/services"
@@ -28,6 +29,7 @@ module VCAP
               raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
 
               @appdirect_endpoint = appdirect_config[:endpoint]
+              @disabled_service_ids = opts[:disabled_service_ids] || []
 
               @consumer = OAuth::Consumer.new(appdirect_config[:key],  appdirect_config[:secret])
               @access_token = OAuth::AccessToken.new(@consumer)
@@ -44,7 +46,11 @@ module VCAP
                   data.each do |service|
                     # Add checks for specific categories which determine whether the addon should be listed on cc
                     @logger.debug("Got service '#{service["id"]}' from AppDirect")
-                    catalog[service["id"]] = service
+                    if (@disabled_service_ids.include?(service["id"]))
+                      @logger.warn("Service Offering: #{service["id"]} disabled via config")
+                    else
+                      catalog["#{service["id"]}-#{service["version"]}"] = service
+                    end
                   end
                   @logger.info("Got #{catalog.keys.count} services from AppDirect")
                 else
@@ -52,7 +58,7 @@ module VCAP
                 end
               else
                 @logger.warn("Failed to get catalog: #{http.error}")
-                raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_GET_LISTING, http.response_header.status)
+                raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_GET_LISTING, http.response_header.status)
               end
               return catalog
             end
@@ -72,11 +78,11 @@ module VCAP
                     # 500 if AppDirect has issues
                     # 503 if ISV is down
                     @logger.warn("Bad status code posting #{body} was #{http.response}")
-                    raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_PURCHASE, http.response_header.status)
+                    raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_PURCHASE, http.response)
                   end
                 else
                   @logger.warn("Error raised: #{http.error}")
-                  raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_PURCHASE, http.response_header.status)
+                  raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_PURCHASE, http.error.inspect)
                 end
               else
                 @logger.error("Order is required to purchase a service")
@@ -96,11 +102,12 @@ module VCAP
                     update_serv = JSON.parse(http.response)
                     @logger.debug("Bound service #{order_id}")
                   else
-                    raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_BIND, http.response_header.status)
+                    @logger.warn("Bind request #{body} failed due to: #{http.response}")
+                    raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_BIND, http.response)
                   end
                 else
                   @logger.warn("Error raised: #{http.error}")
-                  raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_BIND, http.response_header.status)
+                  raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_BIND, http.error.inspect)
                 end
               else
                 @logger.error("Order and Order Id are required to cancel a service")
@@ -117,12 +124,12 @@ module VCAP
                   if http.response_header.status >= 200 and http.response_header.status < 300
                     update_binding = true
                   else
-                    @logger.warn("Invalid status code returned: #{http.response_header.status}")
-                    raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_UNBIND, http.response_header.status)
+                    @logger.warn("Invalid status code returned: #{http.response}")
+                    raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_UNBIND, http.response)
                   end
                 else
                   @logger.warn("Error raised: #{http.error}")
-                  raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_UNBIND, http.response_header.status)
+                  raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_UNBIND, http.error.inspect)
                 end
               else
                 @logger.error("Binding Id and Order Id are required to cancel a service")
@@ -138,8 +145,8 @@ module VCAP
                   @logger.debug("Deleted #{order_id}")
                   cancel_serv = true
                 else
-                  @logger.warn("Invalid status code returned: #{http.response_header.status}")
-                  raise AppdirectError.new(AppDirectError::APPDIRECT_ERROR_CANCEL, http.response_header.status)
+                  @logger.warn("Invalid status code returned: #{http.response}")
+                  raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_CANCEL, http.response)
                 end
               else
                 @logger.error("Order Id is required to cancel a service")

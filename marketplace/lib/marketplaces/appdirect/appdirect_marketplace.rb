@@ -18,9 +18,10 @@ module VCAP
             super(opts)
 
             @logger       = opts[:logger]
-            @external_uri = "http://#{opts[:external_uri]}"
+            @external_uri = opts[:external_uri]
             @node_timeout = opts[:node_timeout]
             @acls         = opts[:acls]
+            @users        = opts[:users] || []
             @helper       = AppdirectHelper.new(opts, @logger)
           end
 
@@ -41,15 +42,16 @@ module VCAP
             req[:supported_versions] = [ bsvc["version"] ]
             req[:version_aliases]    =  { "current" => bsvc["version"] }
 
+            req[:acls] = {}
+            req[:acls][:wildcards] = @acls
+
+            users_acl = @users.dup
             if bsvc["developers"] and bsvc["developers"].count > 0
-              acls = []
               bsvc["developers"].each do |dev|
-                acls << dev["email"]
+                users_acl << dev["email"]
               end
-              req[:acls] = {}
-              req[:acls][:wildcards] = @acls
-              req[:acls][:users] = acls
             end
+            req[:acls][:users] = users_acl
 
             req[:url] = @external_uri
 
@@ -177,6 +179,11 @@ module VCAP
               end
             end
           end
+
+          def fmt_error(e)
+            "#{e} [#{e.backtrace.join("|")}]"
+          end
+
         end
       end
     end

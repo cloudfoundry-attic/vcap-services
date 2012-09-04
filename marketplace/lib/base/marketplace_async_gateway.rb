@@ -1,13 +1,15 @@
 # Copyright (c) 2009-2012 VMware, Inc.
 require 'fiber'
 require 'nats/client'
+require 'uri'
 
 module VCAP
   module Services
     module Marketplace
       class MarketplaceAsyncServiceGateway < VCAP::Services::AsynchronousServiceGateway
 
-        REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
+        API_VERSION = "v1"
+        REQ_OPTS    = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
 
         set :raise_errors, Proc.new {false}
         set :show_exceptions, false
@@ -39,13 +41,14 @@ module VCAP
 
           @host                  = opts[:host]
           @port                  = opts[:port]
-          @external_uri          = opts[:external_uri]
+          @router_register_uri   = (URI.parse(opts[:external_uri])).host
           @node_timeout          = opts[:node_timeout]
           @logger                = opts[:logger] || make_logger()
           @token                 = opts[:token]
           @hb_interval           = opts[:heartbeat_interval] || 60
           @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri] || "api.vcap.me")
-          @offering_uri          = "#{@cld_ctrl_uri}/services/v1/offerings/"
+          @offering_uri          = "#{@cld_ctrl_uri}/services/#{API_VERSION}/offerings/"
+          @service_list_uri      = "#{@cld_ctrl_uri}/proxied_services/#{API_VERSION}/offerings"
           @proxy_opts            = opts[:proxy]
           @handle_fetched        = true # set to true in order to compatible with base asycn gateway.
 
@@ -56,7 +59,7 @@ module VCAP
           @router_register_json = {
             :host => @host,
             :port => @port,
-            :uris => [ @external_uri ],
+            :uris => [ @router_register_uri ],
             :tags => {:components => "#{@marketplace_client.name}MarketplaceGateway" }
           }.to_json
 
@@ -101,10 +104,10 @@ module VCAP
         def refresh_catalog_and_update_cc
           f = Fiber.new do
             begin
-              # get all service offerings
               refresh_catalog
-              # active services in local database
+
               advertise_services
+
               # Ready to serve
               @logger.info("#{@marketplace_client.name} Marketplace Gateway is ready to serve incoming request.")
             rescue => e
@@ -115,12 +118,43 @@ module VCAP
         end
 
         def refresh_catalog
-          @catalog = @marketplace_client.get_catalog
+          @catalog_in_ccdb = get_proxied_services_from_cc
+          @catalog_in_marketplace = @marketplace_client.get_catalog
+        end
+
+        def deactivate_disabled_services
+          disabled_count = 0
+          @catalog_in_ccdb.each do |label, svc|
+            if (!@catalog_in_marketplace.keys.include?(label))
+              service_name, version = label.split(/-/)
+              svc["version"] = version
+              req = {
+                :label => svc["label"],
+                :active => false,
+                :url => @external_uri,
+                :supported_versions => [ version ],
+                :version_aliases => { "current" => version },
+              }
+              @logger.warn("#{@marketplace_client.name} service offering: #{label} not found in latest offering. Deactivating...")
+              advertise_service_to_cc(req)
+
+              # TODO: Update varz
+              disabled_count += 1
+            else
+              @logger.debug("Offering #{label} still active in #{@marketplace_client.name} marketplace")
+            end
+          end
+
+          @logger.info("Found #{disabled_count} disabled service offerings")
         end
 
         def advertise_services(active=true)
-          @catalog.each do |name, bsvc|
-            req = @marketplace_client.generate_cc_advertise_request(name, bsvc, active)
+          # Set services missing from marketplace offerings to inactive
+          deactivate_disabled_services
+
+          # Process all services currently in marketplace
+          @catalog_in_marketplace.each do |label, bsvc|
+            req = @marketplace_client.generate_cc_advertise_request(bsvc["id"], bsvc, active)
             advertise_service_to_cc(req)
           end
         end
@@ -146,6 +180,7 @@ module VCAP
           @nats.unsubscribe(@router_start_channel) if @router_start_channel
           @logger.debug("Unregister #{@marketplace_client.name} marketplace gateway: #{@router_register_json}")
           @nats.publish("router.unregister", @router_register_json)
+          sleep 0.1 # Allow some time for actual de-registering before shutting down
           @nats.close
         end
 
@@ -163,7 +198,7 @@ module VCAP
         #################### Handlers ###################
 
         get "/" do
-          return {"marketplace" => @marketplace_client.name, "offerings" => @catalog}.to_json
+          return {"marketplace" => @marketplace_client.name, "offerings" => @catalog_in_marketplace}.to_json
         end
 
         # Provision a marketplace service
@@ -236,6 +271,34 @@ module VCAP
         ################## Helpers ###################
         #
         helpers do
+
+          def get_proxied_services_from_cc
+            @logger.debug("Get proxied services from cloud_controller: #{@service_list_uri}")
+            services = {}
+            req = create_http_request( :head => @cc_req_hdrs )
+
+            f = Fiber.current
+            http = EM::HttpRequest.new(@service_list_uri).get(req)
+            http.callback { f.resume(http) }
+            http.errback { f.resume(http) }
+            Fiber.yield
+
+            if http.error.empty?
+              if http.response_header.status == 200
+                resp = VCAP::Services::Api::ListProxiedServicesResponse.decode(http.response)
+                resp.proxied_services.each {|bsvc|
+                  @logger.info("Fetch #{@marketplace_client.name} service from CC: label=#{bsvc["label"]} - #{bsvc.inspect}")
+                  services[bsvc["label"]] = bsvc
+                }
+              else
+                @logger.warn("Failed to fetch #{@marketplace_client.name} service from CC - status=#{http.response_header.status}")
+              end
+            else
+              @logger.warn("Failed to fetch #{@marketplace_client.name} service from CC: #{http.error}")
+            end
+
+            return services
+          end
 
           def advertise_service_to_cc(offering)
             @logger.debug("advertise service offering #{offering.inspect} to cloud_controller: #{@offering_uri}")

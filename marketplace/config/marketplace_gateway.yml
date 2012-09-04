@@ -3,7 +3,7 @@ cloud_controller_uri: api.vcap.me
 ip_route: localhost
 index: 0
 token: changemarketplacetoken
-mbus: nats://localhost:4222
+mbus: nats://localhost:4222/
 logging:
   level: debug
 
@@ -16,5 +16,8 @@ marketplace: appdirect
 
 acls: [ "*@example.com" ]
 
-external_uri: appdirect-mpgw.vcap.me
+external_uri: "http://appdirect-mpgw.vcap.me"
 refresh_interval: 300
+
+# Used for testing purposes only
+disabled_service_ids: []
