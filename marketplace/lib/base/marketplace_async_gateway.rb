@@ -3,6 +3,8 @@ require 'fiber'
 require 'nats/client'
 require 'uri'
 
+require 'vcap/component'
+
 module VCAP
   module Services
     module Marketplace
@@ -45,6 +47,7 @@ module VCAP
           @node_timeout          = opts[:node_timeout]
           @logger                = opts[:logger] || make_logger()
           @token                 = opts[:token]
+          @index                 = opts[:index] || 0
           @hb_interval           = opts[:heartbeat_interval] || 60
           @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri] || "api.vcap.me")
           @offering_uri          = "#{@cld_ctrl_uri}/services/#{API_VERSION}/offerings/"
@@ -71,6 +74,8 @@ module VCAP
             token_hdrs     => @token,
           }
 
+          @marketplace_gateway_varz_details = {}
+
           Kernel.at_exit do
             if EM.reactor_running?
               on_exit(false)
@@ -81,6 +86,16 @@ module VCAP
 
           @refresh_timer = EM::PeriodicTimer.new(@refresh_interval) do
             refresh_catalog_and_update_cc
+          end
+
+          z_interval = opts[:z_interval] || 30
+          EM.add_periodic_timer(z_interval) do
+           EM.defer { update_varz }
+          end
+
+          # Defer 5 seconds to give service a change to wake up
+          EM.add_timer(5) do
+            EM.defer { update_varz }
           end
 
           f = Fiber.new do
@@ -138,13 +153,13 @@ module VCAP
               @logger.warn("#{@marketplace_client.name} service offering: #{label} not found in latest offering. Deactivating...")
               advertise_service_to_cc(req)
 
-              # TODO: Update varz
               disabled_count += 1
             else
               @logger.debug("Offering #{label} still active in #{@marketplace_client.name} marketplace")
             end
           end
 
+          @marketplace_gateway_varz_details[:disabled_services] = disabled_count
           @logger.info("Found #{disabled_count} disabled service offerings")
         end
 
@@ -157,11 +172,24 @@ module VCAP
             req = @marketplace_client.generate_cc_advertise_request(bsvc["id"], bsvc, active)
             advertise_service_to_cc(req)
           end
+
+          @marketplace_gateway_varz_details[:active_offerings] = @catalog_in_marketplace.size
+        end
+
+        def update_varz()
+          VCAP::Component.varz["marketplace_gateway"] = @marketplace_gateway_varz_details
+          VCAP::Component.varz[@marketplace_client.name] = @marketplace_client.varz_details if @marketplace_client.varz_details.size > 0
         end
 
         def start_nats(uri)
           f = Fiber.current
           @nats = NATS.connect(:uri => uri) do
+            VCAP::Component.register(
+              :nats  => @nats,
+              :type  => "#{@marketplace_client.name}MarketplaceGateway",
+              :host  => @host,
+              :index => @index
+            )
             on_connect_nats;
             f.resume
           end

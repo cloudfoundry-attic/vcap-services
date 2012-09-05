@@ -31,6 +31,10 @@ module VCAP
         def unbind_service(service_id, binding_id)
         end
 
+        def varz_details
+          {}
+        end
+
       end
     end
   end
