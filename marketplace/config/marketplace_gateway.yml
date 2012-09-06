@@ -14,10 +14,10 @@ pid: /var/vcap/sys/run/marketplace.pid
 
 marketplace: appdirect
 
-acls: [ "*@example.com" ]
+acls:
+  wildcards:
+  - "*@example.com"
+  users: []
 
 external_uri: "http://appdirect-mpgw.vcap.me"
 refresh_interval: 300
-
-# Used for testing purposes only
-disabled_service_ids: []

@@ -29,7 +29,7 @@ module VCAP
               raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
 
               @appdirect_endpoint = appdirect_config[:endpoint]
-              @disabled_service_ids = opts[:disabled_service_ids] || []
+              @whitelist          = opts[:offering_whitelist]
 
               @consumer = OAuth::Consumer.new(appdirect_config[:key],  appdirect_config[:secret])
               @access_token = OAuth::AccessToken.new(@consumer)
@@ -46,10 +46,10 @@ module VCAP
                   data.each do |service|
                     # Add checks for specific categories which determine whether the addon should be listed on cc
                     @logger.debug("Got service '#{service["id"]}' from AppDirect")
-                    if (@disabled_service_ids.include?(service["id"]))
-                      @logger.warn("Service Offering: #{service["id"]} disabled via config")
-                    else
+                    if (@whitelist.include?(service["id"]))
                       catalog["#{service["id"]}-#{service["version"]}"] = service
+                    else
+                      @logger.warn("Ignoring service Offering: #{service["id"]} since it is not whitelisted")
                     end
                   end
                   @logger.info("Got #{catalog.keys.count} services from AppDirect")

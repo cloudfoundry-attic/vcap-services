@@ -10,3 +10,9 @@ appdirect:
   key:    "k"
   secret: "s"
 
+offering_whitelist: [ "mongolab" ]
+
+offering_mapping:
+  mongolab:
+    name: mongodb
+    provider: mongolab

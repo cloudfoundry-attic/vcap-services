@@ -21,8 +21,8 @@ module VCAP
             @external_uri = opts[:external_uri]
             @node_timeout = opts[:node_timeout]
             @acls         = opts[:acls]
-            @users        = opts[:users] || []
             @helper       = AppdirectHelper.new(opts, @logger)
+            @mapping      = opts[:offering_mapping]
           end
 
           def name
@@ -34,24 +34,33 @@ module VCAP
           end
 
           def generate_cc_advertise_request(name, bsvc, active = true)
+            raise "Service: #{name} was whitelisted but no mapping was defined" unless @mapping.keys.include?(name.to_sym)
+
+            service_mapping = @mapping[name.to_sym]
+            name = service_mapping[:name]
+            provider = service_mapping[:provider]
+
             req = {}
             req[:label] = "#{name}-#{bsvc["version"]}"
             req[:active] = active && bsvc["active"]
             req[:description] = bsvc["description"]
 
+            req[:provider] = provider
+
             req[:supported_versions] = [ bsvc["version"] ]
             req[:version_aliases]    =  { "current" => bsvc["version"] }
 
             req[:acls] = {}
-            req[:acls][:wildcards] = @acls
+            req[:acls][:wildcards] = @acls[:wildcards]
 
-            users_acl = @users.dup
+            users = []
+            users.concat(@acls[:users].dup) if @acls[:users]
             if bsvc["developers"] and bsvc["developers"].count > 0
               bsvc["developers"].each do |dev|
-                users_acl << dev["email"]
+                users << dev["email"]
               end
             end
-            req[:acls][:users] = users_acl
+            req[:acls][:users] = users unless users.empty?
 
             req[:url] = @external_uri
 
