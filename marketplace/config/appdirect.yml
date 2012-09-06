@@ -10,9 +10,9 @@ appdirect:
   key:    "k"
   secret: "s"
 
-offering_whitelist: [ "mongolab" ]
+offering_whitelist: [ "fooservice" ]
 
 offering_mapping:
-  mongolab:
-    name: mongodb
-    provider: mongolab
+  fooservice:
+    name: foo
+    provider: fooprovider
