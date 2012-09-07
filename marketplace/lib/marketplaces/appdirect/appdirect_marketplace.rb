@@ -22,7 +22,15 @@ module VCAP
             @node_timeout = opts[:node_timeout]
             @acls         = opts[:acls]
             @helper       = AppdirectHelper.new(opts, @logger)
-            @mapping      = opts[:offering_mapping]
+            @mapping      = opts[:offering_mapping] || []
+
+            # Maintain a reverse mapping since we'll be changing the service name for CC advertisement
+            # A provision request will require the actual service name rather than the one in CCDB
+            @service_id_map = {}
+            @mapping.keys.each { |k|
+              service_name = @mapping[k.to_sym][:name]
+              @service_id_map[service_name] = k.to_s
+            }
           end
 
           def name
@@ -34,11 +42,15 @@ module VCAP
           end
 
           def generate_cc_advertise_request(name, bsvc, active = true)
-            raise "Service: #{name} was whitelisted but no mapping was defined" unless @mapping.keys.include?(name.to_sym)
 
-            service_mapping = @mapping[name.to_sym]
-            name = service_mapping[:name]
-            provider = service_mapping[:provider]
+            if (@mapping.keys.include?(name.to_sym))
+              service_mapping = @mapping[name.to_sym]
+              name = service_mapping[:name]
+              provider = service_mapping[:provider]
+            else
+              # We'll use the service name as provider unless appdirect sends otherwise
+              provider = bsvc["provider"] || name
+            end
 
             req = {}
             req[:label] = "#{name}-#{bsvc["version"]}"
@@ -78,11 +90,20 @@ module VCAP
             req
           end
 
+          def offering_disabled?(id, offerings_list)
+            # Translate service name if a custom mapping was defined
+            id = @service_id_map[id] if @service_id_map.keys.include?(id)
+
+            # Check if its still listed
+            @logger.info("Offering: #{id} - Present in offering list: #{offerings_list.include?(id)}")
+            !(offerings_list.include?(id))
+          end
+
           def provision_service(request_body)
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
-            @logger.info("Provision request for label=#{request.label} plan=#{request.plan}, version=#{request.version}")
-
             id,version = request.label.split("-")
+            id = @service_id_map[id] if @service_id_map.keys.include?(id)
+            @logger.debug("Provision request for label=#{request.label} (id=#{id}) plan=#{request.plan}, version=#{request.version}")
 
             order = {
               "user" => {

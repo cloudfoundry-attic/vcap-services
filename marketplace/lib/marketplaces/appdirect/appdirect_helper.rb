@@ -46,7 +46,7 @@ module VCAP
                   data.each do |service|
                     # Add checks for specific categories which determine whether the addon should be listed on cc
                     @logger.debug("Got service '#{service["id"]}' from AppDirect")
-                    if (@whitelist.include?(service["id"]))
+                    if (@whitelist.nil? || @whitelist.include?(service["id"]))
                       catalog["#{service["id"]}-#{service["version"]}"] = service
                     else
                       @logger.warn("Ignoring service Offering: #{service["id"]} since it is not whitelisted")

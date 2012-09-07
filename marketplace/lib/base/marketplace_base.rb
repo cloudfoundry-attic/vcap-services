@@ -19,6 +19,10 @@ module VCAP
           {}
         end
 
+        def offering_disabled?(name, offerings)
+          false
+        end
+
         def provision_service(request_body)
         end
 

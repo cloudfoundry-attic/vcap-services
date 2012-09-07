@@ -43,7 +43,8 @@ module VCAP
 
           @host                  = opts[:host]
           @port                  = opts[:port]
-          @router_register_uri   = (URI.parse(opts[:external_uri])).host
+          @external_uri          = opts[:external_uri]
+          @router_register_uri   = (URI.parse(@external_uri)).host
           @node_timeout          = opts[:node_timeout]
           @logger                = opts[:logger] || make_logger()
           @token                 = opts[:token]
@@ -139,17 +140,19 @@ module VCAP
 
         def deactivate_disabled_services
           disabled_count = 0
+
+          current_offerings = []
+          @catalog_in_marketplace.each { |k, v|
+            current_offerings << v["id"]
+          }
+
           @catalog_in_ccdb.each do |label, svc|
-            if (!@catalog_in_marketplace.keys.include?(label))
-              service_name, version = label.split(/-/)
-              svc["version"] = version
-              req = {
-                :label => svc["label"],
-                :active => false,
-                :url => @external_uri,
-                :supported_versions => [ version ],
-                :version_aliases => { "current" => version },
-              }
+            service_name, version = label.split(/-/)
+
+            if (@marketplace_client.offering_disabled?(service_name, current_offerings))
+              req = svc.dup
+              req[:active] = false
+
               @logger.warn("#{@marketplace_client.name} service offering: #{label} not found in latest offering. Deactivating...")
               advertise_service_to_cc(req)
 
