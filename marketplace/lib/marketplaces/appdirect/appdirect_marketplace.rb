@@ -22,7 +22,7 @@ module VCAP
             @node_timeout = opts[:node_timeout]
             @acls         = opts[:acls]
             @helper       = AppdirectHelper.new(opts, @logger)
-            @mapping      = opts[:offering_mapping] || []
+            @mapping      = opts[:offering_mapping] || {}
 
             # Maintain a reverse mapping since we'll be changing the service name for CC advertisement
             # A provision request will require the actual service name rather than the one in CCDB
