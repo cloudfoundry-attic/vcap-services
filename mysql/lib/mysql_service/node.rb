@@ -73,6 +73,7 @@ class VCAP::Services::Mysql::Node
     @kill_long_queries_lock = Mutex.new
     @kill_long_transaction_lock = Mutex.new
     @enforce_quota_lock = Mutex.new
+    @varz_lock = Mutex.new
 
     @connection_wait_timeout = options[:connection_wait_timeout]
     Mysql2::Client.default_timeout = @connection_wait_timeout
@@ -596,6 +597,8 @@ class VCAP::Services::Mysql::Node
   end
 
   def varz_details()
+    acquired = @varz_lock.try_lock
+    return unless acquired
     varz = {}
     # how many queries served since startup
     varz[:queries_since_startup] = get_queries_status
@@ -624,10 +627,13 @@ class VCAP::Services::Mysql::Node
     rescue => e
       @logger.error("Error get instance list: #{e}")
     end
+    varz[:connection_pool] = @pool.inspect
     varz
   rescue => e
     @logger.error("Error during generate varz: #{e}")
     {}
+  ensure
+    @varz_lock.unlock if acquired
   end
 
   def get_status(instance)
