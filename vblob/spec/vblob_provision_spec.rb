@@ -41,24 +41,30 @@ describe "vblob wardenization" do
   end
 
   it "should raise error when two instances with the same name were provisioned and return the port" do
+    fakename = UUIDTools::UUID.random_create.to_s
+    fake_keyid_1 = UUIDTools::UUID.random_create.to_s
+    fake_keyid_2 = UUIDTools::UUID.random_create.to_s
+    fake_secretid_1 = UUIDTools::UUID.random_create.to_s
+    fake_secretid_2 = UUIDTools::UUID.random_create.to_s
     credential1 = {
-      'name' => 'fakename',
+      'name' => fakename,
       'port' => 46001,
-      'username' => 'fake-keyid1',
-      'password' => 'fake-secretid1'
+      'username' => fake_keyid_1,
+      'password' => fake_secretid_1
     }
     credential2 = {
-      'name' => 'fakename',
+      'name' => fakename,
       'port' => 46002,
-      'username' => 'fake-keyid2',
-      'password' => 'fake-secretid2'
+      'username' => fake_keyid_2,
+      'password' => fake_secretid_2
     }
-    @node.get_free_ports_size.should == 20000
+
+    original_port_size = @node.get_free_ports_size
     lambda { @node.provision("free", credential1) }.should_not raise_error()
-    @node.get_free_ports_size.should == 19999
+    @node.get_free_ports_size.should == original_port_size -1
     lambda { @node.provision("free", credential2) }.should raise_error()
-    @node.get_free_ports_size.should == 19999
-    @node.unprovision('fakename', [])
+    @node.get_free_ports_size.should == original_port_size -1
+    @node.unprovision(fakename, [])
   end
 
   context "when a vblob instance was provisioned" do
@@ -92,13 +98,6 @@ describe "vblob wardenization" do
     end
 
     it "should open the port for request" do
-      is_port_open?(@provisioned_service.ip, @provisioned_service.service_port).should be_true
-    end
-
-    it "should be able enable the instance after disable it" do
-      @node.disable_instance(@response, {'' => {'credentials' => ''}}).should be_true
-      @node.enable_instance(@response, {'' => {'credentials' => '' }}).should be_true
-      @provisioned_service = @node.get_instance(@response['name'])
       is_port_open?(@provisioned_service.ip, @provisioned_service.service_port).should be_true
     end
 
