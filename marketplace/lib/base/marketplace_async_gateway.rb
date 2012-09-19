@@ -51,14 +51,19 @@ module VCAP
           @index                 = opts[:index] || 0
           @hb_interval           = opts[:heartbeat_interval] || 60
           @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri] || "api.vcap.me")
-          @offering_uri          = "#{@cld_ctrl_uri}/services/#{API_VERSION}/offerings/"
+          @offering_uri          = "#{@cld_ctrl_uri}/services/#{API_VERSION}/offerings"
           @service_list_uri      = "#{@cld_ctrl_uri}/proxied_services/#{API_VERSION}/offerings"
           @proxy_opts            = opts[:proxy]
           @handle_fetched        = true # set to true in order to compatible with base asycn gateway.
 
           @refresh_interval      = opts[:refresh_interval] || 300
 
-          @marketplace_client = load_marketplace(opts)
+          @marketplace_client    = load_marketplace(opts)
+
+          @component_host        = opts[:host]
+          @component_port        = opts[:component_port] || VCAP.grab_ephemeral_port
+          @component_user        = opts[:user] || VCAP.secure_uuid
+          @component_pass        = opts[:password] || VCAP.secure_uuid
 
           @router_register_json = {
             :host => @host,
@@ -85,6 +90,11 @@ module VCAP
             end
           end
 
+          f = Fiber.new do
+            start_nats(opts[:mbus])
+          end
+          f.resume
+
           @refresh_timer = EM::PeriodicTimer.new(@refresh_interval) do
             refresh_catalog_and_update_cc
           end
@@ -94,18 +104,8 @@ module VCAP
            EM.defer { update_varz }
           end
 
-          # Defer 5 seconds to give service a change to wake up
-          EM.add_timer(5) do
-            EM.defer { update_varz }
-          end
-
-          f = Fiber.new do
-            start_nats(opts[:mbus])
-          end
-          f.resume
-
           refresh_catalog_and_update_cc
-        end
+      end
 
         error [JsonMessage::ValidationError, JsonMessage::ParseError] do
           error_msg = ServiceError.new(ServiceError::MALFORMATTED_REQ).to_hash
@@ -118,6 +118,7 @@ module VCAP
         end
 
         def refresh_catalog_and_update_cc
+          @logger.info("Refreshing Catalog...")
           f = Fiber.new do
             begin
               refresh_catalog
@@ -125,11 +126,12 @@ module VCAP
               advertise_services
 
               # Ready to serve
+              update_varz
               @logger.info("#{@marketplace_client.name} Marketplace Gateway is ready to serve incoming request.")
             rescue => e
               @logger.warn("Error when refreshing #{@marketplace_client.name} catalog: #{fmt_error(e)}")
             end
-          end
+         end
           f.resume
         end
 
@@ -179,7 +181,7 @@ module VCAP
           @marketplace_gateway_varz_details[:active_offerings] = @catalog_in_marketplace.size
         end
 
-        def update_varz()
+        def update_varz
           VCAP::Component.varz["marketplace_gateway"] = @marketplace_gateway_varz_details
           VCAP::Component.varz[@marketplace_client.name] = @marketplace_client.varz_details if @marketplace_client.varz_details.size > 0
         end
@@ -190,8 +192,11 @@ module VCAP
             VCAP::Component.register(
               :nats  => @nats,
               :type  => "#{@marketplace_client.name}MarketplaceGateway",
-              :host  => @host,
-              :index => @index
+              :host  => @component_host,
+              :port  => @component_port,
+              :index => @index,
+              :user  => @component_user,
+              :password => @component_pass
             )
             on_connect_nats;
             f.resume
@@ -227,6 +232,21 @@ module VCAP
         end
 
         #################### Handlers ###################
+
+        # Helpers for unit testing
+        post "/marketplace/set/:key/:value" do
+          @logger.info("TEST HELPER ENDPOINT - set: #{params[:key]} = #{params[:value]}")
+          Fiber.new {
+            begin
+              @marketplace_client.set_config(params[:key], params[:value])
+              refresh_catalog_and_update_cc
+              async_reply("")
+            rescue => e
+              async_reply_error(e.inspect)
+            end
+          }.resume
+          async_mode
+        end
 
         get "/" do
           return {"marketplace" => @marketplace_client.name, "offerings" => @catalog_in_marketplace}.to_json
