@@ -66,6 +66,7 @@ class VCAP::Services::Rabbit::Node
     super
     @logger.info("Shutting down instances..")
     stop_instances(ProvisionedService.all)
+    true
   end
 
   def announcement
