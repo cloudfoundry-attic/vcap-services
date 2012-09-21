@@ -15,7 +15,6 @@ gem 'warden-client', :require => ['warden/client'], :git => 'git://github.com/cl
 gem 'warden-protocol', :require => ['warden/protocol'], :git => 'git://github.com/cloudfoundry/warden.git', :ref => '21f9a32ab50'
 
 group :test do
-  #gem "webmock"
   gem "rake"
   gem "rack-test"
   gem "rspec"

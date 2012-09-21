@@ -39,6 +39,10 @@ module VCAP
           {}
         end
 
+        def set_config(key, value)
+          raise "set_config is not supported"
+        end
+
       end
     end
   end
