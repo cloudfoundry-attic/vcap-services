@@ -467,7 +467,7 @@ class VCAP::Services::Mysql::Node
       kill_database_session(connection, name)
       # mysql can't delete tables that not in dump file.
       # recreate the database to prevent leave unclean tables after restore.
-      connection.query("DROP DATABASE #{name}")
+      connection.query("DROP DATABASE IF EXISTS #{name}")
       connection.query("CREATE DATABASE #{name}")
       # restore privileges.
       connection.query("UPDATE db SET insert_priv='Y', create_priv='Y',
