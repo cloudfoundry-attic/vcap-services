@@ -1,4 +1,5 @@
 # Copyright (c) 2009-2011 VMware, Inc.
+$:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 
 describe "vblob_node bind" do
@@ -9,14 +10,15 @@ describe "vblob_node bind" do
       @opts = get_node_config()
       @logger = @opts[:logger]
       @node = Node.new(@opts)
-      EM.add_timer(2) do #must! wait for a while before provisioning
-        @resp = @node.provision("free")
-      end
-      EM.add_timer(4) do
-        @bind_resp = @node.bind(@resp['name'], 'rw')
-        EM.stop
-      end
+      @resp = @node.provision("free")
+      @bind_resp = @node.bind(@resp['name'], 'rw')
+      EM.add_timer(1){ EM.stop }
     end
+  end
+
+  after :all do
+    @node.shutdown if @node
+    FileUtils.rm_rf('/tmp/vblob')
   end
 
   it "should have valid response" do
@@ -96,10 +98,4 @@ describe "vblob_node bind" do
       EM.stop
     end
   end
-
-  after:all do
-    FileUtils.rm_rf Dir.glob('/tmp/vblob')
-  end
 end
-
-

@@ -15,9 +15,13 @@ describe "vblob_node provision" do
     end
   end
 
+  after :all do
+    @node.shutdown if @node
+    FileUtils.rm_rf('/tmp/vblob')
+  end
+
   it "should have valid response" do
     @resp.should_not be_nil
-    puts @resp
     inst_name = @resp['name']
     inst_name.should_not be_nil
     inst_name.should_not == ""
@@ -85,9 +89,4 @@ describe "vblob_node provision" do
     end
   end
 
-  after:all do
-    FileUtils.rm_rf Dir.glob('/tmp/vblob')
-  end
 end
-
-
