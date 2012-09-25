@@ -33,9 +33,14 @@ end
 
 namespace "test" do
   def run_spec
-    sh "nats-server &"
-    Dir.chdir("spec"){ yield }
-    sh "pkill -f nats-server"
+    Dir.chdir("spec")
+    if `ps ax | grep nats-server | grep -v grep`.empty?
+      sh "nats-server &"
+      yield
+      sh "pkill -f nats-server"
+    else
+      yield
+    end
   end
 
   task "spec" do |t|
