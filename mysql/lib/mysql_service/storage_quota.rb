@@ -12,7 +12,7 @@ class VCAP::Services::Mysql::Node
     dbs = [] if dbs.nil?
     if dbs.length == 0
       result = connection.query('show databases')
-      result.each {|db| dbs << db[0]}
+      result.each {|db| dbs << db["Database"]}
     end
     sizes = connection.query(
       'SELECT table_schema "name",

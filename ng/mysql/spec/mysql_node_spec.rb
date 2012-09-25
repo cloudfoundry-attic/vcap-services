@@ -125,7 +125,7 @@ describe "Mysql server node" do
           conn = connect_to_mysql(binding)
           # write privilege should be rovoked.
           expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
-          conn2 = connect_to_mysql(@db)
+          conn = connect_to_mysql(@db)
           expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
           # new binding's write privilege should also be revoked.
           new_binding = node.bind(@db['name'], @default_opts)
@@ -141,7 +141,20 @@ describe "Mysql server node" do
             EM.add_timer(2) do
               conn = connect_to_mysql(binding)
               expect{ conn.query("insert into test value('test')")}.should_not raise_error
-              EM.stop
+              conn.query("insert into test value('#{content}')")
+              EM.add_timer(3) do
+                expect { conn.query('SELECT 1') }.should raise_error
+                conn.close
+                conn = connect_to_mysql(binding)
+                expect{ conn.query("insert into test value('test')") }.should raise_error(Mysql2::Error)
+                conn.query("drop table test")
+                EM.add_timer(2) do
+                  conn = connect_to_mysql(binding)
+                  expect { conn.query("create table test(data text)") }.should_not raise_error
+                  expect { conn.query("insert into test value('test')") }.should_not raise_error
+                  EM.stop
+                end
+              end
             end
           end
         end
