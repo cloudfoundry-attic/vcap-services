@@ -4,11 +4,16 @@ pid: /var/vcap/sys/run/serialized_data_server.pid
 mbus: nats://localhost:4222
 ip_route: localhost
 external_uri: dl.vcap.me
+upload_token: dlfoosecret
+expire_time: 7200
+purge_expired_interval: 1200
+purge_num: 1000
 logging:
   level: debug
 redis:
   host: localhost
   port: 5454
+  password: redispasswd
 index: 0
 # optional listen port, required when work with nginx
 #port: 20000

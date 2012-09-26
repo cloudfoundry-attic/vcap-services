@@ -13,6 +13,8 @@ module VCAP::Services::MongoDB::Snapshot
       filename = "#{snapshot_id}.tgz"
       dump_file_name = File.join(dump_path, filename)
 
+      setup_localdb
+      version = instance_version(name)
       result = dump_database(name, dump_file_name)
       raise "Failed to execute dump command to #{name}" unless result
 
@@ -23,7 +25,8 @@ module VCAP::Services::MongoDB::Snapshot
         :size => dump_file_size,
         :files => [filename],
         :manifest => {
-          :version => 1
+          :version => 1,
+          :service_version => version
         }
       }
 
@@ -38,6 +41,7 @@ module VCAP::Services::MongoDB::Snapshot
       dump_file_path = @snapshot_files[0]
       raise "Snapshot file #{dump_file_path} doesn't exist" unless File.exists?(dump_file_path)
 
+      setup_localdb
       result = restore_database(name, dump_file_path)
       raise "Failed execute import command to #{name}" unless result
 

@@ -20,8 +20,4 @@ module VCAP::Services::Postgresql::Serialization
   class ImportFromURLJob < BaseImportFromURLJob
     include VCAP::Services::Postgresql::Serialization
   end
-
-  class ImportFromDataJob < BaseImportFromDataJob
-    include VCAP::Services::Postgresql::Serialization
-  end
 end

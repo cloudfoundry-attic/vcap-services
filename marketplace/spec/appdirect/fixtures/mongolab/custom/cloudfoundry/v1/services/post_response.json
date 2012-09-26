@@ -1,0 +1,26 @@
+{
+    "uuid":"60ea08ec-a4d4-4f69-9f70-14db951ddd2d",
+    "id":"cloudfoundry_q2vjavga_2sgjc5hr",
+    "user":{
+        "uuid":"c778f91e-fa90-4ed6-9770-850036eeb53b",
+        "email":"mwilkinson@vmware.com"
+    },
+    "offering":{
+        "id":"mongolab_dev",
+        "version":"2.0",
+        "name":null,
+        "description":null,
+        "plans":[],
+        "development":false,
+        "developers":[],
+        "active":false
+    },
+    "configuration":{
+        "name":"abc",
+        "plan":"free",
+        "options":{
+            "cloud":"joyent-cloud"
+        }
+    },
+    "credentials":null
+}

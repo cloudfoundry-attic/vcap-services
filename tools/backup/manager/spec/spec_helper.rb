@@ -22,7 +22,8 @@ class BackupManagerTests
       :mbus => 'nats://localhost:4222',
       :z_interval => 30,
       :rotation => {
-        :max_days => 7
+        :max_days => 7,
+        :unprovisioned_max_days => 10
       },
       :cleanup => {
         :max_days => 7
@@ -113,6 +114,7 @@ module BackupWorkerTests
 
   CC_PORT = 45678
   MAX_DAYS = 7
+  UNPROVISIONED_MAX_DAYS = 10
 
 
   class MockManager

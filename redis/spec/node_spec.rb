@@ -122,7 +122,7 @@ describe VCAP::Services::Redis::Node do
       @instance.pid = @node.start_instance(@instance)
       @instance.plan = 1
       @instance.save
-      @node.stop_instance(@instance)
+      @node.stop_redis_server(@instance)
       sleep 1
       @node.start_provisioned_instances
       sleep 1
@@ -205,7 +205,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should not access the instance when doing unprovision" do
       redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
-      expect {redis.get("test_key")}.should raise_error(Errno::ECONNREFUSED)
+      expect {redis.get("test_key")}.should raise_error(Redis::CannotConnectError)
     end
 
     it "should add the provisioned instance port in free port list when finish an unprovision" do

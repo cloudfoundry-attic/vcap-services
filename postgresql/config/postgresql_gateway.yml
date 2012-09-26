@@ -5,6 +5,7 @@ service:
   version: "9.0"
   description: 'PostgreSQL database service (vFabric)'
   plans: ['free']
+  default_plan: free
   tags: ['postgresql', 'postgresql-9.0', 'relational']
 ip_route: localhost
 #proxy:
@@ -27,7 +28,6 @@ resque:
   port: 5454
 download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
 
-upload_temp_dir: /tmp
 plan_management:
   plans:
     free:

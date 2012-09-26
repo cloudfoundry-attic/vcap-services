@@ -118,18 +118,12 @@ class VCAP::Services::Filesystem::BaseProvisioner < VCAP::Services::Base::Provis
 
     credentials = gen_credentials(name, backend)
     svc = {
-      :data => prov_req.dup,
-      :service_id => name,
-      :credentials => credentials
-    }
-    # FIXME: workaround for inconsistant representation of bind handle and provision handle
-    svc_local = {
       :configuration => prov_req.dup,
       :service_id => name,
       :credentials => credentials
     }
     @logger.debug("Provisioned #{svc.inspect}")
-    @prov_svcs[svc[:service_id]] = svc_local
+    @prov_svcs[svc[:service_id]] = svc
     blk.call(success(svc))
   rescue => e
     if e.instance_of? FilesystemError

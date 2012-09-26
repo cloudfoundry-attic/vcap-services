@@ -5,6 +5,7 @@ service:
   version: "5.1"
   description: 'MySQL database service'
   plans: ['free']
+  default_plan: free
   tags: ['mysql', 'mysql-5.1', 'relational']
 ip_route: localhost
 #proxy:
@@ -22,7 +23,7 @@ resque:
   host: localhost
   port: 5454
 download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
-upload_temp_dir: /tmp
+
 plan_management:
   plans:
     free:

@@ -5,7 +5,12 @@ service:
   version: "1.8"
   description: 'MongoDB NoSQL store'
   plans: ['free']
+  default_plan: free
   tags: ['mongodb', 'mongodb-1.8', 'nosql', 'document']
+  supported_versions: ["1.8"]
+  version_aliases:
+    "current": "1.8"
+
 ip_route: localhost
 #proxy:
 #   host: proxy
@@ -25,7 +30,6 @@ resque:
   port: 5454
 download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
 
-upload_temp_dir: /tmp
 plan_management:
   plans:
     free:

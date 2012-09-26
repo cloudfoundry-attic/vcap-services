@@ -5,6 +5,7 @@ service:
   version: "0.11.0"
   description: 'CouchDB NoSQL store'
   plans: ['free']
+  default_plan: free
   tags: ['couchdb', 'couchdb-0.11.0', 'nosql']
 ip_route: localhost
 #proxy:

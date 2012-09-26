@@ -23,8 +23,4 @@ module VCAP::Services::Mysql::Serialization
   class ImportFromURLJob < BaseImportFromURLJob
     include VCAP::Services::Mysql::Serialization
   end
-
-  class ImportFromDataJob < BaseImportFromDataJob
-    include VCAP::Services::Mysql::Serialization
-  end
 end

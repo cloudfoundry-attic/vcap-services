@@ -52,6 +52,7 @@ class VCAP::Services::Mysql::Node
     @max_db_size = options[:max_db_size] * 1024 * 1024
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
+    @kill_long_tx = options[:kill_long_tx]
     @max_user_conns = options[:max_user_conns] || 0
     @mysqldump_bin = options[:mysqldump_bin]
     @gzip_bin = options[:gzip_bin]
@@ -62,6 +63,8 @@ class VCAP::Services::Mysql::Node
 
     @long_queries_killed = 0
     @long_tx_killed = 0
+    @long_tx_count = 0
+    @long_tx_ids = []
     @statistics_lock = Mutex.new
     @provision_served = 0
     @binding_served = 0
@@ -70,6 +73,7 @@ class VCAP::Services::Mysql::Node
     @kill_long_queries_lock = Mutex.new
     @kill_long_transaction_lock = Mutex.new
     @enforce_quota_lock = Mutex.new
+    @varz_lock = Mutex.new
 
     @connection_wait_timeout = options[:connection_wait_timeout]
     Mysql2::Client.default_timeout = @connection_wait_timeout
@@ -227,7 +231,7 @@ class VCAP::Services::Mysql::Node
     acquired = @kill_long_transaction_lock.try_lock
     return unless acquired
     query_str = "SELECT * from ("+
-                "  SELECT trx_started, id, user, db, info, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
+                "  SELECT trx_started, id, user, db, trx_query, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
                 "  FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p " +
                 "  ON t.trx_mysql_thread_id = p.ID " +
                 "  WHERE trx_state='RUNNING' and user!='root' " +
@@ -235,12 +239,22 @@ class VCAP::Services::Mysql::Node
                 "WHERE inner_table.active_time > #{@max_long_tx}"
     @pool.with_connection do |connection|
       result = connection.query(query_str)
+      current_long_tx_ids = []
       result.each do |trx|
-        trx_started, id, user, db, info, active_time = %w(trx_started id user db info active_time).map{|o| trx[o]}
-        connection.query("KILL QUERY #{id}")
-        @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} info:#{info} active_time:#{active_time}")
-        @long_tx_killed += 1
+        trx_started, id, user, db, trx_query, active_time = %w(trx_started id user db trx_query active_time).map{|o| trx[o]}
+        if @kill_long_tx
+          connection.query("KILL #{id}")
+          @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}")
+          @long_tx_killed += 1
+        else
+          @logger.warn("Log but not kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}")
+          current_long_tx_ids << id
+          unless @long_tx_ids.include?(id)
+            @long_tx_count += 1
+          end
+        end
       end
+      @long_tx_ids = current_long_tx_ids
     end
   rescue => e
     @logger.error("Error during kill long transaction: #{e}.")
@@ -453,7 +467,7 @@ class VCAP::Services::Mysql::Node
       kill_database_session(connection, name)
       # mysql can't delete tables that not in dump file.
       # recreate the database to prevent leave unclean tables after restore.
-      connection.query("DROP DATABASE #{name}")
+      connection.query("DROP DATABASE IF EXISTS #{name}")
       connection.query("CREATE DATABASE #{name}")
       # restore privileges.
       connection.query("UPDATE db SET insert_priv='Y', create_priv='Y',
@@ -463,7 +477,7 @@ class VCAP::Services::Mysql::Node
     host, user, pass, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     path = File.join(backup_path, "#{name}.sql.gz")
     cmd = "#{@gzip_bin} -dc #{path}|" +
-      "#{@mysql_bin} -h #{host} -P #{port} -u #{user} --password=#{pass}"
+      "#{@mysql_bin} -h #{host} -P #{port} --user='#{user}' --password='#{pass}'"
     cmd += " -S #{socket}" unless socket.nil?
     cmd += " #{name}"
     o, e, s = exe_cmd(cmd)
@@ -501,7 +515,7 @@ class VCAP::Services::Mysql::Node
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     dump_file = File.join(dump_file_path, "#{name}.sql")
     @logger.info("Dump instance #{name} content to #{dump_file}")
-    cmd = "#{@mysqldump_bin} -h #{host} -u #{user} --password=#{password} -R --single-transaction #{'-S '+socket if socket} #{name} > #{dump_file}"
+    cmd = "#{@mysqldump_bin} -h #{host} --user='#{user}' --password='#{password}' -R --single-transaction #{'-S '+socket if socket} #{name} > #{dump_file}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
       return true
@@ -523,7 +537,7 @@ class VCAP::Services::Mysql::Node
     import_file = File.join(dump_file_path, "#{name}.sql")
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     @logger.info("Import data from #{import_file} to database #{name}")
-    cmd = "#{@mysql_bin} --host=#{host} --user=#{user} --password=#{password} #{'-S '+socket if socket} #{name} < #{import_file}"
+    cmd = "#{@mysql_bin} --host=#{host} --user='#{user}' --password='#{password}' #{'-S '+socket if socket} #{name} < #{import_file}"
     o, e, s = exe_cmd(cmd)
     if s.exitstatus == 0
       # delete the procedures and functions: security_type is definer while the definer doesn't exist
@@ -583,6 +597,8 @@ class VCAP::Services::Mysql::Node
   end
 
   def varz_details()
+    acquired = @varz_lock.try_lock
+    return unless acquired
     varz = {}
     # how many queries served since startup
     varz[:queries_since_startup] = get_queries_status
@@ -596,6 +612,7 @@ class VCAP::Services::Mysql::Node
     # how many long queries and long txs are killed.
     varz[:long_queries_killed] = @long_queries_killed
     varz[:long_transactions_killed] = @long_tx_killed
+    varz[:long_transactions_count] = @long_tx_count #logged but not killed
     # how many provision/binding operations since startup.
     @statistics_lock.synchronize do
       varz[:provision_served] = @provision_served
@@ -610,10 +627,13 @@ class VCAP::Services::Mysql::Node
     rescue => e
       @logger.error("Error get instance list: #{e}")
     end
+    varz[:connection_pool] = @pool.inspect
     varz
   rescue => e
     @logger.error("Error during generate varz: #{e}")
     {}
+  ensure
+    @varz_lock.unlock if acquired
   end
 
   def get_status(instance)

@@ -3,7 +3,9 @@ pid: /var/vcap/sys/run/mongodb_backup.pid
 backup_base_dir: /mnt/nfs/servicebackup
 local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
 service_base_dir: /var/vcap/services/mongodb/instances/
-mongodump_path: mongodump
+mongodump_path:
+  "1.8": "mongodump"
+
 timeout: 600
 logging:
   level: debug

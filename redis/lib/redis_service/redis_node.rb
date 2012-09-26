@@ -297,16 +297,10 @@ class VCAP::Services::Redis::Node
           next
         end
         begin
-          pid = start_instance(instance)
-          instance.pid = pid
+          instance.pid = start_provisioned_instance(instance)
           save_instance(instance)
         rescue => e
           @logger.warn("Error starting instance #{instance.name}: #{e}")
-          begin
-            cleanup_instance(instance)
-          rescue => e2
-            # Ignore the rollback exception
-          end
         end
       end
     end
@@ -336,22 +330,7 @@ class VCAP::Services::Redis::Node
       @logger.debug("Service #{instance.name} started with pid #{pid}")
       # In parent, detch the child
       Process.detach(pid)
-      # Wait enough time for the redis server starting
-      redis = Redis.new({:port => instance.port, :password => instance.password})
-      (@redis_start_timeout * 10).times do
-        begin
-          redis.echo("")
-          return pid
-        rescue => e
-          sleep 0.1
-          next
-        ensure
-          begin
-            redis.quit if redis
-          rescue => e
-          end
-        end
-      end
+      return pid if wait_service_start(instance)
       @logger.error("Timeout to start redis server for instance #{instance.name}")
       # Stop the instance if it is running
       instance.pid = pid
@@ -392,6 +371,50 @@ class VCAP::Services::Redis::Node
     end
   rescue => e
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
+  end
+
+  def start_provisioned_instance(instance)
+    @logger.debug("Starting: #{instance.inspect} on port #{instance.port}")
+
+    pid = fork
+    if pid
+      @logger.debug("Service #{instance.name} started with pid #{pid}")
+      # In parent, detch the child
+      Process.detach(pid)
+      # Just record a timeout error here, the instance could finish starting eventually,
+      # or the node will report error in varz details
+      @logger.error("Timeout to start redis server for instance #{instance.name}") unless wait_service_start(instance)
+      return pid
+    else
+      $0 = "Starting Redis instance: #{instance.name}"
+      close_fds
+
+      dir = instance_dir(instance.name)
+      config_path = File.join(dir, "redis.conf")
+      exec("#{@redis_server_path} #{config_path}")
+    end
+  rescue => e
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
+  end
+
+  def wait_service_start(instance)
+    # Wait enough time for the redis server starting
+    redis = Redis.new({:port => instance.port, :password => instance.password})
+    (@redis_start_timeout * 10).times do
+      begin
+        redis.echo("")
+        return true
+      rescue => e
+        sleep 0.1
+        next
+      ensure
+        begin
+          redis.quit if redis
+        rescue => e
+        end
+      end
+    end
+    false
   end
 
   def stop_instance(instance)

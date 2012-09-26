@@ -51,12 +51,18 @@ module VCAP::Services::Serialization
       :ip_route => parse_property(config, "ip_route", String, :optional => true),
       :serialization_base_dir => parse_property(config, "serialization_base_dir", String),
       :mbus => parse_property(config, "mbus", String),
+      :cloud_controller_uri => parse_property(config, "cloud_controller_uri", String, :optional => true),
       :external_uri => parse_property(config, "external_uri", String),
+      :upload_token => parse_property(config, "upload_token", String),
+      :expire_time => parse_property(config, "expire_time", Integer, :optional => true),
+      :purge_expired_interval => parse_property(config, "purge_expired_interval", Integer, :optional => true),
+      :purge_num => parse_property(config, "purge_num", Integer, :optional => true),
       :port => parse_property(config, "port", Integer, :optional => true),
       :redis => parse_property(config, "redis", Hash),
       :nginx => parse_property(config, "nginx", Hash, :optional => true),
     }
 
+    @config[:cloud_controller_uri] ||= "api.vcap.me"
     @config[:host] = VCAP.local_ip(@config[:ip_route])
     @config[:port] ||= VCAP.grab_ephemeral_port
 
@@ -71,7 +77,12 @@ module VCAP::Services::Serialization
 
     EM.run do
       handle = VCAP::Services::Serialization::Server.new(@config)
-      server = Thin::Server.new(@config[:host], @config[:port], handle)
+      if @config[:nginx]
+        thin_server_host = "127.0.0.1"
+      else
+        thin_server_host = @config[:host]
+      end
+      server = Thin::Server.new(thin_server_host, @config[:port], handle)
       server.threaded = true
       server.start!
     end
