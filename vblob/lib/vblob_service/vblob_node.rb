@@ -277,21 +277,24 @@ class VCAP::Services::VBlob::Node
 
   def cleanup_service(provisioned_service)
     @logger.info("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
+    raise VBlobError.new(VBlobError::VBLOB_CLEANUP_ERROR, provisioned_service.errors.pretty_inspect) unless provisioned_service.new? || provisioned_service.destroy
     provisioned_service.kill(:SIGKILL) if provisioned_service.running?
     if provisioned_service.wait_killed
-      dir = service_dir(provisioned_service.name)
-      log_dir = log_dir(provisioned_service.name)
+      instance_name = provisioned_service.name
+      dir = service_dir(instance_name)
+      log_dir = log_dir(instance_name)
       @logger.debug("vblob pid:#{provisioned_service.pid} terminated")
-      EM.defer do
+      return_port(provisioned_service.port)
+      pid = Process.fork do
+        @logger.debug("started to remove vblob instance #{instance_name} log and data directory")
         FileUtils.rm_rf(dir)
         FileUtils.rm_rf(log_dir)
+        @logger.debug("vblob instance #{instance_name} log and data directory removed")
       end
-      return_port(provisioned_service.port)
+      Process.detach(pid) if pid
     else
-      @logger.error("Timeout to terminate mongod pid:#{provisioned_service.pid}")
+      @logger.error("Timeout to terminate vblob pid:#{provisioned_service.pid}")
     end
-    raise VBlobError.new(VBlobError::VBLOB_CLEANUP_ERROR, provisioned_service.errors.pretty_inspect) unless provisioned_service.new? || provisioned_service.destroy
-    true
   end
 
   # provide the key/secret to vblob gw

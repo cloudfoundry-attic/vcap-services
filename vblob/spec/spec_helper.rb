@@ -75,11 +75,12 @@ def get_node_config()
   config = YAML.load_file(config_file)
   vblob_conf_template = File.join(PWD, "../resources/vblob.conf.erb")
   options = {
-  #  :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
+    :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :nodejs_path => parse_property(config, "nodejs_path", String),
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
     :vblobd_path => parse_property(config, "vblobd_path", String),
+    :vblobd_auth => parse_property(config, "vblobd_auth", String),
     :vblobd_log_dir => parse_property(config, "vblobd_log_dir", String),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :node_id => parse_property(config, "node_id", String),
@@ -87,10 +88,9 @@ def get_node_config()
     :config_template => vblob_conf_template,
     :port_range => parse_property(config, "port_range", Range),
     :base_dir => '/tmp/vblob/instances',
+    :log_dir => '/tmp/vblob/service-log',
     :local_db => 'sqlite3:/tmp/vblob/vblob_node.db'
   }
-  VCAP::Logging.setup_from_config(config["logging"])
-  # Use the node id for logger identity name.
-  options[:logger] = VCAP::Logging.logger(options[:node_id])
+  options[:logger].level = Logger::DEBUG
   options
 end

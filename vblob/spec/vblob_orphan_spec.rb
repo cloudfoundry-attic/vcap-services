@@ -3,6 +3,7 @@ $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 
 describe "vblob_node check & purge orphan" do
+
   before :all do
     EM.run do
       @opts = get_node_config
@@ -10,6 +11,11 @@ describe "vblob_node check & purge orphan" do
       @node = Node.new(@opts)
       EM.stop
     end
+  end
+
+  after :all do
+    @node.shutdown if @node
+    FileUtils.rm_rf('/tmp/vblob')
   end
 
   it "should return proper instances & bindings list" do
@@ -39,4 +45,5 @@ describe "vblob_node check & purge orphan" do
       EM.stop
     end
   end
+
 end
