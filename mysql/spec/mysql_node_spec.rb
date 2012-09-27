@@ -12,7 +12,7 @@ module VCAP
   module Services
     module Mysql
       class Node
-        attr_reader :pool, :logger, :capacity, :provision_served, :binding_served
+        attr_reader :pools, :pool, :logger, :capacity, :provision_served, :binding_served, :use_warden
       end
     end
   end
@@ -56,6 +56,7 @@ describe "Mysql server node" do
     @db["user"].should == @db["username"]
     @db["password"].should be
     @test_dbs[@db] = []
+    @db_instance = @node.mysqlProvisionedService.get(@db["name"])
   end
 
   it "should connect to mysql database" do
@@ -68,7 +69,7 @@ describe "Mysql server node" do
   it "should report inconsistency between mysql and local db" do
     EM.run do
       name, user = @db["name"], @db["user"]
-      @node.pool.with_connection do |conn|
+      @node.pools[@node.get_port(@db_instance)].with_connection do |conn|
         conn.query("delete from db where db='#{name}' and user='#{user}'")
       end
       result = @node.check_db_consistency
@@ -108,8 +109,9 @@ describe "Mysql server node" do
       opts = @opts.dup
       # reduce storage quota to 4KB.
       opts[:max_db_size] = 4.0/1024
-      node = VCAP::Services::Mysql::Node.new(opts)
+      node = new_node(opts)
       EM.add_timer(1) do
+        #db = node.provision(@default_plan)
         binding = node.bind(@db["name"],  @default_opts)
         @test_dbs[@db] << binding
         conn = connect_to_mysql(binding)
@@ -150,14 +152,14 @@ describe "Mysql server node" do
   it "should able to handle orphan instances when enforce storage quota." do
     begin
       # forge an orphan instance, which is not exist in mysql
-      klass = VCAP::Services::Mysql::Node::ProvisionedService
+      klass = @node.mysqlProvisionedService
       DataMapper.setup(:default, @opts[:local_db])
       DataMapper::auto_upgrade!
-      service = klass.new
-      service.name = 'test-'+ UUIDTools::UUID.random_create.to_s
-      service.user = "test"
-      service.password = "test"
-      service.plan = 1
+      name = 'test-'+ UUIDTools::UUID.random_create.to_s
+      user = "test"
+      password = "test"
+      port = @node.new_port
+      service = klass.create(port, name, user, password)
       if not service.save
         raise "Failed to forge orphan instance: #{service.errors.inspect}"
       end
@@ -215,7 +217,7 @@ describe "Mysql server node" do
       opts = @opts.dup
       opts[:capacity] = 10
       opts[:max_db_size] = 20
-      node = VCAP::Services::Mysql::Node.new(opts)
+      node = new_node(opts)
       EM.add_timer(1) do
         expect {
           db = node.provision(@default_plan)
@@ -275,7 +277,7 @@ describe "Mysql server node" do
         opts = @opts.dup
         # reduce max_long_tx to accelerate test
         opts[:max_long_tx] = 1
-        node = VCAP::Services::Mysql::Node.new(opts)
+        node = new_node(opts)
         EM.add_timer(1) do
           conn = connect_to_mysql(@db)
           # prepare a transaction and not commit
@@ -322,7 +324,7 @@ describe "Mysql server node" do
       opts = @opts.dup
       opts[:max_long_query] = 1
       conn = connect_to_mysql(db)
-      node = VCAP::Services::Mysql::Node.new(opts)
+      node = new_node(opts)
       EM.add_timer(1) do
         conn.query('create table test(id INT) engine innodb')
         conn.query('insert into test value(10)')
@@ -437,6 +439,7 @@ describe "Mysql server node" do
       # create stored procedure
       bind_conn = connect_to_mysql(binding)
       new_bind_conn = connect_to_mysql(new_binding)
+
       bind_conn.query("create procedure myfunc(out mycount int) begin  select count(*) into mycount from test ; end")
       bind_conn.query("create procedure myfunc2(out mycount int) SQL SECURITY invoker begin select count(*) into mycount from test;end")
       new_bind_conn.query("create procedure myfunc3(out mycount int) begin select count(*) into mycount from test; end")
@@ -462,6 +465,7 @@ describe "Mysql server node" do
 
       # backup current db
       host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
+      host, port = %w(host port).map{|key| db[key]} if @node.use_warden
       tmp_file = "/tmp/#{db['name']}.sql.gz"
       @tmpfiles << tmp_file
       result = `mysqldump -h #{host} -P #{port} --user='#{user}' --password='#{password}' -R #{db['name']} | gzip > #{tmp_file}`
@@ -592,7 +596,7 @@ describe "Mysql server node" do
 
   it "should retain instance data after node restart" do
     EM.run do
-      node = VCAP::Services::Mysql::Node.new(@opts)
+      node = @node
       EM.add_timer(1) do
         db = node.provision(@default_plan)
         @test_dbs[db] = []
@@ -600,7 +604,7 @@ describe "Mysql server node" do
         conn.query('create table test(id int)')
         # simulate we restart the node
         node.shutdown
-        node = VCAP::Services::Mysql::Node.new(@opts)
+        @node = VCAP::Services::Mysql::Node.new(@opts)
         EM.add_timer(1) do
           conn2 = connect_to_mysql(db)
           result = conn2.query('show tables')
@@ -613,7 +617,8 @@ describe "Mysql server node" do
 
   it "should able to generate varz." do
     EM.run do
-      node = VCAP::Services::Mysql::Node.new(@opts)
+      node = new_node(@opts)
+      #node = VCAP::Services::Mysql::Node.new(@opts)
       EM.add_timer(1) do
         varz = node.varz_details
         varz.should be_instance_of Hash
@@ -634,7 +639,7 @@ describe "Mysql server node" do
   it "should handle Mysql error in varz" do
     pending "This test is not capatiable with mysql2 conenction pool."
     EM.run do
-      node = VCAP::Services::Mysql::Node.new(@opts)
+      node = new_node(@opts)
       EM.add_timer(1) do
         # drop mysql connection
         node.pool.close
@@ -676,7 +681,7 @@ describe "Mysql server node" do
       varz[:instances].each do |name, status|
         status.shoud  == "ok"
       end
-      node = VCAP::Services::Mysql::Node.new(@opts)
+      node = new_node(@opts)
       EM.add_timer(1) do
         node.pool.close
         varz = node.varz_details
@@ -697,7 +702,7 @@ describe "Mysql server node" do
           value.should == "ok"
         end
       end
-      @node.pool.with_connection do |connection|
+      @node.pools[@node.get_port(@db_instance)].with_connection do |connection|
         connection.query("Drop database #{instance}")
         sleep 1
         varz = @node.varz_details()
@@ -738,7 +743,7 @@ describe "Mysql server node" do
     EM.run do
       opts = @opts.dup
       opts[:max_user_conns] = 1 # easy for testing
-      node = VCAP::Services::Mysql::Node.new(opts)
+      node = new_node(opts)
       EM.add_timer(1) do
         db = node.provision(@default_plan)
         binding = node.bind(db["name"],  @default_opts)
@@ -756,7 +761,7 @@ describe "Mysql server node" do
       origin_timeout = Mysql2::Client.default_timeout
       timeout = 1
       opts[:connection_wait_timeout] = timeout
-      node = VCAP::Services::Mysql::Node.new(opts)
+      node = new_node(opts)
 
       EM.add_timer(2) do
         begin
@@ -786,7 +791,7 @@ describe "Mysql server node" do
       opts = @opts.dup
       origin_timeout = Mysql2::Client.default_timeout
       opts.delete :connection_wait_timeout
-      node = VCAP::Services::Mysql::Node.new(opts)
+      node = new_node(opts)
 
       EM.add_timer(2) do
         begin
@@ -809,6 +814,7 @@ describe "Mysql server node" do
   end
 
   after :each do
+    @node.create_missing_pools if @node.use_warden
     @test_dbs.keys.each do |db|
       begin
         name = db["name"]
