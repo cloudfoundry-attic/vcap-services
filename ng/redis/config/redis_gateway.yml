@@ -1,0 +1,37 @@
+---
+# cloud_controller_uri: api.vcap.me
+service:
+  name: redis
+  version: "2.2"
+  description: 'Redis key-value store service'
+  plans: ['free']
+  default_plan: free
+  tags: ['redis', 'redis-2.2', 'key-value', 'nosql']
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
+token: "0xdeadbeef"
+logging:
+  level: debug
+mbus: nats://localhost:4222
+pid: /var/vcap/sys/run/redis_service.pid
+resque:
+  host: localhost
+  port: 5454
+download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
+
+plan_management:
+  plans:
+    free:
+      low_water: 10
+      high_water: 180
+      lifecycle:
+        snapshots:
+          quota: 5
+        serialization: enable
+        job: enable
+      #allow_over_provisioning: false
+# z_interval: 30

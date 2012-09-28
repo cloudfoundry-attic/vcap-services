@@ -1,0 +1,2 @@
+#!/bin/sh
+rm -fr configs/ databases/ logs *.db

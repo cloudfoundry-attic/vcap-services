@@ -1,0 +1,30 @@
+---
+service_name: mysql
+snapshots_base_dir: /var/vcap/services/
+serialization_base_dir: /var/vcap/services/
+local_db: sqlite3:/var/vcap/services/mysql/mysql_node.db
+snapshot_quota: 5
+# optional download tuning
+serialization:
+  max_download_size_mb: 10
+  max_download_redirects: 5
+# Temp directory to save uploaded file
+tmp_dir: /tmp
+resque:
+  host: localhost
+  port: 5454
+index: 0
+node_id: mysql_node_free_1
+download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
+logging:
+  level: debug
+# addtional options
+mysql:
+  host: localhost
+  port: 3306
+  user: root
+  pass: root
+mysqldump_bin: mysqldump
+gzip_bin: gzip
+mysql_bin: mysql
+use_warden: false

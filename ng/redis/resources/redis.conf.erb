@@ -1,0 +1,29 @@
+requirepass <%= password %>
+port <%= port %>
+maxmemory <%= memory %>mb
+dir <%= data_dir %>
+logfile <%= log_file %>
+daemonize no
+timeout 300
+loglevel notice
+databases 16
+<% if persistent %>
+save 900 1
+save 300 10
+save 60 10000
+<% end %>
+maxclients <%= maxclients %>
+appendonly no
+hash-max-zipmap-entries 64
+hash-max-zipmap-value 512
+activerehashing yes
+
+rename-command CONFIG <%= config_command %>
+rename-command MONITOR ""
+rename-command SAVE <%= save_command %>
+rename-command BGSAVE ""
+rename-command SHUTDOWN <%= shutdown_command %>
+rename-command BGREWRITEAOF ""
+rename-command SLAVEOF ""
+rename-command DEBUG ""
+rename-command SYNC ""

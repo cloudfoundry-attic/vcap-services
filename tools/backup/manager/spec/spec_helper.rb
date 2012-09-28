@@ -116,7 +116,6 @@ module BackupWorkerTests
   MAX_DAYS = 7
   UNPROVISIONED_MAX_DAYS = 10
 
-
   class MockManager
     attr_reader :root, :logger
     def initialize(root, logger)

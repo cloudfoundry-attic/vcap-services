@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2012 VMware, Inc.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+require 'bundler/setup'
+require 'vcap_services_base'
+
+$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
+require "postgresql_service/job"
+
+class VCAP::Services::Postgresql::Worker < VCAP::Services::Base::WorkerBin
+  def default_config_file
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.expand_path("../../config", __FILE__)
+    config_file = File.join(config_base_dir, "postgresql_worker.yml")
+  end
+end
+
+VCAP::Services::Postgresql::Worker.new.start

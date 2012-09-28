@@ -1,0 +1,44 @@
+---
+capacity: 200
+plan: free
+local_db: sqlite3:/var/vcap/services/mysql/mysql_node.db
+base_dir: /var/vcap/services/mysql/data
+mysqldump_bin: mysqldump
+gzip_bin: gzip
+mysql_bin: mysql
+# ip_route: 127.0.0.1
+mbus: nats://localhost:4222
+index: 0
+logging:
+  level: debug
+pid: /var/vcap/sys/run/mysql_node.pid
+node_id: mysql_node_free_1
+max_db_size: 20
+max_long_query: 3
+max_long_tx: 30
+kill_long_tx: true
+max_user_conns: 20
+migration_nfs: /mnt/migration
+mysql:
+  host: localhost
+  port: 3306
+  user: root
+  pass: root
+connection_pool_size: 5
+# connection timeout for all management mysql connection
+connection_wait_timeout: 10
+disk_overhead: 40.0
+use_warden: false
+warden:
+  port_range:
+    first: 25001
+    last:  45000
+  log_dir: /var/vcap/services/mysql/log
+  image_dir: /var/vcap/services/mysql/image
+  service_start_timeout: 3
+  filesystem_quota: true
+
+# z_interval: 30
+# max_nats_payload: 1048576
+# fqdn_hosts: false
+# op_time_limit: 6
