@@ -5,35 +5,26 @@ require "erb"
 require "fileutils"
 require "logger"
 
-require 'socket'
-
 require "uuidtools"
 require 'dalli'
 require "thread"
-
-require "nats/client"
-require "warden/client"
-require 'vcap/common'
-require 'vcap/component'
-
-require "memcached_service/common"
-require "memcached_service/memcached_error"
 
 module VCAP
   module Services
     module Memcached
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService
-        end
       end
     end
   end
 end
 
+require "memcached_service/common"
+require "memcached_service/memcached_error"
+
 class VCAP::Services::Memcached::Node
-  include VCAP::Services::Memcached
+
   include VCAP::Services::Memcached::Common
-  include VCAP::Services::Base::Utils
+  include VCAP::Services::Memcached
 
   class SASLAdmin
     class SASLOperationError < StandardError
@@ -85,118 +76,144 @@ class VCAP::Services::Memcached::Node
     end
   end
 
+  class ProvisionedService
+    include DataMapper::Resource
+    property :name,       String,   :key => true
+    property :port,       Integer,  :unique => true
+    property :user,       String,   :required => true
+    property :password,   String,   :required => true
+    property :plan,       Enum[:free], :required => true
+    property :pid,        Integer
+
+    def listening?
+      begin
+        TCPSocket.open('localhost', port).close
+        return true
+      rescue => e
+        return false
+      end
+    end
+
+    def running?
+      VCAP.process_running? pid
+    end
+  end
+
   attr_accessor :local_db
 
   def initialize(options)
     super(options)
 
-    ProvisionedService.init(options)
-
-    @base_dir = options[:base_dir]
-    @local_db = options[:local_db]
-
-    @service_start_timeout = options[:service_start_timeout] || 3
-    init_ports(options[:port_range])
-
+    @logger.warn("local_ip: #{@local_ip}")
     @sasl_admin = SASLAdmin.new(@logger)
-
-    @default_version = "1.4"
-    @supported_versions = ["1.4"]
-  end
-
-  def migrate_saved_instances_on_startup
-    ProvisionedService.all.each do |p_service|
-      if p_service.version.to_s.empty?
-        p_service.version = @default_version
-        @logger.warn("Unable to set version for: #{p_service.inspect}") unless p_service.save
-      end
-    end
+    @base_dir = options[:base_dir]
+    FileUtils.mkdir_p(@base_dir)
+    @memcached_server_path = options[:memcached_server_path]
+    @available_capacity = options[:capacity]
+    @local_db = options[:local_db]
+    @free_ports = Set.new
+    @free_ports_mutex = Mutex.new
+    options[:port_range].each {|port| @free_ports << port}
+    @memcached_log_dir = options[:memcached_log_dir]
+    @max_clients = @options[:max_clients] || 500
+    @memcached_timeout = @options[:memcached_timeout] || 2
+    @memcached_memory = @options[:memcached_memory]
+    @sasl_enabled = @options[:sasl_enabled] || false
+    @run_as_user =  @options[:run_as_user] || ""
+    @supported_versions =["1.4"]
   end
 
   def pre_send_announcement
-    migrate_saved_instances_on_startup
+    super
+    start_db
     start_provisioned_instances
   end
 
-  def start_provisioned_instances
-     @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+  def start_db
+    DataMapper.setup(:default, @local_db)
+    DataMapper::auto_upgrade!
   end
 
   def shutdown
     super
-    @logger.info("Shutting down instances..")
-    ProvisionedService.all.each do |p_service|
-      @logger.debug("Try to terminate memcached container: #{p_service.container}")
-      p_service.stop if p_service.running?
+    ProvisionedService.all.each do |instance|
+      stop_memcached_server(instance)
     end
+    true
   end
 
   def announcement
     @capacity_lock.synchronize do
-      { :available_capacity => @capacity, :capacity_unit => capacity_unit }
+      a = {
+          :available_capacity => @capacity,
+          :capacity_unit => capacity_unit
+      }
     end
   end
 
   def provision(plan, credentials = nil, version=nil)
-    @logger.info("Provision request: plan=#{plan}, version=#{version}")
-    #raise MemcachedError.new(MemcachedError::MEMCACHED_INVALID_PLAN, plan) unless plan == @plan
-    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
+    instance = ProvisionedService.new
+    instance.plan = plan
+    if credentials
+      instance.name = credentials["name"]
+      @free_ports_mutex.synchronize do
+        if @free_ports.include?(credentials["port"])
+          @free_ports.delete(credentials["port"])
+          instance.port = credentials["port"]
+        else
+          port = @free_ports.first
+          @free_ports.delete(port)
+          instance.port = port
+        end
+      end
+      instance.user = credentials["user"]
+      instance.password = credentials["password"]
+    else
+      @free_ports_mutex.synchronize do
+        port = @free_ports.first
+        @free_ports.delete(port)
+        instance.port = port
+      end
+      instance.name = UUIDTools::UUID.random_create.to_s
+      instance.user = UUIDTools::UUID.random_create.to_s
+      instance.password = UUIDTools::UUID.random_create.to_s
+    end
 
-    credentials = {} if credentials.nil?
-    provision_options = {}
-    provision_options["plan"]     = plan
-    provision_options["version"]  = version
-    provision_options["name"]     = credentials["name"]     || UUIDTools::UUID.random_create.to_s
-    provision_options["user"]     = credentials["user"]     || UUIDTools::UUID.random_create.to_s
-    provision_options["password"] = credentials["password"] || UUIDTools::UUID.random_create.to_s
-    provision_options["port"]     = new_port(credentials["port"] || nil)
+    begin
+      instance.pid = start_instance(instance)
+      @sasl_admin.create_user(instance.user, instance.password) if @sasl_enabled
+      save_instance(instance)
+      @logger.debug("Started process #{instance.pid}")
+    rescue => e1
+      begin
+        cleanup_instance(instance)
+      rescue => e2
+        # Ignore the rollback exception
+      end
+      raise e1
+    end
 
-    p_service = create_provisioned_instance(provision_options)
-
-    @logger.info("Starting: #{p_service.inspect}")
-    p_service.run
-
-    @sasl_admin.create_user(p_service.user, p_service.password) if @sasl_enabled
-
-    response = get_credentials(p_service)
-    @logger.debug("Provision response: #{response}")
-    response
-  rescue => e
-     @logger.error("Error provisioning instance: #{e}")
-     p_service.delete unless p_service.nil?
-     raise MemcachedError.new(MemcachedError::MEMCACHED_START_INSTANCE_FAILED, e)
+    # Sleep 1 second to wait for memcached instance start
+    sleep 1
+    gen_credentials(instance)
   end
 
-  def create_provisioned_instance(provision_options)
-    ProvisionedService.create(provision_options)
+  def unprovision(instance_id, credentials_list = [])
+    instance = get_instance(instance_id)
+    @logger.info("unprovision instance: #{instance.to_s}")
+    cleanup_instance(instance)
+    {}
   end
 
-  def is_service_started(instance)
-    @logger.info("Instance: #{instance.inspect} started: #{instance.running?}")
-    instance.running?
-  end
-
-  def unprovision(name, bindings = [])
-    p_service = ProvisionedService.get(name)
-    raise ServiceError.new(ServiceError::NOT_FOUND, name) if p_service.nil?
-    port = p_service.port
-    raise "Could not cleanup instance #{name}" unless p_service.delete
-    free_port(port);
-
-    @sasl_admin.delete_user(p_service.user) if @sasl_enabled
-
-    @logger.info("Successfully fulfilled unprovision request: #{name}.")
-    true
-  end
-
-  def bind(name, bind_opts = nil, credential = nil)
-    p_service = ProvisionedService.get(name)
-    raise ServiceError.new(ServiceError::NOT_FOUND, name) if p_service.nil?
-
+  def bind(instance_id, binding_options = :all, credentials = nil)
     # Memcached has no user level security, just return provisioned credentials.
-    get_credentials(p_service)
+    instance = nil
+    if credentials
+      instance = get_instance(credentials["name"])
+    else
+      instance = get_instance(instance_id)
+    end
+    gen_credentials(instance)
   end
 
   def unbind(credentials)
@@ -206,155 +223,201 @@ class VCAP::Services::Memcached::Node
 
   def restore(instance_id, backup_dir)
     # No restore command for memcached
+    raise MemcachedError.new(MemcachedError::MEMCACHED_RESTORE_FILE_NOT_FOUND, dump_file)
     {}
-  end
-
-
-  def get_credentials(p_service)
-    host_ip = get_host
-    credentials = {
-      "name"     => p_service.name,
-      "hostname" => host_ip,
-      "host"     => host_ip,
-      "port"     => p_service.port,
-      "user"     => p_service.user,
-      "password" => p_service.password
-    }
   end
 
   def varz_details
     varz = {}
+    varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
-    varz[:max_instances_num] = @options[:capacity] / capacity_unit
-
-    varz[:provisioned_instances] = ProvisionedService.all.map do |p_service|
-      stat = {}
-      stat['name']    = p_service.name
-      stat['version'] = p_service.version
-      stat['plan']    = p_service.plan
-      stat['port']    = p_service.port
-      stat['info']    = p_service.get_instance_stats
-
+    @capacity_lock.synchronize do
+      varz[:max_instances_num] = @options[:capacity] / capacity_unit
+    end
+    ProvisionedService.all.each do |instance|
+      varz[:provisioned_instances] << get_varz(instance)
       varz[:provisioned_instances_num] += 1
-
-      stat
     end
     varz
   rescue => e
     @logger.warn("Error while getting varz details: #{e}")
     {}
   end
-end
 
-class VCAP::Services::Memcached::Node::ProvisionedService
-  include DataMapper::Resource
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
-  include VCAP::Services::Memcached
+  def start_provisioned_instances
+    @logger.debug("Start provisioned instance....")
 
-  property :name,       String,      :key => true
-  property :port,       Integer,     :unique => true
-  property :user,       String,      :required => true
-  property :password,   String,      :required => true
-  property :plan,       Enum[:free], :required => true
-  property :version,    String,      :required => false
-
-  property :container,  String
-  property :ip,         String
-
-  private_class_method :new
-
-  SERVICE_PORT = 27017
-
-  class << self
-    def init(args)
-      raise "Parameter :base_dir missing"          unless args[:base_dir]
-      raise "Parameter :memcached_log_dir missing" unless args[:memcached_log_dir]
-      raise "Parameter :memcached_server_path"     unless args[:memcached_server_path]
-      raise "Parameter :local_db missing"          unless args[:local_db]
-
-      @base_dir              = args[:base_dir]
-      @log_dir               = args[:memcached_log_dir]
-
-      @@memcached_server_path = args[:memcached_server_path]
-      @@memcached_timeout     = args[:memcached_timeout] || 2
-      @@memcached_memory      = args[:memcached_memory]
-      @@max_clients           = args[:max_clients] || 500
-      @@sasl_enabled          = args[:sasl_enabled] || false
-
-      @logger                = args[:logger]
-      @quota                 = args[:filesystem_quota] || false
-
-      DataMapper.setup(:default, args[:local_db])
-      DataMapper::auto_upgrade!
-
-      FileUtils.mkdir_p(base_dir)
-      FileUtils.mkdir_p(log_dir)
+    ProvisionedService.all.each do |instance|
+      @capacity -= capacity_unit
+      @logger.debug("instance : #{instance.inspect}")
+      @free_ports_mutex.synchronize do
+        @free_ports.delete(instance.port)
+      end
+      if instance.listening?
+        @logger.warn("Service #{instance.name} already running on port #{instance.port}")
+        next
+      end
+      begin
+        pid = start_instance(instance)
+        instance.pid = pid
+        @logger.debug("Started Instace. pid is  #{instance.pid}")
+        @sasl_admin.create_user(instance.user, instance.password) if @sasl_enabled
+        save_instance(instance)
+      rescue => e
+        @logger.warn("Error starting instance #{instance.name}: #{e}")
+        begin
+          cleanup_instance(instance)
+        rescue => e2
+          # Ignore the rollback exception
+        end
+      end
     end
 
-    def create(args)
-      raise "Parameter missing" unless args['port']
-      p_service           = new
-      p_service.name      = args['name']
-      p_service.port      = args['port']
-      p_service.plan      = args['plan']
-      p_service.user      = args['user']
-      p_service.password  = args['password']
-      p_service.version   = args['version']
-
-      raise MemcachedError.new(MemcachedError::MEMCACHED_SAVE_INSTANCE_FAILED, p_service.inspect) unless p_service.save!
-
-      p_service.prepare_filesystem(self.max_db_size)
-      p_service
-    end
+    @logger.debug("Started provisined instances.")
   end
 
-  def connect
-    conn = nil
-    return conn unless running?
-    Timeout::timeout(@@memcached_timeout) do
-      conn = Dalli::Client.new("#{self[:ip]}\:#{SERVICE_PORT}", username: self[:user], password: self[:password])
-    end
+  def save_instance(instance)
+    raise MemcachedError.new(MemcachedError::MEMCACHED_SAVE_INSTANCE_FAILED, instance.inspect) unless instance.save
+  end
+
+  def destroy_instance(instance)
+    raise MemcachedError.new(MemcachedError::MEMCACHED_DESTROY_INSTANCE_FAILED, instance.inspect) unless instance.destroy
+  end
+
+  def get_instance(name)
+    instance = ProvisionedService.get(name)
+    raise MemcachedError.new(MemcachedError::MEMCACHED_FIND_INSTANCE_FAILED, name) if instance.nil?
+    instance
+  end
+
+  def build_option_string(opt)
+    # ./memcached -m memory_size -p port_num -c connection -P pid_file -t -v -S
+    str = ''
+    str << " -m #{opt['memory']}"
+    str << " -p #{opt['port']}"
+    str << " -c #{opt['maxclients']}"
+    str << " -v"
+    str << " -S" if @sasl_enabled
+
+    return str
+  end
+
+  def start_instance(instance)
+    @logger.debug("Starting: #{instance.inspect}")
+
+    opt = {}
+    opt['memory'] = @memcached_memory
+    opt['port'] = instance.port
+    opt['password'] = instance.password
+    opt['name'] = instance.name
+    opt['maxclients'] = @max_clients
+
+    option_string = build_option_string(opt)
+
+    log_dir = instance_log_dir(instance.name)
+    log_file = File.join(log_dir, "memcached.log")
+    err_file = File.join(log_dir, "memcached.err.log")
+
+    FileUtils.mkdir_p(log_dir)
+
+    run_as_cmd_prefix = @run_as_user.empty? ? "" : "sudo -u #{@run_as_user}"
+    cmd = "#{run_as_cmd_prefix} #{@memcached_server_path} #{option_string}"
+    @logger.info("Executing CMD =  #{cmd}")
+
+    pid = Process.spawn(cmd, :out=>"#{log_file}", :err=>"#{err_file}")
+    Process.detach(pid)
+    return pid
   rescue => e
-    logger.error("Failed to connect to instance: #{self[:ip]}\:#{SERVICE_PORT} - #{e.inspect}")
-    raise MemcachedError.new(MemcachedError::MEMCACHED_CONNECT_INSTANCE_FAILED, @self[:ip])
-  ensure
-    return conn
+    raise MemcachedError.new(MemcachedError::MEMCACHED_START_INSTANCE_FAILED, instance.inspect)
   end
 
-  def get_instance_stats
-    logger.debug("Get Stats: memcached instance: #{self[:ip]}\:#{SERVICE_PORT}")
-    return [] unless running?
-    conn = connect
+  def stop_instance(instance)
+    @logger.debug("Stop instance: #{instance.inspect}")
+    stop_memcached_server(instance)
+  end
+
+  def cleanup_instance(instance)
+    err_msg = []
+    begin
+      stop_instance(instance) if instance.running?
+    rescue => e
+      err_msg << e.message
+    end
+    @free_ports_mutex.synchronize do
+      @free_ports.add(instance.port)
+    end
+    begin
+      destroy_instance(instance)
+      @sasl_admin.delete_user(instance.user) if @sasl_enabled
+    rescue => e
+      err_msg << e.message
+    end
+    raise MemcachedError.new(MemcachedError::MEMCACHED_CLEANUP_INSTANCE_FAILED, err_msg.inspect) if err_msg.size > 0
+  end
+
+  def stop_memcached_server(instance)
+     @logger.debug("stop process #{instance.pid}")
+
+    Timeout::timeout(@memcached_timeout) do
+      Process.kill("KILL", instance.pid.to_i)
+    end
+  rescue Timeout::Error => e
+    @logger.warn(e)
+  rescue => e
+    @logger.warn(e)
+  end
+
+  def get_info(instance)
+    user = instance.user
+    password = instance.password
+    hostname = 'localhost:' + instance.port.to_s
     info = nil
-    Timeout::timeout(@@memcached_timeout) do
-      info = conn.stats
+    Timeout::timeout(@memcached_timeout) do
+      memcached = Dalli::Client.new(hostname, username: user, password: password)
+      info = memcached.stats
     end
   rescue => e
-    logger.error("Failed to get stats for instance: #{self[:ip]}\:#{SERVICE_PORT} - #{e.inspect}")
-    raise e
+    raise MemcachedError.new(MemcachedError::MEMCACHED_CONNECT_INSTANCE_FAILED)
   ensure
     begin
-      conn.close if conn
+      memcached.close if memcached
       return info[info.keys.first]
     rescue => e
     end
   end
 
-  def service_script
-    # memcached -m memory_size -p port_num -c connection -v -S
-    cmd_components = [
-      @@memcached_server_path,
-      "-m #{@@memcached_memory}",
-      "-p #{SERVICE_PORT}",
-      "-c #{@@max_clients}",
-      "-v",
-      @@sasl_enabled ? "-S" : "" 
-    ]
-    cmd_components.join(" ")
+  def get_varz(instance)
+    info = get_info(instance)
+    varz = {}
+    varz[:name] = instance.name
+    varz[:port] = instance.port
+    varz[:plan] = instance.plan
+    varz[:usage] = {}
+    varz[:usage][:capacity_unit] = capacity_unit
+    varz[:usage][:max_clients] = @max_clients
+
+    varz[:info] = info
+    varz
   end
 
-  def service_port
-    SERVICE_PORT
+  def gen_credentials(instance)
+    @logger.warn("local_ip: #{@local_ip}")
+    credentials = {
+      "hostname" => @local_ip,
+      "host" => @local_ip,
+      "port" => instance.port,
+      "user" => instance.user,
+      "password" => instance.password,
+      "name" => instance.name
+    }
+  end
+
+
+  def instance_dir(instance_id)
+    File.join(@base_dir, instance_id)
+  end
+
+  def instance_log_dir(instance_id)
+    File.join(@memcached_log_dir, instance_id)
   end
 end

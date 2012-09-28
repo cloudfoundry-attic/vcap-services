@@ -8,10 +8,7 @@ require 'bundler/setup'
 require 'vcap_services_base'
 
 $:.unshift(File.expand_path("../../lib", __FILE__))
-require 'mysql_service/node'
-require 'mysql_service/util'
 require 'mysql2'
-require 'datamapper_l'
 
 module VCAP
   module Services
@@ -39,9 +36,6 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
       :compress_cmd => @config["compress_cmd"],
     }
 
-    use_warden= @config["use_warden"] || false
-    @config["local_db"] ||= "sqlite3:/var/vcap/store/mysql_node.db"
-
     missing_opts = opts.keys.select{|key| opts[key] == nil}
     unless missing_opts.empty?
       echo "Missing required configuration items #{missing_opts.inspect}",true
@@ -58,16 +52,9 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     result.each {|db| dbs << db["Database"] }
     current_time = Time.now
 
-    service_class = VCAP::Services::Mysql::Node::WardenProvisionedService
-    if use_warden
-      DataMapper.setup(:default, @config["local_db"])
-      dbs = service_class.all.map {|s| s.name}
-    end
-
     echo "Begin backup at #{current_time}"
     success, failed, ignored = [0,0,0]
     dbs.each do |name|
-      opts[:host] = service_class.get(name).ip if use_warden
       result = exe_backup_db(opts.merge({:name => name, :ts => current_time}))
       case result
       when 0

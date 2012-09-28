@@ -11,9 +11,10 @@ logging:
 vblobd_log_dir: /var/vcap/sys/service-log/vblob
 pid: /var/vcap/sys/run/vblob_node.pid
 node_id: vblob_node_free_1
+nodejs_path: node
 vblobd_path: /var/vcap/packages/vblob
 vblobd_auth: disabled
-max_disk: 2048
+vblobd_quota: 2147483647
 vblobd_obj_limit: 32768
 supported_versions: ['0.51']
 port_range:

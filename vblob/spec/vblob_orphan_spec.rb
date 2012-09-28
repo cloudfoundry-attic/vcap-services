@@ -3,6 +3,7 @@ $:.unshift(File.dirname(__FILE__))
 require "spec_helper"
 
 describe "vblob_node check & purge orphan" do
+
   before :all do
     EM.run do
       @opts = get_node_config
@@ -44,4 +45,5 @@ describe "vblob_node check & purge orphan" do
       EM.stop
     end
   end
+
 end

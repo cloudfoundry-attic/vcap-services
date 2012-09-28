@@ -8,9 +8,8 @@ require 'vcap_services_base'
 $:.unshift(File.expand_path("../../lib", __FILE__))
 require "mongodb_service/mongodb_node"
 
+include VCAP::Services::MongoDB
 class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
-
-  include VCAP::Services::MongoDB
 
   def default_config_file
     File.join(File.dirname(__FILE__), '..', 'config', 'mongodb_backup.yml')
@@ -23,15 +22,23 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       return 1
     end
 
+    mongodump_paths = @config['mongodump_path']
     cmd_timeout = @config['timeout'].to_f
-    config = VCAP.symbolize_keys(@config)
 
-    Node::ProvisionedService.init(config)
+    DataMapper.setup(:default, @config['local_db'])
+    DataMapper::auto_upgrade!
 
-    Node::ProvisionedService.all.each do |p_service|
-      path = get_dump_path(p_service.name)
+    provisioned_service = Node::ProvisionedService.all
+    provisioned_service.each do |service|
+      user = service.admin
+      pass = service.adminpass
+      port = service.port
+      path = get_dump_path(service.name)
+      version = service.version
 
-      command = p_service.d_dump(path)
+      mongodump_path = mongodump_paths[version]
+      # Run mongodump
+      command = "#{mongodump_path} -h 127.0.0.1:#{port} -u #{user} -p#{pass} -o #{path}"
       on_err = Proc.new do |cmd, code, msg|
         echo "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}",true
         cleanup(path)

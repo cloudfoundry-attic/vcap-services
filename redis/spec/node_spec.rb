@@ -5,8 +5,8 @@ module VCAP
   module Services
     module Redis
       class Node
-        attr_reader :options, :free_ports, :capacity, :config_command_name, :shutdown_command_name, :save_command_name, :disable_password
-        attr_accessor :logger, :local_db
+         attr_reader :base_dir, :redis_server_path, :local_ip, :capacity, :max_memory, :max_swap, :node_id, :config_template, :free_ports, :redis_timeout
+         attr_accessor :logger, :local_db
       end
     end
   end
@@ -16,25 +16,121 @@ describe VCAP::Services::Redis::Node do
 
   before :all do
     @options = getNodeTestConfig
+    @options.freeze
     FileUtils.mkdir_p(@options[:base_dir])
-    FileUtils.mkdir_p(@options[:image_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
-    FileUtils.mkdir_p(@options[:migration_nfs])
 
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = VCAP::Services::Redis::Node.new(@options)
-      EM.add_timer(1) {EM.stop}
+      EM.stop
     end
-    @redis_port = @node.options[:instance_port]
+  end
+
+  before :each do
+    @instance          = VCAP::Services::Redis::Node::ProvisionedService.new
+    @instance.name     = UUIDTools::UUID.random_create.to_s
+    @instance.port     = VCAP.grab_ephemeral_port
+    @instance.plan     = 1
+    @instance.password = UUIDTools::UUID.random_create.to_s
+    @instance.memory   = @options[:max_memory]
   end
 
   after :all do
     FileUtils.rm_f(@options[:local_db_file])
     FileUtils.rm_rf(@options[:base_dir])
     FileUtils.rm_rf(@options[:redis_log_dir])
-    FileUtils.rm_rf(@options[:image_dir])
-    FileUtils.rm_rf(@options[:migration_nfs])
+  end
+
+  describe "Node.initialize" do
+    it "should set up a base directory" do
+      @node.base_dir.should be @options[:base_dir]
+    end
+
+    it "should set up a redis server path" do
+      @node.redis_server_path.should be @options[:redis_server_path]
+    end
+
+    it "should set up a local IP" do
+      @node.local_ip.should be
+    end
+
+    it "should set up an available capacity" do
+      @node.capacity.should be
+    end
+
+    it "should set up a maximum memory size" do
+      @node.max_memory.should be @options[:max_memory]
+    end
+
+    it "should set up a max swap size " do
+      @node.max_swap.should be @options[:max_swap]
+    end
+
+    it "should load the redis configuration template" do
+      @node.config_template.should be
+    end
+
+    it "should setup a free port set" do
+      @node.free_ports.should be
+    end
+  end
+
+  describe "Node.start_db" do
+    it "should fail when set local db with non-existed file argument" do
+      @node.local_db = "sqlite3:/non_existed/non-existed.db"
+      thrown = nil
+      begin
+        @node.start_db
+      rescue => e
+        thrown = e
+      end
+      thrown.should be
+      thrown.class.should == DataObjects::ConnectionError
+      @node.local_db = @options[:local_db]
+    end
+
+    it "should setup local db with right arguments" do
+      @node.start_db.should be
+    end
+  end
+
+  describe "Node.start_provisioned_instances" do
+    it "should check whether provisioned instance is running or not" do
+      @instance.pid = @node.start_instance(@instance)
+      sleep 1
+      @instance.running?.should == true
+      @node.stop_instance(@instance)
+      sleep 1
+      @instance.running?.should == false
+    end
+
+    it "should not start a new instance if the instance is already started when start all provisioned instances" do
+      @instance.pid = @node.start_instance(@instance)
+      @instance.plan = 1
+      @instance.save
+      sleep 1
+      @node.start_provisioned_instances
+      sleep 1
+      instance = VCAP::Services::Redis::Node::ProvisionedService.get(@instance.name)
+      instance.pid.should == @instance.pid
+      @node.stop_instance(@instance)
+      @instance.destroy
+    end
+
+    it "should start a new instance if the instance is not started when start all provisioned instances" do
+      @instance.pid = @node.start_instance(@instance)
+      @instance.plan = 1
+      @instance.save
+      @node.stop_redis_server(@instance)
+      sleep 1
+      @node.start_provisioned_instances
+      sleep 1
+      instance = VCAP::Services::Redis::Node::ProvisionedService.get(@instance.name)
+      instance.pid.should_not == @instance.pid
+      @node.stop_instance(@instance)
+      @instance.destroy
+    end
   end
 
   describe "Node.announcement" do
@@ -47,35 +143,11 @@ describe VCAP::Services::Redis::Node do
     end
   end
 
-  describe "Node.pre_send_announcement" do
+  describe "Node.provision" do
     before :all do
       @old_capacity = @node.capacity
       @credentials = @node.provision(:free)
-      @node.shutdown
-      EM.run do
-        @node = VCAP::Services::Redis::Node.new(@options)
-        EM.add_timer(1) {EM.stop}
-      end
-    end
-
-    after :all do
-      @node.unprovision(@credentials["name"])
-    end
-
-    it "should start provisioned instances before sending announcement" do
-      instance = @node.get_instance(@credentials["name"])
-      redis_echo(instance.ip, @redis_port, @credentials["password"]).should == true
-    end
-
-    it "should decrease the capacity" do
-      @node.capacity.should == @old_capacity - 1
-    end
-  end
-
-  describe "Node.provision" do
-    before :all do
-      @credentials = @node.provision(:free)
-      @instance = @node.get_instance(@credentials["name"])
+      sleep 1
     end
 
     after :all do
@@ -83,15 +155,18 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should access the instance using the credentials returned by successful provision" do
-      redis_echo(@instance.ip, @redis_port, @credentials["password"]).should == true
+      redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+      redis.get("test_key").should be_nil
     end
 
     it "should not allow null credentials to access the instance" do
-      expect {redis_echo(@instance.ip, @redis_port)}.should raise_error(RuntimeError)
+      redis = Redis.new({:port => @credentials["port"]})
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should not allow wrong credentials to access the instance" do
-      expect {redis_echo(@instance.ip, @redis_port, "wrong_password")}.should raise_error(RuntimeError)
+      redis = Redis.new({:port => @credentials["port"], :password => "wrong_password"})
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should delete the provisioned instance port in free port list when finish a provision" do
@@ -112,6 +187,7 @@ describe VCAP::Services::Redis::Node do
       in_credentials["port"] = 22222
       in_credentials["password"] = UUIDTools::UUID.random_create.to_s
       out_credentials = @node.provision(:free, in_credentials)
+      sleep 1
       out_credentials["name"].should == in_credentials["name"]
       out_credentials["port"].should == in_credentials["port"]
       out_credentials["password"].should == in_credentials["password"]
@@ -122,48 +198,89 @@ describe VCAP::Services::Redis::Node do
   describe "Node.unprovision" do
     before :all do
       @credentials = @node.provision(:free)
-      @instance = @node.get_instance(@credentials["name"])
+      @old_capacity = @node.capacity
+      sleep 1
       @node.unprovision(@credentials["name"])
     end
 
-    it "should not access the instance after unprovision" do
-      expect {redis_echo(@instance.ip, @redis_port, @credentials["password"])}.should raise_error
+    it "should not access the instance when doing unprovision" do
+      redis = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+      expect {redis.get("test_key")}.should raise_error(Redis::CannotConnectError)
     end
 
-    it "should add the provisioned instance port in free port set when finish an unprovision" do
+    it "should add the provisioned instance port in free port list when finish an unprovision" do
       @node.free_ports.include?(@credentials["port"]).should == true
     end
 
-    it "should raise exception when unprovision a non-existed instance name" do
-      expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Base::Error::ServiceError)
+    it "should raise exception when unprovision an non-existed name" do
+      expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Redis::RedisError)
+    end
+  end
+
+  describe "Node.save_instance" do
+    it "should raise exception when save instance failed" do
+      @instance.pid = 100
+      @instance.persisted_state = DataMapper::Resource::State::Immutable
+      expect {@node.save_instance(@instance)}.should raise_error(VCAP::Services::Redis::RedisError)
+    end
+  end
+
+  describe "Node.destroy_instance" do
+    it "should return true when the instance is in local db" do
+      instance = VCAP::Services::Redis::Node::ProvisionedService.new
+      instance.name     = "test"
+      instance.port     = 1
+      instance.plan     = 1
+      instance.password = "test"
+      instance.memory   = 1
+      instance.save
+      @node.destroy_instance(instance).should == true
+      expect {@node.get_instance(instance.name)}.should raise_error(VCAP::Services::Redis::RedisError)
+    end
+
+    it "should return true when the instance is not in local db" do
+      instance = VCAP::Services::Redis::Node::ProvisionedService.new
+      @node.destroy_instance(instance).should == true
+      expect {@node.get_instance(instance.name)}.should raise_error(VCAP::Services::Redis::RedisError)
+    end
+  end
+
+  describe "Node.get_instance" do
+    it "should raise exception when get instance failed" do
+      expect {@node.get_instance("non-existed")}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
   describe "Node.bind" do
     before :all do
       @instance_credentials = @node.provision(:free)
-      @instance = @node.get_instance(@instance_credentials["name"])
+      sleep 1
       @binding_credentials = @node.bind(@instance_credentials["name"])
+      sleep 1
     end
 
     after :all do
       @node.unbind(@binding_credentials)
+      sleep 1
       @node.unprovision(@instance_credentials["name"])
     end
 
-    it "should access redis server using the returned credentials" do
-      redis_echo(@instance.ip, @redis_port, @binding_credentials["password"]).should == true
+    it "should access redis server using the returned credential" do
+      redis = Redis.new({:port => @binding_credentials["port"], :password => @binding_credentials["password"]})
+      redis.get("test_key").should be_nil
     end
 
     it "should not allow null credentials to access the instance" do
-      expect {redis_echo(@instance.ip, @redis_port)}.should raise_error(RuntimeError)
+      redis = Redis.new({:port => @binding_credentials["port"]})
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
     it "should not allow wrong credentials to access the instance" do
-      expect {redis_echo(@instance.ip, @redis_port, "wrong_password")}.should raise_error(RuntimeError)
+      redis = Redis.new({:port => @binding_credentials["port"], :password => "wrong_password"})
+      expect {redis.get("test_key")}.should raise_error(RuntimeError)
     end
 
-    it "should send binding message when finish binding" do
+    it "should send binding message when finish a binding" do
       @binding_credentials["hostname"].should be
       @binding_credentials["host"].should == @binding_credentials["hostname"]
       @binding_credentials["port"].should be
@@ -173,39 +290,72 @@ describe VCAP::Services::Redis::Node do
   end
 
   describe "Node.unbind" do
-    it "should return an empty hash when finish unbinding" do
+    it "should return true when finish an unbinding" do
       @instance_credentials = @node.provision(:free)
+      sleep 1
       @binding_credentials = @node.bind(@instance_credentials["name"])
+      sleep 1
       @node.unbind(@binding_credentials).should == {}
       @node.unprovision(@instance_credentials["name"])
+    end
+  end
+
+  describe "Node.memory_for_instance" do
+    it "should return memory size by the plan" do
+      instance = VCAP::Services::Redis::Node::ProvisionedService.new
+      instance.plan = 1
+      @node.memory_for_instance(instance).should == @node.max_memory
     end
   end
 
   describe "Node.varz_details" do
     it "should report varz details" do
       @credentials = @node.provision(:free)
+      sleep 1
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
       varz[:provisioned_instances][0][:name].should == @credentials["name"]
       varz[:provisioned_instances][0][:port].should == @credentials["port"]
-      varz[:provisioned_instances][0][:plan].should == 1
+      varz[:provisioned_instances][0][:plan].should == "free"
+      @node.unprovision(@credentials["name"])
+    end
+  end
+
+  describe "Node.health" do
+    it "should report service instances status" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      varz = @node.varz_details
+      varz[:instances].each do  |name, status|
+        status.should == "ok"
+      end
       @node.unprovision(@credentials["name"])
     end
   end
 
   describe "Node.restore" do
     before :all do
-      @credentials = @node.provision(:free)
-      @restore_result = @node.restore(@credentials["name"], "./")
-      @instance = @node.get_instance(@credentials["name"])
+      @restore_dir = "/tmp/restore/redis"
+      FileUtils.mkdir_p(@restore_dir)
+      @credentials1 = @node.provision(:free)
+      @credentials2 = @node.provision(:free)
+      sleep 1
+      Redis.new({:port => @credentials1["port"], :password => @credentials1["password"]}).set("test_key", "test_value")
+      @node.set_config(@credentials1["port"], @credentials1["password"], "save", "1 0")
+      @node.set_config(@credentials1["port"], @credentials1["password"], "dir", @restore_dir)
+      sleep 2
+      @restore_result = @node.restore(@credentials2["name"], @restore_dir)
+      sleep 1
     end
 
     after :all do
-      @node.unprovision(@credentials["name"])
+      @node.unprovision(@credentials1["name"])
+      @node.unprovision(@credentials2["name"])
+      FileUtils.rm_rf("/tmp/restore")
     end
 
     it "should restore user data from a backup file" do
-      redis_get(@instance.ip, @redis_port, @credentials["password"], "test_key").should == "test_value"
+      Redis.new({:port => @credentials2["port"], :password => @credentials2["password"]}).get("test_key").should == "test_value"
     end
 
     it "should return an empty hash if restore successfully" do
@@ -213,30 +363,28 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should restore from an empty dump file" do
-      restore_dir = "/tmp/redis_empty"
+      restore_dir = "/tmp/restore/redis_empty"
       FileUtils.mkdir_p(restore_dir)
       FileUtils.touch(File.join(restore_dir, "dump.rdb"))
-      restore_result = @node.restore(@credentials["name"], restore_dir)
-      restore_result.should == {}
-      @instance = @node.get_instance(@credentials["name"])
-      redis_get(@instance.ip, @redis_port, @credentials["password"], "test_key").should be_nil
-      FileUtils.rm_rf(restore_dir)
+      restore_result = @node.restore(@credentials2["name"], restore_dir)
+      sleep 1
+      Redis.new({:port => @credentials2["port"], :password => @credentials2["password"]}).get("test_key").should be_nil
     end
 
     it "should raise exception if the instance is not existed" do
-      expect {@node.restore("non-existed", "/tmp")}.should raise_error(VCAP::Services::Redis::RedisError)
+      expect {@node.restore("non-existed", @restore_dir)}.should raise_error(VCAP::Services::Redis::RedisError)
     end
 
     it "should raise exception if the dumped file is not existed" do
-      expect {@node.restore(@credentials["name"], "/tmp/restore")}.should raise_error(VCAP::Services::Redis::RedisError)
+      expect {@node.restore(@credentials2["name"], "/tmp/restore")}.should raise_error(VCAP::Services::Redis::RedisError)
     end
   end
 
   describe "Node.migration" do
     before :all do
       @credentials = @node.provision(:free)
-      @instance = @node.get_instance(@credentials["name"])
-      redis_set(@instance.ip, @redis_port, @credentials["password"], "test_key", "test_value")
+      sleep 1
+      Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).set("test_key", "test_value")
       @dump_dir = File.join("/tmp/migration/redis", @credentials["name"])
       @binding_credentials1 = @node.bind(@credentials["name"])
       @binding_credentials2 = @node.bind(@credentials["name"])
@@ -254,88 +402,83 @@ describe VCAP::Services::Redis::Node do
     end
 
     after :all do
+      sleep 1
       @node.unbind(@binding_credentials1)
       @node.unbind(@binding_credentials2)
       @node.unprovision(@credentials["name"])
+      FileUtils.rm_rf("/tmp/migration")
     end
 
     it "should not access redis server after disable the instance" do
       @node.disable_instance(@credentials, @binding_credentials_list).should == true
-      expect {redis_echo(@instance.ip, @redis_port, @credentials["password"])}.should raise_error(RuntimeError)
+      sleep 1
+      expect {@node.get_info(@credentials["port"], @credentials["password"])}.should raise_error(VCAP::Services::Redis::RedisError)
     end
 
     it "should dump db file to right location after dump instance" do
-      begin
-        @node.dump_instance(@credentials, @binding_credentials_list, @node.options[:migration_nfs]).should == true
-        dump_file = File.join(@node.options[:migration_nfs], "dump.rdb")
-        File.exists?(dump_file).should == true
-      rescue => e
-        p e
-      end
+      @node.dump_instance(@credentials, @binding_credentials_list, @dump_dir).should == true
+      dump_file = File.join(@dump_dir, "dump.rdb")
+      File.exists?(dump_file).should == true
     end
 
     it "should access redis server in old node after enable the instance" do
       @node.enable_instance(@credentials, @binding_credentials_map).should == true
-      redis_echo(@instance.ip, @redis_port, @credentials["password"]).should == true
+      sleep 1
+      @node.check_password(@credentials["port"], @credentials["password"]).should == true
     end
 
     it "should import db file from right location after import instance" do
       @node.unprovision(@credentials["name"])
-      @node.import_instance(@credentials, @binding_credentials_map, "./", :free)
+      sleep 1
+      @node.import_instance(@credentials, @binding_credentials_map, @dump_dir, :free)
+      sleep 1
       credentials_list = @node.update_instance(@credentials, @binding_credentials_map)
       credentials_list.size.should == 2
-      instance = @node.get_instance(credentials_list[0]["name"])
-      redis_get(instance.ip, @redis_port, credentials_list[0]["password"], "test_key").should == "test_value"
-      credentials_list[1].each do |_, value|
-        redis_get(instance.ip, @redis_port, value["credentials"]["password"], "test_key").should == "test_value"
+      Redis.new({:port => credentials_list[0]["port"], :password => credentials_list[0]["password"]}).get("test_key").should == "test_value"
+      credentials_list[1].each do |key, value|
+        Redis.new({:port => value["credentials"]["port"], :password => value["credentials"]["password"]}).get("test_key").should == "test_value"
       end
     end
   end
 
   describe "Node.max_clients" do
     it "should limit the maximum number of clients" do
-      credentials = @node.provision(:free)
-      instance = @node.get_instance(credentials["name"])
-      begin
-        redis = []
-        # Create max_clients connections
-        for i in 1..@options[:max_clients]
-          redis[i] = Redis.new({:host => instance.ip, :port => @redis_port, :password => credentials["password"]})
-          redis[i].info
-        end
-        # The max_clients + 1 connection will raise exception
-        expect {Redis.new({:host => instance.ip, :port => @redis_port, :password => credentials["password"]}).info}.should raise_error(RuntimeError)
-        # Close the max_clients connections
-        for i in 1..@options[:max_clients]
-          redis[i].quit
-        end
-        # Now the new connection will be successful
-        redis = Redis.new({:host => instance.ip, :port => @redis_port, :password => credentials["password"]})
-        redis.info.should be
-        redis.quit if redis
-      rescue => e
-        p e
-      end
-      @node.unprovision(credentials["name"])
-    end
-
-    it "should unprovision successfully when reach the maximum number of clients" do
-      credentials = @node.provision(:free)
-      instance = @node.get_instance(credentials["name"])
+      @credentials = @node.provision(:free)
+      sleep 1
       redis = []
       # Create max_clients connections
       for i in 1..@options[:max_clients]
-        redis[i] = Redis.new({:host => instance.ip, :port => @redis_port, :password => credentials["password"]})
+        redis[i] = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
         redis[i].info
       end
-      @node.unprovision(credentials["name"]).should == true
+      # The max_clients + 1 connection will raise exception
+      expect {Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info}.should raise_error(RuntimeError)
+      # Close the max_clients connections
+      for i in 1..@options[:max_clients]
+        redis[i].quit
+      end
+      # Now the new connection will be successful
+      Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).info
+      @node.unprovision(@credentials["name"])
+    end
+
+    it "should unprovision successfully when reach the maximum number of clients" do
+      @credentials = @node.provision(:free)
+      sleep 1
+      redis = []
+      # Create max_clients connections
+      for i in 1..@options[:max_clients]
+        redis[i] = Redis.new({:port => @credentials["port"], :password => @credentials["password"]})
+        redis[i].info
+      end
+      @node.unprovision(@credentials["name"]).should == {}
     end
   end
 
   describe "Node.timeout" do
     it "should raise exception when redis client response time is too long" do
       credentials = @node.provision(:free)
-      instance = @node.get_instance(credentials["name"])
+      sleep 1
       class Redis
         alias :old_info :info
         def info(cmd = nil)
@@ -343,11 +486,11 @@ describe VCAP::Services::Redis::Node do
           old_info(cmd)
         end
       end
-      expect {@node.get_info(instance.ip, @redis_port, credentials["password"])}.should raise_error(VCAP::Services::Redis::RedisError)
+      expect {@node.get_info(credentials["port"], credentials["password"])}.should raise_error(VCAP::Services::Redis::RedisError)
       class Redis
         alias :info :old_info
       end
-      @node.get_info(instance.ip, @redis_port, credentials["password"]).should be
+      @node.get_info(credentials["port"], credentials["password"]).should be
       @node.unprovision(credentials["name"])
     end
   end
@@ -364,7 +507,6 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.thread_safe" do
     it "should be thread safe in multi-threads call" do
-      pending "multi-thread provision has performance issue in CI warden environment" if ENV["CI_ENV"]
       old_ports = @node.free_ports.clone
       semaphore = Mutex.new
       credentials_list = []
@@ -377,6 +519,7 @@ describe VCAP::Services::Redis::Node do
         end
       end
       somethreads.each {|t| t.join}
+      sleep 2
       new_ports = @node.free_ports.clone
       delta_ports = Set.new
       credentials_list.each do |credentials|
@@ -402,8 +545,7 @@ describe VCAP::Services::Redis::Node do
         @node.shutdown
         @node = VCAP::Services::Redis::Node.new(@options)
         EM.add_timer(1) {
-          instance = @node.get_instance(credentials["name"])
-          redis_echo(instance.ip, @redis_port, credentials["password"]).should == true
+          @node.check_password(credentials["port"], credentials["password"]).should == true
           @node.unprovision(credentials["name"])
           EM.stop
         }

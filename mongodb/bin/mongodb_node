@@ -27,8 +27,8 @@ class VCAP::Services::MongoDB::NodeBin < VCAP::Services::Base::NodeBin
     options[:mongorestore_path] = parse_property(config, "mongorestore_path", Hash)
     options[:mongod_log_dir] = parse_property(config, "mongod_log_dir", String)
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
-    options[:image_dir] = parse_property(config, "image_dir", String)
-    options[:max_disk] = parse_property(config, "max_disk", Integer)
+    options[:quota_files] = parse_property(config, "quota_files", Integer, :optional => true)
+
     options[:supported_versions] = parse_property(config, "supported_versions", Array)
     options[:default_version] = parse_property(config, "default_version", String)
     options[:mongod_options] = parse_property(config, "mongod_options", Hash)

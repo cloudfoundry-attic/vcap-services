@@ -1,0 +1,32 @@
+---
+# cloud_controller_uri: api.vcap.me
+service:
+  name: rabbitmq
+  version: "2.4"
+  description: "RabbitMQ message queue"
+  plans: ["free"]
+  default_plan: free
+  tags: ["rabbitmq", "rabitmq-2.4", "message-queue", "amqp"]
+  timeout: 15
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
+token: changerabbitmqtoken
+logging:
+  level: debug
+mbus: nats://localhost:4222
+pid: /var/vcap/sys/run/rabbit_gateway.pid
+plan_management:
+  plans:
+    free:
+      low_water: 10
+      high_water: 180
+      #allow_over_provisioning: false
+node_timeout: 10
+# z_interval: 30
+# check_orphan_interval: 3600
+# double_check_orphan_interval: 300
+# max_nats_payload: 1048576

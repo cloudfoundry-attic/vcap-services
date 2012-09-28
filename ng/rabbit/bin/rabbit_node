@@ -1,0 +1,36 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+require "bundler/setup"
+require "vcap_services_base"
+
+$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
+require "rabbit_service/rabbit_node"
+
+class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
+
+  def node_class
+    VCAP::Services::Rabbit::Node
+  end
+
+  def default_config_file
+    File.join(File.dirname(__FILE__), "..", "config", "rabbit_node.yml")
+  end
+
+  def additional_config(options, config)
+    options[:port_range] = parse_property(config, "port_range", Range)
+    options[:admin_port_range] = parse_property(config, "admin_port_range", Range)
+    options[:rabbitmq_server] = parse_property(config, "rabbitmq_server", String)
+    options[:rabbitmq_log_dir] = parse_property(config, "rabbitmq_log_dir", String)
+    options[:config_template] = File.expand_path("../../resources/rabbitmq.config.erb", __FILE__)
+    options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
+    options[:max_memory_factor] = parse_property(config, "max_memory_factor", Float, :optional => true)
+    options[:image_dir] = parse_property(config, "image_dir", String)
+    options[:max_disk] = parse_property(config, "max_disk", Integer)
+    options
+  end
+
+end
+
+VCAP::Services::Rabbit::NodeBin.new.start

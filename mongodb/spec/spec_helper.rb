@@ -41,9 +41,6 @@ module VCAP
       class Node
         attr_reader :available_memory
         attr_accessor :max_clients
-        def get_instance(name)
-          ProvisionedService.get(name)
-        end
       end
     end
   end
@@ -78,14 +75,15 @@ def get_backup_dir(backup_dir)
   dir
 end
 
-def delete_admin(p_service, options)
-  db = Mongo::Connection.new(p_service.ip, '27017').db(options['db'])
+def delete_admin(options)
+  db = Mongo::Connection.new('127.0.0.1', options['port']).db(options['db'])
   auth = db.authenticate(options['username'], options['password'])
   db.remove_user('admin')
 
-  db = Mongo::Connection.new(p_service.ip, '27017').db('admin')
-  auth = db.authenticate(p_service.admin, p_service.adminpass)
-  db.remove_user(p_service.admin)
+  db = Mongo::Connection.new('127.0.0.1', options['port']).db('admin')
+  service = VCAP::Services::MongoDB::Node::ProvisionedService.get(options['name'])
+  auth = db.authenticate(service.admin, service.adminpass)
+  db.remove_user(service.admin)
 end
 
 def parse_property(hash, key, type, options = {})
@@ -135,10 +133,8 @@ def get_node_config()
     :port_range => parse_property(config, "port_range", Range),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :base_dir => '/tmp/mongo/instances',
-    :mongod_log_dir => '/tmp/mongo/logs',
+    :mongod_log_dir => '/tmp/mongo/mongod_log',
     :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db',
-    :image_dir => '/tmp/mongo/images',
-    :max_disk => 128,
     :supported_versions => parse_property(config, "supported_versions", Array),
     :default_version => parse_property(config, "default_version", String)
   }

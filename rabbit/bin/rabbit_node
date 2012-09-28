@@ -23,11 +23,10 @@ class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
     options[:admin_port_range] = parse_property(config, "admin_port_range", Range)
     options[:rabbitmq_server] = parse_property(config, "rabbitmq_server", String)
     options[:rabbitmq_log_dir] = parse_property(config, "rabbitmq_log_dir", String)
+    options[:rabbitmq_start_timeout] = parse_property(config, "rabbitmq_start_timeout", Integer, :optional => true)
     options[:config_template] = File.expand_path("../../resources/rabbitmq.config.erb", __FILE__)
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options[:max_memory_factor] = parse_property(config, "max_memory_factor", Float, :optional => true)
-    options[:image_dir] = parse_property(config, "image_dir", String)
-    options[:max_disk] = parse_property(config, "max_disk", Integer)
     options
   end
 

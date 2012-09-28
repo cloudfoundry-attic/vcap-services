@@ -11,24 +11,14 @@ module VCAP::Services::Redis::Snapshot
     DataMapper.setup(:default, database_url)
   end
 
-  def redis_provisioned_service
-    VCAP::Services::Redis::Node::ProvisionedService
-  end
-
-  def init_setting(prefix)
+  def init_command_name(prefix)
     @config_command_name = prefix + "-config"
     @shutdown_command_name = prefix + "-shutdown"
     @save_command_name = prefix + "-save"
-    @redis_port = 25001
-    @redis_timeout = 2
-    options = {
-      :base_dir => @config["base_dir"],
-      :redis_log_dir => @config["redis_log_dir"],
-      :image_dir => @config["image_dir"],
-      :max_disk => @config["max_disk"],
-      :local_db => @config["local_db"]
-    }
-    redis_provisioned_service.init(options)
+  end
+
+  def redis_provisioned_service
+    VCAP::Services::Redis::Node::ProvisionedService
   end
 
   # Dump a database into files and save the snapshot information into redis.
@@ -38,7 +28,7 @@ module VCAP::Services::Redis::Snapshot
 
     def execute
       init_localdb(@config["local_db"])
-      init_setting(@config["command_rename_prefix"])
+      init_command_name(@config["command_rename_prefix"])
 
       dump_path = get_dump_path(name, snapshot_id)
       FileUtils.mkdir_p(dump_path)
@@ -75,13 +65,13 @@ module VCAP::Services::Redis::Snapshot
       @shutdown_command_name = @config["command_rename_prefix"] + "-shutdown"
       @save_command_name = @config["command_rename_prefix"] + "-save"
       init_localdb(@config["local_db"])
-      init_setting(@config["command_rename_prefix"])
+      init_command_name(@config["command_rename_prefix"])
 
       srv = redis_provisioned_service.get(name)
       snapshot_file_path = @snapshot_files[0]
       raise "Can't snapshot file #{snapshot_file_path}" unless File.exists?(snapshot_file_path)
 
-      result = import_redis_data(srv, get_dump_path(name, snapshot_id))
+      result = import_redis_data(srv, get_dump_path(name, snapshot_id), @config["base_dir"], @config["redis_server_path"])
       raise "Failed execute import command to #{name}" unless result
       srv.pid = result
       srv.save

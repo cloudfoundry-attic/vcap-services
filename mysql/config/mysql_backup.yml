@@ -13,4 +13,3 @@ mysql:
   pass: root
 logging:
   level: debug
-use_warden: false

@@ -27,6 +27,7 @@ class VCAP::Services::Memcached::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options[:memcached_memory] = parse_property(config, "memcached_memory", Integer)
     options[:sasl_enabled] = parse_property(config, "sasl_enabled", Boolean, :optional => true)
+    options[:run_as_user] = parse_property(config, "run_as_user", String, :optional => true)
     options
   end
 

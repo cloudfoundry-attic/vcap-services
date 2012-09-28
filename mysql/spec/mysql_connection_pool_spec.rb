@@ -12,7 +12,6 @@ module VCAP
       module Util
         class ConnectionPool
           attr_reader :connections
-          attr_accessor :max, :min
         end
       end
     end
@@ -28,6 +27,7 @@ describe 'Mysql Connection Pool Test' do
     @mysql_config = @opts[:mysql]
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     @pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => 20)
+
   end
 
   it "should provide mysql connections" do
@@ -37,7 +37,6 @@ describe 'Mysql Connection Pool Test' do
   end
 
   it "should not provide the same connection to different threads" do
-    @pool.max = 20
     THREADS = 20
     ITERATES = 10
     threads = []
@@ -57,13 +56,11 @@ describe 'Mysql Connection Pool Test' do
       threads << thread
     end
     threads.each {|t| t.join}
-    @pool.max = 5
   end
 
   it "should verify a connection before checkout" do
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
     pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger)
-    pool.max = 1
 
     pool.with_connection do |conn|
       conn.close
@@ -128,7 +125,6 @@ describe 'Mysql Connection Pool Test' do
     # create a tiny pool with very short timeout
     pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql",
                                      :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger, :wait_timeout => 2)
-    pool.max = 1
     threads = []
     threads << Thread.new do
       # acquire connection for quite a long time.
@@ -154,28 +150,4 @@ describe 'Mysql Connection Pool Test' do
     error.to_s.should match(/could not obtain a database connection/)
   end
 
-  it "should enlarge and shrink connection pool" do
-    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
-    # create a tiny pool with very short timeout
-    pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql",
-                                     :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger, :expire => 2,
-                                     :pool_min => 1, :pool_max => 5)
-    pool.connections.size.should == 1
-    threads  = []
-    6.times do
-      threads << Thread.new do
-        pool.with_connection do |conn|
-          sleep(1)                    #make sure connections are created but not checked in
-          conn.query("select 1")
-        end
-        #@logger.info("In thread #{Thread.current.object_id}: " + pool.connections.inspect)
-      end
-    end
-    threads.each(&:join)
-
-    pool.connections.size.should == 5 #should be enlarged but not larger than max
-    sleep(2)                          #wait for expiration of connections
-    pool.keep_alive                   #remove the expired connections
-    pool.connections.size.should == 1
-  end
 end

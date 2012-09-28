@@ -21,9 +21,8 @@ admin_port_range:
   last: 30000
 rabbitmq_server: rabbitmq-server
 rabbitmq_log_dir: /var/vcap/sys/log/rabbit
-service_start_timeout: 30
+# rabbitmq_start_timeout: 5
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
-max_disk: 128
-image_dir: /var/vcap/services/rabbit/rabbitmq_image
+# op_time_limit: 6

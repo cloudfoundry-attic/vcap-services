@@ -10,32 +10,6 @@ require "mysql_service/util"
 require 'mysql_service/provisioner'
 require 'mysql_service/node'
 
-require 'mysql_service/warden'
-# monkey patch of wardenized node
-module VCAP::Services::Mysql::Warden
-  alias_method :pre_send_announcement_internal_ori, :pre_send_announcement_internal
-  def pre_send_announcement_internal
-    unless @use_warden && @options[:not_start_instances]
-      pre_send_announcement_internal_ori
-    else
-      @logger.info("Not to start instances")
-      mysqlProvisionedService.all.each do |instance|
-        new_port(instance.port)
-        @pools[instance.port] = mysql_connect(instance.ip, false)
-      end
-    end
-  end
-
-  def create_missing_pools
-    mysqlProvisionedService.all.each do |instance|
-      unless @pools.keys.include?(instance.port)
-        new_port(instance.port)
-        @pools[instance.port] = mysql_connect(instance.ip, false)
-      end
-    end
-  end
-end
-
 module Boolean; end
 class ::TrueClass; include Boolean; end
 class ::FalseClass; include Boolean; end
@@ -98,21 +72,7 @@ def getNodeTestConfig()
     :kill_long_tx => parse_property(config, "kill_long_tx", Boolean),
     :max_user_conns => parse_property(config, "max_user_conns", Integer, :optional => true),
     :connection_wait_timeout => 10,
-    :disk_overhead => parse_property(config, "disk_overhead", Float, :default => 0.0),
-    :use_warden => parse_property(config, "use_warden", Boolean),
-    :config_template => File.expand_path("../../resources/my.conf.erb", __FILE__)
   }
-  if options[:use_warden]
-    warden_config = parse_property(config, "warden", Hash, :optional => true)
-    options[:log_dir] = parse_property(warden_config, "log_dir", String)
-    options[:image_dir] = parse_property(warden_config, "image_dir", String)
-    options[:port_range] = parse_property(warden_config, "port_range", Range)
-    options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
-    options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
-    options[:max_heap_table_size] = parse_property(warden_config, "max_heap_table_size", Integer, :optional => true)
-    options[:micro] = parse_property(warden_config, "micro", Boolean, :optional => true)
-    options[:production] = parse_property(warden_config, "production", Boolean, :optional => true)
-  end
   options
 end
 
@@ -128,10 +88,4 @@ def getProvisionerTestConfig()
     :mbus => config[:mbus]
   }
   options
-end
-
-def new_node(options)
-  opts = options.dup
-  opts[:not_start_instances] = true if opts[:use_warden]
-  VCAP::Services::Mysql::Node.new(opts)
 end

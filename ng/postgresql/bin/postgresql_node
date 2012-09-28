@@ -1,0 +1,45 @@
+#!/usr/bin/env ruby
+# -*- mode: ruby -*-
+# Copyright (c) 2009-2011 VMware, Inc.
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../../Gemfile", __FILE__)
+require 'bundler/setup'
+require 'vcap_services_base'
+
+$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
+require "postgresql_service/node"
+
+class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
+
+  def node_class
+    VCAP::Services::Postgresql::Node
+  end
+
+  def default_config_file
+    File.join(File.dirname(__FILE__), '..', 'config', 'postgresql_node.yml')
+  end
+
+  def additional_config(options, config)
+    options[:max_db_size] = parse_property(config, "max_db_size", Integer)
+    options[:db_size_overhead] = parse_property(config, "db_size_overhead", Float)
+    options[:disk_overhead] = parse_property(config, "disk_overhead", Numeric, :default => 0.0)
+    options[:max_long_query] = parse_property(config, "max_long_query", Integer)
+    options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
+    options[:postgresql] = parse_property(config, "postgresql", Hash)
+    options[:max_db_conns] = parse_property(config, "max_db_conns", Integer)
+    options[:restore_bin] = parse_property(config, "restore_bin", String)
+    options[:dump_bin] = parse_property(config, "dump_bin", String)
+    options[:use_warden] = parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
+    if options[:use_warden]
+      warden_config = parse_property(config, "warden", Hash, :optional => true)
+      options[:log_dir] = parse_property(warden_config, "log_dir", String)
+      options[:port_range] = parse_property(warden_config, "port_range", Range)
+      options[:image_dir] = parse_property(warden_config, "image_dir", String)
+      options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
+      options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => 3, :default => 3)
+    end
+    options
+  end
+
+end
+
+VCAP::Services::Postgresql::NodeBin.new.start

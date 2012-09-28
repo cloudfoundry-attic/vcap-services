@@ -27,4 +27,3 @@ mysql:
 mysqldump_bin: mysqldump
 gzip_bin: gzip
 mysql_bin: mysql
-use_warden: false

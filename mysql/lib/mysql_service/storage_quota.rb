@@ -12,7 +12,7 @@ class VCAP::Services::Mysql::Node
     dbs = [] if dbs.nil?
     if dbs.length == 0
       result = connection.query('show databases')
-      result.each(:as => :array) {|db| dbs << db[0]}
+      result.each {|db| dbs << db[0]}
     end
     sizes = connection.query(
       'SELECT table_schema "name",
@@ -42,8 +42,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def access_disabled?(db)
-    key = get_port(mysqlProvisionedService.get(db))
-    @pools[key].with_connection do |connection|
+    @pool.with_connection do |connection|
       rights = connection.query("SELECT insert_priv, create_priv, update_priv
                                   FROM db WHERE Db=" +  "'#{db}'")
       rights.each do |right|
@@ -55,7 +54,7 @@ class VCAP::Services::Mysql::Node
 
   def grant_write_access(db, service)
     @logger.warn("DB permissions inconsistent....") unless access_disabled?(db)
-    @pools[get_port(service)].with_connection do |connection|
+    @pool.with_connection do |connection|
       connection.query("UPDATE db SET insert_priv='Y', create_priv='Y',
                          update_priv='Y' WHERE Db=" +  "'#{db}'")
       connection.query("FLUSH PRIVILEGES")
@@ -68,7 +67,7 @@ class VCAP::Services::Mysql::Node
 
   def revoke_write_access(db, service)
     @logger.warn("DB permissions inconsistent....") if access_disabled?(db)
-    @pools[get_port(service)].with_connection do |connection|
+    @pool.with_connection do |connection|
       connection.query("UPDATE db SET insert_priv='N', create_priv='N',
                          update_priv='N' WHERE Db=" +  "'#{db}'")
       connection.query("FLUSH PRIVILEGES")
@@ -85,14 +84,12 @@ class VCAP::Services::Mysql::Node
   def enforce_storage_quota
     acquired = @enforce_quota_lock.try_lock
     return unless acquired
-    sizes = {}
-    @pools.each_value do |pool|
-      pool.with_connection do |connection|
-        connection.query('use mysql')
-        sizes.merge!(dbs_size(connection))
-      end
+    sizes = nil
+    @pool.with_connection do |connection|
+      connection.query('use mysql')
+      sizes = dbs_size(connection)
     end
-    mysqlProvisionedService.all.each do |service|
+    ProvisionedService.all.each do |service|
       begin
         db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
         size = sizes[db]
@@ -123,10 +120,10 @@ class VCAP::Services::Mysql::Node
   def enforce_instance_storage_quota(service)
     begin
       db, user, quota_exceeded = service.name, service.user, service.quota_exceeded
-      sizes = {}
-      @pools[get_port(service)].with_connection do |connection|
+      sizes = nil
+      @pool.with_connection do |connection|
         connection.query('use mysql')
-        sizes.merge!(dbs_size(connection, [db]))
+        sizes = dbs_size(connection, [db])
       end
       size = sizes[db]
       return if size.nil?

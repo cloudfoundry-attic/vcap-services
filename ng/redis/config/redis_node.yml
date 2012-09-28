@@ -1,0 +1,28 @@
+---
+capacity: 200
+plan: free
+local_db: sqlite3:/var/vcap/services/redis/redis_node.db
+mbus: nats://localhost:4222
+index: 0
+base_dir: /var/vcap/services/redis/instances
+ip_route: 127.0.0.1
+logging:
+  level: debug
+pid: /var/vcap/sys/run/redis_node.pid
+max_memory: 16
+max_swap: 32
+node_id: redis_node_free_1
+redis_server_path: redis-server
+port_range:
+  first: 5000
+  last: 25000
+migration_nfs: /mnt/appcloud
+# z_interval: 30
+redis_log_dir: /var/vcap/sys/log/redis
+command_rename_prefix: protect-command-prefix
+max_clients: 500
+# fqdn_hosts: false
+max_disk: 128
+image_dir: /var/vcap/services/redis/redis_image
+persistent: true
+# op_time_limit: 6

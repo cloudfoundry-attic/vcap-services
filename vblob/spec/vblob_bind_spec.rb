@@ -1,56 +1,101 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-
 $:.unshift(File.dirname(__FILE__))
-
 require "spec_helper"
 
 describe "vblob_node bind" do
 
   before :all do
     EM.run do
+      @app_id = "myapp"
       @opts = get_node_config()
       @logger = @opts[:logger]
       @node = Node.new(@opts)
-      @response = @node.provision("free")
-      @provisioned_service = @node.get_instance(@response['name'])
-      @bind_response = @node.bind(@response['name'], 'rw')
-      EM.add_timer(1) { EM.stop }
+      @resp = @node.provision("free")
+      @bind_resp = @node.bind(@resp['name'], 'rw')
+      EM.add_timer(1){ EM.stop }
     end
   end
 
   after :all do
-    @node.unprovision(@response['name'], [])
     @node.shutdown if @node
     FileUtils.rm_rf('/tmp/vblob')
   end
 
-  it "should be able to bind existing instance" do
-    @bind_response.should_not be_nil
-    @bind_response['host'].should_not be_nil
-    @bind_response['port'].should_not be_nil
-    @bind_response['host'].should == @response['hostname']
-    @bind_response['host'].should == @bind_response['host']
-    @bind_response['port'].should == @response['port']
-    @bind_response['hostname'].should_not be_nil
-    @bind_response['name'].should_not be_nil
-    @bind_response['username'].should_not be_nil
-    @bind_response['password'].should_not be_nil
+  it "should have valid response" do
+    @resp.should_not be_nil
+    @resp['host'].should_not be_nil
+    @resp['port'].should_not be_nil
+    @resp['username'].should_not be_nil
+    @resp['password'].should_not be_nil
+    @bind_resp.should_not be_nil
+    @bind_resp['host'].should_not be_nil
+    @bind_resp['port'].should_not be_nil
+    @bind_resp['username'].should_not be_nil
+    @bind_resp['password'].should_not be_nil
   end
 
-  it "should return error when binding a non-existed instance" do
-    expect { @node.bind('non-existed', 'rw') }.should raise_error
+  it "should be able to connect to vblob" do
+    is_port_open?('127.0.0.1', @resp['port']).should be_true
+  end
+
+  it "should return error when tring to bind on non-existent instance" do
+    e = nil
+    begin
+      @node.bind('non-existent', 'rw')
+    rescue => e
+    end
+    e.should_not be_nil
   end
 
   it "should allow binded user to access" do
-    lambda {
-      response = `curl http://#{@provisioned_service[:ip]}:#{@provisioned_service.service_port} -s`
-      response = `curl http://#{@provisioned_service[:ip]}:#{@provisioned_service.service_port}/bucket1 -X PUT -s`
-      response = `curl http://#{@provisioned_service[:ip]}:#{@provisioned_service.service_port}/bucket1 -X DELETE -s`
-    }.should_not raise_error
+    response = nil
+    EM.run do
+      begin
+        response = `curl http://#{@resp['host']}:#{@resp['port']}/bucket1 -X PUT -s`
+        response = `curl http://#{@resp['host']}:#{@resp['port']}/bucket1 -X DELETE -s`
+      rescue => e
+      end
+      e.should be_nil
+      EM.stop
+    end
+    response.should_not be_nil
   end
 
-  it "should be able to unbind after a successful bind" do
-    @node.unbind(@bind_response).should be_true
+  it "should return error when trying to unbind a non-existent service" do
+    EM.run do
+      begin
+        resp  = @node.unbind('not existed')
+      rescue => e
+      end
+      e.should be_true
+      EM.add_timer(1) do
+        EM.stop
+      end
+    end
   end
 
+  # unbind here
+  it "should be able to unbind it" do
+    EM.run do
+      resp  = @node.unbind(@bind_resp)
+      resp.should be_true
+      EM.add_timer(1) do
+        EM.stop
+      end
+    end
+  end
+
+  # unprovision here
+  it "should be able to unprovision an existing instance" do
+    EM.run do
+      @node.unprovision(@resp['name'], [])
+
+      e = nil
+      begin
+      is_port_open?('127.0.0.1',@resp['port']).should_not be_true
+      rescue => e
+      end
+      EM.stop
+    end
+  end
 end

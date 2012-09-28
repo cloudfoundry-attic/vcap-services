@@ -15,10 +15,18 @@ require "timeout"
 require "erb"
 require "fileutils"
 
-def get_connect_info(p_service)
-  hostname = "#{p_service.ip}:#{VCAP::Services::Memcached::Node::ProvisionedService::SERVICE_PORT}"
-  username = p_service.user
-  password = p_service.password
+
+def get_hostname(credentials)
+  host = credentials['host']
+  port = credentials['port'].to_s
+  hostname = host + ":" + port
+  return hostname
+end
+
+def get_connect_info(credentials)
+  hostname = get_hostname(credentials)
+  username = @credentials['user']
+  password = @credentials['password']
 
   return [hostname, username, password]
 end
@@ -71,9 +79,7 @@ def get_node_config()
     :memcached_memory => parse_property(config, "memcached_memory", Integer),
     :plan => parse_property(config, "memcached_memory", Integer),
     :local_db => 'sqlite3:/tmp/memcached/memcached_node.db',
-    :local_db_file => "/tmp/memcached/memcached_node.db",
-    :supported_versions => parse_property(config, "supported_versions", Array, :optional => true) || ["1.4"],
-    :default_version => parse_property(config, "default_version", String, :optional => true) || "1.4"
+    :local_db_file => "/tmp/memcached/memcached_node.db"
   }
   options[:logger].level = Logger::DEBUG
   options

@@ -26,9 +26,7 @@ mongod_options:
 port_range:
   first: 25001
   last: 45000
-max_disk: 128
 migration_nfs: /mnt/migration
-filesystem_quota: false
 # max_clients: 500
 # z_interval: 30
 # max_nats_payload: 1048576

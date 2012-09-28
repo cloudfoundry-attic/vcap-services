@@ -10,12 +10,8 @@ module VCAP
   module Services
     module Memcached
       class Node
-         attr_reader :base_dir, :capacity, :free_ports
-         attr_accessor :logger
-
-         def get_instance(name)
-           ProvisionedService.get(name)
-         end
+         attr_reader :base_dir, :memcached_server_path, :local_ip, :capacity, :node_id, :config_template, :free_ports, :memcached_timeout
+         attr_accessor :logger, :local_db
       end
     end
   end
@@ -26,17 +22,10 @@ describe VCAP::Services::Memcached::Node do
   before :all do
     @capacity_unit = 1
     @options = get_node_config()
-
-    @default_version = @options[:default_version]
-    @supported_versions = @options[:supported_versions]
-
     @logger = @options[:logger]
     @local_db_file = @options[:local_db_file]
-
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:memcached_log_dir])
-
-    @logger.info("Starting...")
 
     EM.run do
       @node = VCAP::Services::Memcached::Node.new(@options)
@@ -45,16 +34,12 @@ describe VCAP::Services::Memcached::Node do
   end
 
   before :each do
-    provision_options = {}
-    provision_options["plan"]     = :free
-    provision_options["version"]  = @default_version
-    provision_options["name"]     = UUIDTools::UUID.random_create.to_s
-    provision_options["user"]     = UUIDTools::UUID.random_create.to_s
-    provision_options["password"] = UUIDTools::UUID.random_create.to_s
-    provision_options["port"]     = VCAP.grab_ephemeral_port
-
-    @instance = @node.create_provisioned_instance(provision_options)
-    @logger.info("Created instance: #{@instance.inspect}")
+    @instance          = VCAP::Services::Memcached::Node::ProvisionedService.new
+    @instance.name     = UUIDTools::UUID.random_create.to_s
+    @instance.user     = UUIDTools::UUID.random_create.to_s
+    @instance.port     = VCAP.grab_ephemeral_port
+    @instance.plan     = :free
+    @instance.password = UUIDTools::UUID.random_create.to_s
   end
 
   after :all do
@@ -84,37 +69,66 @@ describe VCAP::Services::Memcached::Node do
       @node.base_dir.should be @options[:base_dir]
     end
 
+    it "should set up a memcached server path" do
+      @node.memcached_server_path.should be @options[:memcached_server_path]
+    end
+
+    it "should set up a local IP" do
+      @node.local_ip.should be
+    end
+
     it "should set up an available capacity" do
       @node.capacity.should == @options[:capacity]
+    end
+
+    it "should setup a free port set" do
+      @node.free_ports.should be
+    end
+  end
+
+  describe "Node.start_db" do
+    it "should fail when set local db with non-existing file argument" do
+      @node.local_db = "sqlite3:/non_existing/non-existing.db"
+      thrown = nil
+      begin
+        @node.start_db
+      rescue => e
+        thrown = e
+      end
+      thrown.should be
+      thrown.class.should == DataObjects::ConnectionError
+      @node.local_db = @options[:local_db]
+    end
+
+    it "should setup local db with right arguments" do
+      @node.start_db.should be
     end
   end
 
   describe 'Node.start_provisioned_instances' do
     it "should check whether provisioned instance is running or not" do
       @logger.debug("test : start instance #{@instance.inspect}")
-      @instance.run
+      @instance.pid = @node.start_instance(@instance)
       sleep 2
       @instance.running?.should == true
       @logger.debug("test : stop instance #{@instance.inspect}")
-      @instance.stop
+      @node.stop_instance(@instance)
       sleep 2
       @instance.running?.should == false
     end
 
     it "should start a new instance if the instance is not started when start all provisioned instances" do
-      @instance.run
+      @instance.pid = @node.start_instance(@instance)
+      @node.save_instance(@instance)
+      @node.stop_instance(@instance)
       sleep 1
-      @logger.info("Instance running = #{@instance.running?}")
-      @instance.stop
-      sleep 2
-      @logger.info("Instance running = #{@instance.running?}")
-
-      @instance.running?.should == false
       @node.start_provisioned_instances
-      sleep 2
-      instance_2 = @node.get_instance(@instance.name)
-      @logger.info("Instance running = #{instance_2.running?}")
-      instance_2.running?.should == true
+      sleep 1
+      instance = VCAP::Services::Memcached::Node::ProvisionedService.get(@instance.name)
+      p instance
+      instance.pid.should_not == @instance.pid
+      @node.stop_instance(@instance)
+      @instance.destroy
     end
   end
 
@@ -130,8 +144,7 @@ describe VCAP::Services::Memcached::Node do
 
   describe "Node.provision" do
     before :all do
-      @credentials = @node.provision(:free, nil, @default_version)
-      @p_service = @node.get_instance(@credentials["name"])
+      @credentials = @node.provision(:free)
       sleep 1
     end
 
@@ -140,8 +153,7 @@ describe VCAP::Services::Memcached::Node do
     end
 
     it "should access the instance using the credentials returned by successful provision" do
-      hostname, username, password = get_connect_info(@p_service)
-      @logger.info("Credentials: HOST:Port = #{hostname}")
+      hostname, username, password = get_connect_info(@credentials)
       memcached = Dalli::Client.new(hostname, username: username, password: password)
       memcached.get("test_key").should be_nil
     end
@@ -149,13 +161,13 @@ describe VCAP::Services::Memcached::Node do
 # - These tests require sasl to be enabled, commenting them out for now if later on we decide
 #   to enable sasl
 #    it "should not allow null credentials to access the instance" do
-#      hostname, username, password = get_connect_info(@p_service)
+#      hostname = get_hostname(@credentials)
 #      memcached = Dalli::Client.new(hostname)
 #      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
 #    end
 
 #    it "should not allow wrong credentials to access the instance" do
-#      hostname, username, password = get_connect_info(@p_service)
+#      hostname, username, password = get_connect_info(@credentials)
 #      memcached = Dalli::Client.new(hostname, username: username, password: 'wrong_password')
 #      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
 #    end
@@ -178,7 +190,7 @@ describe VCAP::Services::Memcached::Node do
       in_credentials["port"] = 22222
       in_credentials["user"] = UUIDTools::UUID.random_create.to_s
       in_credentials["password"] = UUIDTools::UUID.random_create.to_s
-      out_credentials = @node.provision(:free, in_credentials, @default_version)
+      out_credentials = @node.provision(:free, in_credentials)
       sleep 1
       out_credentials["name"].should == in_credentials["name"]
       out_credentials["port"].should == in_credentials["port"]
@@ -189,15 +201,14 @@ describe VCAP::Services::Memcached::Node do
 
   describe "Node.unprovision" do
     before :all do
-      @credentials = @node.provision(:free, nil, @default_version)
-      @p_service = @node.get_instance(@credentials["name"])
+      @credentials = @node.provision(:free)
       sleep 2
       @node.unprovision(@credentials["name"])
     end
 
     it "should not access the instance when doing unprovision" do
       p @credentials
-      hostname, username, password = get_connect_info(@p_service)
+      hostname, username, password = get_connect_info(@credentials)
       memcached = Dalli::Client.new(hostname, username: username, password: password)
       expect {memcached.get("test_key")}.should raise_error(Dalli::DalliError)
     end
@@ -207,14 +218,34 @@ describe VCAP::Services::Memcached::Node do
     end
 
     it "should raise exception when unprovision an non-existed name" do
-      expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Base::Error::ServiceError)
+      expect {@node.unprovision("non-existed")}.should raise_error(VCAP::Services::Memcached::MemcachedError)
+    end
+  end
+
+  describe "Node.save_instance" do
+    it "should raise exception when save instance failed" do
+      @instance.pid = 100
+      @instance.persisted_state = DataMapper::Resource::State::Immutable
+      expect {@node.save_instance(@instance)}.should raise_error(VCAP::Services::Memcached::MemcachedError)
+    end
+  end
+
+  describe "Node.destory_instance" do
+    it "should raise exception when destroy instance failed" do
+      instance = VCAP::Services::Memcached::Node::ProvisionedService.new
+      expect {@node.destroy_instance(instance)}.should raise_error(VCAP::Services::Memcached::MemcachedError)
+    end
+  end
+
+  describe "Node.get_instance" do
+    it "should raise exception when get instance failed" do
+      expect {@node.get_instance("non-existed")}.should raise_error(VCAP::Services::Memcached::MemcachedError)
     end
   end
 
   describe "Node.bind" do
     before :all do
-      @instance_credentials = @node.provision(:free, nil, @default_version)
-      @p_service = @node.get_instance(@instance_credentials["name"])
+      @instance_credentials = @node.provision(:free)
       sleep 1
       @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
@@ -227,7 +258,9 @@ describe VCAP::Services::Memcached::Node do
     end
 
     it "should access memcached server using the returned credential" do
-      hostname, username, password = get_connect_info(@p_service)
+      hostname = get_hostname(@binding_credentials)
+      username = @binding_credentials['user']
+      password = @binding_credentials['password']
       memcached = Dalli::Client.new(hostname, username: username, password: password)
       memcached.get("test_key").should be_nil
     end
@@ -235,13 +268,15 @@ describe VCAP::Services::Memcached::Node do
 # - These tests require sasl to be enabled, commenting them out for now if later on we decide
 #   to enable sasl
 #    it "should not allow null credentials to access the instance" do
-#      hostname, username, password = get_connect_info(@p_service)
+#      hostname = get_hostname(@binding_credentials)
 #      memcached = Dalli::Client.new(hostname)
 #      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
 #    end
 
 #    it "should not allow wrong credentials to access the instance" do
-#      hostname, username, password = get_connect_info(@p_service)
+#      hostname = get_hostname(@binding_credentials)
+#      username = @binding_credentials['user']
+#      password = @binding_credentials['password']
 #      memcached = Dalli::Client.new(hostname, username: username, password: 'wrong_password')
 #      expect {memcached.get("test_key")}.should raise_error(RuntimeError)
 #    end
@@ -257,7 +292,7 @@ describe VCAP::Services::Memcached::Node do
 
   describe "Node.unbind" do
     it "should return true when finish an unbinding" do
-      @instance_credentials = @node.provision(:free, nil, @default_version)
+      @instance_credentials = @node.provision(:free)
       sleep 1
       @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
@@ -268,34 +303,25 @@ describe VCAP::Services::Memcached::Node do
 
   describe "Node.varz_details" do
     it "should report varz details" do
-
-      # remove the default configured instance in the before :each hook as well as clean out any remaining instances
-      @instance.delete
-      varz = @node.varz_details
-      varz[:provisioned_instances].each do |x|
-        @node.unprovision(x["name"])
-      end
-
-      @credentials = @node.provision(:free, nil, @default_version)
-      sleep 2
+      @credentials = @node.provision(:free)
+      sleep 1
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
       varz[:max_instances_num].should == @options[:capacity] / @capacity_unit
-      varz[:provisioned_instances][0]["name"].should == @credentials["name"]
-      varz[:provisioned_instances][0]["port"].should == @credentials["port"]
-      varz[:provisioned_instances][0]["plan"].should == :free
+      varz[:provisioned_instances][0][:name].should == @credentials["name"]
+      varz[:provisioned_instances][0][:port].should == @credentials["port"]
+      varz[:provisioned_instances][0][:plan].should == :free
       @node.unprovision(@credentials["name"])
     end
   end
 
   describe "Node.max_clients" do
     it "should limit the maximum number of clients" do
-      @credentials = @node.provision(:free, nil, @default_version)
-      @p_service = @node.get_instance(@credentials["name"])
-      sleep 2
+      @credentials = @node.provision(:free)
+      sleep 1
       memcached = []
       # Create max_clients connections
-      hostname, username, password = get_connect_info(@p_service)
+      hostname, username, password = get_connect_info(@credentials)
       for i in 1..(@options[:max_clients]-30)
         memcached[i] = Dalli::Client.new(hostname, username: username, password: password)
         memcached[i].set("foo", 1)
@@ -318,9 +344,9 @@ describe VCAP::Services::Memcached::Node do
 
   describe "Node.timeout" do
     it "should raise exception when memcached client response time is too long" do
-      credentials = @node.provision(:free, nil, @default_version)
+      credentials = @node.provision(:free)
       instance = @node.get_instance(credentials["name"])
-      sleep 2
+      sleep 1
       class Dalli::Client
         alias :old_stats :stats
         def stats(cmd = nil)
@@ -328,11 +354,11 @@ describe VCAP::Services::Memcached::Node do
           old_stats(cmd)
         end
       end
-      expect {instance.get_instance_stats}.should raise_error(Timeout::Error)
+      expect {@node.get_info(instance)}.should raise_error(VCAP::Services::Memcached::MemcachedError)
       class Dalli::Client
         alias :stats :old_stats
       end
-      instance.get_instance_stats.should be
+      @node.get_info(instance).should be
       @node.unprovision(credentials["name"])
     end
   end
@@ -349,7 +375,7 @@ describe VCAP::Services::Memcached::Node do
       somethreads = (1..threads_num).collect do
         Thread.new do
           semaphore.synchronize do
-            credentials_list << @node.provision(:free, nil, @default_version)
+            credentials_list << @node.provision(:free)
           end
         end
       end
@@ -381,13 +407,11 @@ describe VCAP::Services::Memcached::Node do
     it "should still use the provisioned service after the restart" do
       begin
         EM.run do
-          credentials = @node.provision(:free, nil, @default_version)
+          credentials = @node.provision(:free)
           @node.shutdown
           @node = VCAP::Services::Memcached::Node.new(@options)
           @node.get_instance(credentials).should_not == nil
           EM.add_timer(1) {
-	    @p_service = @node.get_instance(credentials["name"])
-            hostname, username, password = get_connect_info(@p_service)
             memcached = Dalli::Client.new(hostname, username: username, password: password)
             memcached.stats
 

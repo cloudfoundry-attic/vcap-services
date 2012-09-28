@@ -1,13 +1,9 @@
 service_name: mongodb
 backup_base_dir: <%= BACKUP_DIR %>
-local_db: <%= DB_URL %>
-base_dir: /tmp/mongo/instances
-mongodump_path: 
+local_db: sqlite3:/tmp/mongo/mongodb_node.db
+service_base_dir: /tmp/mongo/instances
+mongodump_path:
   "1.8": <%= BINARY_DIR %>mongodump
-supported_versions: ["1.8"]
-default_version: "1.8"
-mongod_log_dir: <%= MONGOD_LOG %>
-image_dir: /tmp/mongo/images
 timeout: 10
 logging:
   level: debug

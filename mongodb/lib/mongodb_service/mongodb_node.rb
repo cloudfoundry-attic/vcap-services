@@ -2,22 +2,22 @@
 require "erb"
 require "fileutils"
 require "logger"
+require "pp"
+require "set"
+require "mongo"
+require "timeout"
 
 require "nats/client"
 require "uuidtools"
-require "mongo"
+
 require 'vcap/common'
 require 'vcap/component'
 require "mongodb_service/common"
-require "warden/client"
-require "posix/spawn"
 
 module VCAP
   module Services
     module MongoDB
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService
-        end
       end
     end
   end
@@ -26,7 +26,6 @@ end
 class VCAP::Services::MongoDB::Node
 
   include VCAP::Services::MongoDB::Common
-  include VCAP::Services::Base::Utils
 
   # FIXME only support rw currently
   BIND_OPT = 'rw'
@@ -41,21 +40,110 @@ class VCAP::Services::MongoDB::Node
   # Quota files specify the db quota a instance can use
   QUOTA_FILES = 4
 
+  class ProvisionedService
+    include DataMapper::Resource
+    property :name,       String,   :key => true
+    property :port,       Integer,  :unique => true
+    property :password,   String,   :required => true
+    # property plan is deprecated. The instances in one node have same plan.
+    property :plan,       Integer, :required => true
+    property :pid,        Integer
+    property :memory,     Integer
+    property :admin,      String,   :required => true
+    property :adminpass,  String,   :required => true
+    property :db,         String,   :required => true
+
+    # Making this false for backwards compatibility
+    # Also Refer: get_version
+    property :version,    String,   :required => false
+
+    def listening?
+      begin
+        TCPSocket.open('localhost', port).close
+        return true
+      rescue => e
+        return false
+      end
+    end
+
+    def running?
+      VCAP.process_running? pid
+    end
+
+    def kill(sig=:SIGTERM)
+      @wait_thread = Process.detach(pid)
+      Process.kill(sig, pid) if running?
+    end
+
+    def wait_killed(timeout=5, interval=0.2)
+      begin
+        Timeout::timeout(timeout) do
+          @wait_thread.join if @wait_thread
+          while running? do
+            sleep interval
+          end
+        end
+      rescue Timeout::Error
+        return false
+      end
+      true
+    end
+  end
+
   def initialize(options)
     super(options)
-    ProvisionedService.init(options)
     @base_dir = options[:base_dir]
-    init_ports(options[:port_range])
-    @service_start_timeout = options[:service_start_timeout] || 3
-    @supported_versions  = options[:supported_versions]
+    FileUtils.mkdir_p(@base_dir)
+    @mongod_path = options[:mongod_path]
+    @mongod_options = options[:mongod_options]
+    @mongorestore_path = options[:mongorestore_path]
+    @mongod_log_dir = options[:mongod_log_dir]
+
+    @max_clients = options[:max_clients] || MAX_CLIENTS
+    @quota_files = options[:quota_files] || QUOTA_FILES
+
+    @config_template = ERB.new(File.read(options[:config_template]))
+
+    @connection_pool = {}
+    @connection_mutex = Mutex.new
+
+    DataMapper.setup(:default, options[:local_db])
+    DataMapper::auto_upgrade!
+
+    @free_ports = Set.new
+    options[:port_range].each {|port| @free_ports << port}
+    @mutex = Mutex.new
+
+    @supported_versions = options[:supported_versions]
     @default_version = options[:default_version]
   end
 
+  def fetch_port(port=nil)
+    @mutex.synchronize do
+      port ||= @free_ports.first
+      raise "port #{port} is already taken!" unless @free_ports.include?(port)
+      @free_ports.delete(port)
+      port
+    end
+  end
+
+  def return_port(port)
+    @mutex.synchronize do
+      @free_ports << port
+    end
+  end
+
+  def delete_port(port)
+    @mutex.synchronize do
+      @free_ports.delete(port)
+    end
+  end
+
   def migrate_saved_instances_on_startup
-    ProvisionedService.all.each do |p_service|
-      if p_service.version.to_s.empty?
-        p_service.version = @default_version
-        @logger.warn("Unable to set version for: #{p_service.inspect}") unless p_service.save
+    ProvisionedService.all.each do |provisioned_service|
+      if provisioned_service.version.to_s.empty?
+        provisioned_service.version = @default_version
+        @logger.warn("Unable to set version for: #{provisioned_service.inspect}") unless provisioned_service.save
       end
     end
   end
@@ -64,14 +152,41 @@ class VCAP::Services::MongoDB::Node
     migrate_saved_instances_on_startup
 
     @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
+      ProvisionedService.all.each do |provisioned_service|
+        @capacity -= capacity_unit
+        delete_port(provisioned_service.port)
+        if provisioned_service.listening?
+          @logger.warn("Service #{provisioned_service.name} already listening on port #{provisioned_service.port}")
+          next
+        end
+
+        unless service_exist?(provisioned_service)
+          @logger.warn("Service #{provisioned_service.name} in local DB, but not in file system")
+          next
+        end
+
+        begin
+          pid = start_instance(provisioned_service)
+          provisioned_service.pid = pid
+          raise "Cannot save provision_service" unless provisioned_service.save
+        rescue => e
+          provisioned_service.kill
+          @logger.error("Error starting service #{provisioned_service.name}: #{e}")
+        end
+      end
     end
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    ProvisionedService.all.each { |provisioned_service|
+      @logger.debug("Try to terminate mongod pid:#{provisioned_service.pid}")
+      provisioned_service.kill(:SIGTERM)
+      provisioned_service.wait_killed ?
+        @logger.debug("mongod pid:#{provisioned_service.pid} terminated") :
+        @logger.error("Timeout to terminate mongod pid:#{provisioned_service.pid}")
+    }
   end
 
   def announcement
@@ -82,25 +197,24 @@ class VCAP::Services::MongoDB::Node
   end
 
   def all_instances_list
-    ProvisionedService.all.map { |p_service| p_service["name"] }
+    ProvisionedService.all.map{|ps| ps["name"]}
   end
 
   def all_bindings_list
     list = []
-    ProvisionedService.all.each do |p_service|
+    ProvisionedService.all.each do |instance|
       begin
-        conn = p_service.connect
-        coll = conn.db(p_service.db).collection('system.users')
+        conn = connect_and_auth(instance)
+        coll = conn.db(instance.db).collection('system.users')
         coll.find().each do |binding|
-          next if binding['user'] == p_service.admin
-          list << {
-            'name'     => p_service.name,
-            'port'     => p_service.port,
-            'db'       => p_service.db,
+          credential = {
+            'name' => instance.name,
+            'port' => instance.port,
+            'db' => instance.db,
             'username' => binding['user']
           }
+          list << credential if credential['username'] != instance.admin
         end
-        p_service.disconnect(conn)
       rescue => e
         @logger.warn("Failed fetch user list: #{e.message}")
       end
@@ -108,30 +222,63 @@ class VCAP::Services::MongoDB::Node
     list
   end
 
-  def provision(plan, credential = nil, version = nil)
+  def provision(plan, credential = nil, version=nil)
     @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise ServiceError.new(MongoDBError::MONGODB_INVALID_PLAN, plan) unless plan == @plan
-    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
-    credential = {} if credential.nil?
-    credential['plan'] = plan
-    credential['port'] = new_port(credential['port'])
-    credential['version'] = version
-    p_service = ProvisionedService.create(credential)
-    p_service.run
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) if !@supported_versions.include?(version)
 
-    username = credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
-    password = credential['password'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
-    p_service.add_admin(p_service.admin, p_service.adminpass)
-    p_service.add_user(p_service.admin, p_service.adminpass)
-    p_service.add_user(username, password)
+    port = credential && credential['port'] ? fetch_port(credential['port']) : fetch_port
+    name = credential && credential['name'] ? credential['name'] : UUIDTools::UUID.random_create.to_s
+    db   = credential && credential['db']   ? credential['db']   : 'db'
+
+
+    # Cleanup instance dir if it exists
+    FileUtils.rm_rf(service_dir(name))
+
+    provisioned_service           = ProvisionedService.new
+    provisioned_service.name      = name
+    provisioned_service.port      = port
+    provisioned_service.version   = version
+    provisioned_service.plan      = 1
+    provisioned_service.password  = UUIDTools::UUID.random_create.to_s
+    provisioned_service.pid       = start_instance(provisioned_service)
+    provisioned_service.admin     = 'admin'
+    provisioned_service.adminpass = UUIDTools::UUID.random_create.to_s
+    provisioned_service.db        = db
+
+    raise "Cannot save provision_service" unless provisioned_service.save
+
+    username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
+    password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
+
+    # wait for mongod to start
+    sleep 0.5
+
+    # Add super_user in admin table for backend operations
+    mongodb_add_admin({
+      :port      => provisioned_service.port,
+      :username  => provisioned_service.admin,
+      :password  => provisioned_service.adminpass,
+      :times     => 10
+    })
+
+    # Add super_user in user table. This user is added to keep node backward
+    # compatibile with older version, which depends on this user for backend
+    # operations.
+    mongodb_add_user(provisioned_service,
+                     provisioned_service.admin,
+                     provisioned_service.adminpass)
+
+    # Add an end_user
+    mongodb_add_user(provisioned_service, username, password)
 
     host = get_host
     response = {
       "hostname" => host,
-      "host"     => host,
-      "port"     => p_service.port,
-      "name"     => p_service.name,
-      "db"       => p_service.db,
+      "host" => host,
+      "port" => provisioned_service.port,
+      "name" => provisioned_service.name,
+      "db" => provisioned_service.db,
       "username" => username,
       "password" => password
     }
@@ -139,17 +286,38 @@ class VCAP::Services::MongoDB::Node
     return response
   rescue => e
     @logger.error("Error provision instance: #{e}")
-    p_service.delete unless p_service.nil?
+    record_service_log(provisioned_service.name)
+    cleanup_service(provisioned_service)
     raise e
   end
 
   def unprovision(name, bindings)
-    p_service = ProvisionedService.get(name)
-    raise ServiceError.new(ServiceError::NOT_FOUND, name) if p_service.nil?
-    port = p_service.port
-    raise "Could not cleanup instance #{name}" unless p_service.delete
-    free_port(port);
+    provisioned_service = ProvisionedService.get(name)
+    raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
+
+    cleanup_service(provisioned_service)
     @logger.info("Successfully fulfilled unprovision request: #{name}.")
+    true
+  end
+
+  def cleanup_service(provisioned_service)
+    @logger.info("Killing #{provisioned_service.name} started with pid #{provisioned_service.pid}")
+
+    close_connection(provisioned_service)
+
+    provisioned_service.kill(:SIGKILL) if provisioned_service.running?
+
+    dir = service_dir(provisioned_service.name)
+    log_dir = log_dir(provisioned_service.name)
+
+    EM.defer do
+      FileUtils.rm_rf(dir)
+      FileUtils.rm_rf(log_dir)
+    end
+
+    return_port(provisioned_service.port)
+
+    raise "Could not cleanup service: #{provisioned_service.errors.inspect}" unless provisioned_service.new? || provisioned_service.destroy
     true
   end
 
@@ -157,24 +325,24 @@ class VCAP::Services::MongoDB::Node
     @logger.info("Bind request: name=#{name}, bind_opts=#{bind_opts}")
     bind_opts ||= BIND_OPT
 
-    p_service = ProvisionedService.get(name)
-    raise "Could not find service: #{name}" if p_service.nil?
+    provisioned_service = ProvisionedService.get(name)
+    raise "Could not find service: #{name}" if provisioned_service.nil?
 
     username = credential && credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     password = credential && credential['password'] ? credential['password'] : UUIDTools::UUID.random_create.to_s
 
-    p_service.add_user(username, password)
+    mongodb_add_user(provisioned_service, username, password, bind_opts)
 
     host = get_host
     response = {
       "hostname" => host,
       "host"     => host,
-      "port"     => p_service.port,
+      "port"     => provisioned_service.port,
       "username" => username,
       "password" => password,
-      "name"     => p_service.name,
-      "db"       => p_service.db,
-      "url"      => "mongodb://#{username}:#{password}@#{host}:#{p_service.port}/#{p_service.db}"
+      "name"     => provisioned_service.name,
+      "db"       => provisioned_service.db,
+      "url"      => "mongodb://#{username}:#{password}@#{host}:#{provisioned_service.port}/#{provisioned_service.db}"
     }
 
     @logger.debug("Bind response: #{response}")
@@ -183,17 +351,19 @@ class VCAP::Services::MongoDB::Node
 
   def unbind(credential)
     @logger.info("Unbind request: credential=#{credential}")
-    p_service = ProvisionedService.get(credential['name'])
-    raise ServiceError.new(ServiceError::NOT_FOUND, name) if p_service.nil?
 
-    if p_service.port != credential['port'] or
-       p_service.db != credential['db']
+    name = credential['name']
+    provisioned_service = ProvisionedService.get(name)
+    raise ServiceError.new(ServiceError::NOT_FOUND, name) if provisioned_service.nil?
+
+    if provisioned_service.port != credential['port'] or
+       provisioned_service.db != credential['db']
       raise ServiceError.new(ServiceError::HTTP_BAD_REQUEST)
     end
 
     # FIXME  Current implementation: Delete self
     #        Here I presume the user to be deleted is RW user
-    p_service.remove_user(credential['username'])
+    mongodb_remove_user(provisioned_service, credential['username'])
 
     @logger.debug("Successfully unbind #{credential}")
     true
@@ -202,17 +372,39 @@ class VCAP::Services::MongoDB::Node
   def restore(instance_id, backup_file)
     @logger.info("Restore request: instance_id=#{instance_id}, backup_file=#{backup_file}")
 
-    p_service = ProvisionedService.get(instance_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if p_service.nil?
+    provisioned_service = ProvisionedService.get(instance_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if provisioned_service.nil?
 
-    p_service.d_import(backup_file)
+    username = provisioned_service.admin
+    password = provisioned_service.adminpass
+    port     = provisioned_service.port
+    database = provisioned_service.db
+
+    # Drop original collections
+    conn = connect_and_auth(provisioned_service)
+    db = conn.db(database)
+    db.collection_names.each do |name|
+      if name != 'system.users' && name != 'system.indexes'
+        db[name].drop
+      end
+    end
+
+    # Run mongorestore
+    command = "#{mongorestore_exe_path(get_version(provisioned_service))} -u #{username} -p#{password} --port #{port} #{backup_file}"
+    output = `#{command}`
+    res = $?.success?
+    @logger.debug(output)
+    raise 'mongorestore failed' unless res
+    true
   end
 
   def disable_instance(service_credential, binding_credentials)
     @logger.info("disable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
-    p_service = ProvisionedService.get(service_credential['name'])
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if p_service.nil?
-    p_service.stop if p_service.running?
+    service_id = service_credential['name']
+    provisioned_service = ProvisionedService.get(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if provisioned_service.nil?
+    provisioned_service.kill
+    rm_lockfile(service_id)
     true
   rescue => e
     @logger.warn(e)
@@ -221,9 +413,12 @@ class VCAP::Services::MongoDB::Node
 
   def enable_instance(service_credential, binding_credentials)
     @logger.info("enable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
-    p_service = ProvisionedService.get(service_credential['name'])
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if p_service.nil?
-    p_service.run unless p_service.running?
+    service_id = service_credential["name"]
+    provisioned_service = ProvisionedService.get(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_credential["name"]) if provisioned_service.nil?
+    pid = start_instance(provisioned_service)
+    provisioned_service.pid = pid
+    raise "Cannot save provision_service" unless provisioned_service.save
     true
   rescue => e
     @logger.warn(e)
@@ -233,10 +428,20 @@ class VCAP::Services::MongoDB::Node
   def dump_instance(service_credential, binding_credentials, dump_dir)
     @logger.info("dump_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}, dump_dir=#{dump_dir}")
 
-    p_service = ProvisionedService.get(service_credential['name'])
-    raise "Cannot find service #{service_credential['name']}" if p_service.nil?
+    instance_id = service_credential['name']
+    from_dir = service_dir(instance_id)
+    log_dir = log_dir(instance_id)
     FileUtils.mkdir_p(dump_dir)
-    p_service.dump(dump_dir)
+
+    provisioned_service = ProvisionedService.get(service_credential['name'])
+    raise "Cannot file service #{instance_id}" if provisioned_service.nil?
+
+    d_file = dump_file(dump_dir)
+    File.open(d_file, 'w') do |f|
+      Marshal.dump(provisioned_service, f)
+    end
+    FileUtils.cp_r(File.join(from_dir, '.'), dump_dir)
+    FileUtils.cp_r(log_dir, dump_dir)
     true
   rescue => e
     @logger.warn(e)
@@ -246,9 +451,12 @@ class VCAP::Services::MongoDB::Node
   def import_instance(service_credential, binding_credentials, dump_dir, plan)
     @logger.info("import_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}, dump_dir=#{dump_dir}, plan=#{plan}")
 
-    # Load Provisioned Service from dumped file
-    port = new_port
-    p_service = ProvisionedService.import(port, dump_dir)
+    instance_id = service_credential['name']
+    to_dir = service_dir(instance_id)
+    FileUtils.rm_rf(to_dir)
+    FileUtils.mkdir_p(to_dir)
+    FileUtils.cp_r(File.join(dump_dir, '.'), to_dir)
+    FileUtils.cp_r(File.join(dump_dir, instance_id), @mongod_log_dir)
     true
   rescue => e
     @logger.warn(e)
@@ -259,28 +467,51 @@ class VCAP::Services::MongoDB::Node
     @logger.info("update_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
 
     # Load provisioned_service from dumped file
-    p_service = ProvisionedService.get(service_credential['name'])
-    raise "Cannot find service #{service_credential['name']}" if p_service.nil?
+    stored_service = nil
+    dest_dir = service_dir(service_credential['name'])
+    d_file = dump_file(dest_dir)
+    File.open(d_file, 'r') do |f|
+      stored_service = Marshal.load(f)
+    end
+    raise "Cannot parse dumpfile stored_service in #{d_file}" if stored_service.nil?
 
-    p_service.run
+    # Provision the new instance using dumped instance files
+    port = fetch_port
+
+    provisioned_service           = ProvisionedService.new
+    provisioned_service.name      = stored_service.name
+    provisioned_service.plan      = stored_service.plan
+    provisioned_service.password  = stored_service.password
+    provisioned_service.memory    = stored_service.memory
+    provisioned_service.admin     = stored_service.admin
+    provisioned_service.adminpass = stored_service.adminpass
+    provisioned_service.db        = stored_service.db
+    provisioned_service.port      = port
+    provisioned_service.version   = stored_service.version
+
+    provisioned_service.pid       = start_instance(provisioned_service)
+
+    @logger.debug("Provisioned_service: #{provisioned_service}")
+
+    raise "Cannot save provisioned_service" unless provisioned_service.save
+
     host = get_host
 
     # Update credentials for the new credential
-    service_credential['port']     = p_service.port
-    service_credential['host']     = host
-    service_credential['hostname'] = host
+    service_credential['port'] = port
+    service_credential['host'] = service_credential['hostname'] = host
 
     binding_credentials.each_value do |value|
       v = value["credentials"]
-      v['port']     = p_service.port
-      v['host']     = host
-      v['hostname'] = host
+      v['port'] = port
+      v['host'] = v['hostname'] = host
     end
 
     [service_credential, binding_credentials]
   rescue => e
     @logger.warn(e)
-    p_service.delete if p_service
+    record_service_log(provisioned_service.name)
+    cleanup_service(provisioned_service)
     nil
   end
 
@@ -296,20 +527,23 @@ class VCAP::Services::MongoDB::Node
     end
 
     # Get mongodb db.stats and db.serverStatus
-    stats = ProvisionedService.all.map do |p_service|
+    stats = []
+    ProvisionedService.all.each do |provisioned_service|
       stat = {}
-      stat['overall'] = p_service.overall_stats
-      stat['db']      = p_service.db_stats
-      stat['name']    = p_service.name
-      stat['version'] = p_service.version
-      stat
+      overall_stats = mongodb_overall_stats(provisioned_service)
+      db_stats = mongodb_db_stats(provisioned_service)
+      stat['overall'] = overall_stats
+      stat['db'] = db_stats
+      stat['name'] = provisioned_service.name
+      stat['version'] = get_version(provisioned_service)
+      stats << stat
     end
 
     # Get service instance status
     provisioned_instances = {}
     begin
-      ProvisionedService.all.each do |p_service|
-        provisioned_instances[p_service.name.to_sym] = p_service.get_healthz
+      ProvisionedService.all.each do |instance|
+        provisioned_instances[instance.name.to_sym] = get_status(instance)
       end
     rescue => e
       @logger.error("Error get instance list: #{e}")
@@ -323,270 +557,269 @@ class VCAP::Services::MongoDB::Node
       :instances            => provisioned_instances
     }
   end
-end
 
-class VCAP::Services::MongoDB::Node::ProvisionedService
-  include DataMapper::Resource
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
-
-  property :name,       String,   :key => true
-  property :port,       Integer,  :unique => true
-  property :password,   String,   :required => true
-  property :plan,       Enum[:free], :required => true
-  property :pid,        Integer
-  property :memory,     Integer
-  property :admin,      String,   :required => true
-  property :adminpass,  String,   :required => true
-  property :db,         String,   :required => true
-  property :container,  String
-  property :ip,         String
-  property :version,    String,   :required => false
-
-  private_class_method :new
-
-  # Timeout for mongo client operations, node cannot be blocked on any mongo instances.
-  # Default value is 2 seconds
-
-  MONGO_TIMEOUT = 2
-
-  class << self
-    def init(args)
-      raise "Parameter :base_dir missing" unless args[:base_dir]
-      raise "Parameter :mongod_log_dir missing" unless args[:mongod_log_dir]
-      raise "Parameter :image_dir missing" unless args[:image_dir]
-      raise "Parameter :local_db missing" unless args[:local_db]
-      @base_dir            = args[:base_dir]
-      @log_dir             = args[:mongod_log_dir]
-      @image_dir           = args[:image_dir]
-      @logger              = args[:logger]
-      @max_disk            = args[:max_disk] ? args[:max_disk] : 128
-      @quota               = args[:filesystem_quota] || false
-      @@mongod_path        = args[:mongod_path] ? args[:mongod_path] : { args[:default_version] => 'mongod' }
-      @@mongorestore_path  = args[:mongorestore_path] ? args[:mongorestore_path] : { args[:default_version] => 'mongorestore' }
-      @@mongodump_path     = args[:mongodump_path] ? args[:mongodump_path] : { args[:default_version] => 'mongodump' }
-      @@tar_path           = args[:tar_path] ? args[:tar_path] : 'tar'
-      DataMapper.setup(:default, args[:local_db])
-      DataMapper::auto_upgrade!
-      FileUtils.mkdir_p(base_dir)
-      FileUtils.mkdir_p(log_dir)
-      FileUtils.mkdir_p(image_dir)
-    end
-
-    def create(args)
-      raise "Parameter missing" unless args['port'] && args['version']
-      p_service           = new
-      p_service.name      = args['name'] ? args['name'] : UUIDTools::UUID.random_create.to_s
-      p_service.port      = args['port']
-      p_service.plan      = args['plan'] ? args['plan'] : 'free'
-      p_service.password  = args['password'] ? args['password'] : UUIDTools::UUID.random_create.to_s
-      p_service.memory    = args['memory'] if args['memory']
-      p_service.admin     = args['admin'] ? args['admin'] : 'admin'
-      p_service.adminpass = args['adminpass'] ? args['adminpass'] : UUIDTools::UUID.random_create.to_s
-      p_service.db        = args['db'] ? args['db'] : 'db'
-      p_service.version   = args['version']
-
-      raise "Cannot save provision service" unless p_service.save!
-
-      p_service.prepare_filesystem(self.max_disk)
-      FileUtils.mkdir_p(p_service.data_dir)
-      p_service
-    end
-
-    def import(port, dir)
-      d_file = File.join(dir, 'dump_file')
-      raise "No dumpfile exists" unless File.exist?(d_file)
-
-      s_service = nil
-      File.open(d_file, 'r') do |f|
-        s_service = Marshal.load(f)
-      end
-      raise "Cannot parse dumpfile in #{d_file}" if s_service.nil?
-
-      p_service = create('name'      => s_service.name,
-                         'port'      => port,
-                         'plan'      => s_service.plan,
-                         'password'  => s_service.password,
-                         'memory'    => s_service.memory,
-                         'admin'     => s_service.admin,
-                         'adminpass' => s_service.adminpass,
-                         'db'        => s_service.db,
-                         'version'   => s_service.version)
-      FileUtils.cp_r(File.join(dir, 'data'), p_service.base_dir)
-      FileUtils.rm_rf(p_service.log_dir)
-      FileUtils.cp_r(File.join(dir, 'log'), p_service.log_dir)
-      p_service
-    end
-  end
-
-  def dump(dir)
-    # dump database recorder
-    d_file = File.join(dir, 'dump_file')
-    File.open(d_file, 'w') do |f|
-      Marshal.dump(self, f)
-    end
-    # dump database data/log directory
-    FileUtils.cp_r(data_dir, dir)
-    FileUtils.cp_r(log_dir, File.join(dir, 'log'))
-  end
-
-  def d_import(dir)
-    conn = connect
-    db = conn.db(self[:db])
-    db.collection_names.each do |name|
-      if name != 'system.users' && name != 'system.indexes'
-        db[name].drop
-      end
-    end
-    disconnect(conn)
-
-    cmd = "#{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 #{dir}"
-    output = %x{ #{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 #{dir} }
-    res = $?.success?
-    raise "\"#{cmd}\" failed" unless res
-    true
-  end
-
-  def d_dump(dir, fake=true)
-    cmd = "#{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir}"
-    return cmd if fake
-    output = %x{ #{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir} }
-    res = $?.success?
-    raise "\"#{cmd}\" failed" unless res
-    true
-  end
-
-  def repair
-    tmpdir = File.join(self.class.base_dir, "tmp", self[:name])
-    FileUtils.mkdir_p(tmpdir)
-    begin
-      self.class.sh "#{mongod} --repair --repairpath #{tmpdir} --dbpath #{data_dir} --port #{self[:port]} --smallfiles --noprealloc", :timeout => 120
-      logger.warn("Service #{self[:name]} db repair done")
-    rescue => e
-      logger.error("Service #{self[:name]} repair failed: #{e}")
-    ensure
-      FileUtils.rm_rf(tmpdir)
-    end
-  end
-
-  def run
-    # check whether the instance had been properly shutdown
-    # if no, do "mongo --repair" outside of container.
-    # the reason for do it outside of container:
-    #  - when do repair inside container, more disk space required.
-    #       (refer to http://www.mongodb.org/display/DOCS/Durability+and+Repair)
-    #       Container may not have enough space to satisfy the need.
-    #  - when do repair, more mem required (had experience a situation
-    #       where "mongod --repair" hang with mem quota, and it resume when quota increase)
-    # So to avoid these situation, and make things smooth, do it outside container.
-    lockfile = File.join(data_dir, "mongod.lock")
-    if File.size?(lockfile)
-      logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
-      FileUtils.rm_f(lockfile)
-      repair
-    end
-    super
-  end
-
-  def service_port
-    27017
-  end
-
-  def service_script
-    "mongod_startup.sh"
-  end
-
-  # diretory helper
-  def data_dir
-    File.join(base_dir, "data")
-  end
-
-  # user management helper
-  def add_admin(username, password)
-    warden = self.class.warden_connect
-    req = Warden::Protocol::RunRequest.new
-    req.handle = self[:container]
-    req.script = "mongo localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
-    rsp = warden.call(req)
-    warden.disconnect
-  rescue => e
-    raise "Could not add admin user \'#{username}\'"
-  end
-
-  def add_user(username, password)
-    conn = connect
-    Timeout::timeout(MONGO_TIMEOUT) do
-      conn.db(self[:db]).add_user(username, password)
-    end
-    disconnect(conn)
-  end
-
-  def remove_user(username)
-    conn = connect
-    Timeout::timeout(MONGO_TIMEOUT) do
-      conn.db(self[:db]).remove_user(username)
-    end
-    disconnect(conn)
-  end
-
-  # mongodb connection
-  def connect
+  def connect_and_auth(instance)
     conn = nil
-    return conn unless running?
-    Timeout::timeout(MONGO_TIMEOUT) do
-      conn = Mongo::Connection.new(self[:ip], '27017')
-      auth = conn.db('admin').authenticate(self[:admin], self[:adminpass])
-      raise "Authentication failed, instance: #{self[:name]}" unless auth
+    @connection_mutex.synchronize do
+      conn = @connection_pool[instance.port]
+      unless conn and conn.connected?
+        Timeout::timeout(MONGO_TIMEOUT) do
+          conn = Mongo::Connection.new('127.0.0.1', instance.port)
+          auth = conn.db('admin').authenticate(instance.admin, instance.adminpass)
+          raise "Authentication failed, name: #{instance.name}" unless auth
+        end
+        @connection_pool[instance.port] = conn
+        @logger.debug("Connected to #{instance.name}, port No: #{instance.port}")
+      end
     end
     conn
   end
 
-  def disconnect(conn)
-    conn.close if conn
-  end
-
-  # stats helpers
-  def overall_stats
-    st = nil
-    conn = connect
-    Timeout::timeout(MONGO_TIMEOUT) do
-      st = conn.db('admin').command(:serverStatus => 1)
+  def close_connection(instance)
+    @connection_mutex.synchronize do
+      conn = @connection_pool[instance.port]
+      conn.close if conn
+      @connection_pool[instance.port] = nil
     end
-    disconnect(conn)
-    return st
-  rescue => e
-    "Failed mongodb_overall_stats: #{e.message}, instance: #{self[:name]}"
   end
 
-  def db_stats
-    st = nil
-    conn = connect
-    Timeout::timeout(MONGO_TIMEOUT) do
-      st = conn.db(self[:db]).stats()
-    end
-    disconnect(conn)
-    return st
-  rescue => e
-    "Failed mongodb_db_stats: #{e.message}, instance: #{self[:name]}"
-  end
-
-  def get_healthz
-    conn = connect
-    disconnect(conn)
+  def get_status(instance)
+    conn = connect_and_auth(instance)
     "ok"
   rescue => e
     "fail"
   end
 
-  def mongod
-    @@mongod_path[version] || @@mongod_path[version.to_sym]
+  def repair_instance(provisioned_service)
+    tmpdir = File.join(@base_dir, 'tmp', provisioned_service.name)
+    FileUtils.mkdir_p(tmpdir)
+    executable = mongod_exe_path(get_version(provisioned_service))
+    @logger.info("Repairing: #{provisioned_service.inspect}, using mongo: #{executable}")
+    begin
+      `#{executable} --repair --repairpath #{tmpdir} --dbpath #{data_dir(service_dir(provisioned_service.name))} --smallfiles --noprealloc`
+      @logger.warn("Service #{provisioned_service.name} db repair done")
+    rescue => e
+      @logger.error("Service #{provisioned_service.name} repair failed: #{e}")
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
   end
 
-  def mongorestore
-    @@mongorestore_path[version] || @@mongorestore_path[version.to_sym]
+  def start_instance(provisioned_service)
+    @logger.info("Starting: #{provisioned_service.inspect}, Version: #{get_version(provisioned_service)}")
+
+    lockfile = File.join(data_dir(service_dir(provisioned_service.name)), "mongod.lock")
+    if File.size?(lockfile)
+      @logger.warn("Service #{provisioned_service.name} not properly shutdown, try repairing its db...")
+      FileUtils.rm_f(lockfile)
+      repair_instance(provisioned_service)
+    end
+
+    pid = fork
+    if pid
+      @logger.debug("Service #{provisioned_service.name} started with pid #{pid}")
+      # In parent, detach the child.
+      Process.detach(pid)
+      pid
+    else
+      $0 = "Starting MongoDB service: #{provisioned_service.name}"
+
+      port = provisioned_service.port
+      password = provisioned_service.password
+      instance_id = provisioned_service.name
+      dir = service_dir(instance_id)
+      data_dir = data_dir(dir)
+      log_file = log_file(instance_id)
+      log_dir = log_dir(instance_id)
+      max_clients = @max_clients
+      quota_files = @quota_files
+
+      config = @config_template.result(binding)
+      config_path = File.join(dir, "mongodb.conf")
+
+      executable = mongod_exe_path(get_version(provisioned_service))
+      options = mongod_exe_options(get_version(provisioned_service))
+
+      FileUtils.mkdir_p(dir)
+      FileUtils.mkdir_p(data_dir)
+      FileUtils.mkdir_p(log_dir)
+      FileUtils.rm_f(config_path)
+      File.open(config_path, "w") {|f| f.write(config)}
+
+      @logger.debug("Mongo Executable: #{executable}, Options: #{options}")
+      cmd = "#{executable} #{options} -f #{config_path}"
+
+      close_fds
+
+      exec(cmd) rescue @logger.error("exec(#{cmd}) failed!")
+    end
   end
 
-  def mongodump
-    @@mongodump_path[version] || @@mongodump_path[version.to_sym]
+  def memory_for_service(provisioned_service)
+    256
+  end
+
+  def close_fds
+    3.upto(get_max_open_fd) do |fd|
+      begin
+        IO.for_fd(fd, "r").close
+      rescue
+      end
+    end
+  end
+
+  def get_max_open_fd
+    max = 0
+
+    dir = nil
+    if File.directory?("/proc/self/fd/") # Linux
+      dir = "/proc/self/fd/"
+    elsif File.directory?("/dev/fd/") # Mac
+      dir = "/dev/fd/"
+    end
+
+    if dir
+      Dir.foreach(dir) do |entry|
+        begin
+          pid = Integer(entry)
+          max = pid if pid > max
+        rescue
+        end
+      end
+    else
+      max = 65535
+    end
+
+    max
+  end
+
+  def mongodb_add_admin(options)
+    @logger.info("add admin user: req #{options}")
+    t = options[:times] || 1
+    conn = nil
+
+    t.times do
+      begin
+        conn = Mongo::Connection.new('127.0.0.1', options[:port])
+        user = conn.db('admin').add_user(options[:username], options[:password])
+        raise "user not added" if user.nil?
+        @logger.debug("user #{options[:username]} added in db admin")
+        return true
+      rescue => e
+        @logger.error("Failed add user #{options[:username]}: #{e.message}")
+        sleep 1
+      end
+    end
+
+    raise "Could not add admin user #{options[:username]}"
+  ensure
+    conn.close if conn
+  end
+
+  def mongodb_add_user(instance, username, password, bind_opts=nil)
+    conn = connect_and_auth(instance)
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn.db(instance.db).add_user(username, password)
+    end
+  end
+
+  def mongodb_remove_user(instance, username)
+    conn = connect_and_auth(instance)
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn.db(instance.db).remove_user(username)
+    end
+  end
+
+  def mongodb_overall_stats(instance)
+    conn = connect_and_auth(instance)
+
+    Timeout::timeout(MONGO_TIMEOUT) do
+      # The following command is not documented in mongo's official doc.
+      # But it works like calling db.serverStatus from client. And 10gen support has
+      # confirmed it's safe to call it in such way.
+      conn.db('admin').command({:serverStatus => 1})
+    end
+  rescue => e
+    warning = "Failed mongodb_overall_stats: #{e.message}, instance: #{instance.name}"
+    @logger.warn(warning)
+    warning
+  end
+
+  def mongodb_db_stats(instance)
+    conn = connect_and_auth(instance)
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn.db(instance.db).stats()
+    end
+  rescue => e
+    warning = "Failed mongodb_db_stats: #{e.message}, instance: #{instance.name}"
+    @logger.warn(warning)
+    warning
+  end
+
+  def transition_dir(service_id)
+    File.join(@backup_dir, service_name, service_id)
+  end
+
+  def service_dir(service_id)
+    File.join(@base_dir, service_id)
+  end
+
+  def dump_file(to_dir)
+    File.join(to_dir, 'dump_file')
+  end
+
+  def log_file(instance_id)
+    File.join(log_dir(instance_id), 'mongodb.log')
+  end
+
+  def log_dir(instance_id)
+    File.join(@mongod_log_dir, instance_id)
+  end
+
+  def data_dir(base_dir)
+    File.join(base_dir, 'data')
+  end
+
+  def service_exist?(provisioned_service)
+    Dir.exists?(service_dir(provisioned_service.name))
+  end
+
+  def rm_lockfile(service_id)
+    lockfile = File.join(service_dir(service_id), 'data', 'mongod.lock')
+    FileUtils.rm_rf(lockfile)
+  end
+
+  def mongod_exe_path(version)
+    @mongod_path[version]
+  end
+
+  def mongod_exe_options(version)
+    @mongod_options[version]
+  end
+
+  def mongorestore_exe_path(version)
+    @mongorestore_path[version]
+  end
+
+  def get_version(provisioned_service)
+    if provisioned_service.version.to_s.empty? # Handle nil / empty case (backwards compatibility)
+      @default_version
+    else
+      provisioned_service.version
+    end
+  end
+
+  def record_service_log(service_id)
+    @logger.warn(" *** BEGIN mongodb log - instance: #{service_id}")
+    @logger.warn("")
+    file = File.new(log_file(service_id), 'r')
+    while (line = file.gets)
+      @logger.warn(line.chomp!)
+    end
+  rescue => e
+    @logger.warn(e)
+  ensure
+    @logger.warn(" *** END mongodb log - instance: #{service_id}")
+    @logger.warn("")
   end
 end
