@@ -4,8 +4,6 @@ module VCAP
     module Marketplace
       class Base
 
-        VMWARE_ACLS   = ["*@vmware.com", "*@rbcon.com"]
-
         def initialize(opts_unused)
         end
 
@@ -16,9 +14,13 @@ module VCAP
         def get_catalog
           {}
         end
- 
+
         def generate_cc_advertise_request(name, bsvc, active = true)
           {}
+        end
+
+        def offering_disabled?(name, offerings)
+          false
         end
 
         def provision_service(request_body)
@@ -31,6 +33,14 @@ module VCAP
         end
 
         def unbind_service(service_id, binding_id)
+        end
+
+        def varz_details
+          {}
+        end
+
+        def set_config(key, value)
+          raise "set_config is not supported"
         end
 
       end

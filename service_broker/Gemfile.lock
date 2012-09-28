@@ -152,7 +152,6 @@ GEM
     rack-test (0.5.7)
       rack (>= 1.0)
     rake (0.9.2.2)
-    rcov (0.9.9)
     redis (3.0.1)
     redis-namespace (1.2.1)
       redis (~> 3.0.0)
@@ -216,7 +215,6 @@ DEPENDENCIES
   nats
   rack-test
   rake
-  rcov
   rspec
   simplecov
   simplecov-rcov

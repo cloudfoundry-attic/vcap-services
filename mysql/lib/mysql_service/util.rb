@@ -134,6 +134,7 @@ module VCAP
         end
 
         class Connection
+          attr_accessor :checked_out_by
           attr_reader :conn
           attr_accessor :last_active_time
 
@@ -191,17 +192,59 @@ module VCAP
             @cond = @connections.new_cond
             @reserved_connections = {}
             @checked_out = []
+            @metrix_lock = Mutex.new
+            @latency_sum = 0
+            @queries_served = 1
+            @worst_latency = 0
             for i in 1..@size do
               @connections << Connection.new(@options)
             end
+          end
+
+          def inspect
+            {
+              :size => @size,
+              :checked_out_size => @checked_out.size,
+              :checked_out_by => @checked_out.map{|conn| conn.checked_out_by },
+              :average_latency_ms => @latency_sum / @queries_served,
+              :worst_latency_ms => @worst_latency
+            }
+          rescue => e
+            @logger.warn("Error in inspect: #{e}")
+            nil
+          end
+
+          def timing
+            t1 = Time.now
+            yield
+          ensure
+            update_latency_metric (Time.now - t1) * 1000
+          end
+
+          def update_latency_metric(latency)
+            @metrix_lock.synchronize {
+              @latency_sum += latency
+              @queries_served += 1
+              @worst_latency = latency if latency > @worst_latency
+            }
+          end
+
+          def parse_caller(callstack)
+            frame = callstack[0]
+            method = nil
+            method = $1 if frame =~ /in `([^']+)/
+            method
           end
 
           def with_connection
             connection_id = current_connection_id
             fresh_connection = !@reserved_connections.has_key?(connection_id)
             connection = (@reserved_connections[connection_id] ||= checkout)
-            yield connection.conn
-            connection.last_active_time = Time.now
+
+            direct_caller = parse_caller(caller(1))
+            connection.checked_out_by = direct_caller
+
+            timing { yield connection.conn }
           ensure
             release_connection(connection_id) if fresh_connection
           end
