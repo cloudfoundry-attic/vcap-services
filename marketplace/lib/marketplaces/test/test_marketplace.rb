@@ -119,17 +119,15 @@ module VCAP
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
             service_id,version = request.label.split("-")
             @logger.info("Provision request for label=#{request.label} (service_id=#{service_id}) plan=#{request.plan}, version=#{request.version}")
-            svc = {
+            {
               :configuration => {:plan => request.plan, :name => request.name, :options => {} },
               :credentials => { "url" => "http://testservice.com/#{UUIDTools::UUID.random_create.to_s}" },
               :service_id => UUIDTools::UUID.random_create.to_s,
             }
-            success(svc)
           end
 
           def unprovision_service(service_id)
             @logger.info("Successfully unprovisioned service #{service_id}")
-            return true
           end
 
           def bind_service_instance(service_id, request)
@@ -139,12 +137,11 @@ module VCAP
               :service_id => UUIDTools::UUID.random_create.to_s
             }
             @logger.debug("Generated binding for CC: #{binding.inspect}")
-            success(binding)
+            binding
           end
 
           def unbind_service(service_id, binding_id)
             @logger.info("Successfully unbound service #{service_id} and binding id #{binding_id}")
-            return true
           end
 
           def varz_details

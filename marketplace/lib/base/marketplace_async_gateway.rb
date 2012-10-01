@@ -104,8 +104,12 @@ module VCAP
            EM.defer { update_varz }
           end
 
+          @stats_lock = Mutex.new
+          @stats = {}
+          snapshot_and_reset_stats
+
           refresh_catalog_and_update_cc
-      end
+        end
 
         error [JsonMessage::ValidationError, JsonMessage::ParseError] do
           error_msg = ServiceError.new(ServiceError::MALFORMATTED_REQ).to_hash
@@ -115,6 +119,39 @@ module VCAP
         not_found do
           error_msg = ServiceError.new(ServiceError::NOT_FOUND, request.path_info).to_hash
           abort_request(error_msg)
+        end
+
+        def snapshot_and_reset_stats
+          stats_snapshot = {}
+          @stats_lock.synchronize do
+            stats_snapshot = @stats.dup
+            @stats[:provision_requests]   = 0
+            @stats[:provision_failures]   = 0
+            @stats[:unprovision_requests] = 0
+            @stats[:unprovision_failures] = 0
+            @stats[:bind_requests]        = 0
+            @stats[:bind_failures]        = 0
+            @stats[:unbind_requests]      = 0
+            @stats[:unbind_failures]      = 0
+
+            @stats[:refresh_catalog_requests]     = 0
+            @stats[:refresh_catalog_failures]     = 0
+            @stats[:refresh_cc_services_requests] = 0
+            @stats[:refresh_cc_services_failures] = 0
+            @stats[:advertise_services_requests]  = 0
+            @stats[:advertise_services_failures]  = 0
+          end
+          stats_snapshot
+        end
+
+        def update_stats(op_name, failed)
+          op_key = "#{op_name}_requests".to_sym
+          op_failure_key = "#{op_name}_failures".to_sym
+
+          @stats_lock.synchronize do
+            @stats[op_key] += 1
+            @stats[op_failure_key] += 1 if failed
+          end
         end
 
         def refresh_catalog_and_update_cc
@@ -136,8 +173,38 @@ module VCAP
         end
 
         def refresh_catalog
-          @catalog_in_ccdb = get_proxied_services_from_cc
-          @catalog_in_marketplace = @marketplace_client.get_catalog
+          failed = false
+          begin
+            @catalog_in_ccdb = get_proxied_services_from_cc
+          rescue => e
+            failed = true
+            @logger.error("Failed to get proxied services from cc: #{e}")
+          ensure
+            update_stats("refresh_cc_services", failed)
+          end
+
+          failed = false
+          begin
+            @catalog_in_marketplace = @marketplace_client.get_catalog
+          rescue => e1
+            failed = true
+            @logger.error("Failed to get catalog from marketplace: #{e1}")
+          rescue
+            update_stats("refresh_catalog", failed)
+          end
+        end
+
+        def advertise_services(active=true)
+          # Set services missing from marketplace offerings to inactive
+          deactivate_disabled_services
+
+          # Process all services currently in marketplace
+          @catalog_in_marketplace.each do |label, bsvc|
+            req = @marketplace_client.generate_cc_advertise_request(bsvc["id"], bsvc, active)
+            advertise_service_to_cc(req)
+          end
+
+          @marketplace_gateway_varz_details[:active_offerings] = @catalog_in_marketplace.size
         end
 
         def deactivate_disabled_services
@@ -168,22 +235,10 @@ module VCAP
           @logger.info("Found #{disabled_count} disabled service offerings")
         end
 
-        def advertise_services(active=true)
-          # Set services missing from marketplace offerings to inactive
-          deactivate_disabled_services
-
-          # Process all services currently in marketplace
-          @catalog_in_marketplace.each do |label, bsvc|
-            req = @marketplace_client.generate_cc_advertise_request(bsvc["id"], bsvc, active)
-            advertise_service_to_cc(req)
-          end
-
-          @marketplace_gateway_varz_details[:active_offerings] = @catalog_in_marketplace.size
-        end
-
         def update_varz
           VCAP::Component.varz["marketplace_gateway"] = @marketplace_gateway_varz_details
-          VCAP::Component.varz[@marketplace_client.name] = @marketplace_client.varz_details if @marketplace_client.varz_details.size > 0
+          VCAP::Component.varz["stats"] = snapshot_and_reset_stats
+          VCAP::Component.varz[@marketplace_client.name.downcase] = @marketplace_client.varz_details if @marketplace_client.varz_details.size > 0
         end
 
         def start_nats(uri)
@@ -257,13 +312,16 @@ module VCAP
           @logger.info("Got request_body=#{request_body}")
 
           Fiber.new{
-            msg = @marketplace_client.provision_service(request_body)
-            if msg['success']
-              resp = VCAP::Services::Api::GatewayHandleResponse.new(msg['response'])
-              resp = resp.encode
+            failed = false
+            begin
+              msg = @marketplace_client.provision_service(request_body)
+              resp = VCAP::Services::Api::GatewayHandleResponse.new(msg).encode
               async_reply(resp)
-            else
-              async_reply_error(msg['response'])
+            rescue => e
+              failed = true
+              async_reply_error(e.inspect)
+            ensure
+              update_stats("provision", failed)
             end
           }.resume
           async_mode
@@ -276,13 +334,16 @@ module VCAP
           @logger.info("Binding request for service=#{params['service_id']} options=#{req.inspect}")
 
           Fiber.new {
-            msg = @marketplace_client.bind_service_instance(params['service_id'], req)
-            if msg['success']
-              resp = VCAP::Services::Api::GatewayHandleResponse.new(msg['response'])
-              resp = resp.encode
+            failed = false
+            begin
+              msg = @marketplace_client.bind_service_instance(params['service_id'], req)
+              resp = VCAP::Services::Api::GatewayHandleResponse.new(msg).encode
               async_reply(resp)
-            else
-              async_reply_error(msg['response'])
+            rescue => e
+              failed = true
+              async_reply_error(e.inspect)
+            ensure
+              update_stats("bind", failed)
             end
           }.resume
           async_mode
@@ -293,12 +354,16 @@ module VCAP
           sid = params['service_id']
           @logger.debug("Unprovision request for service_id=#{sid}")
           Fiber.new {
-            if @marketplace_client.unprovision_service(sid)
+            failed = false
+            begin
+              @marketplace_client.unprovision_service(sid)
               async_reply
-            else
-              async_reply_error("Could not unprovision service #{sid}")
+            rescue => e
+              failed = true
+              async_reply_error(e.inspect)
+            ensure
+              update_stats("unprovision", failed)
             end
-
           }.resume
           async_mode
         end
@@ -309,10 +374,15 @@ module VCAP
           hid = params['handle_id']
           @logger.info("Unbind request for service_id=#{sid} handle_id=#{hid}")
           Fiber.new {
-            if @marketplace_client.unbind_service(sid, hid)
+            failed = false
+            begin
+              @marketplace_client.unbind_service(sid, hid)
               async_reply
-            else
-              async_reply_error("Could not unbind service #{sid} with handle id #{hid}")
+            rescue => e
+              failed = true
+              async_reply_error(e.inspect)
+            ensure
+              update_stats("unbind", failed)
             end
 
           }.resume
@@ -369,6 +439,7 @@ module VCAP
             if http.error.empty?
               if http.response_header.status == 200
                 @logger.info("Successfully advertise offerings #{offering.inspect}")
+                update_stats("advertise_services", false)
                 return true
               else
                 @logger.warn("Failed advertise offerings:#{offering.inspect}, status=#{http.response_header.status}")
@@ -376,6 +447,8 @@ module VCAP
             else
               @logger.warn("Failed advertise offerings:#{offering.inspect}: #{http.error}")
             end
+
+            update_stats("advertise_services", true)
             return false
           end
 

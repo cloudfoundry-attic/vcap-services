@@ -120,8 +120,8 @@ describe "MarketplaceGateway" do
         varz["marketplace_gateway"]["disabled_services"].should == 0
         varz["marketplace_gateway"]["active_offerings"].should == 1
 
-        varz.keys.should include "Test"
-        varz["Test"]["available_services"].should == 1
+        varz.keys.should include "test"
+        varz["test"]["available_services"].should == 1
       }
 
       Do.at(6) { cc.stop; gw.stop; EM.stop }

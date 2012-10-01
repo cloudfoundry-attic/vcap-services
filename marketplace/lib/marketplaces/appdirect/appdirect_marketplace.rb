@@ -42,7 +42,6 @@ module VCAP
           end
 
           def generate_cc_advertise_request(name, bsvc, active = true)
-
             if (@mapping.keys.include?(name.to_sym))
               service_mapping = @mapping[name.to_sym]
               name = service_mapping[:name]
@@ -86,6 +85,7 @@ module VCAP
               req[:plans] = ["default"]
             end
 
+            req[:tags] = [] # A non-null value to allow tags clone during bind
             req[:timeout] = 5 + @node_timeout
             req
           end
@@ -122,96 +122,36 @@ module VCAP
             }
             receipt = @helper.purchase_service(order)
 
-            if receipt
-              @logger.debug("AppDirect service provisioned #{receipt.inspect}")
-              credentials = receipt["credentials"] || {}
-              credentials["name"] = receipt["id"] #id of service within the 3rd party ISV
-              #We could store more info in credentials but these will never be used by apps or users
-              svc = {
-                :configuration => {:plan => request.plan, :name => request.name, :options => {} },
-                :credentials => credentials,
-                :service_id => receipt["uuid"],
-              }
-              success(svc)
-            else
-              @logger.warn("Invalid response to provision service label=#{request.label}")
-              raise ServiceError.new(ServiceError::INTERNAL_ERROR, "Missing request -- cannot perform operation")
-            end
-          rescue => e
-            if e.instance_of? ServiceError
-              failure(e)
-            else
-              @logger.debug(e.inspect)
-              @logger.warn("Can't provision service label=#{request.label}: #{fmt_error(e)}")
-              internal_fail
-            end
+            @logger.debug("AppDirect service provisioned #{receipt.inspect}")
+            credentials = receipt["credentials"] || {}
+            credentials["name"] = receipt["id"] #id of service within the 3rd party ISV
+            #We could store more info in credentials but these will never be used by apps or users
+            {
+              :configuration => {:plan => request.plan, :name => request.name, :options => {} },
+              :credentials => credentials,
+              :service_id => receipt["uuid"],
+            }
           end
 
           def unprovision_service(service_id)
-            success = @helper.cancel_service(service_id)
-            if success
-             @logger.info("Successfully unprovisioned service #{service_id}")
-            else
-              @logger.info("Failed to unprovision service #{service_id}")
-            end
-            return success
-          rescue => e
-            if e.instance_of? ServiceError
-              failure(e)
-            else
-              @logger.warn("Can't unprovision service service_id=#{service_id}: #{fmt_error(e)}")
-              internal_fail
-            end
+            @helper.cancel_service(service_id)
           end
 
           def bind_service_instance(service_id, request)
-            if service_id and request
-              order = {
-                "options" => request.binding_options
-              }
-              resp = @helper.bind_service(order, service_id)
-              @logger.debug("Got response from AppDirect: #{resp.inspect}")
-              binding = {
-                :configuration => {:data => {:binding_options => request.binding_options}},
-                :credentials => resp["credentials"],
-                :service_id => resp["uuid"],  #Important this is the binding_id
-              }
-              @logger.debug("Generated binding for CC: #{binding.inspect}")
-              success(binding)
-            else
-              @logger.warn("Can't find service label=#{label}")
-              raise ServiceError.new(ServiceError::INTERNAL_ERROR, "Missing request or service_id -- cannot perform operation")
-            end
-          rescue => e
-            if e.instance_of? ServiceError
-              failure(e)
-            else
-              @logger.warn("Can't bind service service_id=#{service_id}, request=#{request}: #{fmt_error(e)}")
-              internal_fail
-            end
+            order = {
+              "options" => request.binding_options
+            }
+            resp = @helper.bind_service(order, service_id)
+            @logger.debug("Bind response from AppDirect: #{resp.inspect}")
+            {
+              :configuration => {:data => {:binding_options => request.binding_options}},
+              :credentials => resp["credentials"],
+              :service_id => resp["uuid"],  #Important this is the binding_id
+            }
           end
 
           def unbind_service(service_id, binding_id)
-            success = @helper.unbind_service(service_id, binding_id)
-            begin
-              if success
-                @logger.info("Successfully unbound service #{service_id} and binding id #{binding_id}")
-              else
-                @logger.info("Failed to unbind service #{service_id} and binding id #{binding_id}")
-              end
-              return success
-            rescue => e
-              if e.instance_of? ServiceError
-                failure(e)
-              else
-                @logger.warn("Can't unprovision service service_id=#{service_id}: #{fmt_error(e)}")
-                internal_fail
-              end
-            end
-          end
-
-          def fmt_error(e)
-            "#{e} [#{e.backtrace.join("|")}]"
+            @helper.unbind_service(service_id, binding_id)
           end
 
         end
