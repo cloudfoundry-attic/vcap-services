@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 98b180d6c7db85c6d8e5e52fc6ba727f1eef3d5b
-  ref: 98b180d6c7
+  revision: 74e0772820b0f3bc474c354fb7738fb36440faa5
+  ref: 74e0772820
   specs:
     vcap_services_base (0.1.16)
       curb (~> 0.7.16)
@@ -151,13 +151,13 @@ GEM
     posix-spawn (0.3.6)
     rack (1.4.1)
     rake (0.9.2.2)
-    redis (3.0.1)
+    redis (3.0.2)
     redis-namespace (1.2.1)
       redis (~> 3.0.0)
     redisk (0.2.2)
       redis (>= 0.1.1)
       redis-namespace (>= 0.1.0)
-    resque (1.22.0)
+    resque (1.23.0)
       multi_json (~> 1.0)
       redis-namespace (~> 1.0)
       sinatra (>= 0.9.2)
