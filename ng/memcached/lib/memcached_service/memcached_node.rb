@@ -256,7 +256,8 @@ class VCAP::Services::Memcached::Node::ProvisionedService
   property :port,       Integer,     :unique => true
   property :user,       String,      :required => true
   property :password,   String,      :required => true
-  property :plan,       Enum[:free], :required => true
+  # property plan is deprecated. The instances in one node have same plan.
+  property :plan,       Integer,     :required => true
   property :version,    String,      :required => false
 
   property :container,  String
@@ -285,11 +286,11 @@ class VCAP::Services::Memcached::Node::ProvisionedService
       @logger                = args[:logger]
       @quota                 = args[:filesystem_quota] || false
 
+      FileUtils.mkdir_p(@base_dir)
+      FileUtils.mkdir_p(@log_dir)
+
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
-
-      FileUtils.mkdir_p(base_dir)
-      FileUtils.mkdir_p(log_dir)
     end
 
     def create(args)
@@ -297,7 +298,7 @@ class VCAP::Services::Memcached::Node::ProvisionedService
       p_service           = new
       p_service.name      = args['name']
       p_service.port      = args['port']
-      p_service.plan      = args['plan']
+      p_service.plan      = 1
       p_service.user      = args['user']
       p_service.password  = args['password']
       p_service.version   = args['version']
