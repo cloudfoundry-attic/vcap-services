@@ -333,7 +333,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   property :name,       String,   :key => true
   property :port,       Integer,  :unique => true
   property :password,   String,   :required => true
-  property :plan,       Enum[:free], :required => true
+  # property plan is deprecated. The instances in one node have same plan.
+  property :plan,       Integer,  :required => true
   property :pid,        Integer
   property :memory,     Integer
   property :admin,      String,   :required => true
@@ -378,7 +379,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       p_service           = new
       p_service.name      = args['name'] ? args['name'] : UUIDTools::UUID.random_create.to_s
       p_service.port      = args['port']
-      p_service.plan      = args['plan'] ? args['plan'] : 'free'
+      p_service.plan      = 1
       p_service.password  = args['password'] ? args['password'] : UUIDTools::UUID.random_create.to_s
       p_service.memory    = args['memory'] if args['memory']
       p_service.admin     = args['admin'] ? args['admin'] : 'admin'
