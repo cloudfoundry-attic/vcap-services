@@ -364,9 +364,11 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       @max_disk            = args[:max_disk] ? args[:max_disk] : 128
       @quota               = args[:filesystem_quota] || false
       @@mongod_path        = args[:mongod_path] ? args[:mongod_path] : { args[:default_version] => 'mongod' }
+      @@mongod_options     = args[:mongod_options] ? args[:mongod_options] : { args[:default_version] => '' }
       @@mongorestore_path  = args[:mongorestore_path] ? args[:mongorestore_path] : { args[:default_version] => 'mongorestore' }
       @@mongodump_path     = args[:mongodump_path] ? args[:mongodump_path] : { args[:default_version] => 'mongodump' }
       @@tar_path           = args[:tar_path] ? args[:tar_path] : 'tar'
+      FileUtils.mkdir_p(File.dirname(args[:local_db].split(':')[1]))
       DataMapper.setup(:default, args[:local_db])
       DataMapper::auto_upgrade!
       FileUtils.mkdir_p(base_dir)
@@ -479,12 +481,17 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     #       Container may not have enough space to satisfy the need.
     #  - when do repair, more mem required (had experience a situation
     #       where "mongod --repair" hang with mem quota, and it resume when quota increase)
+    #  - no repair if journal is enabled
     # So to avoid these situation, and make things smooth, do it outside container.
     lockfile = File.join(data_dir, "mongod.lock")
     if File.size?(lockfile)
-      logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
-      FileUtils.rm_f(lockfile)
-      repair
+      journal_enabled = mongod_exe_options.match(/--journal/)    if version == "1.8"
+      journal_enabled = !mongod_exe_options.match(/--nojournal/) if version == "2.0"
+      unless journal_enabled
+        logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
+        FileUtils.rm_f(lockfile)
+        repair
+      end
     end
     super
   end
@@ -494,7 +501,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def service_script
-    "mongod_startup.sh"
+    "mongod_startup.sh #{version} #{mongod_exe_options}"
   end
 
   # diretory helper
@@ -507,7 +514,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     warden = self.class.warden_connect
     req = Warden::Protocol::RunRequest.new
     req.handle = self[:container]
-    req.script = "mongo localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
+    req.script = "#{mongo} localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
     rsp = warden.call(req)
     warden.disconnect
   rescue => e
@@ -580,14 +587,22 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def mongod
-    @@mongod_path[version] || @@mongod_path[version.to_sym]
+    @@mongod_path[version]
+  end
+
+  def mongo
+    "/usr/share/mongodb/mongodb-#{version}/mongo"
+  end
+
+  def mongod_exe_options
+    @@mongod_options[version]
   end
 
   def mongorestore
-    @@mongorestore_path[version] || @@mongorestore_path[version.to_sym]
+    @@mongorestore_path[version]
   end
 
   def mongodump
-    @@mongodump_path[version] || @@mongodump_path[version.to_sym]
+    @@mongodump_path[version]
   end
 end

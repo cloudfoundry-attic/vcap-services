@@ -128,6 +128,7 @@ def get_node_config()
     :mongod_path => parse_property(config, "mongod_path", Hash),
     :mongod_options => parse_property(config, "mongod_options", Hash),
     :mongorestore_path => parse_property(config, "mongorestore_path", Hash),
+    :mongodump_path => parse_property(config, "mongodump_path", Hash),
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
     :node_id => parse_property(config, "node_id", String),
     :mbus => parse_property(config, "mbus", String),

@@ -12,16 +12,24 @@ mongod_log_dir: /var/vcap/sys/log/mongodb
 pid: /var/vcap/sys/run/mongodb_node.pid
 node_id: mongodb_node_free_1
 
-supported_versions: ["1.8"]
-default_version: "1.8"
+supported_versions: ["1.8", "2.0"]
+default_version: "2.0"
 
 mongod_path:
-  "1.8": "mongod"
+  "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongod"
+  "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongod"
+
 mongorestore_path:
-  "1.8": "mongorestore"
+  "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongorestore"
+  "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongorestore"
+
+mongodump_path:
+  "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongodump"
+  "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongodump"
 
 mongod_options:
   "1.8": ""
+  "2.0": ""
 
 port_range:
   first: 25001

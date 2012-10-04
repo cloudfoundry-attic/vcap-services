@@ -3,9 +3,10 @@ backup_base_dir: <%= BACKUP_DIR %>
 local_db: <%= DB_URL %>
 base_dir: /tmp/mongo/instances
 mongodump_path: 
-  "1.8": <%= BINARY_DIR %>mongodump
-supported_versions: ["1.8"]
-default_version: "1.8"
+  "1.8": <%= BINARY_DIR %>/mongodump
+  "2.0": <%= BINARY_DIR %>/mongodump
+supported_versions: ["1.8", "2.0"]
+default_version: "2.0"
 mongod_log_dir: <%= MONGOD_LOG %>
 image_dir: /tmp/mongo/images
 timeout: 10
