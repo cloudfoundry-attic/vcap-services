@@ -27,6 +27,7 @@ class VCAP::Services::VBlob::NodeBin < VCAP::Services::Base::NodeBin
     options[:vblobd_log_dir] = parse_property(config, "vblobd_log_dir", String)
     options[:vblobd_path] = parse_property(config, "vblobd_path", String)
     options[:vblobd_auth] = parse_property(config, "vblobd_auth", String)
+    options[:vblobd_quota] = parse_property(config, "vblobd_quota", Integer)
     options[:supported_versions] = parse_property(config, "supported_versions", Array)
     options
   end
