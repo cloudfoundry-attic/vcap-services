@@ -16,6 +16,22 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
     File.join(File.dirname(__FILE__), '..', 'config', 'mongodb_backup.yml')
   end
 
+  def parse_property(hash, key, type, options = {})
+    obj = hash[key]
+    if obj.nil?
+      raise "Missing required option: #{key}" unless options[:optional]
+      options[:default]
+    elsif type == Range
+      raise "Invalid Range object: #{obj}" unless obj.kind_of?(Hash)
+      first, last = obj["first"], obj["last"]
+      raise "Invalid Range object: #{obj}" unless first.kind_of?(Integer) and last.kind_of?(Integer)
+      Range.new(first, last)
+    else
+      raise "Invalid #{type} object: #{obj}" unless obj.kind_of?(type)
+      obj
+    end
+  end
+
   def backup_db
     # make sure local_db exists
     unless File.exist? @config['local_db'].split(':')[1]
@@ -24,9 +40,21 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
     end
 
     cmd_timeout = @config['timeout'].to_f
-    config = VCAP.symbolize_keys(@config)
 
-    Node::ProvisionedService.init(config)
+    options = {
+      :service_name => parse_property(@config, "service_name", String, :optional => true, :default => "mongodb"),
+      :backup_base_dir => parse_property(@config, "backup_base_dir", String),
+      :local_db => parse_property(@config, "local_db", String),
+      :base_dir => parse_property(@config, "base_dir", String),
+      :mongodump_path => parse_property(@config, "mongodump_path", Hash),
+      :supported_versions => parse_property(@config, "supported_versions", Array),
+      :default_version => parse_property(@config, "default_version", String),
+      :mongod_log_dir => parse_property(@config, "mongod_log_dir", String),
+      :image_dir => parse_property(@config, "image_dir", String),
+      :timeout => parse_property(@config, "timeout", Integer, :optional => true, :default => 10)
+    }
+
+    Node::ProvisionedService.init(options)
 
     Node::ProvisionedService.all.each do |p_service|
       path = get_dump_path(p_service.name)
