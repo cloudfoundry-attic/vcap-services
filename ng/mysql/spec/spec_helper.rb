@@ -10,28 +10,39 @@ require "mysql_service/util"
 require 'mysql_service/provisioner'
 require 'mysql_service/node'
 
-require 'mysql_service/warden'
+require 'mysql_service/with_warden'
 # monkey patch of wardenized node
-module VCAP::Services::Mysql::Warden
+module VCAP::Services::Mysql::WithWarden
   alias_method :pre_send_announcement_internal_ori, :pre_send_announcement_internal
   def pre_send_announcement_internal
-    unless @use_warden && @options[:not_start_instances]
+    unless @options[:not_start_instances]
       pre_send_announcement_internal_ori
     else
+      @pool_mutex = Mutex.new
+      @pools = {}
       @logger.info("Not to start instances")
       mysqlProvisionedService.all.each do |instance|
         new_port(instance.port)
-        @pools[instance.port] = mysql_connect(instance.ip, false)
+        setup_pool(instance)
       end
     end
   end
 
   def create_missing_pools
     mysqlProvisionedService.all.each do |instance|
-      unless @pools.keys.include?(instance.port)
+      unless @pools.keys.include?(instance.name)
         new_port(instance.port)
-        @pools[instance.port] = mysql_connect(instance.ip, false)
+        setup_pool(instance)
       end
+    end
+  end
+
+  alias_method :shutdown_ori, :shutdown
+  def shutdown
+    if @use_warden && @options[:not_start_instances]
+      super
+    else
+      shutdown_ori
     end
   end
 end
@@ -83,10 +94,7 @@ def getNodeTestConfig()
     :base_dir => parse_property(config, "base_dir", String),
     :plan => parse_property(config, "plan", String),
     :capacity => parse_property(config, "capacity", Integer),
-    :mysqldump_bin => parse_property(config, "mysqldump_bin", String),
-    :mysql_bin => parse_property(config, "mysql_bin", String),
     :gzip_bin => parse_property(config, "gzip_bin", String),
-    :mysql_bin => parse_property(config, "mysql_bin", String),
     :max_db_size => parse_property(config, "max_db_size", Integer),
     :max_long_query => parse_property(config, "max_long_query", Integer),
     :node_id => parse_property(config, "node_id", String),
@@ -100,7 +108,8 @@ def getNodeTestConfig()
     :connection_wait_timeout => 10,
     :disk_overhead => parse_property(config, "disk_overhead", Float, :default => 0.0),
     :use_warden => parse_property(config, "use_warden", Boolean),
-    :config_template => File.expand_path("../../resources/my.conf.erb", __FILE__)
+    :config_template => File.expand_path("../../resources/my.conf.erb", __FILE__),
+    :supported_versions => parse_property(config, "supported_versions", Array),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)
@@ -112,6 +121,8 @@ def getNodeTestConfig()
     options[:max_heap_table_size] = parse_property(warden_config, "max_heap_table_size", Integer, :optional => true)
     options[:micro] = parse_property(warden_config, "micro", Boolean, :optional => true)
     options[:production] = parse_property(warden_config, "production", Boolean, :optional => true)
+  else
+    options[:ip_route] = "127.0.0.1"
   end
   options
 end
@@ -134,4 +145,8 @@ def new_node(options)
   opts = options.dup
   opts[:not_start_instances] = true if opts[:use_warden]
   VCAP::Services::Mysql::Node.new(opts)
+end
+
+
+def provision_instance
 end

@@ -13,6 +13,29 @@ module VCAP
     module Mysql
       class Node
         attr_reader :pools, :pool, :logger, :capacity, :provision_served, :binding_served, :use_warden
+
+        # helper methods
+
+        # check whether mysql has required innodb plugin installed.
+        def check_innodb_plugin(instance)
+          fetch_pool(instance).with_connection do |connection|
+            res = connection.query("show tables from information_schema like 'INNODB_TRX'")
+            return true if res.count > 0
+          end
+        rescue Mysql2::Error => e
+          @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+          nil
+        end
+
+        def is_percona_server?(instance)
+          fetch_pool(instance).with_connection do |connection|
+            res = connection.query("show variables where variable_name like 'version_comment'")
+            return res.count > 0 && res.to_a[0]["Value"] =~ /percona/i
+          end
+        rescue Mysql2::Error => e
+          @logger.error("MySQL connection failed: [#{e.errno}] #{e.error}")
+          nil
+        end
       end
     end
   end
@@ -34,6 +57,10 @@ describe "Mysql server node" do
   before :all do
     @opts = getNodeTestConfig
     @opts.freeze
+    @default_plan = "free"
+    @default_version = @opts[:supported_versions][0]
+    @default_opts = "default"
+
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
@@ -43,11 +70,9 @@ describe "Mysql server node" do
   end
 
   before :each do
-    @default_plan = "free"
-    @default_opts = "default"
     @test_dbs = {}# for cleanup
     # Create one db be default
-    @db = @node.provision(@default_plan)
+    @db = @node.provision(@default_plan, nil, @default_version)
     @db.should_not == nil
     @db["name"].should be
     @db["host"].should be
@@ -59,9 +84,13 @@ describe "Mysql server node" do
     @db_instance = @node.mysqlProvisionedService.get(@db["name"])
   end
 
+  def new_instance
+    @node.provision(@default_plan, nil, @default_version)
+  end
+
   it "should connect to mysql database" do
     EM.run do
-      expect {@node.pool.with_connection{|connection| connection.query("SELECT 1")}}.should_not raise_error
+      expect {@node.fetch_pool(@db['name']).with_connection{|connection| connection.query("SELECT 1")}}.should_not raise_error
       EM.stop
     end
   end
@@ -69,7 +98,7 @@ describe "Mysql server node" do
   it "should report inconsistency between mysql and local db" do
     EM.run do
       name, user = @db["name"], @db["user"]
-      @node.pools[@node.get_port(@db_instance)].with_connection do |conn|
+      @node.fetch_pool(name).with_connection do |conn|
         conn.query("delete from db where db='#{name}' and user='#{user}'")
       end
       result = @node.check_db_consistency
@@ -107,18 +136,21 @@ describe "Mysql server node" do
   it "should enforce database size quota" do
     EM.run do
       opts = @opts.dup
-      # reduce storage quota to 4KB.
-      opts[:max_db_size] = 4.0/1024
+      # reduce storage quota to 256KB.
+      opts[:max_db_size] = 256.0/1024
       node = new_node(opts)
       EM.add_timer(1) do
-        #db = node.provision(@default_plan)
         binding = node.bind(@db["name"],  @default_opts)
         @test_dbs[@db] << binding
         conn = connect_to_mysql(binding)
         conn.query("create table test(data text)")
         c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
-        content = (0..5000).map{ c[rand(c.size)] }.join
-        conn.query("insert into test value('#{content}')")
+        256.times do
+          # The content string costs mysql 1K to save it.
+          # the text data type has 2 bytes overhead.
+          content = (0..1022).map{ c[rand(c.size)] }.join
+          conn.query("insert into test value('#{content}')")
+        end
         EM.add_timer(3) do
           expect {conn.query('SELECT 1')}.should raise_error
           conn.close
@@ -141,7 +173,11 @@ describe "Mysql server node" do
             EM.add_timer(2) do
               conn = connect_to_mysql(binding)
               expect{ conn.query("insert into test value('test')")}.should_not raise_error
-              conn.query("insert into test value('#{content}')")
+              256.times do
+                content = (0..1022).map{ c[rand(c.size)] }.join
+                conn.query("insert into test value('#{content}')")
+              end
+
               EM.add_timer(3) do
                 expect { conn.query('SELECT 1') }.should raise_error
                 conn.close
@@ -172,7 +208,7 @@ describe "Mysql server node" do
       user = "test"
       password = "test"
       port = @node.new_port
-      service = klass.create(port, name, user, password)
+      service = klass.create(port, name, user, password, @default_version)
       if not service.save
         raise "Failed to forge orphan instance: #{service.errors.inspect}"
       end
@@ -181,7 +217,7 @@ describe "Mysql server node" do
         EM.stop
       end
     ensure
-      service.destroy
+      @node.use_warden ? service.delete : service.destroy
     end
   end
 
@@ -189,7 +225,7 @@ describe "Mysql server node" do
     EM.run do
       before_ins_list = @node.all_instances_list
       plan = "free"
-      tmp_db = @node.provision(plan)
+      tmp_db = new_instance
       @test_dbs[tmp_db] = []
       after_ins_list = @node.all_instances_list
       before_ins_list << tmp_db["name"]
@@ -211,12 +247,12 @@ describe "Mysql server node" do
 
   it "should not create db or send response if receive a malformed request" do
     EM.run do
-      @node.pool.with_connection do |connection|
+      @node.fetch_pool(@db['name']).with_connection do |connection|
         db_num = connection.query("show databases;").count
         mal_plan = "not-a-plan"
         db = nil
         expect {
-          db = @node.provision(mal_plan)
+          db = @node.provision(mal_plan, nil, @default_version)
         }.should raise_error(MysqlError, /Invalid plan .*/)
         db.should == nil
         db_num.should == connection.query("show databases;").count
@@ -233,7 +269,7 @@ describe "Mysql server node" do
       node = new_node(opts)
       EM.add_timer(1) do
         expect {
-          db = node.provision(@default_plan)
+          db = node.provision(@default_plan, nil, @default_version)
           @test_dbs[db] = []
         }.should_not raise_error
         EM.stop
@@ -267,7 +303,7 @@ describe "Mysql server node" do
   it "should not be possible to access one database using null or wrong credential" do
     EM.run do
       plan = "free"
-      db2 = @node.provision(plan)
+      db2 = new_instance
       @test_dbs[db2] = []
       fake_creds = []
       3.times {fake_creds << @db.clone}
@@ -285,7 +321,7 @@ describe "Mysql server node" do
   end
 
   it "should kill long transaction" do
-    if @opts[:max_long_tx] > 0 and (@node.check_innodb_plugin)
+    if @opts[:max_long_tx] > 0 and (@node.check_innodb_plugin @db['name'])
       EM.run do
         opts = @opts.dup
         # reduce max_long_tx to accelerate test
@@ -330,9 +366,9 @@ describe "Mysql server node" do
   end
 
   it "should kill long queries" do
-    pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?
+    pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?(@db['name'])
     EM.run do
-      db = @node.provision(@default_plan)
+      db = new_instance
       @test_dbs[db] = []
       opts = @opts.dup
       opts[:max_long_query] = 1
@@ -362,8 +398,8 @@ describe "Mysql server node" do
         EM.add_timer(opts[:max_long_query] * 5){
           err.should_not == nil
           err.message.should =~ /interrupted/
-            # counter should also be updated
-            node.varz_details[:long_queries_killed].should > old_counter
+          # counter should also be updated
+          node.varz_details[:long_queries_killed].should > old_counter
           EM.stop
         }
       end
@@ -439,7 +475,7 @@ describe "Mysql server node" do
 
   it "should able to restore database from backup file" do
     EM.run do
-      db = @node.provision(@default_plan)
+      db = new_instance
       @test_dbs[db] = []
       conn = connect_to_mysql(db)
       conn.query("create table test(id INT)")
@@ -477,7 +513,7 @@ describe "Mysql server node" do
 
 
       # backup current db
-      host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][key]}
+      host, port, user, password = %w(host port user pass).map{|key| @opts[:mysql][@default_version][key]}
       host, port = %w(host port).map{|key| db[key]} if @node.use_warden
       tmp_file = "/tmp/#{db['name']}.sql.gz"
       @tmpfiles << tmp_file
@@ -552,7 +588,7 @@ describe "Mysql server node" do
 
   it "should recreate database and user when import instance" do
     EM.run do
-      db = @node.provision(@default_plan)
+      db = new_instance
       @test_dbs[db] = []
       @node.dump_instance(db, nil , '/tmp')
       @node.unprovision(db['name'], [])
@@ -566,7 +602,7 @@ describe "Mysql server node" do
 
   it "should recreate bindings when enable instance" do
     EM.run do
-      db = @node.provision(@default_plan)
+      db = new_instance
       @test_dbs[db] = []
       binding = @node.bind(db['name'], @default_opts)
       @test_dbs[db] << binding
@@ -587,7 +623,7 @@ describe "Mysql server node" do
 
   it "should recreate bindings when update instance handles" do
     EM.run do
-      db = @node.provision(@default_plan)
+      db = new_instance
       @test_dbs[db] = []
       binding = @node.bind(db['name'], @default_opts)
       @test_dbs[db] << binding
@@ -609,15 +645,15 @@ describe "Mysql server node" do
 
   it "should retain instance data after node restart" do
     EM.run do
-      node = @node
+      node = new_node(@opts)
       EM.add_timer(1) do
-        db = node.provision(@default_plan)
+        db = node.provision(@default_plan, nil, @default_version)
         @test_dbs[db] = []
         conn = connect_to_mysql(db)
         conn.query('create table test(id int)')
         # simulate we restart the node
         node.shutdown
-        @node = VCAP::Services::Mysql::Node.new(@opts)
+        node = new_node(@opts)
         EM.add_timer(1) do
           conn2 = connect_to_mysql(db)
           result = conn2.query('show tables')
@@ -667,7 +703,7 @@ describe "Mysql server node" do
   it "should provide provision/binding served info in varz" do
     EM.run do
       v1 = @node.varz_details
-      db = @node.provision(@default_plan)
+      db = new_instance
       binding = @node.bind(db["name"], [])
       @test_dbs[db] = [binding]
       v2 = @node.varz_details
@@ -715,7 +751,7 @@ describe "Mysql server node" do
           value.should == "ok"
         end
       end
-      @node.pools[@node.get_port(@db_instance)].with_connection do |connection|
+      @node.fetch_pool(instance).with_connection do |connection|
         connection.query("Drop database #{instance}")
         sleep 1
         varz = @node.varz_details()
@@ -736,11 +772,11 @@ describe "Mysql server node" do
       provision_served = @node.provision_served
       binding_served = @node.binding_served
       # Set concurrent threads to pool size. Prevent pool is empty error.
-      NUM = @node.pool.size
+      NUM = @node.fetch_pool(@db['name']).size
       threads = []
       NUM.times do
         threads << Thread.new do
-          db = @node.provision(@default_plan)
+          db = new_instance
           binding = @node.bind(db["name"], @default_opts)
           @node.unprovision(db["name"], [binding])
         end
@@ -758,7 +794,7 @@ describe "Mysql server node" do
       opts[:max_user_conns] = 1 # easy for testing
       node = new_node(opts)
       EM.add_timer(1) do
-        db = node.provision(@default_plan)
+        db = node.provision(@default_plan, nil, @default_version)
         binding = node.bind(db["name"],  @default_opts)
         @test_dbs[db] = [binding]
         expect { conn = connect_to_mysql(db) }.should_not raise_error
@@ -779,13 +815,13 @@ describe "Mysql server node" do
       EM.add_timer(2) do
         begin
           # server side timeout
-          node.pool.with_connection do |conn|
+          node.fetch_pool(@db['name']).with_connection do |conn|
             # simulate connection idle
             sleep (timeout * 5)
             expect{ conn.query("select 1") }.should raise_error(Mysql2::Error, /MySQL server has gone away/)
           end
           # client side timeout
-          node.pool.with_connection do |conn|
+          node.fetch_pool(@db['name']).with_connection do |conn|
             # override server side timeout
             conn.query("set @@wait_timeout=10")
             expect{ conn.query("select sleep(5)") }.should raise_error(Timeout::Error)
@@ -809,12 +845,12 @@ describe "Mysql server node" do
       EM.add_timer(2) do
         begin
           # server side timeout
-          node.pool.with_connection do |conn|
+          node.fetch_pool(@db['name']).with_connection do |conn|
             sleep (5)
             expect{ conn.query("select 1") }.should_not raise_error
           end
           # client side timeout
-          node.pool.with_connection do |conn|
+          node.fetch_pool(@db['name']).with_connection do |conn|
             expect{ conn.query("select sleep(5)") }.should_not raise_error
           end
         ensure
