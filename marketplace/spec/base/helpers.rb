@@ -15,6 +15,7 @@ class MarketplaceGatewayHelper
     config[:component_port] = GW_COMPONENT_PORT
     config[:user] = "u"
     config[:password] = "p"
+    config[:node_timeout] = 1
     config
   end
 

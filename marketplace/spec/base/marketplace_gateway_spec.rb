@@ -166,4 +166,29 @@ describe "MarketplaceGateway" do
     end
   end
 
+  it "should timeout if response is not received within timeout period" do
+    EM.run do
+      cc = nil
+      gw = nil
+      client = nil
+
+      Do.at(0) {
+        cc = MarketplaceGatewayHelper.create_cc
+        gw = MarketplaceGatewayHelper.create_mpgw
+        client = MarketplaceGatewayHelper.create_client
+      }
+
+      Do.at(2) { client.set_config("sleep_before_provision", "5") }
+      Do.at(3) { client.last_http_code.should == 200 }
+
+      Do.at(4) { client.send_provision_request("testservice-1.0", "test1", "foo@xyz.com", "small", "1.0") }
+      Do.at(10) {
+        client.last_http_code.should == 500
+        client.last_response.should == "#<Timeout::Error: execution expired>"
+      }
+
+      Do.at(11) { cc.stop; gw.stop; EM.stop }
+    end
+  end
+
 end

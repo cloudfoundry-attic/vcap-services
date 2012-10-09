@@ -2,6 +2,7 @@
 require 'fiber'
 require 'nats/client'
 require 'uri'
+require 'timeout'
 
 require 'vcap/component'
 
@@ -178,18 +179,20 @@ module VCAP
             @catalog_in_ccdb = get_proxied_services_from_cc
           rescue => e
             failed = true
-            @logger.error("Failed to get proxied services from cc: #{e}")
+            @logger.error("Failed to get proxied services from cc: #{e.inspect}")
           ensure
             update_stats("refresh_cc_services", failed)
           end
 
           failed = false
           begin
-            @catalog_in_marketplace = @marketplace_client.get_catalog
+            Timeout::timeout(@node_timeout) do
+              @catalog_in_marketplace = @marketplace_client.get_catalog
+            end
           rescue => e1
             failed = true
-            @logger.error("Failed to get catalog from marketplace: #{e1}")
-          rescue
+            @logger.error("Failed to get catalog from marketplace: #{e1.inspect}")
+          ensure
             update_stats("refresh_catalog", failed)
           end
         end
@@ -290,14 +293,14 @@ module VCAP
 
         # Helpers for unit testing
         post "/marketplace/set/:key/:value" do
-          @logger.info("TEST HELPER ENDPOINT - set: #{params[:key]} = #{params[:value]}")
+          @logger.info("TEST HELPER ENDPOINT - set: key=#{params[:key]}, value=#{params[:value]}")
           Fiber.new {
             begin
               @marketplace_client.set_config(params[:key], params[:value])
               refresh_catalog_and_update_cc
               async_reply("")
             rescue => e
-              async_reply_error(e.inspect)
+              reply_error(e.inspect)
             end
           }.resume
           async_mode
@@ -314,12 +317,14 @@ module VCAP
           Fiber.new{
             failed = false
             begin
-              msg = @marketplace_client.provision_service(request_body)
+              msg = Timeout::timeout(@node_timeout) do
+                @marketplace_client.provision_service(request_body)
+              end
               resp = VCAP::Services::Api::GatewayHandleResponse.new(msg).encode
               async_reply(resp)
             rescue => e
               failed = true
-              async_reply_error(e.inspect)
+              reply_error(e.inspect)
             ensure
               update_stats("provision", failed)
             end
@@ -336,12 +341,14 @@ module VCAP
           Fiber.new {
             failed = false
             begin
-              msg = @marketplace_client.bind_service_instance(params['service_id'], req)
+              msg = Timeout::timeout(@node_timeout) do
+                @marketplace_client.bind_service_instance(params['service_id'], req)
+              end
               resp = VCAP::Services::Api::GatewayHandleResponse.new(msg).encode
               async_reply(resp)
             rescue => e
               failed = true
-              async_reply_error(e.inspect)
+              reply_error(e.inspect)
             ensure
               update_stats("bind", failed)
             end
@@ -356,11 +363,13 @@ module VCAP
           Fiber.new {
             failed = false
             begin
-              @marketplace_client.unprovision_service(sid)
+              Timeout::timeout(@node_timeout) do
+                @marketplace_client.unprovision_service(sid)
+              end
               async_reply
             rescue => e
               failed = true
-              async_reply_error(e.inspect)
+              reply_error(e.inspect)
             ensure
               update_stats("unprovision", failed)
             end
@@ -376,11 +385,13 @@ module VCAP
           Fiber.new {
             failed = false
             begin
-              @marketplace_client.unbind_service(sid, hid)
+              Timeout::timeout(@node_timeout) do
+                @marketplace_client.unbind_service(sid, hid)
+              end
               async_reply
             rescue => e
               failed = true
-              async_reply_error(e.inspect)
+              reply_error(e.inspect)
             ensure
               update_stats("unbind", failed)
             end
@@ -392,6 +403,10 @@ module VCAP
         ################## Helpers ###################
         #
         helpers do
+
+          def reply_error(resp='{}')
+            async_reply_raw(500, {'Content-Type' => Rack::Mime.mime_type('.json')}, resp)
+          end
 
           def get_proxied_services_from_cc
             @logger.debug("Get proxied services from cloud_controller: #{@service_list_uri}")

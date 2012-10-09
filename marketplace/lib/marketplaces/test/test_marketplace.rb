@@ -35,6 +35,9 @@ module VCAP
               "active" => true,
               "provider" => "TestProvider"
             }
+
+            @runtime_config = {}
+            @runtime_config[:sleep_before_provision] = 0
           end
 
           def set_config(key, value)
@@ -58,6 +61,9 @@ module VCAP
                 @catalog.delete("fooservice-1.0")
               end
               @logger.info("Catalog contains #{@catalog.size} offerings")
+            elsif key == "sleep_before_provision"
+              @runtime_config[:sleep_before_provision] = Integer(value)
+              @logger.info("sleep_before_provision = #{@runtime_config[:sleep_before_provision]}")
             end
           end
 
@@ -116,6 +122,11 @@ module VCAP
           end
 
          def provision_service(request_body)
+            if @runtime_config[:sleep_before_provision] > 0
+              @logger.info("Sleep before provision is set to: #{@runtime_config[:sleep_before_provision]} sec, Sleeping...")
+              sleep @runtime_config[:sleep_before_provision]
+            end
+
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
             service_id,version = request.label.split("-")
             @logger.info("Provision request for label=#{request.label} (service_id=#{service_id}) plan=#{request.plan}, version=#{request.version}")
