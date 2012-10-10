@@ -1,0 +1,17 @@
+---
+host: "0.0.0.0"
+port: 29017
+
+mongodb:
+  host: "127.0.0.1"
+  port: 27017
+  dbname: db
+
+filter:
+  fs_reserved_blocks: 0.05  # by default 5% of filesystem blocks are reserved for root user
+  threshold: 0.8            # if disk usage percent equals or exceeds this value then block some operations
+  enabled: true
+
+logging:
+  level: info
+  path: /tmp/mongodb_proxy/mongodb_proxy.log
