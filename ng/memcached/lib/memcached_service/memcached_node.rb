@@ -305,7 +305,7 @@ class VCAP::Services::Memcached::Node::ProvisionedService
 
       raise MemcachedError.new(MemcachedError::MEMCACHED_SAVE_INSTANCE_FAILED, p_service.inspect) unless p_service.save!
 
-      p_service.prepare_filesystem(self.max_db_size)
+      p_service.prepare_filesystem(1)
       p_service
     end
   end
