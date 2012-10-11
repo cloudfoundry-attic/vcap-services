@@ -28,14 +28,6 @@ module VCAP::Services::Postgresql::WithWarden
   end
 
   def pre_send_announcement_prepare
-    @connection = postgresql_connect(
-      @postgresql_config["host"],
-      @postgresql_config["user"],
-      @postgresql_config["pass"],
-      @postgresql_config["port"],
-      @postgresql_config["database"],
-      false
-    )
     @connection_mutex = Mutex.new
     @connections = {}
   end

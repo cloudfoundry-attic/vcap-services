@@ -20,7 +20,7 @@ module VCAP
           end
 
           def delete
-            self.destroy!
+            self.destroy! if self.saved?
           end
 
           def pgbindusers

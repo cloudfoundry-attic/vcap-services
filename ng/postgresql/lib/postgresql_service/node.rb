@@ -130,6 +130,24 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
+  def cleanup(provisionedservice)
+    return unless provisionedservice
+    name = provisionedservice.name
+    port = get_inst_port(provisionedservice)
+    delete_database(provisionedservice)
+    init_global_connection(provisionedservice)
+    provisionedservice.pgbindusers.all.each do |binduser|
+      if not binduser.destroy
+        @logger.error("Could not delete entry: #{binduser.errors.inspect}")
+      end if binduser.saved?
+    end
+    if not provisionedservice.delete
+      @logger.error("Could not delete entry: #{provisionedservice.errors.inspect}")
+    end
+    free_inst_port(port)
+    delete_global_connection(name)
+  end
+
   def provision(plan, credential=nil, version=nil)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_INVALID_PLAN, plan) unless plan == @plan
 
@@ -191,11 +209,7 @@ class VCAP::Services::Postgresql::Node
       end
     rescue => e
       @logger.error("Fail to provision for #{e}: #{e.backtrace.join('|')}")
-      if provisionedservice
-        delete_database(provisionedservice)
-        binduser.destroy if binduser
-        provisionedservice.delete
-      end
+      cleanup(provisionedservice) if provisionedservice
       raise e
     end
   end
@@ -211,19 +225,7 @@ class VCAP::Services::Postgresql::Node
     rescue =>e
       # ignore
     end
-    delete_database(provisionedservice)
-    init_global_connection(provisionedservice)
-    provisionedservice.pgbindusers.all.each do |binduser|
-      if not binduser.destroy
-        @logger.error("Could not delete entry: #{binduser.errors.inspect}")
-      end
-    end
-    port = get_inst_port(provisionedservice)
-    if not provisionedservice.delete
-      @logger.error("Could not delete entry: #{provisionedservice.errors.inspect}")
-    end
-    free_inst_port(port)
-    delete_global_connection(name)
+    cleanup(provisionedservice)
     @logger.info("Successfully fulfilled unprovision request: #{name}")
     true
   end
