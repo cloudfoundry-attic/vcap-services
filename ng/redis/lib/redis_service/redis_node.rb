@@ -312,6 +312,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
       @logger = options[:logger]
       @max_disk = options[:max_disk]
       @quota = options[:filesystem_quota] || false
+      @memory_limit = options[:max_memory] + (options[:memory_overhead] || 0)
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
       FileUtils.mkdir_p(image_dir)
