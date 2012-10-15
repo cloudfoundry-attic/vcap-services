@@ -22,4 +22,5 @@ logging:
 # addtional options
 command_rename_prefix: protect-command-prefix
 gzip_bin: gzip
-redis_server_path: redis-server
+redis_server_path:
+ "2.2": "redis-server"

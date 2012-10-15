@@ -20,6 +20,8 @@ describe VCAP::Services::Redis::Node do
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
 
+    @default_version = @options[:default_version]
+
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = VCAP::Services::Redis::Node.new(@options)
@@ -34,6 +36,7 @@ describe VCAP::Services::Redis::Node do
     @instance.plan     = 1
     @instance.password = UUIDTools::UUID.random_create.to_s
     @instance.memory   = @options[:max_memory]
+    @instance.version  = @default_version
   end
 
   after :all do
@@ -146,7 +149,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.provision" do
     before :all do
       @old_capacity = @node.capacity
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       sleep 1
     end
 
@@ -186,7 +189,7 @@ describe VCAP::Services::Redis::Node do
       in_credentials["name"] = UUIDTools::UUID.random_create.to_s
       in_credentials["port"] = 22222
       in_credentials["password"] = UUIDTools::UUID.random_create.to_s
-      out_credentials = @node.provision(:free, in_credentials)
+      out_credentials = @node.provision(:free, in_credentials, @default_version)
       sleep 1
       out_credentials["name"].should == in_credentials["name"]
       out_credentials["port"].should == in_credentials["port"]
@@ -197,7 +200,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.unprovision" do
     before :all do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       @old_capacity = @node.capacity
       sleep 1
       @node.unprovision(@credentials["name"])
@@ -253,7 +256,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.bind" do
     before :all do
-      @instance_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
@@ -291,7 +294,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.unbind" do
     it "should return true when finish an unbinding" do
-      @instance_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       @binding_credentials = @node.bind(@instance_credentials["name"])
       sleep 1
@@ -310,7 +313,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.varz_details" do
     it "should report varz details" do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
@@ -323,7 +326,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.health" do
     it "should report service instances status" do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       varz = @node.varz_details
       varz[:instances].each do  |name, status|
@@ -337,8 +340,8 @@ describe VCAP::Services::Redis::Node do
     before :all do
       @restore_dir = "/tmp/restore/redis"
       FileUtils.mkdir_p(@restore_dir)
-      @credentials1 = @node.provision(:free)
-      @credentials2 = @node.provision(:free)
+      @credentials1 = @node.provision(:free, nil, @default_version)
+      @credentials2 = @node.provision(:free, nil, @default_version)
       sleep 1
       Redis.new({:port => @credentials1["port"], :password => @credentials1["password"]}).set("test_key", "test_value")
       @node.set_config(@credentials1["port"], @credentials1["password"], "save", "1 0")
@@ -382,7 +385,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.migration" do
     before :all do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       Redis.new({:port => @credentials["port"], :password => @credentials["password"]}).set("test_key", "test_value")
       @dump_dir = File.join("/tmp/migration/redis", @credentials["name"])
@@ -443,7 +446,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.max_clients" do
     it "should limit the maximum number of clients" do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       redis = []
       # Create max_clients connections
@@ -463,7 +466,7 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should unprovision successfully when reach the maximum number of clients" do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       redis = []
       # Create max_clients connections
@@ -477,7 +480,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.timeout" do
     it "should raise exception when redis client response time is too long" do
-      credentials = @node.provision(:free)
+      credentials = @node.provision(:free, nil, @default_version)
       sleep 1
       class Redis
         alias :old_info :info
@@ -498,7 +501,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.orphan" do
     it "should return proper instance list" do
       before_instances = @node.all_instances_list
-      oi = @node.provision(:free)
+      oi = @node.provision(:free, nil, @default_version)
       after_instances = @node.all_instances_list
       @node.unprovision(oi["name"])
       (after_instances - before_instances).include?(oi["name"]).should be_true
@@ -514,7 +517,7 @@ describe VCAP::Services::Redis::Node do
       somethreads = (1..threads_num).collect do
         Thread.new do
           semaphore.synchronize do
-            credentials_list << @node.provision(:free)
+            credentials_list << @node.provision(:free, nil, @default_version)
           end
         end
       end
@@ -541,7 +544,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.restart" do
     it "should still use the provisioned service after the restart" do
       EM.run do
-        credentials = @node.provision(:free)
+        credentials = @node.provision(:free, nil, @default_version)
         @node.shutdown
         @node = VCAP::Services::Redis::Node.new(@options)
         EM.add_timer(1) {

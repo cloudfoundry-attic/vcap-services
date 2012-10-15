@@ -20,6 +20,7 @@ describe VCAP::Services::Redis::Node do
     FileUtils.mkdir_p(@options[:image_dir])
     FileUtils.mkdir_p(@options[:redis_log_dir])
     FileUtils.mkdir_p(@options[:migration_nfs])
+    @default_version = @options[:default_version]
 
     # Setup code must be wrapped in EM.run
     EM.run do
@@ -50,7 +51,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.pre_send_announcement" do
     before :all do
       @old_capacity = @node.capacity
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       @node.shutdown
       EM.run do
         @node = VCAP::Services::Redis::Node.new(@options)
@@ -74,7 +75,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.provision" do
     before :all do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       @instance = @node.get_instance(@credentials["name"])
     end
 
@@ -121,7 +122,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.unprovision" do
     before :all do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       @instance = @node.get_instance(@credentials["name"])
       @node.unprovision(@credentials["name"])
     end
@@ -141,7 +142,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.bind" do
     before :all do
-      @instance_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free, nil, @default_version)
       @instance = @node.get_instance(@instance_credentials["name"])
       @binding_credentials = @node.bind(@instance_credentials["name"])
     end
@@ -174,7 +175,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.unbind" do
     it "should return an empty hash when finish unbinding" do
-      @instance_credentials = @node.provision(:free)
+      @instance_credentials = @node.provision(:free, nil, @default_version)
       @binding_credentials = @node.bind(@instance_credentials["name"])
       @node.unbind(@binding_credentials).should == {}
       @node.unprovision(@instance_credentials["name"])
@@ -183,7 +184,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.varz_details" do
     it "should report varz details" do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       varz = @node.varz_details
       varz[:provisioned_instances_num].should == 1
       varz[:provisioned_instances][0][:name].should == @credentials["name"]
@@ -195,7 +196,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.restore" do
     before :all do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       @restore_result = @node.restore(@credentials["name"], "./")
       @instance = @node.get_instance(@credentials["name"])
     end
@@ -234,7 +235,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.migration" do
     before :all do
-      @credentials = @node.provision(:free)
+      @credentials = @node.provision(:free, nil, @default_version)
       @instance = @node.get_instance(@credentials["name"])
       redis_set(@instance.ip, @redis_port, @credentials["password"], "test_key", "test_value")
       @dump_dir = File.join("/tmp/migration/redis", @credentials["name"])
@@ -294,7 +295,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.max_clients" do
     it "should limit the maximum number of clients" do
-      credentials = @node.provision(:free)
+      credentials = @node.provision(:free, nil, @default_version)
       instance = @node.get_instance(credentials["name"])
       begin
         redis = []
@@ -320,7 +321,7 @@ describe VCAP::Services::Redis::Node do
     end
 
     it "should unprovision successfully when reach the maximum number of clients" do
-      credentials = @node.provision(:free)
+      credentials = @node.provision(:free, nil, @default_version)
       instance = @node.get_instance(credentials["name"])
       redis = []
       # Create max_clients connections
@@ -334,7 +335,7 @@ describe VCAP::Services::Redis::Node do
 
   describe "Node.timeout" do
     it "should raise exception when redis client response time is too long" do
-      credentials = @node.provision(:free)
+      credentials = @node.provision(:free, nil, @default_version)
       instance = @node.get_instance(credentials["name"])
       class Redis
         alias :old_info :info
@@ -355,7 +356,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.orphan" do
     it "should return proper instance list" do
       before_instances = @node.all_instances_list
-      oi = @node.provision(:free)
+      oi = @node.provision(:free, nil, @default_version)
       after_instances = @node.all_instances_list
       @node.unprovision(oi["name"])
       (after_instances - before_instances).include?(oi["name"]).should be_true
@@ -372,7 +373,7 @@ describe VCAP::Services::Redis::Node do
       somethreads = (1..threads_num).collect do
         Thread.new do
           semaphore.synchronize do
-            credentials_list << @node.provision(:free)
+            credentials_list << @node.provision(:free, nil, @default_version)
           end
         end
       end
@@ -398,7 +399,7 @@ describe VCAP::Services::Redis::Node do
   describe "Node.restart" do
     it "should still use the provisioned service after the restart" do
       EM.run do
-        credentials = @node.provision(:free)
+        credentials = @node.provision(:free, nil, @default_version)
         @node.shutdown
         @node = VCAP::Services::Redis::Node.new(@options)
         EM.add_timer(1) {
