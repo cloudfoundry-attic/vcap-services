@@ -23,6 +23,10 @@ class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
     options[:rabbitmq_server] = parse_property(config, "rabbitmq_server", String)
     options[:config_template] = File.expand_path("../../resources/rabbitmq.config.erb", __FILE__)
     options[:max_memory_factor] = parse_property(config, "max_memory_factor", Float, :optional => true)
+    proxy_config = parse_property(config, "bandwidth_proxy", Hash)
+    options[:proxy_bin] = parse_property(proxy_config, "bin", String)
+    options[:proxy_window] = parse_property(proxy_config, "window", Integer)
+    options[:proxy_limit] = parse_property(proxy_config, "size", Integer)
     options
   end
 

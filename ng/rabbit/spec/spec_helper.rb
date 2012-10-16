@@ -67,6 +67,10 @@ def getNodeTestConfig
     :migration_nfs => "/tmp/migration",
     :service_start_timeout => parse_property(config, "service_start_timeout", Integer, :optional => true),
   }
+  proxy_config = parse_property(config, "bandwidth_proxy", Hash)
+  options[:proxy_bin] = parse_property(proxy_config, "bin", String)
+  options[:proxy_window] = parse_property(proxy_config, "window", Integer)
+  options[:proxy_limit] = parse_property(proxy_config, "size", Integer)
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options
 end

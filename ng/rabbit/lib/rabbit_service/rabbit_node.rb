@@ -39,6 +39,13 @@ class VCAP::Services::Rabbit::Node
     options[:max_clients] ||= 500
     options[:max_memory_factor] ||= 0.5
     options[:max_capacity] = @max_capacity
+    # Default bin path for bandwidth proxy
+    options[:proxy_bin] ||= "/var/vcap/packages/bandwidth_proxy/bin/bandwidth_proxy"
+    # Default throughput limit is 1MB/day
+    # Default limit window is 1 day
+    options[:proxy_window] ||= 86400
+    # Default limit size is 1 MB
+    options[:proxy_limit] ||= 1
     # Configuration used in warden
     @rabbitmq_port = options[:instance_port] = 10001
     @rabbitmq_admin_port = options[:instance_admin_port] = 20001
@@ -346,6 +353,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
   property :plan,            Integer,     :required => true
   property :plan_option,     String,      :required => false
   property :pid,             Integer
+  property :proxy_pid,       Integer,     :required => true
   property :memory,          Integer,     :required => true
   property :status,          Integer,     :default => 0
   property :container,       String
@@ -382,6 +390,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       instance.plan = 1
       instance.plan_option = "rw"
       instance.pid = 0
+      instance.proxy_pid = 0
 
       raise "Cannot save provision service" unless instance.save!
 
@@ -425,12 +434,81 @@ EOF
     end
   end
 
+  def close_fds
+    3.upto(get_max_open_fd) do |fd|
+      begin
+        IO.for_fd(fd, "r").close
+      rescue
+      end
+    end
+  end
+
+  def get_max_open_fd
+    max = 0
+
+    dir = nil
+    if File.directory?("/proc/self/fd/") # Linux
+      dir = "/proc/self/fd/"
+    elsif File.directory?("/dev/fd/") # Mac
+      dir = "/dev/fd/"
+    end
+
+    if dir
+      Dir.foreach(dir) do |entry|
+        begin
+          pid = Integer(entry)
+          max = pid if pid > max
+        rescue
+        end
+      end
+    else
+      max = 65535
+    end
+
+    max
+  end
+
   def service_port
     @@options[:instance_port]
   end
 
   def service_script
     "rabbitmq_startup.sh #{self[:name]}"
+  end
+
+  def run
+    super
+    start_proxy
+    unmap_port(self[:port], self[:ip], service_port)
+    save!
+    true
+  end
+
+  def stop
+    map_port(self[:port], self[:ip], service_port)
+    stop_proxy
+    super
+  end
+
+  def start_proxy
+    self[:proxy_pid] = Process.fork do
+      close_fds
+      STDOUT.reopen(File.open("#{log_dir}/bandwidth_proxy_stdout.log", "a"))
+      STDERR.reopen(File.open("#{log_dir}/bandwidth_proxy_stderr.log", "a"))
+      exec(@@options[:proxy_bin],
+           "-eport",  port.to_s,                         # External port proxy listen to
+           "-iport",  service_port.to_s,                 # Internal port service listen to
+           "-iip",    ip,                                # Internal ip service work on
+           "-l",      "#{log_dir}/bandwidth_proxy.log",  # Log file
+           "-window", @@options[:proxy_window].to_s,     # Time window to check for the transfer size(both in and out)
+           "-limit",  (@@options[:proxy_limit] * 1024 * 1024).to_s)      # Limit size allowed every time window
+    end
+    Process.detach(self[:proxy_pid])
+  end
+
+  def stop_proxy
+    Process.kill(:SIGTERM, self[:proxy_pid])
+    self[:proxy_pid] = 0
   end
 
   def migration_check
