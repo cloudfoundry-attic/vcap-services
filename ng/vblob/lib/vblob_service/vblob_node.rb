@@ -30,7 +30,7 @@ module VCAP
   module Services
     module VBlob
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService
+        class ProvisionedService < VCAP::Services::Base::WardenService
         end
       end
     end
@@ -253,8 +253,6 @@ end
 class VCAP::Services::VBlob::Node::ProvisionedService
 
   include DataMapper::Resource
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
   include VCAP::Services::VBlob
 
   VBLOB_TIMEOUT = 3
@@ -275,19 +273,13 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     include VCAP::Services::VBlob
 
     def init(options)
-      @base_dir = options[:base_dir]
-      @log_dir = options[:vblobd_log_dir]
+      super(options)
       @max_disk = options[:max_disk] || 2048 #default max megabytes
-      @logger = options[:logger]
       @@config_template = ERB.new(File.read(options[:config_template]))
       @@vblobd_path = options[:vblobd_path]
       @@vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
       @@vblobd_obj_limit = options[:vblobd_obj_limit] || 32768  #default max obj num
       @@vblobd_tmp_dir = options[:vblobd_tmp_dir]
-      FileUtils.mkdir_p(base_dir)
-      FileUtils.mkdir_p(log_dir)
-      DataMapper.setup(:default, options[:local_db])
-      DataMapper::auto_upgrade!
     end
 
     def create(port, name, username, password)

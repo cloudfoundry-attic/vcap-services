@@ -113,7 +113,7 @@ def getNodeTestConfig()
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)
-    options[:log_dir] = parse_property(warden_config, "log_dir", String)
+    options[:service_log_dir] = parse_property(warden_config, "service_log_dir", String)
     options[:image_dir] = parse_property(warden_config, "image_dir", String)
     options[:port_range] = parse_property(warden_config, "port_range", Range)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)

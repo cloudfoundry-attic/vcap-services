@@ -49,7 +49,7 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       :mongodump_path => parse_property(@config, "mongodump_path", Hash),
       :supported_versions => parse_property(@config, "supported_versions", Array),
       :default_version => parse_property(@config, "default_version", String),
-      :mongod_log_dir => parse_property(@config, "mongod_log_dir", String),
+      :service_log_dir => parse_property(@config, "service_log_dir", String),
       :image_dir => parse_property(@config, "image_dir", String),
       :timeout => parse_property(@config, "timeout", Integer, :optional => true, :default => 10)
     }

@@ -22,9 +22,6 @@ class VCAP::Services::Memcached::NodeBin < VCAP::Services::Base::NodeBin
 
   def additional_config(options, config)
     options[:memcached_server_path] = parse_property(config, "memcached_server_path", String)
-    options[:port_range] = parse_property(config, "port_range", Range)
-    options[:memcached_log_dir] = parse_property(config, "memcached_log_dir", String)
-    options[:max_clients] = parse_property(config, "max_clients", Integer, :optional => true)
     options[:memcached_memory] = parse_property(config, "memcached_memory", Integer)
     options[:sasl_enabled] = parse_property(config, "sasl_enabled", Boolean, :optional => true)
     options

@@ -66,7 +66,7 @@ def get_node_config()
     :node_id => parse_property(config, "node_id", String),
     :port_range => Range.new(5000, 25000),
     :mbus => parse_property(config, "mbus", String),
-    :memcached_log_dir => "/tmp/memcached/memcached_log",
+    :service_log_dir => "/tmp/memcached/memcached_log",
     :max_clients => parse_property(config, "max_clients", Integer),
     :memcached_memory => parse_property(config, "memcached_memory", Integer),
     :plan => parse_property(config, "memcached_memory", Integer),

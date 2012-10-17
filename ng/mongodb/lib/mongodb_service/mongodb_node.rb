@@ -16,7 +16,7 @@ module VCAP
   module Services
     module MongoDB
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService
+        class ProvisionedService < VCAP::Services::Base::WardenService
         end
       end
     end
@@ -327,8 +327,6 @@ end
 
 class VCAP::Services::MongoDB::Node::ProvisionedService
   include DataMapper::Resource
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
 
   property :name,       String,   :key => true
   property :port,       Integer,  :unique => true
@@ -353,27 +351,12 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   class << self
     def init(args)
-      raise "Parameter :base_dir missing" unless args[:base_dir]
-      raise "Parameter :mongod_log_dir missing" unless args[:mongod_log_dir]
-      raise "Parameter :image_dir missing" unless args[:image_dir]
-      raise "Parameter :local_db missing" unless args[:local_db]
-      @base_dir            = args[:base_dir]
-      @log_dir             = args[:mongod_log_dir]
-      @image_dir           = args[:image_dir]
-      @logger              = args[:logger]
-      @max_disk            = args[:max_disk] ? args[:max_disk] : 128
-      @quota               = args[:filesystem_quota] || false
+      super(args)
       @@mongod_path        = args[:mongod_path] ? args[:mongod_path] : { args[:default_version] => 'mongod' }
       @@mongod_options     = args[:mongod_options] ? args[:mongod_options] : { args[:default_version] => '' }
       @@mongorestore_path  = args[:mongorestore_path] ? args[:mongorestore_path] : { args[:default_version] => 'mongorestore' }
       @@mongodump_path     = args[:mongodump_path] ? args[:mongodump_path] : { args[:default_version] => 'mongodump' }
       @@tar_path           = args[:tar_path] ? args[:tar_path] : 'tar'
-      FileUtils.mkdir_p(File.dirname(args[:local_db].split(':')[1]))
-      DataMapper.setup(:default, args[:local_db])
-      DataMapper::auto_upgrade!
-      FileUtils.mkdir_p(base_dir)
-      FileUtils.mkdir_p(log_dir)
-      FileUtils.mkdir_p(image_dir)
     end
 
     def create(args)

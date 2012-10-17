@@ -24,5 +24,6 @@ command_rename_prefix: protect-command-prefix
 gzip_bin: gzip
 redis_server_path:
  "2.2": "redis-server"
-redis_log_dir: /var/vcap/sys/log/redis
+service_log_dir: /var/vcap/sys/log/redis
+>>>>>>> fc68b04... Move warden common options parsing to base
 image_dir: /var/vcap/services/redis/redis_image

@@ -13,7 +13,7 @@ memcached_memory: 16
 port_range:
   first: 5000
   last: 25000
-memcached_log_dir: /var/vcap/sys/log/memcached
+service_log_dir: /var/vcap/sys/log/memcached
 max_clients: 500
 memcached_timeout: 2
 sasl_enabled: false

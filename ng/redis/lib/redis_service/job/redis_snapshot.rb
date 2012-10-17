@@ -23,7 +23,7 @@ module VCAP::Services::Redis::Snapshot
     @redis_timeout = 2
     options = {
       :base_dir => @config["base_dir"],
-      :redis_log_dir => @config["redis_log_dir"],
+      :service_log_dir => @config["service_log_dir"],
       :image_dir => @config["image_dir"],
       :max_disk => @config["max_disk"],
       :local_db => @config["local_db"]

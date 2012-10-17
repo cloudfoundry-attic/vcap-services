@@ -20,7 +20,7 @@ describe VCAP::Services::Rabbit::Node do
     @options = getNodeTestConfig
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:image_dir])
-    FileUtils.mkdir_p(@options[:rabbitmq_log_dir])
+    FileUtils.mkdir_p(@options[:service_log_dir])
     FileUtils.mkdir_p(@options[:migration_nfs])
 
     # Setup code must be wrapped in EM.run
@@ -32,7 +32,7 @@ describe VCAP::Services::Rabbit::Node do
 
   after :all do
     FileUtils.rm_f(@options[:local_db_file])
-    FileUtils.rm_rf(@options[:rabbitmq_log_dir])
+    FileUtils.rm_rf(@options[:service_log_dir])
     FileUtils.rm_rf(@options[:image_dir])
     FileUtils.rm_rf(@options[:migration_nfs])
     FileUtils.rm_rf(@options[:base_dir])

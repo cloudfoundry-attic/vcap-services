@@ -163,7 +163,7 @@ describe "Mongodb Node" do
       doc = coll.find_one()
       doc['a'].should == 1
     end
-    
+
     it "should return error when unprovisioning a non-existed instance" do
       lambda {
         @node.unprovision('no existed', [])

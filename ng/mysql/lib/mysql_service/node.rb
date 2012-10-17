@@ -15,7 +15,7 @@ module VCAP
       class Node < VCAP::Services::Base::Node
         class ProvisionedService
         end
-        class WardenProvisionedService
+        class WardenProvisionedService < VCAP::Services::Base::WardenService
         end
       end
     end
@@ -798,8 +798,6 @@ end
 class VCAP::Services::Mysql::Node::WardenProvisionedService
 
   include DataMapper::Resource
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
 
   property :name,            String,   :key => true
   property :port,            Integer,  :unique => true
@@ -816,21 +814,13 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   class << self
 
     def init(options)
-      @base_dir              = options[:base_dir]
-      @log_dir               = options[:log_dir]
-      @image_dir             = options[:image_dir]
+      super(options)
       @max_disk              = (options[:max_db_size] + options[:disk_overhead]).ceil
-      @quota                 = options[:filesystem_quota] || false
-      @logger                = options[:logger]
       @@max_heap_table_size  = options[:max_heap_table_size]
       @@micro                = options[:micro]
       @@production           = options[:production]
       @@config_templates     = prepare_templates options[:config_templates]
       @@new_iptables_lock    = Mutex.new
-
-      FileUtils.mkdir_p(base_dir)
-      FileUtils.mkdir_p(log_dir)
-      FileUtils.mkdir_p(image_dir)
     end
 
     def prepare_templates templates

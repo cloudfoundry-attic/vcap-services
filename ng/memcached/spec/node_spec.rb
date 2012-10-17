@@ -34,7 +34,7 @@ describe VCAP::Services::Memcached::Node do
     @local_db_file = @options[:local_db_file]
 
     FileUtils.mkdir_p(@options[:base_dir])
-    FileUtils.mkdir_p(@options[:memcached_log_dir])
+    FileUtils.mkdir_p(@options[:service_log_dir])
 
     @logger.info("Starting...")
 
@@ -60,7 +60,7 @@ describe VCAP::Services::Memcached::Node do
   after :all do
     FileUtils.rm_f(@local_db_file)
     FileUtils.rm_rf(@options[:base_dir])
-    FileUtils.rm_rf(@options[:memcached_log_dir])
+    FileUtils.rm_rf(@options[:service_log_dir])
   end
 
 #  describe 'SASLAdmin' do

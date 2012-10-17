@@ -11,7 +11,7 @@ describe "MongoDB node backup/restore"  do
     @default_version = @opts[:default_version]
     bin_dir = File.dirname(@opts[:mongod_path][@default_version])
     BINARY_DIR = bin_dir == '.' ? '' : bin_dir
-    MONGOD_LOG = @opts[:mongod_log_dir]
+    MONGOD_LOG = @opts[:service_log_dir]
     @opts[:mongod_path][@default_version].match "(.+#{File::SEPARATOR}).+"
 
     @config_template = ERB.new(File.read(TEMPLATE_FILE))

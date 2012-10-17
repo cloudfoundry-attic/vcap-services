@@ -4,7 +4,7 @@ backup_base_dir: /mnt/nfs/servicebackup
 local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
 base_dir: /var/vcap/services/mongodb/instances/
 image_dir: /var/vcap/services/mongodb/images/
-mongod_log_dir: /var/vcap/sys/log/mongodb
+service_log_dir: /var/vcap/sys/log/mongodb
 mongodump_path:
   "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongodump"
   "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongodump"

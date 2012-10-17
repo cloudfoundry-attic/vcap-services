@@ -22,7 +22,7 @@ warden:
   port_range:
     first: 25001
     last: 45000
-  log_dir: /var/vcap/services/postgresql/log
+  service_log_dir: /var/vcap/services/postgresql/log
   image_dir: /var/vcap/services/postgresql/image
   service_start_timeout: 3
   filesystem_quota: true

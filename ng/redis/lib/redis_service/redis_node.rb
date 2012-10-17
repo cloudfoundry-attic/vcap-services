@@ -19,7 +19,7 @@ module VCAP
   module Services
     module Redis
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService
+        class ProvisionedService < VCAP::Services::Base::WardenService
         end
       end
     end
@@ -326,8 +326,6 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   include DataMapper::Resource
   include VCAP::Services::Redis
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
 
   property :name,       String,   :key => true
   property :port,       Integer,  :unique => true
@@ -350,19 +348,8 @@ class VCAP::Services::Redis::Node::ProvisionedService
     include VCAP::Services::Redis
 
     def init(options)
-      @@options = options
-      @base_dir = options[:base_dir]
-      @log_dir = options[:redis_log_dir]
-      @image_dir = options[:image_dir]
-      @logger = options[:logger]
-      @max_disk = options[:max_disk]
-      @quota = options[:filesystem_quota] || false
-      @memory_limit = options[:max_memory] + (options[:memory_overhead] || 0)
-      FileUtils.mkdir_p(base_dir)
-      FileUtils.mkdir_p(log_dir)
-      FileUtils.mkdir_p(image_dir)
-      DataMapper.setup(:default, options[:local_db])
-      DataMapper::auto_upgrade!
+      super(options)
+      @memory_limit = (options[:max_memory] || 128) + (options[:memory_overhead] || 0)
     end
 
     def create(port, version, plan=nil, name=nil, password=nil, db_file=nil, is_upgraded=false)

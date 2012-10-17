@@ -14,7 +14,7 @@ module VCAP
   module Services
     module Rabbit
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService
+        class ProvisionedService < VCAP::Services::Base::WardenService
         end
       end
     end
@@ -335,8 +335,6 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
   include DataMapper::Resource
   include VCAP::Services::Rabbit
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
 
   property :name,            String,      :key => true
   property :vhost,           String,      :required => true
@@ -358,18 +356,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
   class << self
 
     def init(options)
-      @@options = options
-      @base_dir = options[:base_dir]
-      @log_dir = options[:rabbitmq_log_dir]
-      @image_dir = options[:image_dir]
-      @logger = options[:logger]
-      @max_disk = options[:max_disk]
-      @quota = options[:filesystem_quota] || false
-      FileUtils.mkdir_p(options[:base_dir])
-      FileUtils.mkdir_p(options[:rabbitmq_log_dir])
-      FileUtils.mkdir_p(options[:image_dir])
-      DataMapper.setup(:default, options[:local_db])
-      DataMapper::auto_upgrade!
+      super
     end
 
     def create(port, admin_port, plan=nil, credentials=nil)

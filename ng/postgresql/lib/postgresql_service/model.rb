@@ -43,10 +43,8 @@ module VCAP
           belongs_to :provisionedservice
         end
 
-        class Wardenprovisionedservice
+        class Wardenprovisionedservice < VCAP::Services::Base::WardenService
           include DataMapper::Resource
-          include VCAP::Services::Base::Utils
-          include VCAP::Services::Base::Warden
 
           property :name,             String,   :key => true
           # property plan is deprecated. The instances in one node have same plan.
@@ -62,21 +60,9 @@ module VCAP
           class << self
             attr_reader :max_db_size
             def init(args)
-              raise "Parameter :base_dir missing" unless args[:base_dir]
-              raise "Parameter :log_dir missing" unless args[:log_dir]
-              raise "Parameter :image_dir missing" unless args[:image_dir]
-              @@options = args
-              @base_dir            = args[:base_dir]
-              @log_dir             = args[:log_dir]
-              @image_dir           = args[:image_dir]
-              @logger              = args[:logger]
+              super(args)
               @max_db_size         = ((args[:max_db_size] + args[:db_size_overhead]) * 1024 * 1024).round
               @max_disk            = (args[:disk_overhead] + args [:max_db_size] + args[:db_size_overhead]).ceil
-              @quota               = args[:filesystem_quota] || false
-
-              FileUtils.mkdir_p(base_dir)
-              FileUtils.mkdir_p(log_dir)
-              FileUtils.mkdir_p(image_dir)
             end
           end
 

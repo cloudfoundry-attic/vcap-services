@@ -18,7 +18,7 @@ describe VCAP::Services::Redis::Node do
     @options = getNodeTestConfig
     FileUtils.mkdir_p(@options[:base_dir])
     FileUtils.mkdir_p(@options[:image_dir])
-    FileUtils.mkdir_p(@options[:redis_log_dir])
+    FileUtils.mkdir_p(@options[:service_log_dir])
     FileUtils.mkdir_p(@options[:migration_nfs])
     @default_version = @options[:default_version]
 
@@ -33,7 +33,7 @@ describe VCAP::Services::Redis::Node do
   after :all do
     FileUtils.rm_f(@options[:local_db_file])
     FileUtils.rm_rf(@options[:base_dir])
-    FileUtils.rm_rf(@options[:redis_log_dir])
+    FileUtils.rm_rf(@options[:service_log_dir])
     FileUtils.rm_rf(@options[:image_dir])
     FileUtils.rm_rf(@options[:migration_nfs])
   end

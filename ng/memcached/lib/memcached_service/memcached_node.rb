@@ -23,7 +23,7 @@ module VCAP
   module Services
     module Memcached
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService
+        class ProvisionedService < VCAP::Services::Base::WardenService
         end
       end
     end
@@ -248,8 +248,6 @@ end
 
 class VCAP::Services::Memcached::Node::ProvisionedService
   include DataMapper::Resource
-  include VCAP::Services::Base::Utils
-  include VCAP::Services::Base::Warden
   include VCAP::Services::Memcached
 
   property :name,       String,      :key => true
@@ -269,28 +267,12 @@ class VCAP::Services::Memcached::Node::ProvisionedService
 
   class << self
     def init(args)
-      raise "Parameter :base_dir missing"          unless args[:base_dir]
-      raise "Parameter :memcached_log_dir missing" unless args[:memcached_log_dir]
-      raise "Parameter :memcached_server_path"     unless args[:memcached_server_path]
-      raise "Parameter :local_db missing"          unless args[:local_db]
-
-      @base_dir              = args[:base_dir]
-      @log_dir               = args[:memcached_log_dir]
-
+      super(args)
       @@memcached_server_path = args[:memcached_server_path]
       @@memcached_timeout     = args[:memcached_timeout] || 2
       @@memcached_memory      = args[:memcached_memory]
       @@max_clients           = args[:max_clients] || 500
       @@sasl_enabled          = args[:sasl_enabled] || false
-
-      @logger                = args[:logger]
-      @quota                 = args[:filesystem_quota] || false
-
-      FileUtils.mkdir_p(@base_dir)
-      FileUtils.mkdir_p(@log_dir)
-
-      DataMapper.setup(:default, args[:local_db])
-      DataMapper::auto_upgrade!
     end
 
     def create(args)
@@ -350,7 +332,7 @@ class VCAP::Services::Memcached::Node::ProvisionedService
       "-p #{SERVICE_PORT}",
       "-c #{@@max_clients}",
       "-v",
-      @@sasl_enabled ? "-S" : "" 
+      @@sasl_enabled ? "-S" : ""
     ]
     cmd_components.join(" ")
   end

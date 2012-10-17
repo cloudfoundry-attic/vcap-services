@@ -60,7 +60,7 @@ def getNodeTestConfig
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
     :max_swap => parse_property(config, "max_swap", Integer),
-    :redis_log_dir => "/tmp/redis_log",
+    :service_log_dir => "/tmp/redis_log",
     :command_rename_prefix => parse_property(config, "command_rename_prefix", String),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :image_dir => "/tmp/redis_image",

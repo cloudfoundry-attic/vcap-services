@@ -60,7 +60,7 @@ def getNodeTestConfig
     :capacity => parse_property(config, "capacity", Integer),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :port_range => parse_property(config, "port_range", Range),
-    :rabbitmq_log_dir => "/tmp/rabbitmq_instances/log",
+    :service_log_dir => "/tmp/rabbitmq_instances/log",
     :config_template => File.expand_path("../../resources/rabbitmq.config.erb", __FILE__),
     :image_dir => "/tmp/redis_image",
     :max_disk => parse_property(config, "max_disk", Integer),
