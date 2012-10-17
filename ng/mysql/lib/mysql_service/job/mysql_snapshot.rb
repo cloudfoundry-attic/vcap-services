@@ -31,12 +31,13 @@ module VCAP::Services::Mysql::Snapshot
       filename = "#{snapshot_id}.sql.gz"
       dump_file_name = File.join(dump_path, filename)
 
-      mysql_conf = @config["mysql"]
-      if use_warden
-        init_localdb(@config["local_db"])
-        mysql_conf["host"] = mysql_provisioned_service(use_warden).get(mysql_conf["name"]).ip
-      end
-      result = dump_database(name, mysql_conf, dump_file_name, :mysqldump_bin => @config["mysqldump_bin"], :gzip_bin => @config["gzip_bin"])
+      init_localdb(@config["local_db"])
+      srv =  mysql_provisioned_service(use_warden).get(name)
+      raise "Can't find service instance:#{name}" unless srv
+      mysql_conf = @config["mysql"][srv.version]
+      mysql_conf["host"] = srv.ip if use_warden
+
+      result = dump_database(name, mysql_conf, dump_file_name, :mysqldump_bin => mysql_conf["mysqldump_bin"], :gzip_bin => @config["gzip_bin"])
       raise "Failed to execute dump command to #{name}" unless result
 
       dump_file_size = -1
@@ -46,7 +47,8 @@ module VCAP::Services::Mysql::Snapshot
         :size => dump_file_size,
         :files => [filename],
         :manifest => {
-          :version => 1
+          :version => 1,
+          :service_version => srv.version
         }
       }
 
@@ -62,18 +64,20 @@ module VCAP::Services::Mysql::Snapshot
     def execute
       init_localdb(@config["local_db"])
       use_warden = @config["use_warden"] || false
+
       srv = mysql_provisioned_service(use_warden).get(name)
+      raise "Can't find service instance:#{name}" unless srv
+      mysql_conf = @config["mysql"][srv.version]
+      mysql_conf["host"] = srv.ip if use_warden
       instance_user = srv.user
       instance_pass = srv.password
 
-      mysql_conf = @config["mysql"]
       snapshot_file_path = @snapshot_files[0]
       raise "Can't find snapshot file #{snapshot_file_path}" unless File.exists?(snapshot_file_path)
       manifest = @manifest
       @logger.debug("Manifest for snapshot: #{manifest}")
 
-      mysql_conf["host"] = srv.ip if use_warden
-      result = import_dumpfile(name, mysql_conf, instance_user, instance_pass, snapshot_file_path, :mysql_bin => @config["mysql_bin"], :gzip_bin => @config["gzip_bin"])
+      result = import_dumpfile(name, mysql_conf, instance_user, instance_pass, snapshot_file_path, :mysql_bin => mysql_conf["mysql_bin"], :gzip_bin => @config["gzip_bin"])
       raise "Failed execute import command to #{name}" unless result
 
       true

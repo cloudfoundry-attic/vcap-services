@@ -245,6 +245,7 @@ module VCAP
             connection.checked_out_by = direct_caller
 
             timing { yield connection.conn }
+            connection.last_active_time = Time.now
           ensure
             release_connection(connection_id) if fresh_connection
           end

@@ -25,8 +25,9 @@ describe 'Mysql Connection Pool Test' do
     @opts = getNodeTestConfig
     @logger = @opts[:logger]
     @opts.freeze
-    @mysql_config = @opts[:mysql]
-    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    @mysql_configs = @opts[:mysql]
+    @default_version = @opts[:supported_versions][0]
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_configs[@default_version][opt] }
     @pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => 20)
   end
 
@@ -61,7 +62,7 @@ describe 'Mysql Connection Pool Test' do
   end
 
   it "should verify a connection before checkout" do
-    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_configs[@default_version][opt] }
     pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger)
     pool.max = 1
 
@@ -124,7 +125,7 @@ describe 'Mysql Connection Pool Test' do
   end
 
   it "should raise error when pool is still empty after timeout second" do
-    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_configs[@default_version][opt] }
     # create a tiny pool with very short timeout
     pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql",
                                      :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger, :wait_timeout => 2)
@@ -155,7 +156,7 @@ describe 'Mysql Connection Pool Test' do
   end
 
   it "should enlarge and shrink connection pool" do
-    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_config[opt] }
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_configs[@default_version][opt] }
     # create a tiny pool with very short timeout
     pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql",
                                      :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger, :expire => 2,

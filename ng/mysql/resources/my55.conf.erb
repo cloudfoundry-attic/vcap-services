@@ -1,5 +1,5 @@
 [client]
-port      = 3306
+port      = 3307
 socket    = /var/vcap/sys/run/mysqld/mysqld.sock
 
 [mysqld_safe]
@@ -13,13 +13,12 @@ character_set_server    = utf8
 user    = vcap
 pid-file  = /var/vcap/sys/run/mysqld/mysqld.pid
 socket    = /var/vcap/sys/run/mysqld/mysqld.sock
-port      = 3306
+port      = 3307
 basedir   = /usr
 datadir   = <%= mysql_data_dir %>
 tmpdir    = <%= mysql_tmp_dir %>
-language  = /var/vcap/packages/mysql/share/mysql/english
+lc-messages-dir      = /var/vcap/packages/mysql55/share
 skip-external-locking
-fast_index_creation = false
 <% if max_heap_table_size %>
 maximum-max_heap_table_size = <%= max_heap_table_size %>
 max_heap_table_size         = <%= max_heap_table_size %>
