@@ -144,7 +144,7 @@ class VCAP::Services::Redis::Node
     end
   end
 
-  def provision(plan, credentials = nil, version=nil, db_file = nil)
+  def provision(plan, credentials = nil, version=nil)
     @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
     raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) if !@supported_versions.include?(version)
@@ -152,28 +152,10 @@ class VCAP::Services::Redis::Node
     instance = ProvisionedService.new
     instance.version = version
     instance.plan = 1
-    if credentials
-      instance.name = credentials["name"]
-      @free_ports_mutex.synchronize do
-        if @free_ports.include?(credentials["port"])
-          @free_ports.delete(credentials["port"])
-          instance.port = credentials["port"]
-        else
-          port = @free_ports.first
-          @free_ports.delete(port)
-          instance.port = port
-        end
-      end
-      instance.password = credentials["password"]
-    else
-      @free_ports_mutex.synchronize do
-        port = @free_ports.first
-        @free_ports.delete(port)
-        instance.port = port
-      end
-      instance.name = UUIDTools::UUID.random_create.to_s
-      instance.password = UUIDTools::UUID.random_create.to_s
-    end
+
+    instance.name = credentials && credentials["name"] ? credentials["name"] : UUIDTools::UUID.random_create.to_s
+    instance.port = credentials && credentials["port"] ? fetch_port(credentials["port"]) : fetch_port
+    instance.password = credentials && credentials["password"] ? credentials["password"] : UUIDTools::UUID.random_create.to_s
 
     begin
       instance.memory = memory_for_instance(instance)
@@ -181,7 +163,7 @@ class VCAP::Services::Redis::Node
       raise e
     end
     begin
-      instance.pid = start_instance(instance, db_file)
+      instance.pid = start_instance(instance)
       save_instance(instance)
     rescue => e1
       begin
@@ -256,6 +238,7 @@ class VCAP::Services::Redis::Node
 
   def update_instance(service_credentials, binding_credentials_map = {})
     instance = get_instance(service_credentials["name"])
+
     service_credentials = gen_credentials(instance)
     binding_credentials_map.each do |key, value|
       binding_credentials_map[key]["credentials"] = gen_credentials(instance)
@@ -271,19 +254,53 @@ class VCAP::Services::Redis::Node
     instance = ProvisionedService.get(service_credentials['name'])
     raise "Cannot find provisioned service instance: #{service_credentials['name']}" if instance.nil?
 
+    dump_file_name = File.join(dump_dir, 'dump_file')
+    File.open(dump_file_name, 'w') do |f|
+      Marshal.dump(instance, f)
+    end
+
     instance.password = @disable_password
     dump_redis_data(instance, dump_dir)
   end
 
   def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
-    # TODO: We always import to the default version of redis.
-    # TODO: Fix this behaviour - add version information to dump so that a correct version of redis can be provisioned
-    provision(plan, service_credentials, @default_version, db_file)
+
+    # Load provisioned_service from dumped file
+    stored_service = nil
+    dump_file_name = File.join(dump_dir, 'dump_file')
+    File.open(dump_file_name, 'r') do |f|
+      stored_service = Marshal.load(f)
+    end
+    raise "Cannot parse dumpfile stored_service in #{dump_file_name}" if stored_service.nil?
+
+    port = fetch_port
+
+    provisioned_service = ProvisionedService.new
+    provisioned_service.name = stored_service.name
+    provisioned_service.port = port
+    provisioned_service.password = stored_service.password
+    provisioned_service.plan = stored_service.plan
+    provisioned_service.memory = stored_service.memory
+    provisioned_service.version = stored_service.version
+
+    provisioned_service.pid = start_instance(provisioned_service, db_file)
+
+    raise "Cannot save provisioned_service: #{provisioned_service.inspect}" unless provisioned_service.save
+
     true
   rescue => e
     @logger.warn(e)
     nil
+  end
+
+  def fetch_port(port=nil)
+    @free_ports_mutex.synchronize do
+      port ||= @free_ports.first
+      raise "port #{port} is already taken!" unless @free_ports.include?(port)
+      @free_ports.delete(port)
+      port
+    end
   end
 
   def all_instances_list
