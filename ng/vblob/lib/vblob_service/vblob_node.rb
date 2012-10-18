@@ -283,6 +283,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
       @@vblobd_path = options[:vblobd_path]
       @@vblobd_auth = options[:vblobd_auth] || "basic" #default is basic auth
       @@vblobd_obj_limit = options[:vblobd_obj_limit] || 32768  #default max obj num
+      @@vblobd_tmp_dir = options[:vblobd_tmp_dir]
       FileUtils.mkdir_p(base_dir)
       FileUtils.mkdir_p(log_dir)
       DataMapper.setup(:default, options[:local_db])
@@ -299,6 +300,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
       provisioned_service.prepare_filesystem(max_disk)
       FileUtils.mkdir_p(provisioned_service.data_dir)
+      FileUtils.mkdir_p(provisioned_service.tmp_dir)
 
       provisioned_service.generate_config
       provisioned_service
@@ -310,6 +312,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     vblob_root_dir = "/store/instance/vblob_data"
     vblob_node_path = "/usr/bin/node"
     log_file = "/store/log/vblob.log"
+    vblobd_tmp_dir = "/store/tmp"
     account_file = File.join("/store/instance/", "account.json")
     config_file = File.join("/store/instance/", "config.json")
     vblobd_quota = provisioned_service.class.max_disk * 1024 * 1024
@@ -333,6 +336,10 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def data_dir?
     Dir.exists?(data_dir)
+  end
+
+  def tmp_dir
+    File.join(@@vblobd_tmp_dir, self[:name])
   end
 
   def add_user(username, password, bind_opts)
@@ -367,4 +374,12 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     generate_config
   end
 
+  def additional_binds
+    [{:src_path => tmp_dir,
+      :dst_path => "/store/tmp",}]
+  end
+
+  def util_dirs
+    [tmp_dir]
+  end
 end

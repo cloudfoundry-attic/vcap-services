@@ -13,6 +13,7 @@ pid: /var/vcap/sys/run/vblob_node.pid
 node_id: vblob_node_free_1
 vblobd_path: /var/vcap/packages/vblob
 vblobd_auth: disabled
+vblobd_tmp_dir: /tmp
 max_disk: 2048
 vblobd_obj_limit: 32768
 supported_versions: ['0.51']

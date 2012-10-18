@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 98b180d6c7db85c6d8e5e52fc6ba727f1eef3d5b
-  ref: 98b180d6c7
+  revision: 74e0772820b0f3bc474c354fb7738fb36440faa5
+  ref: 74e0772820
   specs:
     vcap_services_base (0.1.16)
       curb (~> 0.7.16)
@@ -77,7 +77,7 @@ GEM
       builder (>= 2.1.2)
     curb (0.7.18)
     daemons (1.1.8)
-    data_objects (0.10.9)
+    data_objects (0.10.10)
       addressable (~> 2.1)
     datamapper (1.1.0)
       dm-aggregates (= 1.1.0)
@@ -115,8 +115,8 @@ GEM
       uuidtools (~> 2.1.2)
     dm-validations (1.1.0)
       dm-core (~> 1.1.0)
-    do_sqlite3 (0.10.9)
-      data_objects (= 0.10.9)
+    do_sqlite3 (0.10.10)
+      data_objects (= 0.10.10)
     em-http-request (1.0.0.beta.3)
       addressable (>= 2.2.3)
       em-socksify
@@ -148,13 +148,13 @@ GEM
     rack (1.4.1)
     rake (0.9.2.2)
     rcov (0.9.9)
-    redis (3.0.1)
+    redis (3.0.2)
     redis-namespace (1.2.1)
       redis (~> 3.0.0)
     redisk (0.2.2)
       redis (>= 0.1.1)
       redis-namespace (>= 0.1.0)
-    resque (1.22.0)
+    resque (1.23.0)
       multi_json (~> 1.0)
       redis-namespace (~> 1.0)
       sinatra (>= 0.9.2)
