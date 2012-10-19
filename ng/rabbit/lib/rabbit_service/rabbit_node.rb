@@ -409,9 +409,9 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       # (b) make the number grow more slowly as of max_capacity increases.
       vm_memory_high_watermark = @@options[:max_memory_factor] / (1 + Math.log(@@options[:max_capacity]))
       # In RabbitMQ, If the file_handles_high_watermark is x, then the socket limitation is trunc(x * 0.9) - 2,
-      # to let the @max_clients be a more accurate limitation, and rabbit will use 1 for itself,
-      # the file_handles_high_watermark will be set to ceil((@max_clients + 2) / 0.9) + 1
-      file_handles_high_watermark = ((@@options[:max_clients] + 2) / 0.9).ceil + 1
+      # to let the @max_clients be a more accurate limitation,
+      # the file_handles_high_watermark will be set to ceil((@max_clients + 2) / 0.9)
+      file_handles_high_watermark = ((@@options[:max_clients] + 2) / 0.9).ceil
       # Writes the RabbitMQ server erlang configuration file
       config_template = ERB.new(File.read(@@options[:config_template]))
       config = config_template.result(Kernel.binding)
