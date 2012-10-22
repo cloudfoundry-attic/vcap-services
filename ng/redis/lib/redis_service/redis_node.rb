@@ -87,7 +87,7 @@ class VCAP::Services::Redis::Node
     end
   end
 
-  def provision(plan = nil, credentials = nil, version = nil, db_file = nil)
+  def provision(plan = nil, credentials = nil, version = nil)
     @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
     raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
@@ -96,10 +96,10 @@ class VCAP::Services::Redis::Node
     instance = nil
     if credentials
       port = new_port(credentials["port"])
-      instance = ProvisionedService.create(port, version, plan, credentials["name"], credentials["password"], db_file)
+      instance = ProvisionedService.create(port, version, plan, credentials["name"], credentials["password"])
     else
       port = new_port
-      instance = ProvisionedService.create(port, version, plan, nil, nil, db_file)
+      instance = ProvisionedService.create(port, version, plan, nil, nil)
     end
     instance.run
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
@@ -210,7 +210,15 @@ class VCAP::Services::Redis::Node
   end
 
   def dump_instance(service_credentials, binding_credentials_list = [], dump_dir)
+    FileUtils.mkdir_p(dump_dir)
     instance = get_instance(service_credentials["name"])
+    raise "Cannot find provisioned service instance: #{service_credentials['name']}" if instance.nil?
+
+    dump_file_name = File.join(dump_dir, 'dump_file')
+    File.open(dump_file_name, 'w') do |f|
+      Marshal.dump(instance, f)
+    end
+
     instance.password = @disable_password
     dump_redis_data(instance)
     FileUtils.cp(File.join(instance.data_dir, "dump.rdb"), dump_dir)
@@ -219,9 +227,26 @@ class VCAP::Services::Redis::Node
 
   def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
-    # TODO: We always import to the default version of redis.
-    # TODO: Fix this behaviour - add version information to dump so that a correct version of redis can be provisioned
-    provision(plan, service_credentials, @default_version, db_file)
+
+    # Load provisioned_service from dumped file
+    stored_service = nil
+    dump_file_name = File.join(dump_dir, 'dump_file')
+    File.open(dump_file_name, 'r') do |f|
+      stored_service = Marshal.load(f)
+    end
+    raise "Cannot parse dumpfile stored_service in #{dump_file_name}" if stored_service.nil?
+
+    port = new_port(stored_service.port)
+    instance = ProvisionedService.create(
+      new_port(stored_service.port),
+      stored_service.version,
+      stored_service.plan,
+      stored_service.name,
+      stored_service.password,
+      db_file)
+    instance.run
+    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
+
     true
   rescue => e
     @logger.warn(e)
