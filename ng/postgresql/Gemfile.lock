@@ -131,6 +131,7 @@ GEM
     em-socksify (0.1.0)
       eventmachine
     eventmachine_httpserver (0.2.1)
+    fadvise (1.0.2)
     fastercsv (1.5.5)
     http_parser.rb (0.5.3)
     httpclient (2.2.7)
@@ -210,6 +211,7 @@ DEPENDENCIES
   do_sqlite3
   em-http-request
   eventmachine!
+  fadvise
   json
   nats
   pg

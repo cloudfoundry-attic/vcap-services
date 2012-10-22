@@ -20,6 +20,7 @@ require "postgresql_service/util"
 require "postgresql_service/model"
 require "postgresql_service/storage_quota"
 require "postgresql_service/postgresql_error"
+require "postgresql_service/pagecache"
 
 class VCAP::Services::Postgresql::Node
 

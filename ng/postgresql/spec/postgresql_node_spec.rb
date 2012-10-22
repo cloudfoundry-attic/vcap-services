@@ -602,6 +602,64 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should evict page cache of loopback image files" do
+    pending "You don't use warden, won't run this case." unless @opts[:use_warden]
+    node = nil
+    EM.run do
+      opts = @opts.dup
+      opts[:clean_image_cache] = true
+      opts[:filesystem_quota] = true
+      opts[:image_dir] = "/tmp/vcap_pg_pagecache_clean_test_dir"
+      opts[:clean_image_cache_follow_interval] = 3
+      File.init_fadvise_files
+
+      # create fake image dir
+      FileUtils.rm_rf(opts[:image_dir])
+      FileUtils.rm_rf("#{opts[:image_dir]}_link")
+      FileUtils.mkdir_p(opts[:image_dir])
+      FileUtils.mkdir_p("#{opts[:image_dir]}_link")
+      FileUtils.mkdir_p(File.join(opts[:image_dir], "subdir"))
+
+      # linked files
+      linked_file = File.join("#{opts[:image_dir]}_link", "linked_file")
+      File.open(linked_file, 'w') do |f|
+        f.write('linkedfile')
+      end
+      File.symlink(linked_file, File.join(opts[:image_dir], "link_file"))
+
+      # regular files
+      5.times do |i|
+        reg_file = File.join(opts[:image_dir], i.to_s)
+        File.open(reg_file, 'w') do |f|
+          f.write('regular_file')
+        end
+      end
+
+      # regular files in the subdirectory
+      subdir_file = File.join(opts[:image_dir], "subdir", "subfile")
+      File.open(subdir_file, 'w') do |f|
+        File.open(subdir_file, 'w') do |f|
+          f.write('subfile')
+        end
+      end
+
+      if @opts[:use_warden]
+        opts[:port_range] = Range.new(@opts[:port_range].last+1, @opts[:port_range].last+50) if @opts[:use_warden]
+        opts[:local_db] = @opts[:local_db]+"_new.db"
+        opts[:not_start_instances] = true
+      end
+
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      EM.add_timer(3.5) do
+        node.should_not == nil
+        node.shutdown
+        File.fadvise_files.count.should == 6
+        puts File.fadvise_files
+        EM.stop
+      end
+    end
+  end
+
   it "should enforce database size quota" do
     #pending "Use warden, won't run this case." if @opts[:use_warden]
     node = nil
@@ -1126,6 +1184,8 @@ describe "Postgresql node normal cases" do
     new_local_db.slice! "sqlite3:"
     @node.logger.info("Clean up temp local db.")
     FileUtils.rm_f new_local_db
+    FileUtils.rm_rf "/tmp/vcap_pg_pagecache_clean_test_dir"
+    FileUtils.rm_rf "/tmp/vcap_pg_pagecache_clean_test_dir_link"
     @node.class.setup_datamapper(:default, @opts[:local_db])
   end
 
