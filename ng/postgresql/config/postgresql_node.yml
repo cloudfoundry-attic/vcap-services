@@ -3,8 +3,6 @@ capacity: 200
 plan: free
 local_db: sqlite3:/var/vcap/services/postgresql/postgresql_node.db
 base_dir: /var/vcap/services/postgresql/data
-restore_bin: pg_restore
-dump_bin: pg_dump
 mbus: nats://localhost:4222
 index: 0
 logging:
@@ -27,11 +25,16 @@ warden:
   service_start_timeout: 3
   filesystem_quota: true
 postgresql:
-  host: 127.0.0.1
-  port: 5432
-  user: vcap
-  pass: vcap
-  database: postgres
+  '9.0':
+    host: 127.0.0.1
+    port: 5432
+    user: vcap
+    pass: vcap
+    database: postgres
+    restore_bin: pg_restore
+    dump_bin: pg_dump
+supported_versions: ['9.0']
+default_version: '9.0'
 
 # z_interval: 30
 # fqdn_hosts: false

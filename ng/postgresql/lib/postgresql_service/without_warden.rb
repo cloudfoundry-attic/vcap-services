@@ -28,11 +28,19 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def pre_send_announcement_prepare
-    @connection = global_connection
+    @connection_mutex = Mutex.new
+    @connections = {}
+
+    @supported_versions.each do |version|
+      host, user, pass, port, database =
+        %w(host user pass port database).map {|k| @postgresql_configs[version][k]}
+      @connections[version] = postgresql_connect(host, user, pass, port, database)
+    end
   end
 
   def pre_send_announcement_internal
     pgProvisionedService.all.each do |provisionedservice|
+      setup_global_connection provisionedservice
       migrate_instance provisionedservice
       @capacity -= capacity_unit
     end
@@ -74,6 +82,10 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def get_actual_children(connection, name, parent)
+    instance = pgProvisionedService.get(name)
+    raise "Can't find instance #{name}" unless instance
+    version = instance.version
+
     # children according to postgres itself
     children = []
     rows = connection.query("SELECT datacl FROM pg_database WHERE datname='#{name}'")
@@ -82,7 +94,7 @@ module VCAP::Services::Postgresql::WithoutWarden
     # a typical pg_database.datacl value:
     # {vcap=CTc/vcap,suf4f57864f519412b82ffd0b75d02dcd1=c/vcap,u2e47852f15544536b2f69c0f72052847=c/vcap,su76f8095858e742d1954544c722b277f8=c/vcap,u02b45d2974644895b1b03a92749250b2=c/vcap,su7950e259bbe946328ba4e3540c141f4b=c/vcap,uaf8982bc76324c6e9a09596fa1e57fc3=c/vcap}
     raise "Datacl is nil/deformed" if datacl.nil? || datacl.length < 2
-    nonchildren = [@postgresql_config["user"], parent.user, parent.sys_user, '']
+    nonchildren = [@postgresql_configs[version]["user"], parent.user, parent.sys_user, '']
     datacl[1,datacl.length-1].split(',').each do |aclitem|
       child = aclitem.split('=')[0]
       children << child unless nonchildren.include?(child)
@@ -123,10 +135,11 @@ module VCAP::Services::Postgresql::WithoutWarden
     # children we can stop right now
     return if expected_children.empty?
     # the parent role
-    parent = pgProvisionedService.get(name).pgbindusers.all(:default_user => true)[0]
+    instance = pgProvisionedService.get(name)
+    parent = instance.pgbindusers.all(:default_user => true)[0]
     # connect as the system user (not the parent or any of the
     # children) to ensure we don't have ACL problems
-    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true
+    connection = management_connection(instance, true)
     raise "Fail to connect to database #{name}" unless connection
     # figure out which children *actually* exist
     actual_children = get_actual_children connection, name, parent
@@ -155,8 +168,9 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def manage_temp_privilege(name)
-    return if pgProvisionedService.get(name).quota_exceeded
-    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true
+    instance = pgProvisionedService.get(name)
+    return if instance.quota_exceeded
+    connection = management_connection(instance, true)
     raise "Fail to connect to database #{name}" unless connection
     parent = pgProvisionedService.get(name).pgbindusers.all(:default_user => true)[0]
     connection.query("GRANT TEMP ON DATABASE #{name} TO #{parent.user}")
@@ -179,8 +193,9 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def manage_create_privilege(name)
-    return if pgProvisionedService.get(name).quota_exceeded
-    connection = postgresql_connect @postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], name, true
+    instance = pgProvisionedService.get(name)
+    return if instance.quota_exceeded
+    connection = management_connection(instance, true)
     raise "Fail to connect to database #{name}" unless connection
     parent = pgProvisionedService.get(name).pgbindusers.all(:default_user => true)[0]
     connection.query("GRANT CREATE ON DATABASE #{name} TO #{parent.user}")
@@ -191,107 +206,115 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def manage_maxconnlimit(name)
-    global_connection.query("update pg_database set datconnlimit=#{@max_db_conns} where datname='#{name}' and datconnlimit=-1")
+    conn = fetch_global_connection name
+    conn.query("update pg_database set datconnlimit=#{@max_db_conns} where datname='#{name}' and datconnlimit=-1")
   rescue => x
     @logger.warn("Exception while managing maxconnlimit on database #{name}: #{x}")
   end
 
   def init_global_connection(instance)
-    @connection
+    @connection_mutex.synchronize do
+      @connections[instance.name] ||= @connections[instance.version]
+    end
+
+    @connections[instance.name]
   end
 
   def setup_global_connection(instance)
-    @connection
+    init_global_connection instance
   end
 
-  def fetch_global_connection(name)
-    @connection
+  def global_connection(instance)
+    @connection_mutex.synchronize do
+      @connections[instance.name]
+    end
   end
 
-  def delete_global_connection(name)
-    nil
-  end
-
-  def global_connection(instance=nil, keepalive=false)
-    @connection ||= management_connection
-  end
-
-  def management_connection(instance=nil, super_user=true)
+  def management_connection(instance, super_user=true)
     conn = nil
-    if instance.nil?
-      conn = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], @postgresql_config["database"], false)
-    elsif super_user
-      # use the super user defined in the configuration file
-      db_name = instance
-      if instance.is_a?pgProvisionedService
-        db_name = instance.name
-      end
-      conn = postgresql_connect(@postgresql_config["host"], @postgresql_config["user"], @postgresql_config["pass"], @postgresql_config["port"], db_name, true)
+    version = instance.version
+    db_name = instance.name
+    host, user, pass, port =
+      %w(host user pass port).map {|k| @postgresql_configs[version][k]}
+    if super_user
+      conn = postgresql_connect(host, user, pass, port, db_name, :fail_with_nil => true)
     else
       # use the default user of the service_instance
       default_user = instance.pgbindusers.all(:default_user => true)[0]
-      conn = postgresql_connect(@postgresql_config["host"], default_user.user, default_user.password, @postgresql_config["port"],instance.name, true) if default_user
+      conn = postgresql_connect(host, default_user.user, default_user.password, port, db_name, :fail_with_nil => true)
     end
     conn
   end
 
-  def node_ready?()
-    @connection && connection_exception(@connection).nil?
+  def node_ready?
+    @supported_versions.each do |version|
+      conn = fetch_global_connection version
+      return false unless (conn && connection_exception(conn).nil?)
+    end
+    true
   end
 
   #keep connection alive, and check db liveness
   def postgresql_keep_alive
-    if connection_exception(@connection)
-      @logger.warn("PostgreSQL connection lost, trying to keep alive.")
-      @connection = management_connection
+    @supported_versions.each do |version|
+      if connection_exception(@connections[version])
+        @logger.warn("PostgreSQL connection for #{version} is lost, trying to keep alive.")
+        host, user, pass, port, database =
+          %w(host user pass port database).map {|k| @postgresql_configs[version][k]}
+        @connections[version] = postgresql_connect(host, user, pass, port, database, :fail_with_nil => true)
+      end
     end
   end
 
   def get_db_stat
-    get_db_stat_by_connection(@connection, @max_db_size)
+    @supported_versions.inject([]) do |result, version|
+      conn = fetch_global_connection version
+      result +=  get_db_stat_by_connection(conn, @max_db_size)
+    end
   end
 
   def get_db_list
-    get_db_list_by_connection(@connection)
+    @supported_versions.inject([]) do |result, version|
+      conn = fetch_global_connection version
+      result += get_db_list_by_connection(conn)
+    end
   end
 
-  def dbs_size(dbs=[])
-    dbs = [] if dbs.nil?
-
+  def dbs_size()
     result = {}
-    res = global_connection.query('select datname, sum(pg_database_size(datname)) as sum_size from pg_database group by datname')
-    res.each do |x|
-      name, size = x["datname"], x["sum_size"]
-      result[name] = size.to_i
+    @supported_versions.each do |version|
+      res = fetch_global_connection(version).query(
+        'select datname, sum(pg_database_size(datname)) as sum_size from pg_database group by datname')
+      res.each do |x|
+        name, size = x["datname"], x["sum_size"]
+        result[name] = size.to_i
+      end
     end
 
-    if dbs.length > 0
-      if db.is_a?pgProvisionedService
-        name = db.name
-      else
-        name = db
-      end
-      dbs.each {|db| result[name] = 0 unless result.has_key? name}
-    end
     result
   end
 
-  def postgresql_config(instance=nil)
-    unless instance && instance.is_a?(pgProvisionedService) && instance.name
-      @postgresql_config
-    else
-      pc = @postgresql_config.dup
-      pc['name'] = instance.name
-      pc
-    end
+  def postgresql_config(instance)
+    return unless instance
+    pc = @postgresql_configs[instance.version].dup
+    pc['name'] = instance.name
+    pc
   end
 
   def kill_long_queries
-    @long_queries_killed += kill_long_queries_internal(@connection, @postgresql_config['user'], @max_long_query)
+    @supported_versions.each do |version|
+      conn = @connections[version]
+      super_user = @postgresql_configs[version]['user']
+      @long_queries_killed +=  kill_long_queries_internal(conn, super_user, @max_long_query)
+    end
   end
 
   def kill_long_transaction
-    @long_tx_killed += kill_long_transaction_internal(@connection, @postgresql_config['user'], @max_long_tx)
+    @supported_versions.each do |version|
+      conn = @connections[version]
+      super_user = @postgresql_configs[version]['user']
+      @long_tx_killed += kill_long_transaction_internal(conn, super_user, @max_long_tx)
+    end
   end
 
   def setup_timers
@@ -301,8 +324,8 @@ module VCAP::Services::Postgresql::WithoutWarden
     EM.add_periodic_timer(VCAP::Services::Postgresql::Node::STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
   end
 
-  def get_inst_port(instance=nil)
-    @postgresql_config['port']
+  def get_inst_port(instance)
+    @postgresql_configs[instance.version]['port']
   end
 
   def free_inst_port(port)
@@ -313,4 +336,14 @@ module VCAP::Services::Postgresql::WithoutWarden
     true
   end
 
+  def fetch_global_connection(name)
+    @connection_mutex.synchronize do
+      @connections[name]
+    end
+  end
+
+  def method_missing(method_name, *args, &block)
+    no_ops = [:delete_global_connection]
+    super unless no_ops.include?(method_name)
+  end
 end

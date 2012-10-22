@@ -64,7 +64,7 @@ module VCAP::Services::Postgresql::WithWarden
           postgresql_config(instance)['pass'],
           instance.service_port,
           "postgres",
-          true
+          :fail_with_nil => true
     )
     @connection_mutex.synchronize do
       @connections[instance.name] = { :time => Time.now.to_i, :conn => conn }
@@ -114,7 +114,7 @@ module VCAP::Services::Postgresql::WithWarden
           postgresql_config(instance)['pass'],
           instance.service_port,
           "postgres",
-          true
+          :fail_with_nil => true
         )
         @connection_mutex.synchronize do
           @connections[name] = { :time => Time.now.to_i, :conn => conn }
@@ -128,33 +128,28 @@ module VCAP::Services::Postgresql::WithWarden
     conn
   end
 
-  def management_connection(instance=nil, super_user=true)
+  def management_connection(instance, super_user=true)
     conn = nil
-    if instance.is_a?String
-      instance = pgProvisionedService.get(instance)
-    end
-    if instance
-      if super_user
-        # use the super user defined in the configuration file
-        conn = postgresql_connect(
-          instance.ip,
-          postgresql_config(instance)['user'],
-          postgresql_config(instance)['pass'],
-          instance.service_port,
-          instance.name,
-          true
-        )
-      else
-        # use the default user of the service_instance
-        conn = postgresql_connect(
-          instance.ip,
-          instance.default_user,
-          instance.default_password,
-          instance.service_port,
-          instance.name,
-          true
-        )
-      end
+    if super_user
+      # use the super user defined in the configuration file
+      conn = postgresql_connect(
+        instance.ip,
+        postgresql_config(instance)['user'],
+        postgresql_config(instance)['pass'],
+        instance.service_port,
+        instance.name,
+        :fail_with_nil => true
+      )
+    else
+      # use the default user of the service_instance
+      conn = postgresql_connect(
+        instance.ip,
+        instance.default_user,
+        instance.default_password,
+        instance.service_port,
+        instance.name,
+        :fail_with_nil => true
+      )
     end
     conn
   end
@@ -214,16 +209,13 @@ module VCAP::Services::Postgresql::WithWarden
     result
   end
 
-  def postgresql_config(instance=nil)
-    unless instance && instance.is_a?(pgProvisionedService) && instance.name
-      @postgresql_config
-    else
-      pc = @postgresql_config.dup
-      pc['name'] = instance.name
-      pc['host'] = instance.ip
-      pc['port'] = instance.service_port
-      pc
-    end
+  def postgresql_config(instance)
+    return unless instance
+    pc = @postgresql_configs[instance.version].dup
+    pc['name'] = instance.name
+    pc['host'] = instance.ip
+    pc['port'] = instance.service_port
+    pc
   end
 
   def kill_long_queries
@@ -258,8 +250,8 @@ module VCAP::Services::Postgresql::WithWarden
     stop_instances(pgProvisionedService.all)
   end
 
-  def get_inst_port(instance=nil)
-    (instance.port if instance) || @postgresql_config['port']
+  def get_inst_port(instance)
+    instance.port
   end
 
   def free_inst_port(port)

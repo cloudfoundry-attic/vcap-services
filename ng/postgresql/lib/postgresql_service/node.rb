@@ -35,7 +35,7 @@ class VCAP::Services::Postgresql::Node
     super(options)
     @options = options.dup
 
-    @postgresql_config = options[:postgresql]
+    @postgresql_configs = options[:postgresql]
     @max_db_size = ((options[:max_db_size] + options[:db_size_overhead]) * 1024 * 1024).round
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
@@ -45,14 +45,11 @@ class VCAP::Services::Postgresql::Node
     FileUtils.mkdir_p(@base_dir) if @base_dir
 
     @local_db = options[:local_db]
-    @restore_bin = options[:restore_bin]
-    @dump_bin = options[:dump_bin]
-
     @long_queries_killed = 0
     @long_tx_killed = 0
     @provision_served = 0
     @binding_served = 0
-    @supported_versions = ["9.0"]
+    @supported_versions = options[:supported_versions]
     @use_warden = @options[:use_warden] || false
     if @use_warden
       require "postgresql_service/with_warden"
@@ -151,6 +148,7 @@ class VCAP::Services::Postgresql::Node
 
   def provision(plan, credential=nil, version=nil)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_INVALID_PLAN, plan) unless plan == @plan
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
 
     if credential
       name = credential['name']
@@ -161,6 +159,7 @@ class VCAP::Services::Postgresql::Node
     provisionedservice = pgProvisionedService.new
     provisionedservice.plan = 1
     provisionedservice.quota_exceeded = false
+    provisionedservice.version = version
 
     begin
       binduser = pgBindUser.new
@@ -428,7 +427,8 @@ class VCAP::Services::Postgresql::Node
 
   def delete_database_user(binduser,db)
     @logger.info("Delete user #{binduser.user}/#{binduser.sys_user}")
-    db_connection = management_connection(db, true)
+    instance = pgProvisionedService.get(db)
+    db_connection = management_connection(instance, true)
     raise PGError("Fail to connect to database #{db}") unless db_connection
     begin
       db_connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
@@ -513,15 +513,16 @@ class VCAP::Services::Postgresql::Node
     default_user = instance.default_user
     raise "No default user for provisioned service #{name}" unless default_user
 
-    host, port, vcap_user, vcap_pass =  %w{host port user pass}.map { |opt| postgresql_config(instance)[opt] }
+    host, port, vcap_user, vcap_pass, restore_bin =
+      %w{host port user pass restore_bin}.map { |opt| postgresql_config(instance)[opt] }
     reset_db(host, port, vcap_user, vcap_pass, name, instance)
 
     user =  default_user[:user]
     passwd = default_user[:password]
     path = File.join(backup_path, "#{name}.dump")
-    archive_list(path, { :restore_bin => @restore_bin })
+    archive_list(path, { :restore_bin => restore_bin })
 
-    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -L #{path}.archive_list -d #{name} #{path}"
+    cmd = "#{restore_bin} -h #{host} -p #{port} -U #{user} -L #{path}.archive_list -d #{name} #{path}"
     o, e, s = exe_cmd(cmd)
     s.exitstatus == 0
   rescue => e
@@ -553,16 +554,26 @@ class VCAP::Services::Postgresql::Node
     @logger.debug("Dump instance #{name} request.")
     instance = pgProvisionedService.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless instance
+
     default_user = instance.default_user
     raise "No default user to dump instance." unless default_user
-    host, port =  %w{host port}.map { |opt| postgresql_config(instance)[opt] }
+    host, port, dump_bin =  %w{host port dump_bin}.map { |opt| postgresql_config(instance)[opt] }
     user = default_user[:user]
     passwd = default_user[:password]
     dump_file = File.join(dump_file_path, "#{name}.dump")
     @logger.info("Dump instance #{name} content to #{dump_file}")
-    cmd = "#{@dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
+
+    cmd = "#{dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
     o, e, s = exe_cmd(cmd)
-    return s.exitstatus == 0
+    raise "Failed to dump #{name}: cmd:#{cmd}, stdout:#{o}, stderr:#{e}, status:#{s}" unless s.exitstatus == 0
+
+    # dump provisioned instance object
+    instance_dump_file = File.join(dump_file_path, 'instance.dump')
+    File.open(instance_dump_file, 'w') do |f|
+      Marshal.dump(instance, f)
+    end
+
+    return true
   rescue => e
     @logger.error("Error during dump_instance #{e}")
     nil
@@ -571,22 +582,31 @@ class VCAP::Services::Postgresql::Node
   # Provision and import dump files
   # Refer to #dump_instance
   def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
+    # load provisioned instance data from dump
+    stored_service = nil
+    instance_dump_file = File.join(dump_file_path, 'instance.dump')
+    File.open(instance_dump_file, 'r') do |f|
+      stored_service = Marshal.load f
+    end
+    raise "Can't load instance data from #{instnace_dump_file}" unless stored_service
+
+    version = stored_service.version
     name = prov_cred["name"]
     @logger.debug("Import instance #{name} request.")
-    @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
-    provision(plan, prov_cred)
+    @logger.info("Provision an instance with plan: #{plan}, version:#{version} using data from #{prov_cred.inspect}")
+    provision(plan, prov_cred, version)
     instance = pgProvisionedService.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless instance
     bind_all_creds(name, binding_creds_hash)
     default_user = instance.default_user
     raise "No default user to import instance" unless default_user
-    host, port =  %w{host port}.map { |opt| postgresql_config(instance)[opt] }
+    host, port, restore_bin =  %w{host port restore_bin}.map { |opt| postgresql_config(instance)[opt] }
     user = default_user[:user]
     passwd = default_user[:password]
     import_file = File.join(dump_file_path, "#{name}.dump")
     @logger.info("Import data from #{import_file} to database #{name}")
-    archive_list(import_file, { :restore_bin => @restore_bin })
-    cmd = "#{@restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} -L #{import_file}.archive_list #{import_file}"
+    archive_list(import_file, { :restore_bin => restore_bin })
+    cmd = "#{restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} -L #{import_file}.archive_list #{import_file}"
     o, e, s = exe_cmd(cmd)
     return s.exitstatus == 0
   rescue => e

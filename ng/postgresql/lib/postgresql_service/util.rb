@@ -88,7 +88,12 @@ module VCAP
           ret
         end
 
-        def postgresql_connect(host, user, password, port, database, fail_with_nil = false, connect_timeout = 3, try_num = 5, exception_sleep = 2)
+        def postgresql_connect(host, user, password, port, database, opts={})
+          fail_with_nil = opts[:fail_with_nil] || false
+          connect_timeout = opts[:connect_timeout] || 3
+          try_num = opts[:try_num] || 5
+          exception_sleep = opts[:exception_sleep] || 2
+
           @logger ||= Logger.new(STDOUT)
           try_num.times do
             begin
@@ -265,7 +270,8 @@ module VCAP
             @logger.error("No default user #{default_user} for database #{name} when granting write access")
             return false
           end
-          default_connection = postgresql_connect(db_connection.host, default_user[:user], default_user[:password], db_connection.port, name, true)
+          default_connection = postgresql_connect(db_connection.host, default_user[:user],
+                                                default_user[:password], db_connection.port, name, :fail_with_nil => true)
           unless default_connection
             @logger.error("Default user failed to connect to database #{name} when granting write access")
             return false
@@ -279,7 +285,8 @@ module VCAP
             user = binduser.user
             sys_user = binduser.sys_user
             sys_password = binduser.sys_password
-            db_connection_sys_user = postgresql_connect(db_connection.host, sys_user, sys_password, db_connection.port, name, true)
+            db_connection_sys_user = postgresql_connect(db_connection.host, sys_user,
+                                                     sys_password, db_connection.port, name, :failt_with_nil => true)
             if db_connection_sys_user.nil?
               @logger.error("Unable to grant write access to #{name} for #{sys_user}")
             else
@@ -312,7 +319,8 @@ module VCAP
             @logger.warn("No default user #{default_user} for database #{name} when granting write access")
             return false
           end
-          default_connection = postgresql_connect(db_connection.host, default_user[:user], default_user[:password], db_connection.port, name, true)
+          default_connection = postgresql_connect(db_connection.host, default_user[:user],
+                                                default_user[:password], db_connection.port, name, :fail_with_nil => true)
           unless default_connection
             @logger.warn("Default user #{default_user} fail to connect to database #{name} when revoking write access")
             return false
@@ -519,7 +527,14 @@ module VCAP
         # Use this method to filter the un-supported archive elements in HACK style
         def archive_list(dump_file, opts = {})
           restore_bin = opts[:restore_bin] || 'pg_restore'
-          cmd = "#{restore_bin} -l #{dump_file} | grep -v 'PROCEDURAL LANGUAGE - plpgsql' > #{dump_file}.archive_list"
+          # HACK: exclude the commands that result privllege issue during import
+          exclude_cmd_patterns = [
+            "COMMENT - EXTENSION plpgsql",
+            "PROCEDURAL LANGUAGE - plpgsql"
+          ]
+          exclude_cmd = exclude_cmd_patterns.map{|pattern| "grep -v '#{pattern}'"}.join(" | ")
+
+          cmd = "#{restore_bin} -l #{dump_file} | #{exclude_cmd} > #{dump_file}.archive_list"
           o, e, s = exe_cmd(cmd)
           return s.exitstatus == 0
         end

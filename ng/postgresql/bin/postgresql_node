@@ -15,7 +15,8 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def default_config_file
-    File.join(File.dirname(__FILE__), '..', 'config', 'postgresql_node.yml')
+    config_base_dir = ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+    File.join(config_base_dir, 'postgresql_node.yml')
   end
 
   def additional_config(options, config)
@@ -25,9 +26,9 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
     options[:postgresql] = parse_property(config, "postgresql", Hash)
     options[:max_db_conns] = parse_property(config, "max_db_conns", Integer)
-    options[:restore_bin] = parse_property(config, "restore_bin", String)
-    options[:dump_bin] = parse_property(config, "dump_bin", String)
     options[:use_warden] = parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
+    options[:supported_versions] = parse_property(config, "supported_versions", Array)
+    options[:default_version] = parse_property(config, "default_version", String)
     if options[:use_warden] && options[:filesystem_quota] && options[:image_dir]
       warden_config = parse_property(config, "warden", Hash)
       options[:clean_image_cache] = parse_property(warden_config, "clean_image_cache", Boolean, :optional => true, :default => false)
