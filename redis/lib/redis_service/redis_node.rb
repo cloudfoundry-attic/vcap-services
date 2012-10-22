@@ -37,6 +37,10 @@ class VCAP::Services::Redis::Node
     property :pid,        Integer
     property :memory,     Integer
 
+    # Making this false for backwards compatibility
+    # Also Refer: get_version
+    property :version,    String,   :required => false
+
     def listening?
       begin
         TCPSocket.open("localhost", port).close
@@ -93,7 +97,30 @@ class VCAP::Services::Redis::Node
     # Default value is 2 seconds.
     @redis_timeout = @options[:redis_timeout] || 2
     @redis_start_timeout = @options[:redis_start_timeout] || 3
-    @supported_versions = ["2.2"]
+
+    @supported_versions = options[:supported_versions]
+    @default_version = options[:default_version]
+  end
+
+  def migrate_saved_instances_on_startup
+    ProvisionedService.all.each do |provisioned_service|
+      if provisioned_service.version.to_s.empty?
+        provisioned_service.version = @default_version
+        @logger.warn("Unable to set version for: #{provisioned_service.inspect}") unless provisioned_service.save
+      end
+    end
+  end
+
+  def get_version(provisioned_service)
+    if provisioned_service.version.to_s.empty? # Handle nil / empty case (backwards compatibility)
+      @default_version
+    else
+      provisioned_service.version
+    end
+  end
+
+  def redis_exe_path(version)
+    @redis_server_path[version]
   end
 
   def pre_send_announcement
@@ -118,8 +145,12 @@ class VCAP::Services::Redis::Node
   end
 
   def provision(plan, credentials = nil, version=nil, db_file = nil)
+    @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) if !@supported_versions.include?(version)
+
     instance = ProvisionedService.new
+    instance.version = version
     instance.plan = 1
     if credentials
       instance.name = credentials["name"]
@@ -237,18 +268,18 @@ class VCAP::Services::Redis::Node
 
   def dump_instance(service_credentials, binding_credentials_list = [], dump_dir)
     FileUtils.mkdir_p(dump_dir)
-    instance = ProvisionedService.new
-    instance.name = service_credentials["name"]
-    instance.port = service_credentials["port"]
+    instance = ProvisionedService.get(service_credentials['name'])
+    raise "Cannot find provisioned service instance: #{service_credentials['name']}" if instance.nil?
+
     instance.password = @disable_password
     dump_redis_data(instance, dump_dir)
   end
 
   def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
-    # FIXME: We set the version to nil here so that the instance is imported to the default version of redis.
-    # TODO: Fix this behaviour (E.g. add version information to dump so that a correct version of redis can be provisioned
-    provision(plan, service_credentials, nil, db_file)
+    # TODO: We always import to the default version of redis.
+    # TODO: Fix this behaviour - add version information to dump so that a correct version of redis can be provisioned
+    provision(plan, service_credentials, @default_version, db_file)
     true
   rescue => e
     @logger.warn(e)
@@ -285,6 +316,8 @@ class VCAP::Services::Redis::Node
   end
 
   def start_provisioned_instances
+    migrate_saved_instances_on_startup
+
     @capacity_lock.synchronize do
       ProvisionedService.all.each do |instance|
         @free_ports_mutex.synchronize do
@@ -337,7 +370,10 @@ class VCAP::Services::Redis::Node
       stop_instance(instance) if instance.running?
       raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
     else
-      $0 = "Starting Redis instance: #{instance.name}"
+      $0 = "Starting Redis instance: #{instance.name}, Version: #{get_version(instance)}"
+      executable = redis_exe_path(get_version(instance))
+      @logger.info("Redis binary: #{executable}")
+
       close_fds
 
       memory = instance.memory
@@ -367,7 +403,7 @@ class VCAP::Services::Redis::Node
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
-      exec("#{@redis_server_path} #{config_path}")
+      exec("#{executable} #{config_path}")
     end
   rescue => e
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
@@ -391,7 +427,8 @@ class VCAP::Services::Redis::Node
 
       dir = instance_dir(instance.name)
       config_path = File.join(dir, "redis.conf")
-      exec("#{@redis_server_path} #{config_path}")
+      executable = redis_exe_path(get_version(instance))
+      exec("#{executable} #{config_path}")
     end
   rescue => e
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_FAILED, instance.inspect)
@@ -452,6 +489,7 @@ class VCAP::Services::Redis::Node
     varz = {}
     varz[:name] = instance.name
     varz[:port] = instance.port
+    varz[:version] = instance.version
     varz[:plan] = @plan
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0

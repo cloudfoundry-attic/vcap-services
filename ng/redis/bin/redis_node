@@ -20,7 +20,6 @@ class VCAP::Services::Redis::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def additional_config(options, config)
-    options[:redis_server_path] = parse_property(config, "redis_server_path", String)
     options[:config_template] = File.expand_path("../../resources/redis.conf.erb", __FILE__)
     options[:port_range] = parse_property(config, "port_range", Range)
     options[:max_memory] = parse_property(config, "max_memory", Integer)
@@ -33,6 +32,8 @@ class VCAP::Services::Redis::NodeBin < VCAP::Services::Base::NodeBin
     options[:image_dir] = parse_property(config, "image_dir", String)
     options[:max_disk] = parse_property(config, "max_disk", Integer)
     options[:persistent] = parse_property(config, "persistent", Boolean, :optional => true)
+    options[:supported_versions] = parse_property(config, "supported_versions", Array)
+    options[:default_version] = parse_property(config, "default_version", String)
     options
   end
 

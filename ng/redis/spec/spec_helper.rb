@@ -55,7 +55,7 @@ def getNodeTestConfig
     :mbus => parse_property(config, "mbus", String),
     :local_db_file => "/tmp/redis_node_" + Time.now.to_i.to_s + ".db",
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :redis_server_path => parse_property(config, "redis_server_path", String),
+    :redis_server_path => parse_property(config, "redis_server_path", Hash),
     :config_template => File.join(File.dirname(__FILE__), "..", "resources/redis.conf.erb"),
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
@@ -66,6 +66,8 @@ def getNodeTestConfig
     :image_dir => "/tmp/redis_image",
     :max_disk => parse_property(config, "max_disk", Integer),
     :migration_nfs => "/tmp/migration",
+    :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version => parse_property(config, "default_version", String),
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options

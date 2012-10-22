@@ -52,10 +52,22 @@ class VCAP::Services::Redis::Node
     @service_start_timeout = @options[:service_start_timeout] || 3
     ProvisionedService.init(options)
     @options = options
-    @supported_versions = ["2.2"]
+    @supported_versions = options[:supported_versions]
+    @default_version = options[:default_version]
+  end
+
+  def migrate_saved_instances_on_startup
+    ProvisionedService.all.each do |p_service|
+      if p_service.version.to_s.empty?
+        p_service.version = @default_version
+        @logger.warn("Unable to set version for: #{p_service.inspect}") unless p_service.save
+      end
+    end
   end
 
   def pre_send_announcement
+    migrate_saved_instances_on_startup
+
     @capacity_lock.synchronize do
       start_instances(ProvisionedService.all)
     end
@@ -76,15 +88,18 @@ class VCAP::Services::Redis::Node
   end
 
   def provision(plan = nil, credentials = nil, version = nil, db_file = nil)
+    @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise RedisError.new(RedisError::REDIS_INVALID_PLAN, plan) unless plan.to_s == @plan
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
+
     port = nil
     instance = nil
     if credentials
       port = new_port(credentials["port"])
-      instance = ProvisionedService.create(port, plan, credentials["name"], credentials["password"], db_file)
+      instance = ProvisionedService.create(port, version, plan, credentials["name"], credentials["password"], db_file)
     else
       port = new_port
-      instance = ProvisionedService.create(port, plan, nil, nil, db_file)
+      instance = ProvisionedService.create(port, version, plan, nil, nil, db_file)
     end
     instance.run
     raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
@@ -204,9 +219,9 @@ class VCAP::Services::Redis::Node
 
   def import_instance(service_credentials, binding_credentials_map={}, dump_dir, plan)
     db_file = File.join(dump_dir, "dump.rdb")
-    # FIXME: We set the version to nil here so that the instance is imported to the default version of redis.
-    # TODO: Fix this behaviour (E.g. add version information to dump so that a correct version of redis can be provisioned
-    provision(plan, service_credentials, nil, db_file)
+    # TODO: We always import to the default version of redis.
+    # TODO: Fix this behaviour - add version information to dump so that a correct version of redis can be provisioned
+    provision(plan, service_credentials, @default_version, db_file)
     true
   rescue => e
     @logger.warn(e)
@@ -231,6 +246,7 @@ class VCAP::Services::Redis::Node
     varz[:name] = instance.name
     varz[:port] = instance.port
     varz[:plan] = instance.plan
+    varz[:version] = instance.version
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0
     varz[:usage][:used_memory] = info["used_memory"].to_f / (1024.0 * 1024.0)
@@ -298,6 +314,10 @@ class VCAP::Services::Redis::Node::ProvisionedService
   property :container,  String
   property :ip,         String
 
+  # Making this false for backwards compatibility
+  # Also Refer: get_version
+  property :version,    String,   :required => false
+
   private_class_method :new
 
   class << self
@@ -320,12 +340,13 @@ class VCAP::Services::Redis::Node::ProvisionedService
       DataMapper::auto_upgrade!
     end
 
-    def create(port, plan=nil, name=nil, password=nil, db_file=nil, is_upgraded=false)
+    def create(port, version, plan=nil, name=nil, password=nil, db_file=nil, is_upgraded=false)
       raise "Parameter missing" unless port
       # The instance could be an old instance without warden support
       instance = get(name) if name
       instance = new if instance == nil
       instance.port      = port
+      instance.version   = version
       instance.name      = name || UUIDTools::UUID.random_create.to_s
       instance.password  = password || UUIDTools::UUID.random_create.to_s
       # These three properties are deprecated
@@ -369,14 +390,14 @@ class VCAP::Services::Redis::Node::ProvisionedService
   end
 
   def service_script
-    "redis_startup.sh"
+    "redis_startup.sh #{version}"
   end
 
   def migration_check
     super
     # Need regenerate configuration file for redis server
     if container == nil
-      VCAP::Services::Redis::Node::ProvisionedService.create(port, plan, name, password, nil, true)
+      VCAP::Services::Redis::Node::ProvisionedService.create(port, version, plan, name, password, nil, true)
     end
   end
 

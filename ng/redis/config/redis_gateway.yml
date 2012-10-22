@@ -7,6 +7,10 @@ service:
   plans: ['free']
   default_plan: free
   tags: ['redis', 'redis-2.2', 'key-value', 'nosql']
+  supported_versions: ["2.2"]
+  version_aliases:
+    "current": "2.2"
+
 ip_route: localhost
 #proxy:
 #   host: proxy
