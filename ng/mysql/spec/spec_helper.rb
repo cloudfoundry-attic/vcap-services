@@ -98,6 +98,7 @@ def getNodeTestConfig()
     :max_db_size => parse_property(config, "max_db_size", Integer),
     :max_long_query => parse_property(config, "max_long_query", Integer),
     :node_id => parse_property(config, "node_id", String),
+    :connection_pool_size => parse_property(config, "connection_pool_size", Hash),
     :mbus => parse_property(config, "mbus", String),
     :local_db => parse_property(config, "local_db", String),
     :mysql => parse_property(config, "mysql", Hash),
@@ -108,7 +109,6 @@ def getNodeTestConfig()
     :connection_wait_timeout => 10,
     :disk_overhead => parse_property(config, "disk_overhead", Float, :default => 0.0),
     :use_warden => parse_property(config, "use_warden", Boolean),
-    :config_template => File.expand_path("../../resources/my.conf.erb", __FILE__),
     :supported_versions => parse_property(config, "supported_versions", Array),
   }
   if options[:use_warden]
@@ -118,9 +118,6 @@ def getNodeTestConfig()
     options[:port_range] = parse_property(warden_config, "port_range", Range)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
     options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
-    options[:max_heap_table_size] = parse_property(warden_config, "max_heap_table_size", Integer, :optional => true)
-    options[:micro] = parse_property(warden_config, "micro", Boolean, :optional => true)
-    options[:production] = parse_property(warden_config, "production", Boolean, :optional => true)
   else
     options[:ip_route] = "127.0.0.1"
   end

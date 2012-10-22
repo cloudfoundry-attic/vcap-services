@@ -130,11 +130,11 @@ class VCAP::Services::Mysql::Node
   def all_bindings_list
     res = []
     all_ins_users = mysqlProvisionedService.all.map{|s| s.user}
-    each_instance_connection do |connection, instance|
+    each_connection_with_port do |connection, port|
       # we can't query plaintext password from mysql since it's encrypted.
       connection.query('select DISTINCT user.user,db from user, db where user.user = db.user and length(user.user) > 0').each do |entry|
         # Filter out the instances handles
-        res << gen_credential(entry["db"], entry["user"], "fake-password", get_port(instance)) unless all_ins_users.include?(entry["user"])
+        res << gen_credential(entry["db"], entry["user"], "fake-password", port) unless all_ins_users.include?(entry["user"])
       end
     end
     res
@@ -153,7 +153,7 @@ class VCAP::Services::Mysql::Node
   def check_db_consistency()
     db_list = []
     missing_accounts =[]
-    each_instance_connection do |connection|
+    each_connection do |connection|
       connection.query('select db, user from db').each(:as => :array){|row| db_list.push(row)}
     end
     mysqlProvisionedService.all.each do |service|
@@ -175,7 +175,7 @@ class VCAP::Services::Mysql::Node
 
     5.times do
       begin
-        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => @connection_pool_size)
+        return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => @connection_pool_size["min"], :pool_min => @connection_pool_size["min"], :pool_max => @connection_pool_size["max"])
       rescue Mysql2::Error => e
         @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(1)
@@ -219,7 +219,7 @@ class VCAP::Services::Mysql::Node
   def kill_long_queries
     acquired = @kill_long_queries_lock.try_lock
     return unless acquired
-    each_instance_connection do |connection|
+    each_connection do |connection|
       process_list = connection.query("show processlist")
       process_list.each do |proc|
         thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map{|o| proc[o]}
@@ -246,10 +246,9 @@ class VCAP::Services::Mysql::Node
                 "  WHERE trx_state='RUNNING' and user!='root' " +
                 ") as inner_table " +
                 "WHERE inner_table.active_time > #{@max_long_tx}"
-    each_instance_connection do |connection, instance|
+    each_connection_with_key do |connection, key|
       result = connection.query(query_str)
       current_long_tx_ids = []
-      key = get_port(instance)
       @long_tx_ids[key] = [] if @long_tx_ids[key].nil?
       result.each do |trx|
         trx_started, id, user, db, trx_query, active_time = %w(trx_started id user db trx_query active_time).map{|o| trx[o]}
@@ -686,7 +685,7 @@ class VCAP::Services::Mysql::Node
 
   def get_queries_status()
     total = 0
-    each_instance_connection do |connection|
+    each_connection do |connection|
       result = connection.query("SHOW STATUS WHERE Variable_name ='QUERIES'")
       total += result.to_a[0]["Value"].to_i if result.count != 0
     end
@@ -709,7 +708,7 @@ class VCAP::Services::Mysql::Node
   def get_instance_status()
     total = []
 
-    each_instance_connection do |connection|
+    each_connection do |connection|
       all_dbs = []
       result = connection.query('show databases')
       result.each {|db| all_dbs << db["Database"]}
@@ -753,10 +752,9 @@ class VCAP::Services::Mysql::Node
     }
   end
 
-
-  def each_instance_connection
-    each_pool do |conn_pool, instance|
-      conn_pool.with_connection { |connection| yield connection, instance }
+  def each_connection
+    each_pool do |conn_pool|
+      conn_pool.with_connection { |conn| yield conn }
     end
   end
 end

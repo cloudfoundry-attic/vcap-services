@@ -84,7 +84,23 @@ module VCAP::Services::Mysql::WithWarden
     mysqlProvisionedService.all.each do |instance|
       conn_pool = fetch_pool(instance.name)
       next if conn_pool.nil?
-      yield conn_pool, instance
+      yield conn_pool
+    end
+  end
+
+  def each_connection_with_port
+    mysqlProvisionedService.all.each do |instance|
+      conn_pool = fetch_pool(instance.name)
+      next if conn_pool.nil?
+      conn_pool.with_connection { |conn| yield conn, get_port(instance) }
+    end
+  end
+
+  def each_connection_with_key
+    mysqlProvisionedService.all.each do |instance|
+      conn_pool = fetch_pool(instance.name)
+      next if conn_pool.nil?
+      conn_pool.with_connection { |conn| yield conn, instance.name }
     end
   end
 end

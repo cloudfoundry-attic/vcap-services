@@ -62,13 +62,20 @@ module VCAP::Services::Mysql::WithoutWarden
   end
 
   def each_pool
-    mysqlProvisionedService.all.each do |instance|
-      conn_pool = fetch_pool(instance.name)
-      if conn_pool.nil?
-        @logger.warn("no pool for #{instance.inspect}")
-        next
-      end
-      yield conn_pool, instance
+    @supported_versions.each do |version|
+      yield @pools[version]
+    end
+  end
+
+  def each_connection_with_port
+    @supported_versions.each do |version|
+      @pools[version].with_connection { |conn| yield conn, @mysql_configs[version]["port"] }
+    end
+  end
+
+  def each_connection_with_key
+    @supported_versions.each do |version|
+      @pools[version].with_connection { |conn| yield conn, version } #version as key
     end
   end
 
@@ -87,7 +94,7 @@ module VCAP::Services::Mysql::WithoutWarden
   end
 
   def method_missing(method_name, *args, &block)
-    no_ops = [:init_internal ]
+    no_ops = [:init_internal]
     super unless no_ops.include?(method_name)
   end
 end
