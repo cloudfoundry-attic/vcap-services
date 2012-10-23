@@ -8,7 +8,7 @@ index: 0
 logging:
   level: debug
 ip_route: 127.0.0.1
-max_memory: 16
+# max_memory: 16
 node_id: rabbit_node_free_1
 pid: /var/vcap/sys/run/rabbit_node.pid
 migration_nfs: /mnt/appcloud
