@@ -167,6 +167,11 @@ class VCAP::Services::Rabbit::Node
     {}
   end
 
+  # Rabbitmq has no data to restore
+  def restore(instance_id, backup_dir)
+    true
+  end
+
   def varz_details
     varz = {}
     varz[:provisioned_instances] = []
