@@ -99,6 +99,7 @@ class VCAP::Services::MongoDB::Node
     @mongorestore_path = options[:mongorestore_path]
     @mongod_log_dir = options[:mongod_log_dir]
 
+    @service_start_timeout = options[:service_start_timeout]
     @max_clients = options[:max_clients] || MAX_CLIENTS
     @quota_files = options[:quota_files] || QUOTA_FILES
 
@@ -259,7 +260,7 @@ class VCAP::Services::MongoDB::Node
       :port      => provisioned_service.port,
       :username  => provisioned_service.admin,
       :password  => provisioned_service.adminpass,
-      :times     => 10
+      :times     => @service_start_timeout
     })
 
     # Add super_user in user table. This user is added to keep node backward
