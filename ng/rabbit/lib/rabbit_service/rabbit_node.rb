@@ -37,7 +37,7 @@ class VCAP::Services::Rabbit::Node
     super(options)
     init_ports(options[:port_range])
     options[:max_clients] ||= 500
-    options[:max_memory_factor] ||= 0.5
+    options[:vm_memory_high_watermark] ||= 0.0045
     options[:max_capacity] = @max_capacity
     # Default bin path for bandwidth proxy
     options[:proxy_bin] ||= "/var/vcap/packages/bandwidth_proxy/bin/bandwidth_proxy"
@@ -397,13 +397,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       # Generate configuration
       port = @@options[:instance_port]
       admin_port = @@options[:instance_admin_port]
-      # To allow for garbage-collection, http://www.rabbitmq.com/memory.html recommends that vm_memory_high_watermark be set to 40%.
-      # But since we run up to max_capacity instances on each node, we must give each instance less than 40% of the memory.
-      # Analysis of the worst case (all instances are very busy and doing GC at the same time) suggests that we should set vm_memory_high_watermark = 0.4 / max_capacity.
-      # But we do not expect to ever see this worst-case situation in practice, so we
-      # (a) allow a numerator different from 40%, max_memory_factor defaults to 50%;
-      # (b) make the number grow more slowly as of max_capacity increases.
-      vm_memory_high_watermark = @@options[:max_memory_factor] / (1 + Math.log(@@options[:max_capacity]))
+      vm_memory_high_watermark = @@options[:vm_memory_high_watermark]
       # In RabbitMQ, If the file_handles_high_watermark is x, then the socket limitation is trunc(x * 0.9) - 2,
       # to let the @max_clients be a more accurate limitation,
       # the file_handles_high_watermark will be set to ceil((@max_clients + 2) / 0.9)
