@@ -27,6 +27,7 @@ port_range:
   first: 25001
   last: 45000
 migration_nfs: /mnt/migration
+service_start_timeout: 10
 # max_clients: 500
 # z_interval: 30
 # max_nats_payload: 1048576

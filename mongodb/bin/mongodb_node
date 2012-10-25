@@ -32,6 +32,9 @@ class VCAP::Services::MongoDB::NodeBin < VCAP::Services::Base::NodeBin
     options[:supported_versions] = parse_property(config, "supported_versions", Array)
     options[:default_version] = parse_property(config, "default_version", String)
     options[:mongod_options] = parse_property(config, "mongod_options", Hash)
+
+    # service_start_timeout is also parsed here to override the default value from the base config
+    options[:service_start_timeout] = parse_property(config, "service_start_timeout", Integer, :optional => true, :default => 10)
     options
   end
 
