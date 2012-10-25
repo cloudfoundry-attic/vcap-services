@@ -71,7 +71,9 @@ module VCAP::Services::Redis::Snapshot
       snapshot_file_path = @snapshot_files[0]
       raise "Can't snapshot file #{snapshot_file_path}" unless File.exists?(snapshot_file_path)
 
-      result = import_redis_data(srv, get_dump_path(name, snapshot_id), @config["base_dir"], @config["redis_server_path"])
+      version = @config["default_version"]
+      version = srv.version unless srv.version.to_s.empty? # Handle nil / empty case (backwards compatibility)
+      result = import_redis_data(srv, get_dump_path(name, snapshot_id), @config["base_dir"], @config["redis_server_path"][version])
       raise "Failed execute import command to #{name}" unless result
       srv.pid = result
       srv.save
