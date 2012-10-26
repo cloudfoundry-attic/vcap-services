@@ -42,9 +42,9 @@ type FilterAction struct {
 
 type DiskUsage struct {
 	reserved_blocks float64
-	total_size      uint64  // bytes, total space size
-	static_size     uint64  // bytes, static allocated disk file size
-	dynamic_size    uint64  // bytes, dynamic allocated disk file size
+	total_size      float64 // bytes, total space size
+	static_size     float64 // bytes, static allocated disk file size
+	dynamic_size    float64 // bytes, dynamic allocated disk file size
 	ratio           float64 // percent, dynamic value
 }
 
@@ -135,14 +135,14 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 	disk_usage := &f.disk_usage
 	action := &f.action
 
-	var journal_files_size, current_disk_usage uint64
+	var journal_files_size, current_disk_usage float64
 
 	base_dir := "/store/instance"
 	journal_dir := filepath.Join(base_dir, "data", "journal")
 
 	visit_file := func(path string, f os.FileInfo, err error) error {
 		if err == nil && !f.IsDir() {
-			journal_files_size += uint64(f.Size())
+			journal_files_size += float64(f.Size())
 		}
 		return nil
 	}
@@ -178,10 +178,10 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 			goto Error
 		}
 
-		disk_usage.static_size = 0
-		disk_usage.dynamic_size = 0
-		journal_files_size = 0
-		current_disk_usage = 0
+		disk_usage.static_size = 0.0
+		disk_usage.dynamic_size = 0.0
+		journal_files_size = 0.0
+		current_disk_usage = 0.0
 
 		if !read_mongodb_static_size(f, session) {
 			goto Error
@@ -192,15 +192,14 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 		}
 
 		filepath.Walk(journal_dir, visit_file)
-		logger.Debug("Get journal files size %d.", journal_files_size)
+		logger.Debug("Get journal files size %v.", journal_files_size)
 
 		/*
 		 * Check condition: (static_size + dynamic_size) >= threshold * total_size
 		 */
 		current_disk_usage = disk_usage.static_size + disk_usage.dynamic_size + journal_files_size
-		logger.Debug("Get current disk occupied size %d.", current_disk_usage)
-		disk_usage.ratio = float64(current_disk_usage) /
-			float64(disk_usage.total_size)
+		logger.Debug("Get current disk occupied size %v.", current_disk_usage)
+		disk_usage.ratio = current_disk_usage / disk_usage.total_size
 		if disk_usage.ratio >= action.threshold {
 			atomic.StoreUint32(&action.blocked, BLOCKED)
 		} else {
@@ -228,7 +227,7 @@ func read_mongodb_static_size(f *IOFilterProtocol, session *mgo.Session) bool {
 	disk_usage := &f.disk_usage
 
 	var stats bson.M
-	var temp int
+	var temp float64
 
 	admindb := session.DB("admin")
 	err := admindb.Login(conn_info.USER, conn_info.PASS)
@@ -248,17 +247,17 @@ func read_mongodb_static_size(f *IOFilterProtocol, session *mgo.Session) bool {
 		logger.Error("Failed to read admin_namespace_size.")
 		return false
 	}
-	admin_namespace_size := uint64(temp * 1024 * 1024)
+	admin_namespace_size := temp * 1024.0 * 1024.0
 	disk_usage.static_size += admin_namespace_size
 
 	if !parse_dbstats(stats["fileSize"], &temp) {
 		logger.Error("Failed to read admin_data_file_size.")
 		return false
 	}
-	admin_data_file_size := uint64(temp)
+	admin_data_file_size := temp
 	disk_usage.static_size += admin_data_file_size
 
-	logger.Debug("Get static disk files size %d.", disk_usage.static_size)
+	logger.Debug("Get static disk files size %v.", disk_usage.static_size)
 	return true
 }
 
@@ -267,7 +266,7 @@ func read_mongodb_dynamic_size(f *IOFilterProtocol, session *mgo.Session) bool {
 	disk_usage := &f.disk_usage
 
 	var stats bson.M
-	var temp int
+	var temp float64
 
 	db := session.DB(conn_info.DBNAME)
 	err := db.Login(conn_info.USER, conn_info.PASS)
@@ -288,39 +287,39 @@ func read_mongodb_dynamic_size(f *IOFilterProtocol, session *mgo.Session) bool {
 		logger.Error("Failed to read db_namespace_size.")
 		return false
 	}
-	db_namespace_size := uint64(temp * 1024 * 1024)
+	db_namespace_size := temp * 1024.0 * 1024.0
 	disk_usage.dynamic_size += db_namespace_size
 
 	if !parse_dbstats(stats["dataSize"], &temp) {
 		logger.Error("Failed to read db_data_size.")
 		return false
 	}
-	db_data_size := uint64(temp)
+	db_data_size := temp
 	disk_usage.dynamic_size += db_data_size
 
 	if !parse_dbstats(stats["indexSize"], &temp) {
 		logger.Error("Failed to read db_index_size.")
 		return false
 	}
-	db_index_size := uint64(temp)
+	db_index_size := temp
 	disk_usage.dynamic_size += db_index_size
 
-	logger.Debug("Get dynamic disk files size %d.", disk_usage.dynamic_size)
+	logger.Debug("Get dynamic disk files size %v.", disk_usage.dynamic_size)
 	return true
 }
 
 /******************************************/
 /*                                        */
-/*       Internel Support Routines        */
+/*       Internal Support Routines        */
 /*                                        */
 /******************************************/
 func init_disk_usage(disk_usage *DiskUsage) bool {
 	if disk_usage.reserved_blocks == 0 {
 		disk_usage.reserved_blocks = DEFAULT_FS_RESERVED_BLOCKS
 	}
-	disk_usage.total_size = 0
-	disk_usage.static_size = 0
-	disk_usage.dynamic_size = 0
+	disk_usage.total_size = 0.0
+	disk_usage.static_size = 0.0
+	disk_usage.dynamic_size = 0.0
 	disk_usage.ratio = 0.0
 
 	base_dir := "/store/instance"
@@ -338,15 +337,21 @@ func init_disk_usage(disk_usage *DiskUsage) bool {
 		return false
 	}
 
-	total_size := uint64(statfs.Bsize) * uint64(float64(statfs.Blocks)*
-		float64(1.0-disk_usage.reserved_blocks))
-	logger.Debug("Get total disk size %d.", total_size)
+	total_size := float64(statfs.Bsize) * float64(uint64(float64(statfs.Blocks)*
+		float64(1.0-disk_usage.reserved_blocks)))
+	logger.Debug("Get total disk size %v.", total_size)
 	disk_usage.total_size = total_size
 	return true
 }
 
-func parse_dbstats(value interface{}, result *int) bool {
-	temp, err := strconv.Atoi(fmt.Sprintf("%d", value))
+/*
+ * NOTE: if disk data file gets very large, then the returned data size value would
+ *       be encoded in 'float' format but not 'integer' format, such as
+ *       2.098026476e+09, if we parse the value in 'integer' format then we get
+ *       error. It always works if we parse an 'integer' value in 'float' format.
+ */
+func parse_dbstats(value interface{}, result *float64) bool {
+	temp, err := strconv.ParseFloat(fmt.Sprintf("%v", value), 64)
 	if err != nil {
 		logger.Error("Failed to convert data type: [%v].", err)
 		return false
