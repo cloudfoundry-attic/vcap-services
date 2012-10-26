@@ -14,6 +14,8 @@ type ConnectionInfo struct {
 	HOST   string
 	PORT   string
 	DBNAME string
+	USER   string
+	PASS   string
 }
 
 type ProxyConfig struct {
