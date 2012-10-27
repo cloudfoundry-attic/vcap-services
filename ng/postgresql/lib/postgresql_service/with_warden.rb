@@ -12,6 +12,7 @@ end
 module VCAP::Services::Postgresql::WithWarden
 
   include VCAP::Services::Postgresql::Util
+  include VCAP::Services::Postgresql::Pagecache
 
   def self.included(base)
     unless base.is_a? VCAP::Services::Postgresql::Node
@@ -248,6 +249,7 @@ module VCAP::Services::Postgresql::WithWarden
     EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
     EM.add_periodic_timer(@max_long_tx.to_f / 2) {kill_long_transaction} if @max_long_tx > 0
     EM.add_periodic_timer(VCAP::Services::Postgresql::Node::STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
+    setup_image_cache_cleaner(@options)
   end
 
   def shutdown

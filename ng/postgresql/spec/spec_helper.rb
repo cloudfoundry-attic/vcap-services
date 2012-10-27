@@ -59,6 +59,21 @@ class VCAP::Services::Postgresql::Node
   end
 end
 
+# monkey patch to support page cache cleaner test
+class File
+  class << self
+   def init_fadvise_files
+     @fadvise_files = []
+   end
+   attr_reader :fadvise_files
+  end
+
+  alias_method :fadvise_ori, :fadvise
+  def fadvise(start, len, advise_symbol)
+    self.class.fadvise_files << self.path
+  end
+end
+
 module Boolean;end
 class ::TrueClass; include Boolean; end
 class ::FalseClass; include Boolean; end
