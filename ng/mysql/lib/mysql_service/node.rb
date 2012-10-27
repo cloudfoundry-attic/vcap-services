@@ -288,13 +288,9 @@ class VCAP::Services::Mysql::Node
         password = 'p' + generate_credential
         provisioned_service = mysqlProvisionedService.create(new_port, name, user, password, version)
       end
-      provisioned_service.run
-      setup_pool(provisioned_service)
-      raise "Could not create database" unless create_database(provisioned_service)
-
-      if not provisioned_service.save
-        @logger.error("Could not save entry: #{provisioned_service.errors.inspect}")
-        raise MysqlError.new(MysqlError::MYSQL_LOCAL_DB_ERROR)
+      provisioned_service.run do |instance|
+        setup_pool(instance)
+        raise "Could not create database" unless create_database(instance)
       end
       response = gen_credential(provisioned_service.name, provisioned_service.user, provisioned_service.password, get_port(provisioned_service))
       @statistics_lock.synchronize do
@@ -840,13 +836,25 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     end
   end
 
-  def service_script
+  def start_script
     case version
     when "5.5"
       "mysql55_startup.sh"
     else
       "mysql_startup.sh"
     end
+  end
+
+  def start_options
+    options = super
+    options[:start_script] = {:script => start_script, :use_spawn => true}
+    options[:service_port] = service_port
+    options
+  end
+
+  def finish_start?
+    # Mysql does this in "setup_pool" function, so just return true here
+    true
   end
 
   #directory helper

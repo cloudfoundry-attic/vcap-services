@@ -45,6 +45,7 @@ module VCAP
 
         class Wardenprovisionedservice < VCAP::Services::Base::WardenService
           include DataMapper::Resource
+          include VCAP::Services::Postgresql::Util
 
           property :name,             String,   :key => true
           # property plan is deprecated. The instances in one node have same plan.
@@ -63,6 +64,7 @@ module VCAP
               super(args)
               @max_db_size         = ((args[:max_db_size] + args[:db_size_overhead]) * 1024 * 1024).round
               @max_disk            = (args[:disk_overhead] + args [:max_db_size] + args[:db_size_overhead]).ceil
+              @@postgresql_config  = args[:postgresql]
             end
           end
 
@@ -111,11 +113,24 @@ module VCAP
           end
 
           def service_port
-            "5432"
+            5432
           end
 
-          def service_script
-            "postgresql_ctl"
+          def start_options
+            options = super
+            options[:start_script] = {:script => "postgresql_ctl", :use_spawn => true}
+            options[:service_port] = service_port
+            options
+          end
+
+          def finish_start?
+            postgresql_quickcheck(
+              ip,
+              @@postgresql_config["user"],
+              @@postgresql_config["pass"],
+              service_port,
+              "postgres"
+            )
           end
 
         end

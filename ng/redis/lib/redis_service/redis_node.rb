@@ -41,15 +41,15 @@ class VCAP::Services::Redis::Node
     # Configuration used in warden
     options[:instance_data_dir] = "/store/instance/data"
     options[:instance_log_dir] = "/store/log"
-    @redis_port = options[:instance_port] = 25001
+    @redis_port = options[:service_port] = 25001
     @config_command_name = options[:config_command_name] = options[:command_rename_prefix] + "-config"
     @shutdown_command_name = options[:shutdown_command_name] = options[:command_rename_prefix] + "-shutdown"
     @save_command_name = options[:save_command_name] = options[:command_rename_prefix] + "-save"
     @disable_password = "disable-#{UUIDTools::UUID.random_create.to_s}"
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
-    @redis_timeout = @options[:redis_timeout] || 2
-    @service_start_timeout = @options[:service_start_timeout] || 3
+    @redis_timeout = options[:redis_timeout] || 2
+    @service_start_timeout = options[:service_start_timeout] || 3
     ProvisionedService.init(options)
     @options = options
     @supported_versions = options[:supported_versions]
@@ -102,7 +102,6 @@ class VCAP::Services::Redis::Node
       instance = ProvisionedService.create(port, version, plan, nil, nil)
     end
     instance.run
-    raise RedisError.new(RedisError::REDIS_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
     @logger.info("Successfully fulfilled provision request: #{instance.name}.")
     gen_credentials(instance)
   rescue => e
@@ -348,8 +347,8 @@ class VCAP::Services::Redis::Node::ProvisionedService
     include VCAP::Services::Redis
 
     def init(options)
+      options[:service_port] ||= 25001
       super(options)
-      @memory_limit = (options[:max_memory] || 128) + (options[:memory_overhead] || 0)
     end
 
     def create(port, version, plan=nil, name=nil, password=nil, db_file=nil, is_upgraded=false)
@@ -366,10 +365,8 @@ class VCAP::Services::Redis::Node::ProvisionedService
       instance.plan      = 1
       instance.pid       = 0
 
-      raise "Cannot save provision service" unless instance.save!
-
       # Generate configuration
-      port = @@options[:instance_port]
+      port = @@options[:service_port]
       password = instance.password
       persistent = @@options[:persistent]
       data_dir = @@options[:instance_data_dir]
@@ -398,12 +395,23 @@ class VCAP::Services::Redis::Node::ProvisionedService
     end
   end
 
-  def service_port
-    25001
+  def start_options
+    options = super
+    options[:start_script] = {:script => "redis_startup.sh #{version}", :use_spawn => true}
+    options
   end
 
-  def service_script
-    "redis_startup.sh #{version}"
+  def finish_start?
+    redis = Redis.new({:host => ip, :port => @@options[:service_port], :password => password})
+    redis.echo("")
+    true
+  rescue => e
+    false
+  ensure
+    begin
+      redis.quit if redis
+    rescue => e
+    end
   end
 
   def migration_check

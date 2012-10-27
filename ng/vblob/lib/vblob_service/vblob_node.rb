@@ -117,8 +117,6 @@ class VCAP::Services::VBlob::Node
     provisioned_service = ProvisionedService.create(port, name, username, password)
     provisioned_service.run
 
-    raise VBlobError.new(VBlobError::VBLOB_START_INSTANCE_ERROR) if wait_service_start(provisioned_service) == false
-
     host = get_host
     response = {
       "hostname" => host,
@@ -288,7 +286,6 @@ class VCAP::Services::VBlob::Node::ProvisionedService
       provisioned_service.port        = port
       provisioned_service.keyid       = username
       provisioned_service.secretid    = password
-      raise "Cannot save provision_service" unless provisioned_service.save!
 
       provisioned_service.prepare_filesystem(max_disk)
       FileUtils.mkdir_p(provisioned_service.data_dir)
@@ -318,8 +315,19 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     25001
   end
 
-  def service_script
-    "vblob_startup.sh"
+  def start_options
+    options = super
+    options[:start_script] = {:script => "vblob_startup.sh", :use_spawn => true}
+    options[:service_port] = service_port
+    options[:additional_binds] = [{:src_path => tmp_dir, :dst_path => "/store/tmp",}]
+    options
+  end
+
+  def finish_start?
+    Timeout::timeout(VBLOB_TIMEOUT) { Net::HTTP.start(ip, service_port) { |http| response = http.get("/")} }
+    true
+  rescue => e
+    false
   end
 
   def data_dir
@@ -364,11 +372,6 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     super
     FileUtils.rm_rf(File.join(base_dir, "config.json"))
     generate_config
-  end
-
-  def additional_binds
-    [{:src_path => tmp_dir,
-      :dst_path => "/store/tmp",}]
   end
 
   def util_dirs

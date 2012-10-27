@@ -47,16 +47,16 @@ class VCAP::Services::Rabbit::Node
     # Default limit size is 1 MB
     options[:proxy_limit] ||= 1
     # Configuration used in warden
-    @rabbitmq_port = options[:instance_port] = 10001
-    @rabbitmq_admin_port = options[:instance_admin_port] = 20001
+    @rabbitmq_port = options[:service_port] = 10001
+    @rabbitmq_admin_port = options[:service_admin_port] = 20001
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
     @rabbitmq_timeout = @options[:rabbitmq_timeout] || 2
     @service_start_timeout = @options[:service_start_timeout] || 5
     @instance_parallel_start_count = 3
     @default_permissions = '{"configure":".*","write":".*","read":".*"}'
-    @initial_username = "guest"
-    @initial_password = "guest"
+    options[:initial_username] = @initial_username = "guest"
+    options[:initial_password] = @initial_password = "guest"
     @hostname = get_host
     ProvisionedService.init(options)
     @options = options
@@ -95,24 +95,17 @@ class VCAP::Services::Rabbit::Node
       port = new_port
       instance = ProvisionedService.create(port, get_admin_port(port), plan)
     end
-    instance.run
-    # Wait enough time for the RabbitMQ server starting, need use initial username and password to check
-    admin_username = instance.admin_username
-    admin_password = instance.admin_password
-    instance.admin_username = @initial_username
-    instance.admin_password = @initial_username
-    raise RabbitmqError.new(RabbitmqError::RABBITMQ_START_INSTANCE_TIMEOUT, instance.name) if wait_service_start(instance) == false
-    instance.admin_username = admin_username
-    instance.admin_password = admin_password
-    # Use initial credentials to create provision user
-    credentials = {"username" => @initial_username, "password" => @initial_password, "hostname" => instance.ip}
-    add_vhost(credentials, instance.vhost)
-    add_user(credentials, instance.admin_username, instance.admin_password)
-    set_permissions(credentials, instance.vhost, instance.admin_username, @default_permissions)
-    # Use provision user credentials to delete initial user for security
-    credentials["username"] = instance.admin_username
-    credentials["password"] = instance.admin_password
-    delete_user(credentials, @initial_username)
+    instance.run do
+      # Use initial credentials to create provision user
+      credentials = {"username" => @initial_username, "password" => @initial_password, "hostname" => instance.ip}
+      add_vhost(credentials, instance.vhost)
+      add_user(credentials, instance.admin_username, instance.admin_password)
+      set_permissions(credentials, instance.vhost, instance.admin_username, @default_permissions)
+      # Use provision user credentials to delete initial user for security
+      credentials["username"] = instance.admin_username
+      credentials["password"] = instance.admin_password
+      delete_user(credentials, @initial_username)
+    end
     @logger.info("Successfully fulfilled provision request: #{instance.name}")
     gen_credentials(instance)
   rescue => e
@@ -329,24 +322,13 @@ class VCAP::Services::Rabbit::Node
     instance
   end
 
-  def is_service_started(instance)
-    credentials = {"username" => instance.admin_username, "password" => instance.admin_password, "hostname" => instance.ip}
-    begin
-      # Try to call management API, if success, then return
-      response = create_resource(credentials)["users"].get
-      JSON.parse(response)
-      return true
-    rescue => e
-      return false
-    end
-  end
-
 end
 
 class VCAP::Services::Rabbit::Node::ProvisionedService
 
   include DataMapper::Resource
   include VCAP::Services::Rabbit
+  include VCAP::Services::Rabbit::Util
 
   property :name,            String,      :key => true
   property :vhost,           String,      :required => true
@@ -370,7 +352,10 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
     def init(options)
       super
+      @service_admin_port = @@options[:service_admin_port]
     end
+
+    attr_reader :service_admin_port
 
     def create(port, admin_port, plan=nil, credentials=nil)
       raise "Parameter missing" unless port && admin_port
@@ -397,11 +382,9 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       instance.pid = 0
       instance.proxy_pid = 0
 
-      raise "Cannot save provision service" unless instance.save!
-
       # Generate configuration
-      port = @@options[:instance_port]
-      admin_port = @@options[:instance_admin_port]
+      port = @@options[:service_port]
+      admin_port = @@options[:service_admin_port]
       vm_memory_high_watermark = @@options[:vm_memory_high_watermark]
       # In RabbitMQ, If the file_handles_high_watermark is x, then the socket limitation is trunc(x * 0.9) - 2,
       # to let the @max_clients be a more accurate limitation,
@@ -467,24 +450,45 @@ EOF
     max
   end
 
-  def service_port
-    @@options[:instance_port]
+  def start_options
+    options = super
+    options[:start_script] = {:script => "rabbitmq_startup.sh #{self[:name]}", :use_spawn => true}
+    options[:need_map_port] = false
+    options
   end
 
-  def service_script
-    "rabbitmq_startup.sh #{self[:name]}"
+  def finish_start?
+    credentials = {"username" => admin_username, "password" => admin_password, "hostname" => ip}
+    begin
+      # Try to call management API, if success, then return
+      response = create_resource(credentials)["users"].get
+      JSON.parse(response)
+      return true
+    rescue => e
+      return false
+    end
   end
 
-  def run
+  def finish_first_start?
+    credentials = {"username" => @@options[:initial_username], "password" => @@options[:initial_password], "hostname" => ip}
+    begin
+      # Try to call management API, if success, then return
+      response = create_resource(credentials)["users"].get
+      JSON.parse(response)
+      return true
+    rescue => e
+      return false
+    end
+  end
+
+  def run(options=nil, &post_start_block)
     super
     start_proxy
-    unmap_port(self[:port], self[:ip], service_port)
     save!
     true
   end
 
   def stop
-    map_port(self[:port], self[:ip], service_port)
     stop_proxy
     super
   end
@@ -496,7 +500,7 @@ EOF
       STDERR.reopen(File.open("#{log_dir}/bandwidth_proxy_stderr.log", "a"))
       exec(@@options[:proxy_bin],
            "-eport",  port.to_s,                         # External port proxy listen to
-           "-iport",  service_port.to_s,                 # Internal port service listen to
+           "-iport",  @@options[:service_port].to_s,     # Internal port service listen to
            "-iip",    ip,                                # Internal ip service work on
            "-l",      "#{log_dir}/bandwidth_proxy.log",  # Log file
            "-window", @@options[:proxy_window].to_s,     # Time window to check for the transfer size(both in and out)
@@ -506,17 +510,17 @@ EOF
   end
 
   def stop_proxy
-    Process.kill(:SIGTERM, self[:proxy_pid])
+    Process.kill(:SIGTERM, self[:proxy_pid]) unless self[:proxy_pid] == 0
     self[:proxy_pid] = 0
   end
 
   def migration_check
     super
     if container == nil
-      # Regenerate the configuration, need change the port to instance_admin_port
+      # Regenerate the configuration, need change the port to service_admin_port
       config_file = File.join(config_dir, "rabbitmq.config")
       content = File.read(config_file)
-      content = content.gsub(/port, \d{5}/, "port, #{@@options[:instance_admin_port]}")
+      content = content.gsub(/port, \d{5}/, "port, #{@@options[:service_admin_port]}")
       File.open(config_file, "w") {|f| f.write(content)}
     end
   end
