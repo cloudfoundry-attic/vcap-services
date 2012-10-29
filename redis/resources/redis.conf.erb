@@ -1,9 +1,18 @@
 requirepass <%= password %>
 port <%= port %>
 maxmemory <%= memory %>mb
+
+<% if version == "2.2" || version == "2.4" %>
+
 vm-swap-file <%= swap_file %>
 vm-max-memory <%= vm_max_memory %>mb
 vm-pages <%= vm_pages %>
+
+hash-max-zipmap-entries 64
+hash-max-zipmap-value 512
+
+<% end %>
+
 dir <%= data_dir %>
 logfile <%= log_file %>
 
@@ -17,8 +26,6 @@ save 300 10
 save 60 10000
 maxclients <%= maxclients %>
 appendonly no
-hash-max-zipmap-entries 64
-hash-max-zipmap-value 512
 activerehashing yes
 
 rename-command CONFIG <%= config_command %>

@@ -380,6 +380,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
       save_command = @@options[:save_command_name]
       maxclients = @@options[:max_clients]
       config_template = ERB.new(File.read(@@options[:config_template]))
+      version = instance.version
       config = config_template.result(Kernel.binding)
       config_path = File.join(instance.base_dir, "redis.conf")
 

@@ -14,8 +14,12 @@ save 60 10000
 <% end %>
 maxclients <%= maxclients %>
 appendonly no
+
+<% if version == "2.2" || version == "2.4" %>
 hash-max-zipmap-entries 64
 hash-max-zipmap-value 512
+<% end %>
+
 activerehashing yes
 
 rename-command CONFIG <%= config_command %>

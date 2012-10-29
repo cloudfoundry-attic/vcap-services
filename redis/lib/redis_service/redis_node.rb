@@ -407,6 +407,7 @@ class VCAP::Services::Redis::Node
       shutdown_command = @shutdown_command_name
       save_command = @save_command_name
       maxclients = @max_clients
+      version = get_version(instance)
 
       config = @config_template.result(Kernel.binding)
       config_path = File.join(dir, "redis.conf")
