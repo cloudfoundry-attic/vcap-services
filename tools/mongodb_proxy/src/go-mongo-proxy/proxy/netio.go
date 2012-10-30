@@ -130,8 +130,8 @@ func (io *NetIOManager) ProxyNetAccept(serverinfo syscall.Sockaddr) (sa syscall.
 	}
 
 	// establish connection with mongodb server
-	serverfd, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM,
-		syscall.IPPROTO_TCP)
+	serverfd, err = syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM,
+		0)
 	if err != nil {
 		goto ServerError
 	}
