@@ -52,8 +52,8 @@ module VCAP
 
             if http.error.empty?
               if http.response_header.status == 200
-                resp = VCAP::Services::Api::ListProxiedServicesResponse.decode(http.response)
-                resp.proxied_services.each {|bsvc|
+                resp = JSON.parse(http.response)
+                resp["proxied_services"].each {|bsvc|
                   @logger.info("Fetch #{@marketplace_client_name} service from CC: label=#{bsvc["label"]} - #{bsvc.inspect}")
                   services[bsvc["label"]] = bsvc
                 }
