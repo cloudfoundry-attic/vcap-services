@@ -279,101 +279,100 @@ func skb_read(io *NetIOManager, fd int) (errno int) {
 }
 
 func skb_write_with_filter(io *NetIOManager, fd int) (errno int) {
+	var packet_header []byte
+
 	if pending, ok := io.pending_output_skbs[fd]; ok {
-		for {
-			if pending.current_packet_remain_length == 0 {
-				var packet_header []byte
-
-				if BUFFER_SIZE-pending.available_size < STANDARD_HEADER_SIZE {
-					return NO_ERROR
-				}
-
-				start_offset := pending.read_offset
-				end_offset := pending.read_offset + BUFFER_SIZE - pending.available_size
-				if end_offset > BUFFER_SIZE {
-					end_offset = BUFFER_SIZE
-				}
-
-				// determine whether the left size is larger than STANDARD_HEADER_SIZE
-				if end_offset-start_offset >= STANDARD_HEADER_SIZE {
-					packet_header = pending.stream[start_offset:(start_offset + STANDARD_HEADER_SIZE)]
-				} else {
-					// wrap around the ring buffer
-					packet_header = make([]byte, STANDARD_HEADER_SIZE)
-					copy(packet_header, pending.stream[start_offset:end_offset])
-					copy(packet_header[end_offset:], pending.stream[0:(STANDARD_HEADER_SIZE+start_offset-end_offset)])
-				}
-
-				/*
-				 * NOTE: We must get mongodb protocol packet one-by-one from the
-				 *       ring buffer, then we can parse the packet header to
-				 *       block insert/update operations if need.
-				 */
-				message_length, op_code := io.filter.HandleMsgHeader(packet_header)
-				if message_length > 0 {
-					pending.current_packet_op = op_code
-					pending.current_packet_remain_length = message_length
-				} else {
-					pending.current_packet_op = OP_UNKNOWN
-					pending.current_packet_remain_length = 0
-				}
-			}
-
-			if !io.filter.PassFilter(pending.current_packet_op) {
-				// block operation
-				return FILTER_BLOCK
-			}
-
-			// Figure out real buffered data size
-			sendlen := pending.current_packet_remain_length
-			if BUFFER_SIZE-pending.available_size < sendlen {
-				sendlen = BUFFER_SIZE - pending.available_size
-			}
-
-			/*
-			 * NOTE: Do not enter into 'write' system call if there is nothing
-			 *       to transmit, system call is expensive.
-			 */
-			if sendlen <= 0 {
+		if pending.current_packet_remain_length == 0 {
+			if BUFFER_SIZE-pending.available_size < STANDARD_HEADER_SIZE {
 				return NO_ERROR
 			}
 
-			// determine the maximum size which can be send
 			start_offset := pending.read_offset
-			end_offset := pending.read_offset + sendlen
+			end_offset := pending.read_offset + BUFFER_SIZE - pending.available_size
 			if end_offset > BUFFER_SIZE {
 				end_offset = BUFFER_SIZE
 			}
-			num, error := do_skb_write(fd, pending.stream[start_offset:end_offset])
+
+			// determine whether the left size is larger than STANDARD_HEADER_SIZE
+			if end_offset-start_offset >= STANDARD_HEADER_SIZE {
+				packet_header = pending.stream[start_offset:(start_offset + STANDARD_HEADER_SIZE)]
+			} else {
+				// wrap around the ring buffer
+				packet_header = make([]byte, STANDARD_HEADER_SIZE)
+				copy(packet_header, pending.stream[start_offset:end_offset])
+				copy(packet_header[end_offset:], pending.stream[0:(STANDARD_HEADER_SIZE+start_offset-end_offset)])
+			}
+
+			/*
+			 * NOTE: We must get mongodb protocol packet one-by-one from the
+			 *       ring buffer, then we can parse the packet header to
+			 *       block insert/update operations if need.
+			 */
+			message_length, op_code := io.filter.HandleMsgHeader(packet_header)
+			if message_length > 0 {
+				pending.current_packet_op = op_code
+				pending.current_packet_remain_length = message_length
+			} else {
+				pending.current_packet_op = OP_UNKNOWN
+				pending.current_packet_remain_length = 0
+			}
+		}
+
+		// Figure out real buffered data size
+		sendlen := pending.current_packet_remain_length
+		if BUFFER_SIZE-pending.available_size < sendlen {
+			sendlen = BUFFER_SIZE - pending.available_size
+		}
+
+		/*
+		 * NOTE: Do not enter into 'write' system call if there is nothing
+		 *       to transmit, system call is expensive.
+		 */
+		if sendlen <= 0 {
+			return NO_ERROR
+		}
+
+		if !io.filter.PassFilter(pending.current_packet_op) {
+			// block operation
+			return FILTER_BLOCK
+		}
+
+		// determine the maximum size which can be send
+		start_offset := pending.read_offset
+		end_offset := pending.read_offset + sendlen
+		if end_offset > BUFFER_SIZE {
+			end_offset = BUFFER_SIZE
+		}
+		num, error := do_skb_write(fd, pending.stream[start_offset:end_offset])
+		if (error == NO_ERROR) && (num > 0) {
+			pending.read_offset = (start_offset + num) % BUFFER_SIZE
+			pending.available_size += num
+			sendlen -= num
+
+			pending.current_packet_remain_length -= num
+
+			if num < (end_offset - start_offset) {
+				return NO_ERROR
+			}
+		} else {
+			return error
+		}
+
+		if sendlen > 0 {
+			// wrap around the ring buffer
+			start_offset = pending.read_offset
+			end_offset = start_offset + sendlen
+			num, error = do_skb_write(fd, pending.stream[start_offset:end_offset])
 			if (error == NO_ERROR) && (num > 0) {
-				pending.read_offset = (start_offset + num) % BUFFER_SIZE
+				pending.read_offset = start_offset + num
 				pending.available_size += num
-				sendlen -= num
 
 				pending.current_packet_remain_length -= num
-
-				if num < (end_offset - start_offset) {
-					return NO_ERROR
-				}
 			} else {
 				return error
 			}
-
-			if sendlen > 0 {
-				// wrap around the ring buffer
-				start_offset = pending.read_offset
-				end_offset = start_offset + sendlen
-				num, error = do_skb_write(fd, pending.stream[start_offset:end_offset])
-				if (error == NO_ERROR) && (num > 0) {
-					pending.read_offset = start_offset + num
-					pending.available_size += num
-
-					pending.current_packet_remain_length -= num
-				} else {
-					return error
-				}
-			}
 		}
+		return NO_ERROR
 	}
 	return UNKNOWN_ERROR
 }
