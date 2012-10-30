@@ -112,7 +112,7 @@ describe VCAP::Services::Redis::Node do
       in_credentials["name"] = UUIDTools::UUID.random_create.to_s
       in_credentials["port"] = 22222
       in_credentials["password"] = UUIDTools::UUID.random_create.to_s
-      out_credentials = @node.provision(:free, in_credentials)
+      out_credentials = @node.provision(:free, in_credentials, @default_version)
       out_credentials["name"].should == in_credentials["name"]
       out_credentials["port"].should == in_credentials["port"]
       out_credentials["password"].should == in_credentials["password"]
@@ -282,7 +282,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should import db file from right location after import instance" do
       @node.unprovision(@credentials["name"])
-      @node.import_instance(@credentials, @binding_credentials_map, "./", :free)
+      @node.import_instance(@credentials, @binding_credentials_map, @node.options[:migration_nfs], :free)
       credentials_list = @node.update_instance(@credentials, @binding_credentials_map)
       credentials_list.size.should == 2
       instance = @node.get_instance(credentials_list[0]["name"])

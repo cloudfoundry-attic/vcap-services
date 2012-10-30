@@ -55,7 +55,6 @@ def getNodeTestConfig
     :mbus => parse_property(config, "mbus", String),
     :local_db_file => "/tmp/redis_node_" + Time.now.to_i.to_s + ".db",
     :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :redis_server_path => parse_property(config, "redis_server_path", Hash),
     :config_template => File.join(File.dirname(__FILE__), "..", "resources/redis.conf.erb"),
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
