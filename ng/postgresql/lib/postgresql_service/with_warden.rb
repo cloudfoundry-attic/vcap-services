@@ -172,7 +172,7 @@ module VCAP::Services::Postgresql::WithWarden
     pgProvisionedService.all.each do |instance|
       conn = global_connection(instance)
       if conn
-        res = get_db_stat_by_connection(conn, @max_db_size)
+        res = get_db_stat_by_connection(conn, @max_db_size, @sys_dbs)
         dbs += res
       else
         @logger.warn("No connection to #{instance.name} to get db stat")
@@ -191,20 +191,23 @@ module VCAP::Services::Postgresql::WithWarden
     db_list
   end
 
+  def db_size(db)
+    size = 0
+    conn = global_connection(db)
+    return nil unless conn
+    res = conn.query("select pg_tablespace_size('pg_default') + pg_tablespace_size('pg_global') as sum_size")
+    res.each do |x|
+      size = x["sum_size"].to_i
+    end
+    size
+  end
+
   def dbs_size(dbs=[])
     dbs = [] if dbs.nil?
     result = {}
     dbs.each do |db|
-      if db.is_a?pgProvisionedService
-        name = db.name
-      else
-        name= db
-      end
-      res = global_connection(db).query("select pg_database_size(datname) as sum_size from pg_database where datname = '#{name}'")
-      res.each do |x|
-        size = x["sum_size"]
-        result[name] = size.to_i
-      end
+      db_size(db)
+      result[name] = size.to_i
     end
     result
   end

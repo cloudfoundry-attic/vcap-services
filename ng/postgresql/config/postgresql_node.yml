@@ -9,12 +9,12 @@ logging:
   level: debug
 pid: /var/vcap/sys/run/postgresql_node.pid
 node_id: postgresql_node_free_1
-max_db_size: 20
+# for wardenized postgresql servie, max_db_size should not be less than 23MB
+# for non-wardenized postgresql service, max_db_size should not be less than 6MB
+max_db_size: 30
 max_long_query: 3
 max_long_tx: 30
 max_db_conns: 20
-db_size_overhead: 5.4
-disk_overhead: 48.0
 use_warden: false
 warden:
   port_range:

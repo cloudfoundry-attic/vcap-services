@@ -180,7 +180,6 @@ describe "Postgresql node normal cases" do
   it "should recreate database and user when import instance" do
     EM.run do
       db = @node.provision(@default_plan, nil, @default_version)
-      puts db
       @test_dbs[db] = []
       @node.dump_instance(db, [], '/tmp')
       @node.unprovision(db['name'], [])
@@ -297,16 +296,16 @@ describe "Postgresql node normal cases" do
   it "should calculate both table and index as database size" do
     EM.run do
       conn = connect_to_postgresql(@db)
+      ori_size = @node.db_size(@db_instance)
       # should calculate table size
       conn.query("CREATE TABLE test(id INT)")
       conn.query("INSERT INTO test VALUES(10)")
       conn.query("INSERT INTO test VALUES(20)")
-      instance = @node.pgProvisionedService.get(@db["name"])
-      table_size = @node.db_size(instance)
-      table_size.should > 0
+      table_size = @node.db_size(@db_instance)
+      table_size.should > ori_size
       # should also calculate index size
       conn.query("CREATE INDEX id_index on test(id)")
-      all_size = @node.db_size(instance)
+      all_size = @node.db_size(@db_instance)
       all_size.should > table_size
       conn.close if conn
       EM.stop
@@ -385,7 +384,6 @@ describe "Postgresql node normal cases" do
       # try to login using the default account (parent role) of other's db default account
       fake_creds[1]["user"] = db2["user"]
       fake_creds.each do |creds|
-        puts creds
         expect{ connect_to_postgresql(creds) }.should raise_error
       end
       EM.stop
@@ -426,7 +424,10 @@ describe "Postgresql node normal cases" do
         }
 
         # use a default user (parent role), won't be killed
-        default_user = VCAP::Services::Postgresql::Node.pgProvisionedServiceClass(opts[:use_warden]).get(db['name']).pgbindusers.all(:default_user => true)[0]
+        default_user = VCAP::Services::Postgresql::Node.pgProvisionedServiceClass(opts[:use_warden])
+                        .get(db['name'])
+                        .pgbindusers
+                        .all(:default_user => true)[0]
         user = db.dup
         user['user'] = default_user[:user]
         user['password'] = default_user[:password]
@@ -663,25 +664,24 @@ describe "Postgresql node normal cases" do
         node.should_not == nil
         node.shutdown
         File.fadvise_files.count.should == 6
-        puts File.fadvise_files
         EM.stop
       end
     end
   end
 
   it "should enforce database size quota" do
-    #pending "Use warden, won't run this case." if @opts[:use_warden]
     node = nil
     EM.run do
       opts = @opts.dup
-      # new pg db takes about 5M(~5554180)
-      # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6 - @opts[:db_size_overhead]
+      # reduce storage quota
       if @opts[:use_warden]
-         opts[:port_range] = Range.new(@opts[:port_range].last+1, @opts[:port_range].last+50) if @opts[:use_warden]
-         opts[:local_db] = @opts[:local_db]+"_new.db"
-         opts[:not_start_instances] = true
+        opts[:port_range] = Range.new(@opts[:port_range].last+1, @opts[:port_range].last+50) if @opts[:use_warden]
+        opts[:local_db] = @opts[:local_db]+"_new.db"
+        opts[:not_start_instances] = true
       end
+      # add extra 0.5MB(524288B) to the size of a new intialized instance to calculate max_db_size
+      # so inserting 1MB(1000000B) data must trigger the quota enforcement
+      opts[:max_db_size] = (@node.db_size(@db_instance) + 524288)/1024.0/1024.0
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
         node.should_not == nil
@@ -689,7 +689,6 @@ describe "Postgresql node normal cases" do
         @new_test_dbs[db] = []
         binding = node.bind(db['name'], @default_opts)
         EM.add_timer(2) do
-          puts binding
           conn = connect_to_postgresql(binding)
           conn.query("create table test(data text)")
           conn.query("create schema quota_schema")
@@ -1103,14 +1102,15 @@ describe "Postgresql node normal cases" do
     node = nil
     EM.run do
       opts = @opts.dup
-      # new pg db takes about 5M(~5554180)
-      # reduce storage quota to 6MB.
-      opts[:max_db_size] = 6 - opts[:db_size_overhead]
+      # reduce storage quota.
       if opts[:use_warden]
          opts[:port_range] = Range.new(@opts[:port_range].last+1, @opts[:port_range].last+50) if @opts[:use_warden]
          opts[:local_db] = @opts[:local_db]+"_new.db"
          opts[:not_start_instances] = true
       end
+      # add extra 0.5MB(524288B) to the size of a new intialized instance to calculate max_db_size
+      # so inserting 1MB(1000000B) data must trigger the quota enforcement
+      opts[:max_db_size] = (@node.db_size(@db_instance) + 524288)/1024.0/1024.0
 
       node = VCAP::Services::Postgresql::Node.new(opts)
       EM.add_timer(1.1) do
@@ -1222,7 +1222,6 @@ describe "Postgresql node special cases" do
   it "should limit max connection to the database" do
     node = nil
     opts = getNodeTestConfig
-    #pending "Use warden, won't run this case." if opts[:use_warden]
     EM.run do
       opts[:max_db_conns] = 1
       node = VCAP::Services::Postgresql::Node.new(opts)

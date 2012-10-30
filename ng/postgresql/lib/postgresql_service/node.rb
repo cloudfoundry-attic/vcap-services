@@ -36,7 +36,8 @@ class VCAP::Services::Postgresql::Node
     @options = options.dup
 
     @postgresql_configs = options[:postgresql]
-    @max_db_size = ((options[:max_db_size] + options[:db_size_overhead]) * 1024 * 1024).round
+    @max_db_size = (options[:max_db_size] * 1024 * 1024).round
+    @sys_dbs = options[:sys_dbs] || ['template0', 'template1', 'postgres']
     @max_long_query = options[:max_long_query]
     @max_long_tx = options[:max_long_tx]
     @max_db_conns = options[:max_db_conns]

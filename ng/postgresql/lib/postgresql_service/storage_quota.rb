@@ -5,13 +5,6 @@ module VCAP; module Services; module Postgresql; end; end; end
 
 class VCAP::Services::Postgresql::Node
 
-  def db_size(db)
-    conn = global_connection(db)
-    return nil unless conn
-    sz = conn.query("select sum(pg_database_size('#{db.name}')) size")
-    sz[0]['size'].to_i
-  end
-
   def fmt_db_listing(name, size)
     "<name: '#{name}' size: #{size}>"
   end
@@ -41,7 +34,8 @@ class VCAP::Services::Postgresql::Node
       @logger.warn("Unable to grant write access to #{name}: fail to connect to #{name}")
       return false
     end
-    @public_schema_id ||= get_public_schema_id(@connection)
+    global_conn = global_connection(service)
+    @public_schema_id ||= get_public_schema_id(global_conn)
     unless @public_schema_id
       @logger.warn("Unable to revoke write access to #{name}: fail to retrieve info of public schema.")
       return false

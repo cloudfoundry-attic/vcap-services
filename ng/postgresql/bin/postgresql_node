@@ -20,8 +20,7 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
   end
 
   def additional_config(options, config)
-    options[:max_db_size] = parse_property(config, "max_db_size", Integer)
-    options[:db_size_overhead] = parse_property(config, "db_size_overhead", Float)
+    options[:max_db_size] = parse_property(config, "max_db_size", Numeric)
     options[:max_long_query] = parse_property(config, "max_long_query", Integer)
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
     options[:postgresql] = parse_property(config, "postgresql", Hash)
@@ -29,6 +28,7 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
     options[:use_warden] = parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
     options[:supported_versions] = parse_property(config, "supported_versions", Array)
     options[:default_version] = parse_property(config, "default_version", String)
+    options[:sys_dbs] = parse_property(config, "sys_dbs", Array, :optional => true)
     if options[:use_warden] && options[:filesystem_quota] && options[:image_dir]
       warden_config = parse_property(config, "warden", Hash)
       options[:clean_image_cache] = parse_property(warden_config, "clean_image_cache", Boolean, :optional => true, :default => false)

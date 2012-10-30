@@ -622,9 +622,8 @@ module VCAP
           long_tx_killed
         end
 
-        def get_db_stat_by_connection(connection, max_db_size)
+        def get_db_stat_by_connection(connection, max_db_size, sys_dbs=[])
           @logger ||= create_logger()
-          sys_dbs = ['template0', 'template1', 'postgres']
           result = []
           return result unless connection
           db_stats = connection.query('select datid, datname, version() as version from pg_stat_database')

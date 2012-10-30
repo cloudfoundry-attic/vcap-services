@@ -269,7 +269,7 @@ module VCAP::Services::Postgresql::WithoutWarden
   def get_db_stat
     @supported_versions.inject([]) do |result, version|
       conn = fetch_global_connection version
-      result +=  get_db_stat_by_connection(conn, @max_db_size)
+      result +=  get_db_stat_by_connection(conn, @max_db_size, @sys_dbs)
     end
   end
 
@@ -280,17 +280,35 @@ module VCAP::Services::Postgresql::WithoutWarden
     end
   end
 
+  def db_overhead(name)
+    avg_overhead = 0
+    res = fetch_global_connection(name).query("select ((sum(pg_database_size(datname)) + avg(pg_tablespace_size('pg_global')))/#{@capacity}) as avg_overhead from pg_database where datname in ('#{@sys_dbs.join('\', \'')}');")
+    res.each do |x|
+      avg_overhead = x['avg_overhead'].to_f.ceil
+    end
+    avg_overhead
+  end
+
+  def db_size(db)
+    sum = 0
+    avg_overhead = db_overhead(db.name)
+    sz = global_connection(db).query("select pg_database_size('#{db.name}') size")
+    sz.each do |x|
+      sum += x['size'].to_i + avg_overhead
+    end
+    sum
+  end
+
   def dbs_size()
     result = {}
     @supported_versions.each do |version|
-      res = fetch_global_connection(version).query(
-        'select datname, sum(pg_database_size(datname)) as sum_size from pg_database group by datname')
+      avg_overhead = db_overhead(version)
+      res = fetch_global_connection(version).query("select datname, sum(pg_database_size(datname)) as sum_size from pg_database group by datname")
       res.each do |x|
         name, size = x["datname"], x["sum_size"]
-        result[name] = size.to_i
+        result[name] = (size.to_i + avg_overhead) unless @sys_dbs.include?(name)
       end
     end
-
     result
   end
 

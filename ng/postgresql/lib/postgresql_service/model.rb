@@ -65,8 +65,6 @@ module VCAP
             attr_reader :max_db_size
             def init(args)
               super(args)
-              @max_db_size         = ((args[:max_db_size] + args[:db_size_overhead]) * 1024 * 1024).round
-              @max_disk            = (args[:disk_overhead] + args [:max_db_size] + args[:db_size_overhead]).ceil
               @@postgresql_config  = args[:postgresql]
             end
           end
