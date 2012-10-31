@@ -63,7 +63,7 @@ describe "MongoDB Provisionedservice class" do
   context "When a MongoDB instance created and running" do
     before (:each) do
       @p_service = Node::ProvisionedService.create({ 'port' => 27017, 'version' => "1.8" })
-      @p_service.run
+      @p_service.run(@p_service.first_start_options)
     end
 
     after (:each) do
@@ -77,7 +77,6 @@ describe "MongoDB Provisionedservice class" do
 
     it "should be able to add admin/user and remove user" do
       lambda {
-        @p_service.add_admin(@p_service.admin, @p_service.adminpass)
         @p_service.add_user(@p_service.admin, @p_service.adminpass)
         insert_testdata(@p_service)
         @p_service.remove_user(@p_service.admin)
@@ -86,7 +85,6 @@ describe "MongoDB Provisionedservice class" do
 
     context "and when admin and user set" do
       before (:each) do
-        @p_service.add_admin(@p_service.admin, @p_service.adminpass)
         @p_service.add_user(@p_service.admin, @p_service.adminpass)
       end
 
@@ -100,7 +98,7 @@ describe "MongoDB Provisionedservice class" do
         insert_testdata(@p_service)
         @p_service.stop
         lambda { @p_service.repair }.should_not raise_error
-        @p_service.run
+        @p_service.run(@p_service.start_options)
         check_testdata(@p_service)
       end
 

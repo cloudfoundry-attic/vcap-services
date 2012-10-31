@@ -132,7 +132,8 @@ def get_node_config()
     :image_dir => '/tmp/mongo/images',
     :max_disk => 128,
     :supported_versions => parse_property(config, "supported_versions", Array),
-    :default_version => parse_property(config, "default_version", String)
+    :default_version => parse_property(config, "default_version", String),
+    :service_start_timeout => parse_property(config, "service_start_timeout", Integer)
   }
   options[:logger].level = Logger::DEBUG
   options

@@ -86,10 +86,10 @@ describe "MongoDB node backup/restore"  do
     @node.unbind(@bind_resp)
     @node.unprovision(@resp['name'], [])
 
-    @resp = @node.provision('free', @resp, @default_version)
+    @resp = @node.provision('free', nil, @default_version)
     @p_service = @node.get_instance(@resp['name'])
     @node.restore(@resp['name'], dir)
-    @node.bind(@resp['name'], 'rw', @bind_resp)
+    @bind_resp = @node.bind(@resp['name'], 'rw')
 
     # Should be the same like what it was before backup
     conn = Mongo::Connection.new(@p_service.ip, '27017')

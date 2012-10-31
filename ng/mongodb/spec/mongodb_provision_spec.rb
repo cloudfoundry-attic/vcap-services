@@ -141,6 +141,11 @@ describe "Mongodb Node" do
     end
 
     it "should be able to import the instance" do
+      # unprovision will fork a background process to do cleanup stuff
+      # we must wait for the background process to finish and then continue our jobs
+      # however we have no reliable approach to do this since this action is defined
+      # in vcap-services-base, here mark it PENDING, wait for vcap-services-base change
+      pending "the forked unprovision process may delete the new folder & sqlite record created by import procedure"
       conn = Mongo::Connection.new(@p_service.ip, '27017')
       db = conn.db(@resp['db'])
       auth = db.authenticate(@resp['username'], @resp['password'])
