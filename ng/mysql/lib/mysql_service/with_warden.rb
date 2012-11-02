@@ -103,4 +103,8 @@ module VCAP::Services::Mysql::WithWarden
       conn_pool.with_connection { |conn| yield conn, instance.name }
     end
   end
+
+  def extra_size_per_db(connection, dbs_size)
+    system_and_extra_size(connection, dbs_size)
+  end
 end

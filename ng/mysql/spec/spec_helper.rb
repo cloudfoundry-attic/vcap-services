@@ -107,7 +107,7 @@ def getNodeTestConfig()
     :kill_long_tx => parse_property(config, "kill_long_tx", Boolean),
     :max_user_conns => parse_property(config, "max_user_conns", Integer, :optional => true),
     :connection_wait_timeout => 10,
-    :disk_overhead => parse_property(config, "disk_overhead", Float, :default => 0.0),
+    :max_disk => parse_property(config, "max_disk", Integer),
     :use_warden => parse_property(config, "use_warden", Boolean),
     :supported_versions => parse_property(config, "supported_versions", Array),
   }

@@ -79,6 +79,10 @@ module VCAP::Services::Mysql::WithoutWarden
     end
   end
 
+  def extra_size_per_db(connection, dbs_size)
+    system_and_extra_size(connection, dbs_size) / @max_capacity
+  end
+
   #override new_port to make it do nothing
   def new_port(port=nil)
   end

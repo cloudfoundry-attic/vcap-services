@@ -118,17 +118,19 @@ describe "Mysql server node" do
 
   it "should calculate both table and index as database size" do
     EM.run do
-      conn = connect_to_mysql(@db)
-      # should calculate table size
-      conn.query("CREATE TABLE test(id INT)")
-      conn.query("INSERT INTO test VALUE(10)")
-      conn.query("INSERT INTO test VALUE(20)")
-      table_size = @node.dbs_size(conn)[@db["name"]]
-      table_size.should > 0
-      # should also calculate index size
-      conn.query("CREATE INDEX id_index on test(id)")
-      all_size = @node.dbs_size(conn)[@db["name"]]
-      all_size.should > table_size
+      @node.fetch_pool(@db["name"]).with_connection do |conn|
+        conn.query("use #{@db['name']}")
+        # should calculate table size
+        conn.query("CREATE TABLE test(id INT)")
+        conn.query("INSERT INTO test VALUE(10)")
+        conn.query("INSERT INTO test VALUE(20)")
+        table_size = @node.dbs_size(conn)[@db["name"]]
+        table_size.should > 0
+        # should also calculate index size
+        conn.query("CREATE INDEX id_index on test(id)")
+        all_size = @node.dbs_size(conn)[@db["name"]]
+        all_size.should > table_size
+      end
       EM.stop
     end
   end
@@ -137,7 +139,9 @@ describe "Mysql server node" do
     EM.run do
       opts = @opts.dup
       # reduce storage quota to 256KB.
-      opts[:max_db_size] = 256.0/1024
+      extra_size = {}
+      @node.fetch_pool(@db["name"]).with_connection { |conn| extra_size = @node.dbs_size(conn) }
+      opts[:max_db_size] = 256.0/1024 + extra_size[@db["name"]] / 1024 / 1024
       node = new_node(opts)
       EM.add_timer(1) do
         binding = node.bind(@db["name"],  @default_opts)

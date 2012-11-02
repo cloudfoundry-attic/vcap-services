@@ -8,6 +8,19 @@ class VCAP::Services::Mysql::Node
 
   DATA_LENGTH_FIELD = 6
 
+  def system_and_extra_size(connection, dbs_size)
+    extra_sizes = connection.query('SHOW VARIABLES LIKE "innodb_%"')
+    result = {}
+    extra_sizes.each do |i|
+      name, size = i["Variable_name"], i["Value"]
+      result[name] = size.to_i
+    end
+    total_sizes = [dbs_size["mysql"], dbs_size["information_schema"],
+                   result["innodb_autoextend_increment"] * 1024 * 1024,
+                   result["innodb_log_file_size"] * result["innodb_log_files_in_group"]]
+    total_sizes.inject(:+)
+  end
+
   def dbs_size(connection, dbs=[])
     dbs = [] if dbs.nil?
     if dbs.length == 0
@@ -26,6 +39,10 @@ class VCAP::Services::Mysql::Node
     end
     # assume 0 size for db which has no tables
     dbs.each {|db| result[db] = 0 unless result.has_key? db}
+    extra_size = extra_size_per_db(connection, result)
+    result.each do |db, _|
+      result[db] += extra_size
+    end
     result
   end
 

@@ -31,7 +31,7 @@ connection_pool_size:
   max: 10
 # connection timeout for all management mysql connection
 connection_wait_timeout: 10
-disk_overhead: 40.0
+max_disk: 128
 use_warden: false
 warden:
   port_range:

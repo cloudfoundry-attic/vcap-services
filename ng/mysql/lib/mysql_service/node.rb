@@ -806,12 +806,6 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   private_class_method :new
 
   class << self
-
-    def init(options)
-      super(options)
-      @max_disk              = (options[:max_db_size] + options[:disk_overhead]).ceil
-    end
-
     def create(port, name, user, password, version)
       raise "Parameter missing" unless port
       provisioned_service          = new
