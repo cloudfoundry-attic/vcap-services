@@ -85,7 +85,7 @@ class VCAP::Services::Mysql::Node
     acquired = @enforce_quota_lock.try_lock
     return unless acquired
     sizes = {}
-    each_instance_connection do |connection|
+    each_connection do |connection|
       connection.query('use mysql')
       sizes.merge!(dbs_size(connection))
     end
