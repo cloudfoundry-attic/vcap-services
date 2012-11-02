@@ -175,7 +175,7 @@ describe 'Mysql Connection Pool Test' do
     threads.each(&:join)
 
     pool.connections.size.should == 5 #should be enlarged but not larger than max
-    sleep(2)                          #wait for expiration of connections
+    sleep(3)                          #wait for expiration of connections
     pool.keep_alive                   #remove the expired connections
     pool.connections.size.should == 1
   end
