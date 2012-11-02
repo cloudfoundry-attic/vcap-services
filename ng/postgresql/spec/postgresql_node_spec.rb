@@ -575,6 +575,9 @@ describe "Postgresql node normal cases" do
   end
 
   it "should be thread safe" do
+    # this case will consume 20 container space in the ci environment, with the current
+    # ci bind mount scheme, this will be disk consuming, thus pending this case in ci env
+    pending "thread safe case is disabled in ci environment due to resource issue" if ENV["CI_ENV"]
     EM.run do
       available_storage = @node.available_storage
       provision_served = @node.provision_served
