@@ -61,10 +61,11 @@ def getNodeTestConfig
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :port_range => parse_property(config, "port_range", Range),
     :service_log_dir => "/tmp/rabbitmq_instances/log",
-    :config_template => File.expand_path("../../resources/rabbitmq.config.erb", __FILE__),
     :image_dir => "/tmp/redis_image",
     :max_disk => parse_property(config, "max_disk", Integer),
     :migration_nfs => "/tmp/migration",
+    :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version => parse_property(config, "default_version", String),
     :service_start_timeout => parse_property(config, "service_start_timeout", Integer, :optional => true),
     :vm_memory_high_watermark => parse_property(config, "vm_memory_high_watermark", Float, :optional => true),
     :bandwidth_per_second => parse_property(config, "bandwidth_per_second", Float),
@@ -74,6 +75,7 @@ def getNodeTestConfig
   options[:proxy_window] = parse_property(proxy_config, "window", Integer)
   options[:proxy_limit] = parse_property(proxy_config, "size", Integer)
   options[:local_db] = "sqlite3:" + options[:local_db_file]
+  options[:rabbit] = parse_property(config, "rabbit", Hash)
   options
 end
 

@@ -60,7 +60,6 @@ class VCAP::Services::Rabbit::Node
     @hostname = get_host
     ProvisionedService.init(options)
     @options = options
-    @supported_versions = ["2.4"]
   end
 
   def pre_send_announcement
@@ -84,16 +83,18 @@ class VCAP::Services::Rabbit::Node
   end
 
   def provision(plan = nil, credentials = nil, version = nil)
-    raise RabbitError.new(RabbitError::RABBIT_INVALID_PLAN, plan) unless plan.to_s == @plan
+    version ||= @options[:default_version]
+    raise RabbitmqError.new(RabbitmqError::RABBITMQ_INVALID_PLAN, plan) unless plan.to_s == @plan
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
     port = nil
     instance = nil
 
     if credentials
       port = new_port(credentials["port"])
-      instance = ProvisionedService.create(port, get_admin_port(port), plan, credentials)
+      instance = ProvisionedService.create(port, get_admin_port(port), plan, credentials, version)
     else
       port = new_port
-      instance = ProvisionedService.create(port, get_admin_port(port), plan)
+      instance = ProvisionedService.create(port, get_admin_port(port), plan, nil, version)
     end
     instance.run do
       # Use initial credentials to create provision user
@@ -345,6 +346,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
   property :status,          Integer,     :default => 0
   property :container,       String
   property :ip,              String
+  property :version,         String,      :required => true
 
   private_class_method :new
 
@@ -357,13 +359,15 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
     attr_reader :service_admin_port
 
-    def create(port, admin_port, plan=nil, credentials=nil)
+    def create(port, admin_port, plan=nil, credentials=nil, version=nil)
       raise "Parameter missing" unless port && admin_port
       # The instance could be an old instance without warden support
       instance = get(credentials["name"]) if credentials
       instance = new if instance == nil
       instance.port = port
       instance.admin_port = port
+      instance.version = (version || options[:default_version]).to_s
+      instance.proxy_pid = 0
       if credentials
         instance.name = credentials["name"]
         instance.vhost = credentials["vhost"]
@@ -380,7 +384,6 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       instance.plan = 1
       instance.plan_option = "rw"
       instance.pid = 0
-      instance.proxy_pid = 0
 
       # Generate configuration
       port = @@options[:service_port]
@@ -390,8 +393,9 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       # to let the @max_clients be a more accurate limitation,
       # the file_handles_high_watermark will be set to ceil((@max_clients + 2) / 0.9)
       file_handles_high_watermark = ((@@options[:max_clients] + 2) / 0.9).ceil
+      version_config = @@options[:rabbit][version.to_s]
       # Writes the RabbitMQ server erlang configuration file
-      config_template = ERB.new(File.read(@@options[:config_template]))
+      config_template = ERB.new(File.read(File.expand_path(version_config["config_template"], __FILE__)))
       config = config_template.result(Kernel.binding)
       config_path = File.join(instance.config_dir, "rabbitmq.config")
       begin
@@ -452,7 +456,7 @@ EOF
 
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start #{self[:name]}", :use_spawn => true}
+    options[:start_script] = {:script => "warden_service_ctl start #{self[:version]} #{self[:name]}", :use_spawn => true}
     options[:need_map_port] = false
     options
   end
