@@ -21,13 +21,8 @@ module VCAP::Services::Redis::Snapshot
     @save_command_name = prefix + "-save"
     @redis_port = 25001
     @redis_timeout = 2
-    options = {
-      :base_dir => @config["base_dir"],
-      :service_log_dir => @config["service_log_dir"],
-      :image_dir => @config["image_dir"],
-      :max_disk => @config["max_disk"],
-      :local_db => @config["local_db"]
-    }
+    options = {}
+    @config.each {|k, v| options[k.to_sym] = v}
     redis_provisioned_service.init(options)
   end
 

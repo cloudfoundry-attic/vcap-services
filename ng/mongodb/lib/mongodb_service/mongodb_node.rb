@@ -117,13 +117,12 @@ class VCAP::Services::MongoDB::Node
     credential['port'] = new_port(credential['port'])
     credential['version'] = version
     p_service = ProvisionedService.create(credential)
-    p_service.run
-
     username = credential['username'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
     password = credential['password'] ? credential['username'] : UUIDTools::UUID.random_create.to_s
-    p_service.add_admin(p_service.admin, p_service.adminpass)
-    p_service.add_user(p_service.admin, p_service.adminpass)
-    p_service.add_user(username, password)
+    p_service.run(p_service.first_start_options) do
+      p_service.add_user(p_service.admin, p_service.adminpass)
+      p_service.add_user(username, password)
+    end
 
     host = get_host
     response = {
@@ -262,7 +261,7 @@ class VCAP::Services::MongoDB::Node
     p_service = ProvisionedService.get(service_credential['name'])
     raise "Cannot find service #{service_credential['name']}" if p_service.nil?
 
-    p_service.run
+    p_service.run(p_service.first_start_options)
     host = get_host
 
     # Update credentials for the new credential
@@ -349,6 +348,8 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   MONGO_TIMEOUT = 2
 
+  SERVICE_PORT = 27017
+
   class << self
     def init(args)
       super(args)
@@ -371,8 +372,6 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       p_service.adminpass = args['adminpass'] ? args['adminpass'] : UUIDTools::UUID.random_create.to_s
       p_service.db        = args['db'] ? args['db'] : 'db'
       p_service.version   = args['version']
-
-      raise "Cannot save provision service" unless p_service.save!
 
       p_service.prepare_filesystem(self.max_disk)
       FileUtils.mkdir_p(p_service.data_dir)
@@ -426,17 +425,17 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     end
     disconnect(conn)
 
-    cmd = "#{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 #{dir}"
-    output = %x{ #{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 #{dir} }
+    cmd = "#{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:#{SERVICE_PORT} #{dir}"
+    output = %x{ #{mongorestore} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:#{SERVICE_PORT} #{dir} }
     res = $?.success?
     raise "\"#{cmd}\" failed" unless res
     true
   end
 
   def d_dump(dir, fake=true)
-    cmd = "#{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir}"
+    cmd = "#{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:#{SERVICE_PORT} -o #{dir}"
     return cmd if fake
-    output = %x{ #{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:27017 -o #{dir} }
+    output = %x{ #{mongodump} -u #{self[:admin]} -p #{self[:adminpass]} -h #{self[:ip]}:#{SERVICE_PORT} -o #{dir} }
     res = $?.success?
     raise "\"#{cmd}\" failed" unless res
     true
@@ -455,7 +454,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     end
   end
 
-  def run
+  def run(options=start_options, &post_start_block)
     # check whether the instance had been properly shutdown
     # if no, do "mongo --repair" outside of container.
     # the reason for do it outside of container:
@@ -479,29 +478,42 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     super
   end
 
-  def service_port
-    27017
+  def start_options
+    options = super
+    options[:start_script] = {:script => "mongod_startup.sh #{version} #{mongod_exe_options}", :use_spawn => true}
+    options[:service_port] = SERVICE_PORT
+    options
   end
 
-  def service_script
-    "mongod_startup.sh #{version} #{mongod_exe_options}"
+  def first_start_options
+    options = super
+    options[:post_start_script] = {:script => "#{mongo} localhost:#{SERVICE_PORT}/admin --eval 'db.addUser(\"#{self[:admin]}\", \"#{self[:adminpass]}\")'"}
+    options
+  end
+
+  def finish_start?
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn = Mongo::Connection.new(ip, SERVICE_PORT)
+      auth = conn.db("admin").authenticate(admin, adminpass)
+      return false unless auth
+    end
+    true
+  rescue => e
+    false
+  end
+
+  def finish_first_start?
+    Timeout::timeout(MONGO_TIMEOUT) do
+      conn = Mongo::Connection.new(ip, SERVICE_PORT)
+    end
+    true
+  rescue => e
+    false
   end
 
   # diretory helper
   def data_dir
     File.join(base_dir, "data")
-  end
-
-  # user management helper
-  def add_admin(username, password)
-    warden = self.class.warden_connect
-    req = Warden::Protocol::RunRequest.new
-    req.handle = self[:container]
-    req.script = "#{mongo} localhost:27017/admin --eval 'db.addUser(\"#{username}\", \"#{password}\")'"
-    rsp = warden.call(req)
-    warden.disconnect
-  rescue => e
-    raise "Could not add admin user \'#{username}\'"
   end
 
   def add_user(username, password)
@@ -525,7 +537,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     conn = nil
     return conn unless running?
     Timeout::timeout(MONGO_TIMEOUT) do
-      conn = Mongo::Connection.new(self[:ip], '27017')
+      conn = Mongo::Connection.new(self[:ip], SERVICE_PORT)
       auth = conn.db('admin').authenticate(self[:admin], self[:adminpass])
       raise "Authentication failed, instance: #{self[:name]}" unless auth
     end

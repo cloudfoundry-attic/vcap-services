@@ -183,31 +183,21 @@ class VCAP::Services::Postgresql::Node
 
       provisionedservice.prepare
 
-      if not binduser.save
-        @logger.error("Could not save entry: #{binduser.errors.inspect}")
-        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+      provisionedservice.run do |instance|
+        init_global_connection(instance)
+        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DB_ERROR) unless create_database(instance)
+        if not binduser.save
+          @logger.error("Could not save entry: #{binduser.errors.inspect}")
+          raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+        end
       end
-      if not provisionedservice.save
-        binduser.destroy
-        @logger.error("Could not save entry: #{provisionedservice.errors.inspect}")
-        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
-      end
-
-      provisionedservice.run
-
-      init_global_connection(provisionedservice)
-
-      if create_database(provisionedservice) then
-        @provision_served += 1
-        return gen_credential(
-                    provisionedservice.name,
-                    binduser.user,
-                    binduser.password,
-                    get_inst_port(provisionedservice)
-        )
-      else
-        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DB_ERROR)
-      end
+      @provision_served += 1
+      return gen_credential(
+                  provisionedservice.name,
+                  binduser.user,
+                  binduser.password,
+                  get_inst_port(provisionedservice)
+      )
     rescue => e
       @logger.error("Fail to provision for #{e}: #{e.backtrace.join('|')}")
       cleanup(provisionedservice) if provisionedservice
@@ -261,7 +251,8 @@ class VCAP::Services::Postgresql::Node
       binduser.sys_password = new_sys_password
       binduser.default_user = false
 
-      if create_database_user(name, binduser, provisionedservice.quota_exceeded) then
+      instance = pgProvisionedService.get(name)
+      if create_database_user(instance, binduser, provisionedservice.quota_exceeded) then
         response = gen_credential(
                     name,
                     binduser.user,
@@ -332,7 +323,7 @@ class VCAP::Services::Postgresql::Node
         return false
       end
       exe_create_database(conn, name, @max_db_conns)
-      if not create_database_user(name, bindusers[0], false) then
+      if not create_database_user(provisionedservice, bindusers[0], false) then
         raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
       end
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
@@ -343,9 +334,9 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
-  def create_database_user(name, binduser, quota_exceeded)
+  def create_database_user(instance, binduser, quota_exceeded)
     # setup parent as long as it's not the 'default user'
-    instance = pgProvisionedService.get(name)
+    name = instance.name
     parent_binduser = instance.default_user unless binduser.default_user
     parent = parent_binduser[:user] if parent_binduser
 
@@ -562,7 +553,7 @@ class VCAP::Services::Postgresql::Node
     @logger.debug("Dump instance #{name} request.")
     instance = pgProvisionedService.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) unless instance
-    default_user = instance.default_user 
+    default_user = instance.default_user
     raise "No default user to dump instance." unless default_user
     host, port =  %w{host port}.map { |opt| postgresql_config(instance)[opt] }
     user = default_user[:user]

@@ -156,9 +156,9 @@ class VCAP::Services::Memcached::Node
     p_service = create_provisioned_instance(provision_options)
 
     @logger.info("Starting: #{p_service.inspect}")
-    p_service.run
-
-    @sasl_admin.create_user(p_service.user, p_service.password) if @sasl_enabled
+    p_service.run do
+      @sasl_admin.create_user(p_service.user, p_service.password) if @sasl_enabled
+    end
 
     response = get_credentials(p_service)
     @logger.debug("Provision response: #{response}")
@@ -171,11 +171,6 @@ class VCAP::Services::Memcached::Node
 
   def create_provisioned_instance(provision_options)
     ProvisionedService.create(provision_options)
-  end
-
-  def is_service_started(instance)
-    @logger.info("Instance: #{instance.inspect} started: #{instance.running?}")
-    instance.running?
   end
 
   def unprovision(name, bindings = [])
@@ -285,8 +280,6 @@ class VCAP::Services::Memcached::Node::ProvisionedService
       p_service.password  = args['password']
       p_service.version   = args['version']
 
-      raise MemcachedError.new(MemcachedError::MEMCACHED_SAVE_INSTANCE_FAILED, p_service.inspect) unless p_service.save!
-
       p_service.prepare_filesystem(1)
       p_service
     end
@@ -324,7 +317,7 @@ class VCAP::Services::Memcached::Node::ProvisionedService
     end
   end
 
-  def service_script
+  def start_script
     # memcached -m memory_size -p port_num -c connection -v -S
     cmd_components = [
       @@memcached_server_path,
@@ -337,7 +330,46 @@ class VCAP::Services::Memcached::Node::ProvisionedService
     cmd_components.join(" ")
   end
 
-  def service_port
-    SERVICE_PORT
+  def start_options
+    options = super
+    options[:pre_start_script] = nil
+    options[:start_script] = {:script => start_script, :use_spawn => true}
+    options[:service_port] = SERVICE_PORT
+    options
+  end
+
+  def finish_first_start?
+    conn = nil
+    Timeout::timeout(@@memcached_timeout) do
+      conn = Dalli::Client.new("#{self[:ip]}\:#{SERVICE_PORT}")
+      conn.get("foobar")
+      return true
+    end
+  rescue => e
+    return false
+  ensure
+    begin
+      conn.close if conn
+    rescue => e
+    end
+  end
+
+  def finish_start?
+    # No user check is the same with first start check
+    return finish_first_start? unless @@sasl_enabled
+    conn = nil
+    begin
+      Timeout::timeout(@@memcached_timeout) do
+        conn = Dalli::Client.new("#{self[:ip]}\:#{SERVICE_PORT}", username: self[:user], password: self[:password])
+        conn.get("foobar")
+      end
+    rescue => e
+      return false
+    ensure
+      begin
+        conn.close if conn
+      rescue => e
+      end
+    end
   end
 end

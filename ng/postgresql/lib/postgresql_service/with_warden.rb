@@ -270,14 +270,4 @@ module VCAP::Services::Postgresql::WithWarden
     @logger.debug("Will reuse the port #{credential['port']}") if credential
     instance.port = new_port((credential['port'] if credential))
   end
-
-  def is_service_started(instance)
-    postgresql_quickcheck(
-      instance.ip,
-      postgresql_config(instance)['user'],
-      postgresql_config(instance)['pass'],
-      instance.service_port,
-      "postgres"
-    )
-  end
 end
