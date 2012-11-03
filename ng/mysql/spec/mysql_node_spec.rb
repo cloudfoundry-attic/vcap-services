@@ -367,6 +367,9 @@ describe "Mysql server node" do
 
   it "should kill long queries" do
     pending "Disable for non-Percona server since the test behavior varies on regular Mysql server." unless @node.is_percona_server?(@db['name'])
+    # this case will maintain some connections and will sometimes timeout from server
+    # side, thus pending this case for its instability;
+    pending "this case is not stable in ci environment and thus pending" if ENV["CI_ENV"]
     EM.run do
       db = new_instance
       @test_dbs[db] = []
@@ -474,6 +477,9 @@ describe "Mysql server node" do
   end
 
   it "should able to restore database from backup file" do
+    # this case will maintain some connections and will sometimes timeout from server
+    # side, thus pending this case for its instability;
+    pending "this case is not stable in ci environment and thus pending" if ENV["CI_ENV"]
     EM.run do
       db = new_instance
       @test_dbs[db] = []
