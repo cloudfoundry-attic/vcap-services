@@ -41,43 +41,42 @@ module VCAP
             @helper.get_catalog
           end
 
-          def generate_cc_advertise_request(name, bsvc, active = true)
+          def generate_cc_advertise_request(name, ad_svc_offering, active = true)
             if (@mapping.keys.include?(name.to_sym))
               service_mapping = @mapping[name.to_sym]
               name = service_mapping[:name]
               provider = service_mapping[:provider]
             else
               # We'll use the service name as provider unless appdirect sends otherwise
-              provider = bsvc["provider"] || name
+              provider = ad_svc_offering["provider"] || name
             end
 
             req = {}
-            req[:label] = "#{name}-#{bsvc["version"]}"
-            req[:active] = active && bsvc["active"]
-            req[:description] = bsvc["description"]
+            req[:label] = "#{name}-#{ad_svc_offering["version"]}"
+            req[:active] = active && ad_svc_offering["active"]
+            req[:description] = ad_svc_offering["description"]
 
             req[:provider] = provider
 
-            req[:supported_versions] = [ bsvc["version"] ]
-            req[:version_aliases]    =  { "current" => bsvc["version"] }
-
-            req[:acls] = {}
-            req[:acls][:wildcards] = @acls[:wildcards]
-
-            users = []
-            users.concat(@acls[:users].dup) if @acls[:users]
-            if bsvc["developers"] and bsvc["developers"].count > 0
-              bsvc["developers"].each do |dev|
-                users << dev["email"]
-              end
-            end
-            req[:acls][:users] = users unless users.empty?
+            req[:supported_versions] = [ ad_svc_offering["version"] ]
+            req[:version_aliases]    =  { "current" => ad_svc_offering["version"] }
 
             req[:url] = @external_uri
 
-            if bsvc["plans"] and bsvc["plans"].count > 0
+            wildcards = @acls[:wildcards] if @acls
+
+            users_from_config = @acls[:users] if @acls
+            ad_devs = ad_svc_offering["developers"] if ad_svc_offering["development"]
+            ad_dev_emails = ad_devs.map { |u| u["email"] } if ad_devs
+            users = (users_from_config || []) + (ad_dev_emails || []) if users_from_config || ad_dev_emails
+
+            req[:acls] = {} if users || wildcards
+            req[:acls][:users] = users if users
+            req[:acls][:wildcards] = wildcards if wildcards
+
+            if ad_svc_offering["plans"] and ad_svc_offering["plans"].count > 0
               req[:plans] = []
-              bsvc["plans"].each do |plan|
+              ad_svc_offering["plans"].each do |plan|
                 req[:plans] << plan["id"]
                 # No plan options yet
               end

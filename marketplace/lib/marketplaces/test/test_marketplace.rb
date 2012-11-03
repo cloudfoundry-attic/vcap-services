@@ -29,10 +29,7 @@ module VCAP
               "version" => "1.0",
               "name" => "My Test Service",
               "description" => "My test Service",
-              "plans" => [ { "id" => "free", "name" => "free edition", "description" => "for demo purposes only" } ],
-              "development" => true,
-              "developers" => [ { "email" => "foo@xyz.com" } ],
-              "active" => true,
+              "plans" => [ "free" ],
               "provider" => "TestProvider"
             }
 
@@ -50,10 +47,7 @@ module VCAP
                   "version" => "1.0",
                   "name" => "Foo Service",
                   "description" => "Foo Service",
-                  "plans" => [ { "id" => "free", "name" => "free edition", "description" => "for demo purposes only" } ],
-                  "development" => true,
-                  "developers" => [ { "email" => "foo@xyz.com" } ],
-                  "active" => true,
+                  "plans" => [ "free" ],
                   "provider" => "FooProvider"
                 }
               else
@@ -83,7 +77,7 @@ module VCAP
           def generate_cc_advertise_request(name, bsvc, active = true)
             req = {}
             req[:label] = "#{name}-#{bsvc["version"]}"
-            req[:active] = active && bsvc["active"]
+            req[:active] = active
             req[:description] = bsvc["description"]
 
             req[:provider] = bsvc["provider"]
@@ -91,29 +85,11 @@ module VCAP
             req[:supported_versions] = [ bsvc["version"] ]
             req[:version_aliases]    =  { "current" => bsvc["version"] }
 
-            req[:acls] = {}
-            req[:acls][:wildcards] = @acls[:wildcards]
-
-            users = []
-            users.concat(@acls[:users].dup) if @acls[:users]
-            if bsvc["developers"] and bsvc["developers"].count > 0
-              bsvc["developers"].each do |dev|
-                users << dev["email"]
-              end
-            end
-            req[:acls][:users] = users unless users.empty?
+            req[:acls] = @acls
 
             req[:url] = @external_uri
 
-            if bsvc["plans"] and bsvc["plans"].count > 0
-              req[:plans] = []
-              bsvc["plans"].each do |plan|
-                req[:plans] << plan["id"]
-                # No plan options yet
-              end
-            else
-              req[:plans] = ["default"]
-            end
+            req[:plans] = bsvc["plans"]
 
             req[:tags] = []
 
