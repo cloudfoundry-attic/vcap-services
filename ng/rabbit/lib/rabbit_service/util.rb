@@ -6,7 +6,7 @@ module VCAP
   module Services
     module Rabbit
       module Util
-        @rabbitmq_timeout = 2 if @rabbitmq_timeout == nil
+        @rabbitmq_timeout ||= 2
 
         def create_resource(credentials)
           rabbitmq_admin_port = @rabbitmq_admin_port || self.class.service_admin_port
