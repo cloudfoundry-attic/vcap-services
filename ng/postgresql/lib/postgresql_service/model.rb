@@ -16,7 +16,8 @@ module VCAP
           end
 
           def run
-            nil
+            yield self if block_given?
+            save
           end
 
           def delete
