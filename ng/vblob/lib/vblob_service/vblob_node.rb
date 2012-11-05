@@ -317,7 +317,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "vblob_startup.sh", :use_spawn => true}
+    options[:start_script] = {:script => "warden_service_ctl start", :use_spawn => true}
     options[:service_port] = service_port
     options[:additional_binds] = [{:src_path => tmp_dir, :dst_path => "/store/tmp",}]
     options

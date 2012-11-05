@@ -119,7 +119,7 @@ module VCAP
 
           def start_options
             options = super
-            options[:start_script] = {:script => "postgresql_ctl", :use_spawn => true}
+            options[:start_script] = {:script => "warden_service_ctl start", :use_spawn => true}
             options[:service_port] = service_port
             options
           end

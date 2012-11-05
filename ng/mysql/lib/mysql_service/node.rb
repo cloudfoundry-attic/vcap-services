@@ -832,9 +832,9 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   def start_script
     case version
     when "5.5"
-      "mysql55_startup.sh"
+      "warden_service_ctl start 55"
     else
-      "mysql_startup.sh"
+      "warden_service_ctl start ''"
     end
   end
 

@@ -452,7 +452,7 @@ EOF
 
   def start_options
     options = super
-    options[:start_script] = {:script => "rabbitmq_startup.sh #{self[:name]}", :use_spawn => true}
+    options[:start_script] = {:script => "warden_service_ctl start #{self[:name]}", :use_spawn => true}
     options[:need_map_port] = false
     options
   end

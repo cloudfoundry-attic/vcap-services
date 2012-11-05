@@ -480,7 +480,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "mongod_startup.sh #{version} #{mongod_exe_options}", :use_spawn => true}
+    options[:start_script] = {:script => "warden_service_ctl start #{version} #{mongod_exe_options}", :use_spawn => true}
     options[:service_port] = SERVICE_PORT
     options
   end

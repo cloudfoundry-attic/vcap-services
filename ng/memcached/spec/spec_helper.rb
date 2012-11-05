@@ -61,7 +61,6 @@ def get_node_config()
     :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
     :plan => parse_property(config, "plan", String),
     :base_dir => parse_property(config, "base_dir", String),
-    :memcached_server_path => parse_property(config, "memcached_server_path", String),
     :capacity => 50,
     :node_id => parse_property(config, "node_id", String),
     :port_range => Range.new(5000, 25000),

@@ -263,7 +263,6 @@ class VCAP::Services::Memcached::Node::ProvisionedService
   class << self
     def init(args)
       super(args)
-      @@memcached_server_path = args[:memcached_server_path]
       @@memcached_timeout     = args[:memcached_timeout] || 2
       @@memcached_memory      = args[:memcached_memory]
       @@max_clients           = args[:max_clients] || 500
@@ -320,7 +319,8 @@ class VCAP::Services::Memcached::Node::ProvisionedService
   def start_script
     # memcached -m memory_size -p port_num -c connection -v -S
     cmd_components = [
-      @@memcached_server_path,
+      'warden_service_ctl',
+      'start',
       "-m #{@@memcached_memory}",
       "-p #{SERVICE_PORT}",
       "-c #{@@max_clients}",
@@ -332,7 +332,6 @@ class VCAP::Services::Memcached::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:pre_start_script] = nil
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = SERVICE_PORT
     options

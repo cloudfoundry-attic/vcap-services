@@ -397,7 +397,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "redis_startup.sh #{version}", :use_spawn => true}
+    options[:start_script] = {:script => "warden_service_ctl start #{version}", :use_spawn => true}
     options
   end
 
