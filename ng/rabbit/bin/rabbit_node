@@ -23,6 +23,7 @@ class VCAP::Services::Rabbit::NodeBin < VCAP::Services::Base::NodeBin
     options[:rabbitmq_server] = parse_property(config, "rabbitmq_server", String)
     options[:config_template] = File.expand_path("../../resources/rabbitmq.config.erb", __FILE__)
     options[:vm_memory_high_watermark] = parse_property(config, "vm_memory_high_watermark", Float)
+    options[:bandwidth_per_second] = parse_property(config, "bandwidth_per_second", Float)
     proxy_config = parse_property(config, "bandwidth_proxy", Hash)
     options[:proxy_bin] = parse_property(proxy_config, "bin", String)
     options[:proxy_window] = parse_property(proxy_config, "window", Integer)
