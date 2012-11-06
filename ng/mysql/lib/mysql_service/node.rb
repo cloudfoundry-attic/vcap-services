@@ -782,10 +782,9 @@ class VCAP::Services::Mysql::Node::ProvisionedService
     end
   end
 
-  #no-ops methods
-  def method_missing(method_name, *args, &block)
-    no_ops = [:run]
-    super unless no_ops.include?(method_name)
+  def run
+    yield self if block_given?
+    save
   end
 end
 

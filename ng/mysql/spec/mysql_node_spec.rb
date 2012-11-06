@@ -141,7 +141,7 @@ describe "Mysql server node" do
       # reduce storage quota to 256KB.
       extra_size = {}
       @node.fetch_pool(@db["name"]).with_connection { |conn| extra_size = @node.dbs_size(conn) }
-      opts[:max_db_size] = 256.0/1024 + extra_size[@db["name"]] / 1024 / 1024
+      opts[:max_db_size] = 256.0/1024 + extra_size[@db["name"]].to_f / 1024 / 1024
       node = new_node(opts)
       EM.add_timer(1) do
         binding = node.bind(@db["name"],  @default_opts)
