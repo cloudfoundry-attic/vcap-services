@@ -22,6 +22,8 @@ func initTestConfig() {
 	config.MONGODB.HOST = "127.0.0.1"
 	config.MONGODB.PORT = "27017"
 	config.MONGODB.DBNAME = "db"
+	config.MONGODB.USER = "admin"
+	config.MONGODB.PASS = "123456"
 
 	config.FILTER.FS_RESERVED_BLOCKS = 0.5
 	config.FILTER.THRESHOLD = 0.8
@@ -51,7 +53,7 @@ func startTestProxyServer() {
 func TestMongodbStats(t *testing.T) {
 	startTestProxyServer()
 
-	session, err := mgo.Dial(config.MONGODB.HOST + ":" + config.MONGODB.PORT)
+	session, err := mgo.Dial(config.HOST + ":" + config.PORT)
 	if err != nil {
 		t.Errorf("Failed to establish connection with mongo proxy.\n")
 	} else {
@@ -60,7 +62,11 @@ func TestMongodbStats(t *testing.T) {
 		var stats bson.M
 
 		db := session.DB("admin")
-		// NOTE: db.Login is not necessary since mongodb trust 'localhost'
+		err = db.Login(config.MONGODB.USER, config.MONGODB.PASS)
+		if err != nil {
+			t.Error("Failed to login database admin as %s:%s: [%s].",
+				config.MONGODB.USER, config.MONGODB.PASS)
+		}
 		err = db.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
 		if err != nil {
 			t.Errorf("Failed to do dbStats command, [%v].\n", err)
@@ -73,14 +79,18 @@ func TestMongodbStats(t *testing.T) {
 func TestMongodbDataOps(t *testing.T) {
 	startTestProxyServer()
 
-	session, err := mgo.Dial(config.MONGODB.HOST + ":" + config.MONGODB.PORT)
+	session, err := mgo.Dial(config.HOST + ":" + config.PORT)
 	if err != nil {
 		t.Errorf("Failed to establish connection with mongo proxy.\n")
 	} else {
 		defer session.Close()
 
 		db := session.DB("admin")
-		// NOTE: db.Login is not necessary since mongodb trust 'localhost'
+		err = db.Login(config.MONGODB.USER, config.MONGODB.PASS)
+		if err != nil {
+			t.Error("Failed to login database admin as %s:%s: [%s].",
+				config.MONGODB.USER, config.MONGODB.PASS)
+		}
 
 		// 1. create collections
 		coll := db.C("proxy_test")

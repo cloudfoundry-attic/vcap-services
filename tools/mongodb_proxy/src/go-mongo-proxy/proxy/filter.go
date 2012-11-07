@@ -168,15 +168,15 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 		}
 
 	HandleDiskUsage:
-        logger.Debug("Recalculate disk usage after getting message from dirty channel.\n")
+		logger.Debug("Recalculate disk usage after getting message from dirty channel.\n")
 
-        session, err := mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
-	    if err != nil {
-	    	logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
-	    		conn_info.PORT, err)
-            session = nil
-	    	goto Error
-	    }
+		session, err := mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
+		if err != nil {
+			logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
+				conn_info.PORT, err)
+			session = nil
+			goto Error
+		}
 
 		disk_usage.static_size = 0
 		disk_usage.dynamic_size = 0
@@ -207,13 +207,13 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 			atomic.StoreUint32(&action.blocked, UNBLOCKED)
 		}
 
-        session.Close()
+		session.Close()
 		continue
 
 	Error:
-        if session != nil {
-            session.Close()
-        }
+		if session != nil {
+			session.Close()
+		}
 		atomic.StoreUint32(&action.blocked, BLOCKED)
 	}
 }
@@ -224,15 +224,21 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 /*                                        */
 /******************************************/
 func read_mongodb_static_size(f *IOFilterProtocol, session *mgo.Session) bool {
+	conn_info := &f.conn_info
 	disk_usage := &f.disk_usage
 
 	var stats bson.M
 	var temp int
 
 	admindb := session.DB("admin")
-    // NOTE: admindb.Login is not necessary if we connect to mongodb
-    // through 'localhost'
-    err := admindb.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
+	err := admindb.Login(conn_info.USER, conn_info.PASS)
+	if err != nil {
+		logger.Error("Failed to login database admin as %s:%s: [%s].",
+			conn_info.USER, conn_info.PASS, err)
+		return false
+	}
+
+	err = admindb.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
 	if err != nil {
 		logger.Error("Failed to get database %s stats [%s].", "admin", err)
 		return false
@@ -264,9 +270,14 @@ func read_mongodb_dynamic_size(f *IOFilterProtocol, session *mgo.Session) bool {
 	var temp int
 
 	db := session.DB(conn_info.DBNAME)
-    // NOTE: db.Login is not necessary if we connect to mongodb
-    // through 'localhost'
-    err := db.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
+	err := db.Login(conn_info.USER, conn_info.PASS)
+	if err != nil {
+		logger.Error("Failed to login database db as %s:%s: [%s].",
+			conn_info.USER, conn_info.PASS, err)
+		return false
+	}
+
+	err = db.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
 	if err != nil {
 		logger.Error("Failed to get database %s stats [%s].",
 			conn_info.DBNAME, err)
