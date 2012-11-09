@@ -32,6 +32,11 @@ module VCAP::Services::Mysql::WithWarden
 
   def handle_provision_exception(provisioned_service)
     return unless provisioned_service
+    name = provisioned_service.name
+    @pool_mutex.synchronize do
+      @pools[name].shutdown
+      @pools.delete(name)
+    end if @pools.has_key?(name)
     free_port(provisioned_service.port)
     provisioned_service.delete
   end
