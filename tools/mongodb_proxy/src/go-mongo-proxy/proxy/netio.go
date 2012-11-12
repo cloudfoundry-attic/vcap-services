@@ -4,6 +4,7 @@ import (
 	"syscall"
 )
 
+const PARTIAL_SKB = 1 // not error
 const NO_ERROR = 0
 const READ_ERROR = -1
 const WRITE_ERROR = -2
@@ -22,6 +23,7 @@ type IOSocketPeer struct {
 
 	recvpacket func(*NetIOManager, int) int
 	sendpacket func(*NetIOManager, int) int
+	flush      func(*NetIOManager, int) int
 }
 
 type OutputQueue struct {
@@ -73,6 +75,17 @@ func (io *NetIOManager) ProxyNetIsProxyServer(fd int) bool {
 func (io *NetIOManager) ProxyNetConnInfo(fd int) (sa syscall.Sockaddr) {
 	if io.io_socket_peers[fd] != nil {
 		return io.io_socket_peers[fd].conninfo
+	}
+	return nil
+}
+
+func (io *NetIOManager) ProxyNetOtherSideConnInfo(fd int) (sa syscall.Sockaddr) {
+	if peers, ok := io.io_socket_peers[fd]; ok {
+		if fd == peers.clientfd {
+			return io.io_socket_peers[peers.serverfd].conninfo
+		} else {
+			return io.io_socket_peers[peers.clientfd].conninfo
+		}
 	}
 	return nil
 }
@@ -219,6 +232,13 @@ func (io *NetIOManager) ProxyNetRecv(fd int) (errno int) {
 	return NO_ERROR
 }
 
+func (io *NetIOManager) ProxyNetFlush(fd int) (errno int) {
+	if io.io_socket_peers[fd] != nil {
+		return io.io_socket_peers[fd].flush(io, fd)
+	}
+	return NO_ERROR
+}
+
 /******************************************/
 /*                                        */
 /*    network read/write io routines      */
@@ -227,14 +247,11 @@ func (io *NetIOManager) ProxyNetRecv(fd int) (errno int) {
 func skb_read(io *NetIOManager, fd int) (errno int) {
 	var peerfd int
 
-	if peers, ok := io.io_socket_peers[fd]; ok {
-		if fd == peers.clientfd {
-			peerfd = peers.serverfd
-		} else {
-			peerfd = peers.clientfd
-		}
+	peers := io.io_socket_peers[fd]
+	if fd == peers.clientfd {
+		peerfd = peers.serverfd
 	} else {
-		return UNKNOWN_ERROR
+		peerfd = peers.clientfd
 	}
 
 	if pending, ok := io.pending_output_skbs[peerfd]; ok {
@@ -284,7 +301,7 @@ func skb_write_with_filter(io *NetIOManager, fd int) (errno int) {
 	if pending, ok := io.pending_output_skbs[fd]; ok {
 		if pending.current_packet_remain_length == 0 {
 			if BUFFER_SIZE-pending.available_size < STANDARD_HEADER_SIZE {
-				return NO_ERROR
+				return PARTIAL_SKB
 			}
 
 			start_offset := pending.read_offset
@@ -419,6 +436,45 @@ func skb_write_without_filter(io *NetIOManager, fd int) (errno int) {
 	return UNKNOWN_ERROR
 }
 
+func flush_pending_skb(io *NetIOManager, fd int) (errno int) {
+	var peerfd int
+	var server bool
+
+	peers := io.io_socket_peers[fd]
+	if fd == peers.clientfd {
+		peerfd = peers.serverfd
+		server = true
+	} else {
+		peerfd = peers.clientfd
+		server = false
+	}
+
+	if server {
+		if _, ok := io.pending_output_skbs[peerfd]; ok {
+			for io.pending_output_skbs[peerfd].available_size < BUFFER_SIZE {
+				errno = skb_write_with_filter(io, peerfd)
+				if errno == NO_ERROR {
+					continue
+				} else if errno == PARTIAL_SKB {
+					break
+				} else {
+					return errno
+				}
+			}
+		}
+	} else {
+		if _, ok := io.pending_output_skbs[peerfd]; ok {
+			for io.pending_output_skbs[peerfd].available_size < BUFFER_SIZE {
+				errno = skb_write_without_filter(io, peerfd)
+				if errno != NO_ERROR {
+					return errno
+				}
+			}
+		}
+	}
+	return NO_ERROR
+}
+
 /******************************************/
 /*                                        */
 /*       Internal Support Routines        */
@@ -472,13 +528,13 @@ func add_sock_peer(io *NetIOManager,
 		 *       when filter is enabled.
 		 */
 		server_peer = IOSocketPeer{clientfd, serverfd, serverinfo, skb_read,
-			skb_write_with_filter}
+			skb_write_with_filter, flush_pending_skb}
 	} else {
 		server_peer = IOSocketPeer{clientfd, serverfd, serverinfo, skb_read,
-			skb_write_without_filter}
+			skb_write_without_filter, flush_pending_skb}
 	}
 	client_peer := IOSocketPeer{clientfd, serverfd, clientinfo, skb_read,
-		skb_write_without_filter}
+		skb_write_without_filter, flush_pending_skb}
 	io.io_socket_peers[clientfd] = &client_peer
 	io.io_socket_peers[serverfd] = &server_peer
 }

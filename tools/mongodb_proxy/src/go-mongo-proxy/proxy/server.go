@@ -124,8 +124,8 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 				if err != nil {
 					logger.Critical("Failed to establish bridge between mongo client and server [%s].", err)
 				} else {
-					ipaddr, port := parse_sockaddr(clientinfo)
-					logger.Debug("Succeed to establish bridge for client [%s:%d].", ipaddr, port)
+					addr, port := parse_sockaddr(clientinfo)
+					logger.Debug("Succeed to establish bridge for client [%s:%d].", addr, port)
 				}
 			} else {
 				event := proxy.events[i].Events
@@ -133,28 +133,32 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 				if event&syscall.EPOLLIN != 0 {
 					errno := netio.ProxyNetRecv(fd)
 
-					switch errno {
-					case READ_ERROR:
-						sa := netio.ProxyNetConnInfo(fd)
-						if sa != nil {
-							ipaddr, port := parse_sockaddr(sa)
-							logger.Error("Failed to read data from [%s:%d].", ipaddr, port)
-						}
-					case SESSION_EOF:
-						sa := netio.ProxyNetConnInfo(fd)
-						if sa != nil {
-							ipaddr, port := parse_sockaddr(sa)
-							logger.Debug("One side [%s:%d] close the session.", ipaddr, port)
-						}
-					case UNKNOWN_ERROR:
-						sa := netio.ProxyNetConnInfo(fd)
-						if sa != nil {
-							ipaddr, port := parse_sockaddr(sa)
-							logger.Debug("Unknown error during read happened at [%s:%d].", ipaddr, port)
-						}
-					}
-
 					if errno != NO_ERROR {
+						var addr string
+						var port int
+
+						sa := netio.ProxyNetConnInfo(fd)
+						if sa != nil {
+							addr, port = parse_sockaddr(sa)
+						}
+
+						switch errno {
+						case READ_ERROR:
+							if sa != nil {
+								logger.Error("Failed to read data from [%s:%d].", addr, port)
+							}
+						case SESSION_EOF:
+							/* normal close */
+							netio.ProxyNetFlush(fd)
+							if sa != nil {
+								logger.Debug("One side [%s:%d] close the session.", addr, port)
+							}
+						case UNKNOWN_ERROR:
+							if sa != nil {
+								logger.Debug("Unknown error during read happened at [%s:%d].", addr, port)
+							}
+						}
+
 						netio.ProxyNetClosePeers(fd)
 					}
 				}
@@ -162,33 +166,44 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 				if event&syscall.EPOLLOUT != 0 {
 					errno := netio.ProxyNetSend(fd)
 
-					switch errno {
-					case WRITE_ERROR:
-						sa := netio.ProxyNetConnInfo(fd)
-						if sa != nil {
-							ipaddr, port := parse_sockaddr(sa)
-							logger.Error("Failed to write data to [%s:%d]", ipaddr, port)
-						}
-					case FILTER_BLOCK:
-						sa := netio.ProxyNetConnInfo(fd)
-						if sa != nil {
-							ipaddr, port := parse_sockaddr(sa)
-							logger.Error("Filter block request from client [%s:%d].", ipaddr, port)
-						}
-					case UNKNOWN_ERROR:
-						sa := netio.ProxyNetConnInfo(fd)
-						if sa != nil {
-							ipaddr, port := parse_sockaddr(sa)
-							logger.Debug("Unknown error during write happened at [%s:%d].", ipaddr, port)
-						}
-					}
+					if errno != NO_ERROR && errno != PARTIAL_SKB {
+						var addr string
+						var port int
 
-					if errno != NO_ERROR {
+						sa := netio.ProxyNetConnInfo(fd)
+						if sa != nil {
+							addr, port = parse_sockaddr(sa)
+						}
+
+						switch errno {
+						case WRITE_ERROR:
+							if sa != nil {
+								logger.Error("Failed to write data to [%s:%d]", addr, port)
+							}
+						case FILTER_BLOCK:
+							/*
+							 * 'block' handler only happens on 'proxy->server' io write, here
+							 * we need to log the 'client->proxy' connection information, if
+							 * we call 'ConnInfo' method we get the 'proxy->server' connection,
+							 * so we shall call 'OtherSideConnInfo' method here.
+							 */
+							sa = netio.ProxyNetOtherSideConnInfo(fd)
+							if sa != nil {
+								addr, port = parse_sockaddr(sa)
+								logger.Error("Filter block request from client [%s:%d].", addr, port)
+							}
+						case UNKNOWN_ERROR:
+							if sa != nil {
+								logger.Debug("Unknown error during write happened at [%s:%d].", addr, port)
+							}
+						}
+
 						netio.ProxyNetClosePeers(fd)
 					}
 				}
 
 				if event&syscall.EPOLLRDHUP != 0 {
+					netio.ProxyNetFlush(fd)
 					sa := netio.ProxyNetConnInfo(fd)
 					if sa != nil {
 						ipaddr, port := parse_sockaddr(sa)
@@ -198,6 +213,7 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 				}
 
 				if event&syscall.EPOLLHUP != 0 {
+					netio.ProxyNetFlush(fd)
 					sa := netio.ProxyNetConnInfo(fd)
 					if sa != nil {
 						ipaddr, port := parse_sockaddr(sa)
@@ -265,10 +281,12 @@ func wait_signal(proxy *ProxyServer, sig os.Signal) {
 	}
 }
 
-func parse_sockaddr(sa syscall.Sockaddr) (ipaddr net.IP, port int) {
+func parse_sockaddr(sa syscall.Sockaddr) (addr string, port int) {
 	switch sa := sa.(type) {
 	case *syscall.SockaddrInet4:
-		return net.IPv4(sa.Addr[0], sa.Addr[1], sa.Addr[2], sa.Addr[3]), sa.Port
+		return net.IPv4(sa.Addr[0], sa.Addr[1], sa.Addr[2], sa.Addr[3]).String(), sa.Port
+	case *syscall.SockaddrUnix:
+		return sa.Name, 0
 	}
-	return net.IPv4(0, 0, 0, 0), 0
+	return net.IPv4(0, 0, 0, 0).String(), 0
 }
