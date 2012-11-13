@@ -146,6 +146,12 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 							ipaddr, port := parse_sockaddr(sa)
 							logger.Debug("One side [%s:%d] close the session.", ipaddr, port)
 						}
+					case UNKNOWN_ERROR:
+						sa := netio.ProxyNetConnInfo(fd)
+						if sa != nil {
+							ipaddr, port := parse_sockaddr(sa)
+							logger.Debug("Unknown error happened at [%s:%d].", ipaddr, port)
+						}
 					}
 
 					if errno != NO_ERROR {
@@ -168,6 +174,12 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 						if sa != nil {
 							ipaddr, port := parse_sockaddr(sa)
 							logger.Error("Filter block request from client [%s:%d].", ipaddr, port)
+						}
+					case UNKNOWN_ERROR:
+						sa := netio.ProxyNetConnInfo(fd)
+						if sa != nil {
+							ipaddr, port := parse_sockaddr(sa)
+							logger.Debug("Unknown error happened at [%s:%d].", ipaddr, port)
 						}
 					}
 
@@ -207,7 +219,7 @@ Error:
 
 /******************************************/
 /*                                        */
-/*       Internel Support Routines        */
+/*       Internal Support Routines        */
 /*                                        */
 /******************************************/
 func parse_config(proxy *ProxyServer, conf *ProxyConfig) (retval bool) {

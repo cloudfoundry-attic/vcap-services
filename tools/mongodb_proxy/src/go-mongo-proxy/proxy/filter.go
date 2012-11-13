@@ -13,6 +13,7 @@ import (
 	"syscall"
 )
 
+const OP_UNKNOWN = 0
 const OP_REPLY = 1
 const OP_MSG = 1000
 const OP_UPDATE = 2001
@@ -99,7 +100,7 @@ func (f *IOFilterProtocol) PassFilter(op_code int32) (pass bool) {
 func (f *IOFilterProtocol) HandleMsgHeader(stream []byte) (message_length,
 	op_code int32) {
 	if len(stream) < STANDARD_HEADER_SIZE {
-		return 0, 0
+		return 0, OP_UNKNOWN
 	}
 
 	buf := bytes.NewBuffer(stream[0:4])
@@ -108,26 +109,22 @@ func (f *IOFilterProtocol) HandleMsgHeader(stream []byte) (message_length,
 	err := binary.Read(buf, binary.LittleEndian, &message_length)
 	if err != nil {
 		logger.Error("Failed to do binary read message_length [%s].", err)
-		return 0, 0
+		return 0, OP_UNKNOWN
 	}
 
 	buf = bytes.NewBuffer(stream[12:16])
 	err = binary.Read(buf, binary.LittleEndian, &op_code)
 	if err != nil {
 		logger.Error("Failed to do binary read op_code [%s].", err)
-		return 0, 0
+		return 0, OP_UNKNOWN
 	}
 
-	if len(stream) >= int(message_length) {
-		if op_code == OP_UPDATE ||
-			op_code == OP_INSERT ||
-			op_code == OP_DELETE {
-			f.action.dirty <- true
-		}
-		return message_length, op_code
+	if op_code == OP_UPDATE ||
+		op_code == OP_INSERT ||
+		op_code == OP_DELETE {
+		f.action.dirty <- true
 	}
-
-	return 0, 0
+	return message_length, op_code
 }
 
 func (f *IOFilterProtocol) MonitDiskUsage() {
