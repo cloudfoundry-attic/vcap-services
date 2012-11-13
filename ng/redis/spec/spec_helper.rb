@@ -62,7 +62,6 @@ def getNodeTestConfig
     :command_rename_prefix => parse_property(config, "command_rename_prefix", String),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :image_dir => "/tmp/redis_image",
-    :max_disk => parse_property(config, "max_disk", Integer),
     :migration_nfs => "/tmp/migration",
     :supported_versions => parse_property(config, "supported_versions", Array),
     :default_version => parse_property(config, "default_version", String),
