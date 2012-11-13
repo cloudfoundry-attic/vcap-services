@@ -44,7 +44,7 @@ type ProxyServer struct {
 	quit           bool // quit the whole process or not
 
 	proxy_endpoint syscall.SockaddrInet4
-	mongo_endpoint syscall.SockaddrInet4
+	mongo_endpoint syscall.SockaddrUnix
 
 	epoll_fd int
 	events   []syscall.EpollEvent
@@ -242,24 +242,10 @@ func parse_config(proxy *ProxyServer, conf *ProxyConfig) (retval bool) {
 			proxy_ipaddr[14],
 			proxy_ipaddr[15]}}
 
-	mongo_ipaddr := net.ParseIP(conf.MONGODB.HOST)
-	if mongo_ipaddr == nil {
-		logger.Error("Mongo server ipaddr format error.")
-		return false
+	// the channel between proxy and mongo server is shipped on Unix Socket
+	proxy.mongo_endpoint = syscall.SockaddrUnix{
+		Name: "/tmp/mongodb-27017.sock",
 	}
-
-	mongo_port, err := strconv.Atoi(conf.MONGODB.PORT)
-	if err != nil {
-		logger.Error(err)
-		return false
-	}
-
-	// TODO: need a protable way not hard code to parse ip address
-	proxy.mongo_endpoint = syscall.SockaddrInet4{Port: mongo_port,
-		Addr: [4]byte{mongo_ipaddr[12],
-			mongo_ipaddr[13],
-			mongo_ipaddr[14],
-			mongo_ipaddr[15]}}
 	return true
 }
 
