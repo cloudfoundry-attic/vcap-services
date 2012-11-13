@@ -1,4 +1,5 @@
 ---
+plan: free
 local_db: sqlite3:/var/vcap/services/memcached/memcached_node.db
 mbus: nats://localhost:4222/
 index: 0
@@ -10,11 +11,12 @@ capacity: 50
 node_id: memcached_node_1
 memcached_memory: 16
 port_range:
-  first: 5000
-  last: 25000
+  first: 15000
+  last:  25000
 service_log_dir: /var/vcap/sys/log/memcached
 max_clients: 500
 memcached_timeout: 2
 sasl_enabled: false
+
 
 # z_interval: 30
