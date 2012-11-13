@@ -150,7 +150,7 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 						sa := netio.ProxyNetConnInfo(fd)
 						if sa != nil {
 							ipaddr, port := parse_sockaddr(sa)
-							logger.Debug("Unknown error happened at [%s:%d].", ipaddr, port)
+							logger.Debug("Unknown error during read happened at [%s:%d].", ipaddr, port)
 						}
 					}
 
@@ -179,7 +179,7 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 						sa := netio.ProxyNetConnInfo(fd)
 						if sa != nil {
 							ipaddr, port := parse_sockaddr(sa)
-							logger.Debug("Unknown error happened at [%s:%d].", ipaddr, port)
+							logger.Debug("Unknown error during write happened at [%s:%d].", ipaddr, port)
 						}
 					}
 
