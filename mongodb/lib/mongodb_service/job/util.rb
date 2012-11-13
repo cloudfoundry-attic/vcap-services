@@ -74,7 +74,7 @@ module VCAP
           end
 
           @logger.debug("Manifest in snapshot: #{@manifest}")
-          version = @manifest["service_version"] || @config['default_version']
+          version = @manifest[:service_version] || @config['default_version']
           mongorestore_path = @config['mongorestore_path'] ? @config['mongorestore_path'][version.to_s] : 'mongorestore'
           tar_path = @config['tar_path'] ? @config['tar_path'] : 'tar'
           cmd_timeout = @config['timeout'].to_f

@@ -112,6 +112,7 @@ class VCAP::Services::MongoDB::Node
     @logger.info("Provision request: plan=#{plan}, version=#{version}")
     raise ServiceError.new(MongoDBError::MONGODB_INVALID_PLAN, plan) unless plan == @plan
     raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
+
     credential = {} if credential.nil?
     credential['plan'] = plan
     credential['port'] = new_port(credential['port'])
@@ -466,9 +467,14 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     #  - no repair if journal is enabled
     # So to avoid these situation, and make things smooth, do it outside container.
     lockfile = File.join(data_dir, "mongod.lock")
-    if File.size?(lockfile)
-      journal_enabled = mongod_exe_options.match(/--journal/)    if version == "1.8"
-      journal_enabled = !mongod_exe_options.match(/--nojournal/) if version == "2.0"
+    journal_enabled = false
+    if File.exist? lockfile
+      case version
+      when "1.8"
+        journal_enabled = mongod_exe_options.match(/--journal/)
+      when "2.0", "2.2"
+        journal_enabled = !mongod_exe_options.match(/--nojournal/)
+      end
       unless journal_enabled
         logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
         FileUtils.rm_f(lockfile)
