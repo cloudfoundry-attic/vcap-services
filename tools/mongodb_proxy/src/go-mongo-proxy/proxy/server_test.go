@@ -25,7 +25,9 @@ func initTestConfig() {
 	config.MONGODB.USER = "admin"
 	config.MONGODB.PASS = "123456"
 
-	config.FILTER.THRESHOLD = 0.8
+	config.FILTER.BASE_DIR = "/mnt/appcloud/data1/"
+	config.FILTER.QUOTA_FILES = 4
+	config.FILTER.QUOTA_DATA_SIZE = 240
 	config.FILTER.ENABLED = true
 
 	config.LOGGING.LEVEL = "debug"
