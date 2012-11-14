@@ -40,7 +40,7 @@ def parse_property(hash, key, type, options = {})
 end
 
 def config_base_dir
-  ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), "..", "config")
+  File.join(File.dirname(__FILE__), "..", "config")
 end
 
 def getNodeTestConfig
