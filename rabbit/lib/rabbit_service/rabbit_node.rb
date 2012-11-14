@@ -37,6 +37,7 @@ class VCAP::Services::Rabbit::Node
     property :pid,             Integer
     property :memory,          Integer,     :required => true
     property :status,          Integer,     :default => 0
+    property :version,         String
 
     def listening?(interface_ip, instance_port=port)
       begin
@@ -74,7 +75,6 @@ class VCAP::Services::Rabbit::Node
   def initialize(options)
     super(options)
 
-    @config_template = ERB.new(File.read(options[:config_template]))
     @free_ports = Set.new
     @free_admin_ports = Set.new
     @free_ports_mutex = Mutex.new
@@ -86,7 +86,6 @@ class VCAP::Services::Rabbit::Node
     @binding_options = nil
     @base_dir = options[:base_dir]
     FileUtils.mkdir_p(@base_dir) if @base_dir
-    @rabbitmq_server = @options[:rabbitmq_server]
     @rabbitmq_log_dir = @options[:rabbitmq_log_dir]
     @max_clients = @options[:max_clients] || 500
     # Timeout for rabbitmq client operations, node cannot be blocked on any rabbitmq instances.
@@ -97,7 +96,7 @@ class VCAP::Services::Rabbit::Node
     @initial_username = "guest"
     @initial_password = "guest"
     @hostname = get_host
-    @supported_versions = ["2.4"]
+    @default_version = @options[:default_version]  || "2.4"
   end
 
   def pre_send_announcement
@@ -126,10 +125,13 @@ class VCAP::Services::Rabbit::Node
   end
 
   def provision(plan, credentials = nil, version=nil)
+    version ||= @default_version
     raise RabbitError.new(RabbitError::RABBIT_INVALID_PLAN, plan) unless plan.to_s == @plan
+    raise ServiceError.new(ServiceError::UNSUPPORTED_VERSION, version) unless @supported_versions.include?(version)
     instance = ProvisionedService.new
     instance.plan = 1
     instance.plan_option = ""
+    instance.version = version
     if credentials
       instance.name = credentials["name"]
       instance.vhost = credentials["vhost"]
@@ -372,6 +374,9 @@ class VCAP::Services::Rabbit::Node
 
   def start_instance(instance)
     @logger.debug("Starting: #{instance.inspect} on port #{instance.port}")
+    # Set default version to the old instances without version, used for migration
+    instance.version ||= @default_version
+    version_config = @options[:rabbit][instance.version]
 
     pid = Process.fork do
       $0 = "Starting RabbitMQ instance: #{instance.name}"
@@ -395,7 +400,9 @@ class VCAP::Services::Rabbit::Node
       # (@max_clients + 2) / 0.9
       file_handles_high_watermark = ((@max_clients + 2) / 0.9).to_i
       # Writes the RabbitMQ server erlang configuration file
-      config = @config_template.result(Kernel.binding)
+      tpl_name = File.expand_path(version_config["config_template"], __FILE__)
+      tpl_file = File.read(tpl_name)
+      config = ERB.new(tpl_file).result(Kernel.binding)
       File.open(File.join(config_dir, "rabbitmq.config"), "w") {|f| f.write(config)}
       # Enable management plugin
       File.open(File.join(config_dir, "enabled_plugins"), "w") do |f|
@@ -425,7 +432,7 @@ EOF
 
       STDOUT.reopen(File.open("#{log_dir}/rabbitmq_stdout.log", "w"))
       STDERR.reopen(File.open("#{log_dir}/rabbitmq_stderr.log", "w"))
-      exec("#{@rabbitmq_server}")
+      exec("#{version_config["rabbitmq_server"]}")
     end
     # In parent, detch the child.
     Process.detach(pid)

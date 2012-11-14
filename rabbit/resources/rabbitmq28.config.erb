@@ -1,0 +1,4 @@
+[
+  {rabbit, [{vm_memory_high_watermark, <%= vm_memory_high_watermark %>}, {file_handles_high_watermark, <%= file_handles_high_watermark %>}, {disk_free_limit, <%= version_config["disk_free_limit"] %>}]},
+  {rabbitmq_mochiweb, [{listeners, [{mgmt, [{port, <%= admin_port %>}]}]}]}
+].
