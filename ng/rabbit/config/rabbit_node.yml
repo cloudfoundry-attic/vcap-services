@@ -29,6 +29,7 @@ rabbit:
     config_template: ../../../resources/rabbitmq24.config.erb
   '2.8':
     config_template: ../../../resources/rabbitmq28.config.erb
+    disk_free_limit: 13421772
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
