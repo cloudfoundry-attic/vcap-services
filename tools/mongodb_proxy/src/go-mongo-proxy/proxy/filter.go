@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"labix.org/v2/mgo"
 	"labix.org/v2/mgo/bson"
-	"os"
-	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"syscall"
@@ -27,9 +25,6 @@ const OP_KILL_CURSORS = 2007
 const STANDARD_HEADER_SIZE = 16
 const RESPONSE_HEADER_SIZE = 20
 
-// file system would reserve 5 precent of blocks by default
-const DEFAULT_FS_RESERVED_BLOCKS = 0.05
-
 const BLOCKED = 1
 const UNBLOCKED = 0
 
@@ -42,11 +37,10 @@ type FilterAction struct {
 }
 
 type DiskUsage struct {
-	reserved_blocks float64
-	total_size      float64 // bytes, total space size
-	static_size     float64 // bytes, static allocated disk file size
-	dynamic_size    float64 // bytes, dynamic allocated disk file size
-	ratio           float64 // percent, dynamic value
+	total_size   float64 // bytes, total space size
+	static_size  float64 // bytes, static allocated disk file size
+	dynamic_size float64 // bytes, dynamic allocated disk file size
+	ratio        float64 // percent, dynamic value
 }
 
 type IOFilterProtocol struct {
@@ -66,8 +60,7 @@ func NewIOFilterProtocol(conf *ProxyConfig) *IOFilterProtocol {
 			dirty:     make(chan bool, 100),
 			blocked:   UNBLOCKED},
 
-		disk_usage: DiskUsage{
-			reserved_blocks: conf.FILTER.FS_RESERVED_BLOCKS},
+		disk_usage: DiskUsage{},
 
 		shutdown: make(chan bool),
 	}
@@ -132,17 +125,7 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 	disk_usage := &f.disk_usage
 	action := &f.action
 
-	var journal_files_size, current_disk_usage float64
-
-	base_dir := "/store/instance"
-	journal_dir := filepath.Join(base_dir, "data", "journal")
-
-	visit_file := func(path string, f os.FileInfo, err error) error {
-		if err == nil && !f.IsDir() {
-			journal_files_size += float64(f.Size())
-		}
-		return nil
-	}
+	var current_disk_usage float64
 
 	for {
 		select {
@@ -177,7 +160,6 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 
 		disk_usage.static_size = 0.0
 		disk_usage.dynamic_size = 0.0
-		journal_files_size = 0.0
 		current_disk_usage = 0.0
 
 		if !read_mongodb_static_size(f, session) {
@@ -188,13 +170,10 @@ func (f *IOFilterProtocol) MonitDiskUsage() {
 			goto Error
 		}
 
-		filepath.Walk(journal_dir, visit_file)
-		logger.Debug("Get journal files size %v.", journal_files_size)
-
 		/*
 		 * Check condition: (static_size + dynamic_size) >= threshold * total_size
 		 */
-		current_disk_usage = disk_usage.static_size + disk_usage.dynamic_size + journal_files_size
+		current_disk_usage = disk_usage.static_size + disk_usage.dynamic_size
 		logger.Debug("Get current disk occupied size %v.", current_disk_usage)
 		disk_usage.ratio = current_disk_usage / disk_usage.total_size
 		if disk_usage.ratio >= action.threshold {
@@ -311,9 +290,6 @@ func read_mongodb_dynamic_size(f *IOFilterProtocol, session *mgo.Session) bool {
 /*                                        */
 /******************************************/
 func init_disk_usage(disk_usage *DiskUsage) bool {
-	if disk_usage.reserved_blocks == 0 {
-		disk_usage.reserved_blocks = DEFAULT_FS_RESERVED_BLOCKS
-	}
 	disk_usage.total_size = 0.0
 	disk_usage.static_size = 0.0
 	disk_usage.dynamic_size = 0.0
@@ -334,8 +310,7 @@ func init_disk_usage(disk_usage *DiskUsage) bool {
 		return false
 	}
 
-	total_size := float64(statfs.Bsize) * float64(uint64(float64(statfs.Blocks)*
-		float64(1.0-disk_usage.reserved_blocks)))
+	total_size := float64(statfs.Bsize) * float64(statfs.Blocks)
 	logger.Debug("Get total disk size %v.", total_size)
 	disk_usage.total_size = total_size
 	return true
