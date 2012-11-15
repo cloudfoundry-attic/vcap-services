@@ -491,6 +491,12 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     options
   end
 
+  def stop_options
+    options = super
+    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options
+  end
+
   def finish_start?
     Timeout::timeout(MONGO_TIMEOUT) do
       conn = Mongo::Connection.new(ip, SERVICE_PORT)

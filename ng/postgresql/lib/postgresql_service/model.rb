@@ -132,6 +132,14 @@ module VCAP
             options
           end
 
+          def stop_options
+            options = super
+            options[:stop_script] = {
+              :script => "warden_service_ctl stop #{version}"
+            }
+            options
+          end
+
           def finish_start?
             postgresql_quickcheck(
               ip,
