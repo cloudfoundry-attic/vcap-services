@@ -381,14 +381,10 @@ class VCAP::Services::Redis::Node::ProvisionedService
       config = config_template.result(Kernel.binding)
       config_path = File.join(instance.base_dir, "redis.conf")
 
-      if is_upgraded == false
-        # Mount base directory to loop device for disk size limitation
-        db_size = db_size || max_disk
-        instance.prepare_filesystem(db_size)
+      unless is_upgraded
+        instance.prepare_filesystem(0)
         FileUtils.mkdir_p(instance.data_dir)
-        if db_file
-          FileUtils.cp(db_file, File.join(instance.data_dir, "dump.rdb"))
-        end
+        FileUtils.cp(db_file, File.join(instance.data_dir, "dump.rdb")) if db_file
       end
       File.open(config_path, "w") {|f| f.write(config)}
       instance
@@ -417,9 +413,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
   def migration_check
     super
     # Need regenerate configuration file for redis server
-    if container == nil
-      VCAP::Services::Redis::Node::ProvisionedService.create(port, version, plan, name, password, nil, true)
-    end
+    VCAP::Services::Redis::Node::ProvisionedService.create(port, version, plan, name, password, nil, true) if container.nil?
   end
 
   # diretory helper
