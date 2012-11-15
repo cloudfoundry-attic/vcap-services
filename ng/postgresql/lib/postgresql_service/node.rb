@@ -377,7 +377,7 @@ class VCAP::Services::Postgresql::Node
       #Ignore privileges Initializing error. Log only.
       begin
         if quota_exceeded then
-          # revoke create privilege on database to parent role
+          # revoke create privilege on database from parent role
           # In fact, this is a noop, for the create privilege of parent user should be revoked in revoke_write_access when quota is exceeded.
           db_connection.query("REVOKE CREATE ON DATABASE #{name} FROM #{user}") unless parent
           db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")

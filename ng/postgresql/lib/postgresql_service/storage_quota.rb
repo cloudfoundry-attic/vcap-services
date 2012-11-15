@@ -81,7 +81,7 @@ class VCAP::Services::Postgresql::Node
           end
       end
     rescue => e
-      @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
+      @logger.warn("Fail to enforce storage quota for service #{service.name}: " + fmt_error(e))
     end
   end
 
