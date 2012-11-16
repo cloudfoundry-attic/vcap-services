@@ -24,6 +24,8 @@ module VCAP
             @helper       = AppdirectHelper.new(opts, @logger)
             @mapping      = opts[:offering_mapping] || {}
 
+            @cc_api_version = opts[:cc_api_version]
+
             # Maintain a reverse mapping since we'll be changing the service name for CC advertisement
             # A provision request will require the actual service name rather than the one in CCDB
             @service_id_map = {}
@@ -38,18 +40,35 @@ module VCAP
           end
 
           def get_catalog
-            @helper.get_catalog
+            appdirect_catalog = @helper.load_catalog
+            catalog = {}
+            appdirect_catalog.each { |s|
+              name, provider = load_mapped_name_and_provider(s["id"], s["provider"])
+
+              key = key_for_service(name, s["version"], provider)
+              catalog[key] = s
+            }
+
+            catalog
           end
 
-          def generate_cc_advertise_request(name, ad_svc_offering, active = true)
-            if (@mapping.keys.include?(name.to_sym))
-              service_mapping = @mapping[name.to_sym]
-              name = service_mapping[:name]
-              provider = service_mapping[:provider]
-            else
-              # We'll use the service name as provider unless appdirect sends otherwise
-              provider = ad_svc_offering["provider"] || name
+          def load_mapped_name_and_provider(name, provider)
+             svc_label = name
+
+             # We'll use the service id as provider unless appdirect sends otherwise
+             svc_provider = provider || name
+             if (@mapping.keys.include?(name.to_sym))
+               service_mapping = @mapping[name.to_sym]
+               svc_label = service_mapping[:name]
+               svc_provider = service_mapping[:provider]
             end
+
+            [svc_label, svc_provider]
+         end
+
+
+          def generate_cc_advertise_request(ad_svc_offering, active = true)
+            name, provider = load_mapped_name_and_provider(ad_svc_offering["id"], ad_svc_offering["provider"])
 
             req = {}
             req[:label] = "#{name}-#{ad_svc_offering["version"]}"
@@ -87,6 +106,54 @@ module VCAP
             req[:tags] = [] # A non-null value to allow tags clone during bind
             req[:timeout] = 5 + @node_timeout
             req
+          end
+
+          def generate_ccng_advertise_request(ad_svc_offering, active = true)
+            # service name can be in id (if offering is from marketplace) or label (if offering is from ccdb)
+            # See marketplace/lib/base/marketplace_async_gateway_v2.rb:- advertise_services
+
+            name, provider = load_mapped_name_and_provider(
+              ad_svc_offering["id"] || ad_svc_offering["label"],
+              ad_svc_offering["provider"])
+
+            req = {}
+            req[:label] = name
+            req[:version] = ad_svc_offering["version"]
+            req[:active] = active && ad_svc_offering["active"]
+            req[:description] = ad_svc_offering["description"]
+
+            req[:provider] = provider
+
+            # req[:supported_versions] = [ ad_svc_offering["version"] ]
+            # req[:version_aliases]    =  { "current" => ad_svc_offering["version"] }
+
+            req[:url] = @external_uri
+
+            wildcards = @acls[:wildcards] if @acls
+
+            users_from_config = @acls[:users] if @acls
+            ad_devs = ad_svc_offering["developers"] if ad_svc_offering["development"]
+            ad_dev_emails = ad_devs.map { |u| u["email"] } if ad_devs
+            users = (users_from_config || []) + (ad_dev_emails || []) if users_from_config || ad_dev_emails
+
+            req[:acls] = {} if users || wildcards
+            req[:acls][:users] = users if users
+            req[:acls][:wildcards] = wildcards if wildcards
+
+            req[:timeout] = 5 + @node_timeout
+
+            # Setup plans
+            plans = {}
+            plans["default"] = {"name" => "default", "description" => "default plan" }
+
+            if ad_svc_offering["plans"] and ad_svc_offering["plans"].count > 0
+              plans = {}
+              ad_svc_offering["plans"].each do |plan|
+                plans[plan["id"]] = { "name" => plan["id"], "description" => plan["description"] }
+              end
+            end
+
+            [ req, plans ]
           end
 
           def offering_disabled?(id, offerings_list)

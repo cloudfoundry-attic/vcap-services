@@ -5,14 +5,14 @@ require 'uri'
 require 'timeout'
 
 require 'vcap/component'
-require_relative 'cc_client'
+require_relative 'cc_client_v2'
 
 module VCAP
   module Services
     module Marketplace
-      class MarketplaceAsyncServiceGateway < VCAP::Services::AsynchronousServiceGateway
+      class MarketplaceAsyncServiceGatewayV2 < VCAP::Services::AsynchronousServiceGateway
 
-        REQ_OPTS    = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
+        REQ_OPTS    = %w(mbus external_uri cloud_controller_uri).map {|o| o.to_sym}
 
         set :raise_errors, Proc.new {false}
         set :show_exceptions, false
@@ -74,15 +74,9 @@ module VCAP
           @catalog = {}
           @marketplace_gateway_varz_details = {}
 
-          token_hdrs = VCAP::Services::Api::GATEWAY_TOKEN_HEADER
-          @cc_client = VCAP::Services::Marketplace::CloudControllerClient.new(
-            {
-              :cloud_controller_uri => http_uri(opts[:cloud_controller_uri] || "api.vcap.me"),
-              :cc_req_hdrs => { 'Content-Type' => 'application/json', token_hdrs => @token },
-              :marketplace_client_name => @marketplace_client.name,
-              :logger => @logger,
-              :proxy => opts[:proxy]
-            })
+          opts[:cloud_controller_uri]    = http_uri(opts[:cloud_controller_uri] || "api.vcap.me")
+          opts[:marketplace_client_name] = @marketplace_client.name
+          @cc_client = VCAP::Services::Marketplace::CCNGClient.new(opts)
 
           Kernel.at_exit do
             if EM.reactor_running?
@@ -123,6 +117,162 @@ module VCAP
           abort_request(error_msg)
         end
 
+        ############ Catalog processing ##########
+
+        def refresh_catalog_and_update_cc
+          @logger.info("Refreshing Catalog...")
+          f = Fiber.new do
+            begin
+              refresh_catalog
+
+              advertise_services
+
+              # Ready to serve
+              update_varz
+              @logger.info("#{@marketplace_client.name} Marketplace Gateway is ready to serve incoming request.")
+            rescue => e
+              @logger.warn("Error when processing #{@marketplace_client.name} catalog: #{fmt_error(e)}")
+            end
+         end
+          f.resume
+        end
+
+        def refresh_catalog
+          failed = false
+          begin
+            @catalog_in_ccdb = @cc_client.get_registered_services_from_cc
+          rescue => e
+            failed = true
+            @logger.error("Failed to get proxied services from cc: #{e.inspect}")
+          ensure
+            update_stats("refresh_cc_services", failed)
+          end
+
+          failed = false
+          begin
+            Timeout::timeout(@node_timeout) do
+              @catalog_in_marketplace = @marketplace_client.get_catalog
+            end
+          rescue => e1
+            failed = true
+            @logger.error("Failed to get catalog from marketplace: #{e1.inspect}")
+          ensure
+            update_stats("refresh_catalog", failed)
+          end
+        end
+
+        def process_plans(plans_from_marketplace, plans_already_in_cc)
+          plans_to_add = []
+          plans_to_update = {}
+
+          marketplace_plans = plans_from_marketplace.keys
+          registered_plans  = plans_already_in_cc.keys
+
+          # Update active plans
+          # active plans = intersection of (marketplace_plans & registered_plans)
+          active_plans = marketplace_plans & registered_plans
+          active_plans.each { |plan_name|
+            plan_details = plans_from_marketplace[plan_name]
+
+            # TODO: is this really necessary? keeping this for now
+            # Currently the only changeable aspect is the descritption
+            if plan_details["description"] != plans_already_in_cc[plan_name]["description"]
+              plan_guid = plans_already_in_cc[plan_name]["guid"]
+              plans_to_update[plan_guid] = { "name" => plan_name, "description" => plan_details["description"] }
+              @logger.debug("Updating plan: #{plan_name} to: #{plans_to_update[plan_guid].inspect}")
+            else
+              @logger.debug("No changes to plan: #{plan_name}")
+            end
+          }
+
+          # Add new plans -> marketplace_plans - active_plans
+          new_plans = marketplace_plans - active_plans
+          new_plans.each { |plan_name|
+            @logger.debug("Adding new plan: #{plans_from_marketplace[plan_name].inspect}")
+            plans_to_add << plans_from_marketplace[plan_name]
+          }
+
+          # TODO: What to do with deactivated plans?
+          # Should handle this manually for now?
+          deactivated_plans = registered_plans - active_plans
+          @logger.warn("Found #{deactivated_plans.size} deactivated plans: - #{deactivated_plans.inspect}")
+
+          [ plans_to_add, plans_to_update ]
+        end
+
+        def advertise_services(active=true)
+          @logger.info("#{active ? "Activate" : "Deactivate"} services...")
+          if !(@catalog_in_marketplace && @catalog_in_ccdb)
+            @logger.warn("Cannot  advertise services since the catalog from either marketplace or ccdb could not be retrieved")
+            return
+          end
+
+          # Set services missing from marketplace offerings to inactive
+          # Process all services currently in marketplace
+          # NOTE: Existing service offerings in ccdb will have a guid and require a PUT operation for update
+          #       New service offerings will not have guid and require POST operation for create
+
+          registered_offerings  = @catalog_in_ccdb.keys
+          marketplace_offerings = @catalog_in_marketplace.keys
+          @logger.debug("registered: #{registered_offerings.inspect}, marketplace: #{marketplace_offerings.inspect}")
+
+          # POST updates to active and disabled services
+          # Active offerings is intersection of marketplace and ccdb offerings, we only need to update these
+          active_offerings = marketplace_offerings & registered_offerings
+          active_offerings.each do |label|
+            svc = @catalog_in_marketplace[label]
+            req, plans = @marketplace_client.generate_ccng_advertise_request(svc, active)
+            guid = (@catalog_in_ccdb[label])["guid"]
+
+            plans_to_add, plans_to_update = process_plans(plans, @catalog_in_ccdb[label]["plans"])
+
+            @logger.debug("Refresh offering: #{req.inspect}")
+            advertise_service_to_cc(req, guid, plans_to_add, plans_to_update)
+          end
+
+          # Inactive offerings is ccdb_offerings - active_offerings
+          inactive_offerings = registered_offerings - active_offerings
+          inactive_offerings.each do |label|
+            svc     = @catalog_in_ccdb[label]
+            guid    = svc["guid"]
+            service = svc["service"]
+            service[:active] = false
+
+            req, plans = @marketplace_client.generate_ccng_advertise_request(service, false)
+
+            @logger.debug("Deactivating offering: #{req.inspect}")
+            advertise_service_to_cc(req, guid, [], {}) # don't touch plans, just deactivate
+          end
+
+          # PUT new offerings (yet to be registered) = marketplace_offerings - active_offerings
+          new_offerings = marketplace_offerings - active_offerings
+          new_offerings.each do |label|
+            svc = @catalog_in_marketplace[label]
+            req, plans_to_add = @marketplace_client.generate_ccng_advertise_request(svc, active)
+
+            @logger.debug("Add new offering: #{req.inspect}")
+            advertise_service_to_cc(req, nil, plans_to_add, {}) # nil guid => new service, so add all plans
+          end
+
+          active_count = active ? active_offerings.size : 0
+          disabled_count = inactive_offerings.size + (active ? 0 : active_offerings.size)
+
+          @logger.info("Found #{active_count} active, #{disabled_count} disabled and #{new_offerings.size} new service offerings")
+
+          @marketplace_gateway_varz_details[:active_offerings] = active_count
+          @marketplace_gateway_varz_details[:disabled_services] = disabled_count
+        end
+
+        def advertise_service_to_cc(req, service_guid, plans_to_add, plans_to_update)
+          result = @cc_client.advertise_service_to_cc(req, service_guid, plans_to_add, plans_to_update)
+          update_stats("advertise_services", !result)
+          result
+        end
+
+
+
+        ############  Varz Processing ##############
+
         def snapshot_and_reset_stats
           stats_snapshot = {}
           @stats_lock.synchronize do
@@ -156,102 +306,13 @@ module VCAP
           end
         end
 
-        def refresh_catalog_and_update_cc
-          @logger.info("Refreshing Catalog...")
-          f = Fiber.new do
-            begin
-              refresh_catalog
-
-              advertise_services
-
-              # Ready to serve
-              update_varz
-              @logger.info("#{@marketplace_client.name} Marketplace Gateway is ready to serve incoming request.")
-            rescue => e
-              @logger.warn("Error when refreshing #{@marketplace_client.name} catalog: #{fmt_error(e)}")
-            end
-         end
-          f.resume
-        end
-
-        def refresh_catalog
-          failed = false
-          begin
-            @catalog_in_ccdb = get_proxied_services_from_cc
-          rescue => e
-            failed = true
-            @logger.error("Failed to get proxied services from cc: #{e.inspect}")
-          ensure
-            update_stats("refresh_cc_services", failed)
-          end
-
-          failed = false
-          begin
-            Timeout::timeout(@node_timeout) do
-              @catalog_in_marketplace = @marketplace_client.get_catalog
-            end
-          rescue => e1
-            failed = true
-            @logger.error("Failed to get catalog from marketplace: #{e1.inspect}")
-          ensure
-            update_stats("refresh_catalog", failed)
-          end
-        end
-
-        def advertise_services(active=true)
-          # Set services missing from marketplace offerings to inactive
-          deactivate_disabled_services
-
-          # Process all services currently in marketplace
-          if @catalog_in_marketplace
-            @catalog_in_marketplace.each do |label, bsvc|
-              req = @marketplace_client.generate_cc_advertise_request(bsvc, active)
-              advertise_service_to_cc(req)
-            end
-            @marketplace_gateway_varz_details[:active_offerings] = @catalog_in_marketplace.size
-         else
-            @logger.warn("Marketplace catalog was not retrieved, nothing to advertise")
-          end
-        end
-
-        def deactivate_disabled_services
-          if !(@catalog_in_marketplace && @catalog_in_ccdb)
-            @logger.warn("Check for disabled services could not be made since the catalog from either marketplace or ccdb could not be retrieved")
-            return
-          end
-
-          disabled_count = 0
-
-          current_offerings = []
-          @catalog_in_marketplace.each { |k, v|
-            current_offerings << v["id"]
-          }
-
-          @catalog_in_ccdb.each do |label, svc|
-            service_name, version = label.split(/-/)
-
-            if (@marketplace_client.offering_disabled?(service_name, current_offerings))
-              req = svc.dup
-              req[:active] = false
-
-              @logger.warn("#{@marketplace_client.name} service offering: #{label} not found in latest offering. Deactivating...")
-              advertise_service_to_cc(req)
-
-              disabled_count += 1
-            else
-              @logger.debug("Offering #{label} still active in #{@marketplace_client.name} marketplace")
-            end
-          end
-
-          @marketplace_gateway_varz_details[:disabled_services] = disabled_count
-          @logger.info("Found #{disabled_count} disabled service offerings")
-        end
-
         def update_varz
           VCAP::Component.varz["marketplace_gateway"] = @marketplace_gateway_varz_details
           VCAP::Component.varz["stats"] = snapshot_and_reset_stats
           VCAP::Component.varz[@marketplace_client.name.downcase] = @marketplace_client.varz_details if @marketplace_client.varz_details.size > 0
         end
+
+        ################ Nats Handlers (setup / cleanup) #############
 
         def start_nats(uri)
           f = Fiber.current
@@ -296,6 +357,19 @@ module VCAP
             stop_nats
             EM.stop if stop_event_loop
           }.resume
+        end
+
+        ################## Helpers ###################
+        #
+        helpers do
+
+          def reply_error(resp='{}')
+            async_reply_raw(500, {'Content-Type' => Rack::Mime.mime_type('.json')}, resp)
+          end
+
+          def fmt_error(e)
+            "#{e} [#{e.backtrace.join("|")}]"
+          end
         end
 
         #################### Handlers ###################
@@ -407,29 +481,6 @@ module VCAP
 
           }.resume
           async_mode
-        end
-
-        ################## Helpers ###################
-        #
-        helpers do
-
-          def reply_error(resp='{}')
-            async_reply_raw(500, {'Content-Type' => Rack::Mime.mime_type('.json')}, resp)
-          end
-
-          def get_proxied_services_from_cc
-            @cc_client.get_proxied_services_from_cc
-          end
-
-          def advertise_service_to_cc(offering)
-            result = @cc_client.advertise_service_to_cc(offering)
-            update_stats("advertise_services", !result)
-            result
-          end
-
-          def fmt_error(e)
-            "#{e} [#{e.backtrace.join("|")}]"
-          end
         end
 
       end

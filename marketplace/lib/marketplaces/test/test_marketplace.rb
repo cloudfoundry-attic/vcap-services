@@ -22,9 +22,9 @@ module VCAP
             @node_timeout = opts[:node_timeout]
             @acls         = opts[:acls]
 
-            @catalog = {}
-            @catalog["testservice-1.0"] =
-            {
+            @cc_api_version = opts[:cc_api_version]
+
+            testservice = {
               "id" => "testservice",
               "version" => "1.0",
               "name" => "My Test Service",
@@ -33,28 +33,36 @@ module VCAP
               "provider" => "TestProvider"
             }
 
+            @catalog = {}
+            @catalog[key_for_service(testservice["id"], testservice["version"], testservice["provider"])] = testservice
+
             @runtime_config = {}
             @runtime_config[:sleep_before_provision] = 0
           end
 
           def set_config(key, value)
             if key == "enable_foo"
+              fooservice = {
+                "id" => "fooservice",
+                "version" => "1.0",
+                "name" => "Foo Service",
+                "description" => "Foo Service",
+                "plans" => [ "free" ],
+                "provider" => "FooProvider"
+              }
+
+              service_key = key_for_service(fooservice["id"], fooservice["version"], fooservice["provider"])
+
               if value == "true"
                 @logger.info("Enabling fooservice-1.0")
-                @catalog["fooservice-1.0"] =
-                {
-                  "id" => "fooservice",
-                  "version" => "1.0",
-                  "name" => "Foo Service",
-                  "description" => "Foo Service",
-                  "plans" => [ "free" ],
-                  "provider" => "FooProvider"
-                }
+                @catalog[service_key] = fooservice
               else
                 @logger.info("Disabling fooservice-1.0")
-                @catalog.delete("fooservice-1.0")
+                @catalog.delete(service_key)
               end
+
               @logger.info("Catalog contains #{@catalog.size} offerings")
+
             elsif key == "sleep_before_provision"
               @runtime_config[:sleep_before_provision] = Integer(value)
               @logger.info("sleep_before_provision = #{@runtime_config[:sleep_before_provision]}")
@@ -74,30 +82,46 @@ module VCAP
             !(offerings_list.include?(id))
           end
 
-          def generate_cc_advertise_request(name, bsvc, active = true)
+          def generate_cc_advertise_request(svc, active = true)
             req = {}
-            req[:label] = "#{name}-#{bsvc["version"]}"
+            req[:label] = "#{svc["id"]}-#{svc["version"]}"
             req[:active] = active
-            req[:description] = bsvc["description"]
+            req[:description] = svc["description"]
+            req[:provider] = svc["provider"]
 
-            req[:provider] = bsvc["provider"]
-
-            req[:supported_versions] = [ bsvc["version"] ]
-            req[:version_aliases]    =  { "current" => bsvc["version"] }
+            req[:supported_versions] = [ svc["version"] ]
+            req[:version_aliases]    =  { "current" => svc["version"] }
 
             req[:acls] = @acls
-
             req[:url] = @external_uri
-
-            req[:plans] = bsvc["plans"]
-
+            req[:plans] = svc["plans"]
             req[:tags] = []
-
             req[:timeout] = 5 + @node_timeout
             req
           end
 
-         def provision_service(request_body)
+          def generate_ccng_advertise_request(svc, active = true)
+            req = {}
+            req[:label] = svc["id"]
+            req[:version] = svc["version"]
+            req[:active] = active
+            req[:description] = svc["description"]
+            req[:provider] = svc["provider"]
+
+            req[:acls] = @acls
+            req[:url] = @external_uri
+            req[:timeout] = 5 + @node_timeout
+
+            # req[:supported_versions] = [ svc["version"] ]
+            # req[:version_aliases]    =  { "current" => svc["version"] }
+
+            plans = {}
+            svc["plans"].each { |p| plans[p] = { "name" => p, "description" => "#{p} plan"} }
+
+            [ req, plans ]
+          end
+
+          def provision_service(request_body)
             if @runtime_config[:sleep_before_provision] > 0
               @logger.info("Sleep before provision is set to: #{@runtime_config[:sleep_before_provision]} sec, Sleeping...")
               sleep @runtime_config[:sleep_before_provision]

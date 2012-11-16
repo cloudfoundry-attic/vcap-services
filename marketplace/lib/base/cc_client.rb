@@ -8,14 +8,15 @@ module VCAP
     module Marketplace
       class CloudControllerClient
 
-          REQ_OPTS = %w(service_list_uri offering_uri cc_req_hdrs marketplace_client_name logger).map {|o| o.to_sym}
+          REQ_OPTS = %w(cloud_controller_uri cc_req_hdrs marketplace_client_name logger).map {|o| o.to_sym}
 
           def initialize(opts)
             missing_opts = REQ_OPTS.select {|o| !opts.has_key? o}
             raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
 
-            @service_list_uri        = opts[:service_list_uri]
-            @offering_uri            = opts[:offering_uri]
+            cld_ctrl_uri             = opts[:cloud_controller_uri]
+            @service_list_uri        = "#{cld_ctrl_uri}/proxied_services/v1/offerings"
+            @offering_uri            = "#{cld_ctrl_uri}/services/v1/offerings"
             @cc_req_hdrs             = opts[:cc_req_hdrs]
             @marketplace_client_name = opts[:marketplace_client_name]
             @logger                  = opts[:logger]

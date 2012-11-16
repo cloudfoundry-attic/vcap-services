@@ -35,7 +35,7 @@ module VCAP
               @access_token = OAuth::AccessToken.new(@consumer)
             end
 
-            def get_catalog
+            def load_catalog
               url = "#{@appdirect_endpoint}/api/#{OFFERINGS_PATH}"
               @logger.debug("Getting service listing from: #{url}")
 
@@ -43,17 +43,17 @@ module VCAP
               http_status = Integer(response.code)
               if http_status == 200
                 data = JSON.parse(response.body) #VCAP::Services::AppDirect::AppDirectCatalogResponse.decode(raw)
-                catalog = {}
+                catalog = []
                 data.each do |service|
                   # Add checks for specific categories which determine whether the addon should be listed on cc
                   @logger.debug("Got service '#{service["id"]}' from AppDirect")
                   if (@whitelist.nil? || @whitelist.include?(service["id"]))
-                    catalog["#{service["id"]}-#{service["version"]}"] = service
+                    catalog << service
                   else
                     @logger.warn("Ignoring service Offering: #{service["id"]} since it is not whitelisted")
                   end
                 end
-                @logger.info("Got #{catalog.keys.count} services from AppDirect")
+                @logger.info("Got #{catalog.size} services from AppDirect")
                 return catalog
               else
                 @logger.error("Failed to get catalog #{http_status}")

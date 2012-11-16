@@ -73,6 +73,13 @@ GEM
     bcrypt-ruby (2.1.4)
     beefcake (0.3.7)
     builder (3.0.0)
+    cf-uaa-client (1.2.4)
+      em-http-request (>= 1.0.0.beta.3)
+      eventmachine
+      highline
+      launchy
+      rest-client
+      yajl-ruby
     ci_reporter (1.7.1)
       builder (>= 2.1.2)
     curb (0.7.18)
@@ -126,10 +133,13 @@ GEM
       eventmachine
     eventmachine_httpserver (0.2.1)
     fastercsv (1.5.5)
+    highline (1.6.15)
     http_parser.rb (0.5.3)
     httpclient (2.2.7)
     json (1.4.6)
     json_pure (1.7.5)
+    launchy (2.1.0)
+      addressable (~> 2.2.6)
     macaddr (1.6.1)
       systemu (~> 2.5.0)
     membrane (0.0.2)
@@ -162,6 +172,8 @@ GEM
       redisk (>= 0.2.1)
       resque (~> 1.19)
       uuid (~> 2.3)
+    rest-client (1.6.7)
+      mime-types (>= 1.16)
     rspec (2.11.0)
       rspec-core (~> 2.11.0)
       rspec-expectations (~> 2.11.0)
@@ -199,6 +211,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  cf-uaa-client
   ci_reporter
   em-http-request
   eventmachine!

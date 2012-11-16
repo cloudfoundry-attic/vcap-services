@@ -10,11 +10,18 @@ require 'optparse'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 require 'base/marketplace_async_gateway'
+require 'base/marketplace_async_gateway_v2'
 
 class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
 
   def async_gateway_class
-    VCAP::Services::Marketplace::MarketplaceAsyncServiceGateway
+    if @cc_api_version == "v1"
+      VCAP::Services::Marketplace::MarketplaceAsyncServiceGateway
+    elsif @cc_api_version == "v2"
+      VCAP::Services::Marketplace::MarketplaceAsyncServiceGatewayV2
+    else
+      raise "Unknown CC api version: #{@cc_api_version}"
+    end
   end
 
   def load_config
@@ -52,6 +59,9 @@ class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
 
       @config[:host] = VCAP.local_ip(@config[:ip_route])
       @config[:port] ||= VCAP.grab_ephemeral_port
+
+      @cc_api_version = @config[:cc_api_version] || "v1"
+      @config[:cc_api_version] = @cc_api_version
 
       EM.run do
         sg = async_gateway_class.new(@config)
