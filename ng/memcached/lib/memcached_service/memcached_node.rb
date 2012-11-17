@@ -23,7 +23,7 @@ module VCAP
   module Services
     module Memcached
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService < VCAP::Services::Base::WardenService
+        class ProvisionedService < VCAP::Services::Base::Warden::Service
         end
       end
     end
@@ -34,6 +34,7 @@ class VCAP::Services::Memcached::Node
   include VCAP::Services::Memcached
   include VCAP::Services::Memcached::Common
   include VCAP::Services::Base::Utils
+  include VCAP::Services::Base::Warden::NodeUtils
 
   class SASLAdmin
     class SASLOperationError < StandardError

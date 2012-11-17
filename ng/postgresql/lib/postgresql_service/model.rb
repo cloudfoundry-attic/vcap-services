@@ -45,7 +45,7 @@ module VCAP
           belongs_to :provisionedservice
         end
 
-        class Wardenprovisionedservice < VCAP::Services::Base::WardenService
+        class Wardenprovisionedservice < VCAP::Services::Base::Warden::Service
           include DataMapper::Resource
           include VCAP::Services::Postgresql::Util
 

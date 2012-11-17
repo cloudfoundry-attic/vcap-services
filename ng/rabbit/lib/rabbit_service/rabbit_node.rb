@@ -14,7 +14,7 @@ module VCAP
   module Services
     module Rabbit
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService < VCAP::Services::Base::WardenService
+        class ProvisionedService < VCAP::Services::Base::Warden::Service
         end
       end
     end
@@ -32,6 +32,7 @@ class VCAP::Services::Rabbit::Node
   include VCAP::Services::Rabbit::Util
   include VCAP::Services::Rabbit
   include VCAP::Services::Base::Utils
+  include VCAP::Services::Base::Warden::NodeUtils
 
   def initialize(options)
     super(options)

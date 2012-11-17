@@ -15,7 +15,7 @@ module VCAP
       class Node < VCAP::Services::Base::Node
         class ProvisionedService
         end
-        class WardenProvisionedService < VCAP::Services::Base::WardenService
+        class WardenProvisionedService < VCAP::Services::Base::Warden::Service
         end
       end
     end
@@ -46,6 +46,7 @@ class VCAP::Services::Mysql::Node
       class << self
         include VCAP::Services::Mysql::WithWarden
         include VCAP::Services::Base::Utils
+        include VCAP::Services::Base::Warden::NodeUtils
       end
     else
       require "mysql_service/without_warden"

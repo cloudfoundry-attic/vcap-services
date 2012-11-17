@@ -19,7 +19,7 @@ module VCAP
   module Services
     module Redis
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService < VCAP::Services::Base::WardenService
+        class ProvisionedService < VCAP::Services::Base::Warden::Service
         end
       end
     end
@@ -32,6 +32,7 @@ class VCAP::Services::Redis::Node
   include VCAP::Services::Redis::Util
   include VCAP::Services::Redis
   include VCAP::Services::Base::Utils
+  include VCAP::Services::Base::Warden::NodeUtils
 
   def initialize(options)
     super(options)

@@ -13,6 +13,7 @@ module VCAP::Services::Postgresql::WithWarden
 
   include VCAP::Services::Postgresql::Util
   include VCAP::Services::Postgresql::Pagecache
+  include VCAP::Services::Base::Warden::NodeUtils
 
   def self.included(base)
     unless base.is_a? VCAP::Services::Postgresql::Node

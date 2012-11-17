@@ -16,7 +16,7 @@ module VCAP
   module Services
     module MongoDB
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService < VCAP::Services::Base::WardenService
+        class ProvisionedService < VCAP::Services::Base::Warden::Service
         end
       end
     end
@@ -27,6 +27,7 @@ class VCAP::Services::MongoDB::Node
 
   include VCAP::Services::MongoDB::Common
   include VCAP::Services::Base::Utils
+  include VCAP::Services::Base::Warden::NodeUtils
 
   # FIXME only support rw currently
   BIND_OPT = 'rw'

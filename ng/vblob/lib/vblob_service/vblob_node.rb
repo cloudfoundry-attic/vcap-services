@@ -30,7 +30,7 @@ module VCAP
   module Services
     module VBlob
       class Node < VCAP::Services::Base::Node
-        class ProvisionedService < VCAP::Services::Base::WardenService
+        class ProvisionedService < VCAP::Services::Base::Warden::Service
         end
       end
     end
@@ -45,6 +45,7 @@ class VCAP::Services::VBlob::Node
 
   include VCAP::Services::VBlob::Common
   include VCAP::Services::Base::Utils
+  include VCAP::Services::Base::Warden::NodeUtils
   include VCAP::Services::VBlob
 
   def initialize(options)
