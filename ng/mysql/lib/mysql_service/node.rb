@@ -829,12 +829,14 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     end
   end
 
-  def start_script
-    case version
-    when "5.5"
-      "warden_service_ctl start 55"
-    else
-      "warden_service_ctl start ''"
+  ["start", "stop"].each do |op|
+    define_method "#{op}_script".to_sym do
+      case version
+      when "5.5"
+        "warden_service_ctl #{op} 55"
+      else
+        "warden_service_ctl #{op} ''"
+      end
     end
   end
 
@@ -842,6 +844,12 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     options = super
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = service_port
+    options
+  end
+
+  def stop_options
+    options = super
+    options[:stop_script] = {:script => stop_script}
     options
   end
 

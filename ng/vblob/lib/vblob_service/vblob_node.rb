@@ -323,6 +323,12 @@ class VCAP::Services::VBlob::Node::ProvisionedService
     options
   end
 
+  def stop_options
+    options = super
+    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options
+  end
+
   def finish_start?
     Timeout::timeout(VBLOB_TIMEOUT) { Net::HTTP.start(ip, service_port) { |http| response = http.get("/")} }
     true

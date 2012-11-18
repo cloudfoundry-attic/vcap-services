@@ -461,6 +461,12 @@ EOF
     options
   end
 
+  def stop_options
+    options = super
+    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options
+  end
+
   def finish_start?
     credentials = {"username" => admin_username, "password" => admin_password, "hostname" => ip}
     begin

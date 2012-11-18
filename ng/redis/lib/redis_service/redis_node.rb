@@ -397,6 +397,12 @@ class VCAP::Services::Redis::Node::ProvisionedService
     options
   end
 
+  def stop_options
+    options = super
+    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options
+  end
+
   def finish_start?
     redis = Redis.new({:host => ip, :port => @@options[:service_port], :password => password})
     redis.echo("")
