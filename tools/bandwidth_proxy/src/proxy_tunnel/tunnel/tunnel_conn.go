@@ -44,8 +44,10 @@ func (tc *TunnelConn) handleOut(fd int) {
 		logger.Log(logger.ERR, "Write cache to fd [%d] error [%s]", fd, err)
 		tc.shutdown()
 	} else if err == nil && num < len(out) {
+		tc.RelTunnel.PassSize += uint64(num)
 		writeCache[fd] = out[num:]
 	} else if err == nil {
+		tc.RelTunnel.PassSize += uint64(num)
 		delete(writeCache, fd)
 	}
 }
