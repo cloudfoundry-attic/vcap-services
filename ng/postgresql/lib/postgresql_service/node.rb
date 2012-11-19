@@ -260,7 +260,7 @@ class VCAP::Services::Postgresql::Node
                     get_inst_port(provisionedservice)
         )
       else
-        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DB_ERROR)
       end
 
       provisionedservice.pgbindusers << binduser
@@ -324,7 +324,7 @@ class VCAP::Services::Postgresql::Node
       end
       exe_create_database(conn, name, @max_db_conns)
       if not create_database_user(provisionedservice, bindusers[0], false) then
-        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_LOCAL_DB_ERROR)
+        raise PostgresqlError.new(PostgresqlError::POSTGRESQL_DB_ERROR)
       end
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
