@@ -304,6 +304,36 @@ describe "Mysql server node" do
     end
   end
 
+  it "should change variables back after unprovision" do
+    EM.run do
+      class << @node
+        attr_reader :free_ports
+      end if @node.use_warden
+
+      pool_size = @node.pools.size
+      free_port_size = @node.free_ports.size if @node.use_warden
+
+      db = @node.provision(@default_plan, nil, @default_version)
+      @node.pools.size.should == (pool_size + 1)
+      @node.pools.should have_key(db["name"])
+      @node.mysqlProvisionedService.get(db["name"]).should_not == nil
+      if @node.use_warden
+        @node.free_ports.should_not include(db["port"])
+        @node.free_ports.size.should == (free_port_size - 1)
+      end
+
+      @node.unprovision(db["name"], [])
+      @node.pools.size.should == pool_size
+      @node.pools.should_not have_key(db["name"])
+      @node.mysqlProvisionedService.get(db["name"]).should == nil
+      if @node.use_warden
+        @node.free_ports.size.should == free_port_size
+        @node.free_ports.should include(db["port"])
+      end
+      EM.stop
+    end
+  end
+
   it "should not be possible to access one database using null or wrong credential" do
     EM.run do
       plan = "free"

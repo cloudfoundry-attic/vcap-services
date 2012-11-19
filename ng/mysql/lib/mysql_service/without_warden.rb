@@ -39,9 +39,11 @@ module VCAP::Services::Mysql::WithoutWarden
 
   def handle_provision_exception(provisioned_service)
     delete_database(provisioned_service) if provisioned_service
+    @pool_mutex.synchronize { @pools.delete(provisioned_service.name) }
   end
 
   def help_unprovision(provisioned_service)
+    @pool_mutex.synchronize { @pools.delete(provisioned_service.name) }
     if not provisioned_service.destroy
       @logger.error("Could not delete service: #{provisioned_service.errors.inspect}")
       raise MysqlError.new(MysqError::MYSQL_LOCAL_DB_ERROR)
