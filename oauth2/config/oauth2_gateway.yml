@@ -1,0 +1,22 @@
+---
+cloud_controller_uri: api.vcap.me
+service:
+  name: oauth2
+  version: "1.0"
+  description: 'OAuth2 service'
+  plans: ['free']
+  default_plan: 'free'
+  tags: ['oauth2','uaa']
+  timeout: 60
+  supported_versions: ["1.0"]
+  version_aliases:
+    current: "1.0"
+  uaa: http://uaa.vcap.me
+  login: http://uaa.vcap.me
+index: 0
+mbus: nats://nats:nats@vcap:4222
+logging:
+  file: /tmp/gateway.log
+  level: debug
+pid: /tmp/service.pid
+token: 0xdeadbeef

@@ -11,6 +11,7 @@ SERVICES_DIR = %w(
   mongodb
   mysql
   neo4j
+  oauth2
   postgresql
   rabbit
   redis
