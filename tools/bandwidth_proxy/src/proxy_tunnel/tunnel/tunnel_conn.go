@@ -61,13 +61,7 @@ func (tc *TunnelConn) readOnce(fd int) (num int, err error) {
 }
 
 func (tc *TunnelConn) getPeerFd(fd int) int {
-	var otherFd int
-	if fd == tc.EFd {
-		otherFd = tc.IFd
-	} else {
-		otherFd = tc.EFd
-	}
-	return otherFd
+	return tc.IFd ^ tc.EFd ^ fd
 }
 
 func getToSend(fd int, read []byte) (ret []byte) {
@@ -107,6 +101,11 @@ func saveLeft(fd int, left []byte) {
 }
 
 func (tc *TunnelConn) handleIn(fd int) {
+	targetFd := tc.getPeerFd(fd)
+	// Block reading while more than 1KB need to be sent
+	if ts, ok := writeCache[targetFd]; ok && len(ts) > 1024 {
+		return
+	}
 	for num := len(buf); num == len(buf); {
 		var err error
 		num, err = tc.readOnce(fd)
@@ -114,7 +113,6 @@ func (tc *TunnelConn) handleIn(fd int) {
 			return
 		}
 
-		targetFd := tc.getPeerFd(fd)
 		toSend := getToSend(targetFd, buf[:num])
 		sent, left, err := tc.writeOnce(targetFd, toSend)
 		if err != nil {
