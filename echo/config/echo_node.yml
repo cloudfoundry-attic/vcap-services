@@ -10,3 +10,4 @@ logging:
 pid: /var/vcap/sys/run/echo_node.pid
 node_id: echo_node_1
 port: 5002
+supported_versions: ["1.0"]
