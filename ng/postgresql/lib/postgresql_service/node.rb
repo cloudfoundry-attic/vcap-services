@@ -344,7 +344,7 @@ class VCAP::Services::Postgresql::Node
 
     unless global_conn
       @logger.error("Fail to connect instance #{name} to create database user")
-      return true
+      return false
     end
 
     user = binduser.user

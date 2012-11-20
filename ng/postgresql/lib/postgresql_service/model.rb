@@ -130,6 +130,7 @@ module VCAP
               :use_spawn => true
             }
             options[:service_port] = service_port
+            options[:post_start_script] = {:script => "#{File.join(script_dir, "post_service_start.sh")} #{base_dir}", :use_root => true}
             options
           end
 
