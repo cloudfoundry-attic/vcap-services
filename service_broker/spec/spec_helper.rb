@@ -15,13 +15,7 @@ $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'vcap/common'
 
 def load_config()
-  config_file = nil
-  if ENV["CLOUD_FOUNDRY_CONFIG_PATH"]
-    config_file = File.join(ENV["CLOUD_FOUNDRY_CONFIG_PATH"],
-                            "service_broker.yml")
-  else
-    config_file = File.join(File.dirname(__FILE__), '..', 'config', 'service_broker.yml')
-  end
+  config_file = File.join(File.dirname(__FILE__), '..', 'config', 'service_broker.yml')
   config = YAML.load_file(config_file)
   config = VCAP.symbolize_keys(config)
   config[:host] = "localhost"

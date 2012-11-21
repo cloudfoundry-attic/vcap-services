@@ -36,8 +36,7 @@ def parse_property(hash, key, type, options = {})
 end
 
 def config_base_dir
-  #This environment variable should be set to CLOUD_FOUDNRY_HOME/.deployments/devbox/config
-  ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+  File.join(File.dirname(__FILE__), '..', 'config')
 end
 
 def get_node_test_config()

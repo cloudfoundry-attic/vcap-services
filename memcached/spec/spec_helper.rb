@@ -48,16 +48,7 @@ def parse_property(hash, key, type, options = {})
 end
 
 def config_base_dir()
-  config_path = File.join(PWD, "../config/")
-  # detect dev_setup
-  dev_local = File.expand_path("~/.cloudfoundry_deployment_local")
-  if File.exist?(dev_local)
-    File.open(dev_local, "r") do |f|
-      f.read.match('CLOUD_FOUNDRY_CONFIG_PATH=([[:graph:]]+)')
-      config_path = $1
-    end
-  end
-  config_path
+  File.join(PWD, "../config/")
 end
 
 def get_node_config()

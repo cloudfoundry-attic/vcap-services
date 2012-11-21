@@ -80,7 +80,7 @@ def get_logger_level(logging)
 end
 
 def config_base_dir
-  ENV["CLOUD_FOUNDRY_CONFIG_PATH"] || File.join(File.dirname(__FILE__), '..', 'config')
+  File.join(File.dirname(__FILE__), '..', 'config')
 end
 
 def get_node_config()
