@@ -68,7 +68,6 @@ def get_node_config()
     :memcached_log_dir => "/tmp/memcached/memcached_log",
     :max_clients => parse_property(config, "max_clients", Integer),
     :memcached_memory => parse_property(config, "memcached_memory", Integer),
-    :plan => parse_property(config, "memcached_memory", Integer),
     :local_db => 'sqlite3:/tmp/memcached/memcached_node.db',
     :local_db_file => "/tmp/memcached/memcached_node.db"
   }

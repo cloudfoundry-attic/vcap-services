@@ -310,7 +310,7 @@ describe VCAP::Services::Memcached::Node do
       varz[:max_instances_num].should == @options[:capacity] / @capacity_unit
       varz[:provisioned_instances][0][:name].should == @credentials["name"]
       varz[:provisioned_instances][0][:port].should == @credentials["port"]
-      varz[:provisioned_instances][0][:plan].should == :free
+      varz[:provisioned_instances][0][:plan].should == "free"
       @node.unprovision(@credentials["name"])
     end
   end

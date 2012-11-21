@@ -391,7 +391,7 @@ class VCAP::Services::Memcached::Node
     varz = {}
     varz[:name] = instance.name
     varz[:port] = instance.port
-    varz[:plan] = instance.plan
+    varz[:plan] = @plan
     varz[:usage] = {}
     varz[:usage][:capacity_unit] = capacity_unit
     varz[:usage][:max_clients] = @max_clients

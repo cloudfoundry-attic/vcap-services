@@ -189,7 +189,7 @@ describe VCAP::Services::Redis::Node do
       varz[:provisioned_instances_num].should == 1
       varz[:provisioned_instances][0][:name].should == @credentials["name"]
       varz[:provisioned_instances][0][:port].should == @credentials["port"]
-      varz[:provisioned_instances][0][:plan].should == 1
+      varz[:provisioned_instances][0][:plan].should == "free"
       @node.unprovision(@credentials["name"])
     end
   end

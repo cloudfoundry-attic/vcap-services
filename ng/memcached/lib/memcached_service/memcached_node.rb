@@ -227,7 +227,7 @@ class VCAP::Services::Memcached::Node
       stat = {}
       stat['name']    = p_service.name
       stat['version'] = p_service.version
-      stat['plan']    = p_service.plan
+      stat['plan']    = @plan
       stat['port']    = p_service.port
       stat['info']    = p_service.get_instance_stats
 
