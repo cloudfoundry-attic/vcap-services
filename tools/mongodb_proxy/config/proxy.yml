@@ -9,7 +9,6 @@ mongodb:
   user: admin
 
 filter:
-  fs_reserved_blocks: 0.05  # by default 5% of filesystem blocks are reserved for root user
   threshold: 0.8            # if disk usage percent equals or exceeds this value then block some operations
   enabled: true
 

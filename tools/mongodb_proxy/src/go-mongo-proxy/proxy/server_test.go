@@ -25,7 +25,6 @@ func initTestConfig() {
 	config.MONGODB.USER = "admin"
 	config.MONGODB.PASS = "123456"
 
-	config.FILTER.FS_RESERVED_BLOCKS = 0.5
 	config.FILTER.THRESHOLD = 0.8
 	config.FILTER.ENABLED = true
 

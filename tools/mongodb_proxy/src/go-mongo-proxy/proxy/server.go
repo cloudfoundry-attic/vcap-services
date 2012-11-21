@@ -25,9 +25,8 @@ type ProxyConfig struct {
 	MONGODB ConnectionInfo
 
 	FILTER struct {
-		FS_RESERVED_BLOCKS float64
-		THRESHOLD          float64
-		ENABLED            bool
+		THRESHOLD float64
+		ENABLED   bool
 	}
 
 	LOGGING struct {
