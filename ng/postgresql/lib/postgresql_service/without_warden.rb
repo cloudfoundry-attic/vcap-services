@@ -38,7 +38,7 @@ module VCAP::Services::Postgresql::WithoutWarden
     end
   end
 
-  def pre_send_announcement_internal
+  def pre_send_announcement_internal(options)
     pgProvisionedService.all.each do |provisionedservice|
       setup_global_connection provisionedservice
       migrate_instance provisionedservice

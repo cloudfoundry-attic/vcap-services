@@ -14,9 +14,9 @@ require 'mysql_service/with_warden'
 # monkey patch of wardenized node
 module VCAP::Services::Mysql::WithWarden
   alias_method :pre_send_announcement_internal_ori, :pre_send_announcement_internal
-  def pre_send_announcement_internal
+  def pre_send_announcement_internal(options)
     unless @options[:not_start_instances]
-      pre_send_announcement_internal_ori
+      pre_send_announcement_internal_ori(options)
     else
       @pool_mutex = Mutex.new
       @pools = {}

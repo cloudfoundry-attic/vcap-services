@@ -60,19 +60,22 @@ class VCAP::Services::Rabbit::Node
     options[:initial_password] = @initial_password = "guest"
     @hostname = get_host
     ProvisionedService.init(options)
-    @options = options
   end
 
   def pre_send_announcement
-    @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
+    warden_node_init(@options)
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    stop_all_instances
     true
   end
 

@@ -64,15 +64,19 @@ class VCAP::Services::MongoDB::Node
   def pre_send_announcement
     migrate_saved_instances_on_startup
 
-    @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
+    warden_node_init(@options)
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    stop_all_instances
   end
 
   def announcement
@@ -213,7 +217,7 @@ class VCAP::Services::MongoDB::Node
     @logger.info("disable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
     p_service = ProvisionedService.get(service_credential['name'])
     raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if p_service.nil?
-    p_service.stop if p_service.running?
+    p_service.stop
     true
   rescue => e
     @logger.warn(e)

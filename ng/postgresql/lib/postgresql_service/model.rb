@@ -142,6 +142,14 @@ module VCAP
             options
           end
 
+          def status_options
+            options = super
+            options[:status_script] = {
+              :script => "#{service_script} status #{base_dir} #{log_dir} #{bin_dir}"
+            }
+            options
+          end
+
           def finish_start?
             postgresql_quickcheck(
               ip,

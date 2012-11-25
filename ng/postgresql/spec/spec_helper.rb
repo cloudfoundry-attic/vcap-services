@@ -14,9 +14,9 @@ require 'postgresql_service/with_warden'
 # monkey patch of wardenized node
 module VCAP::Services::Postgresql::WithWarden
   alias_method :pre_send_announcement_internal_ori, :pre_send_announcement_internal
-  def pre_send_announcement_internal
+  def pre_send_announcement_internal(options)
     unless @use_warden && @options[:not_start_instances]
-      pre_send_announcement_internal_ori
+      pre_send_announcement_internal_ori(options)
     else
       @logger.info("Not to start instances")
       pgProvisionedService.all.each do |provisionedservice|

@@ -47,6 +47,9 @@ class VCAP::Services::Mysql::Node
         include VCAP::Services::Mysql::WithWarden
         include VCAP::Services::Base::Utils
         include VCAP::Services::Base::Warden::NodeUtils
+        def service_instances
+          mysqlProvisionedService.all
+        end
       end
     else
       require "mysql_service/without_warden"
@@ -94,7 +97,7 @@ class VCAP::Services::Mysql::Node
     DataMapper.setup(:default, @local_db)
     DataMapper::auto_upgrade!
 
-    pre_send_announcement_internal
+    pre_send_announcement_internal(@options)
 
     EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) { EM.defer {enforce_storage_quota} }
 

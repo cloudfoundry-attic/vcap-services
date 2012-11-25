@@ -117,21 +117,22 @@ class VCAP::Services::Memcached::Node
   def pre_send_announcement
     migrate_saved_instances_on_startup
     start_provisioned_instances
+    warden_node_init(@options)
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def start_provisioned_instances
-     @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    ProvisionedService.all.each do |p_service|
-      @logger.debug("Try to terminate memcached container: #{p_service.container}")
-      p_service.stop if p_service.running?
-    end
+    stop_all_instances
   end
 
   def announcement

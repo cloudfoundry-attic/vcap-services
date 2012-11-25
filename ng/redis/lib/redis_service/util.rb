@@ -80,7 +80,7 @@ module VCAP
         def import_redis_data(instance, dump_path)
           name = instance.name
           dump_file = File.join(dump_path, "dump.rdb")
-          instance.stop if instance.running?
+          instance.stop
           FileUtils.cp(dump_file, instance.data_dir)
           instance.run
           true

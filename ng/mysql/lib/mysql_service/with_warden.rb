@@ -17,17 +17,17 @@ module VCAP::Services::Mysql::WithWarden
     init_ports(options[:port_range])
   end
 
-  def pre_send_announcement_internal
+  def pre_send_announcement_internal(options)
     @pool_mutex = Mutex.new
     @pools = {}
 
-    @capacity_lock.synchronize do
-      start_instances(mysqlProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= mysqlProvisionedService.all.size }
 
     mysqlProvisionedService.all.each do |instance|
       setup_pool(instance)
     end
+    warden_node_init(options)
   end
 
   def handle_provision_exception(provisioned_service)
@@ -62,7 +62,7 @@ module VCAP::Services::Mysql::WithWarden
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(mysqlProvisionedService.all)
+    stop_all_instances
   end
 
   def setup_pool(instance)
