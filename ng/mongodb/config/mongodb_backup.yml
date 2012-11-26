@@ -5,10 +5,17 @@ local_db: sqlite3:/var/vcap/services/mongodb/mongodb_node.db
 base_dir: /var/vcap/services/mongodb/instances/
 image_dir: /var/vcap/services/mongodb/images/
 service_log_dir: /var/vcap/sys/log/mongodb
+service_script_dir: /var/vcap/jobs/mongodb_node_ng/bin
+service_conf_dir: /var/vcap/jobs/mongodb_node_ng/config
+service_bin_dir:
+  "1.8": /var/vcap/packages/mongodb18
+  "2.0": /var/vcap/packages/mongodb20
+  "2.2": /var/vcap/packages/mongodb22
 mongodump_path:
   "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongodump"
   "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongodump"
-supported_versions: ["1.8", "2.0"]
+  "2.2": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.2/mongodump"
+supported_versions: ["1.8", "2.0", "2.2"]
 default_version: "2.0"
 timeout: 10
 logging:

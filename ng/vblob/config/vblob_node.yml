@@ -9,6 +9,10 @@ ip_route: 127.0.0.1
 logging:
   level: debug
 service_log_dir: /var/vcap/sys/service-log/vblob
+service_bin_dir:
+  vblob: /usr/bin
+  node: /usr/bin
+service_script_dir: /usr/bin
 pid: /var/vcap/sys/run/vblob_node.pid
 node_id: vblob_node_free_1
 vblobd_path: /var/vcap/packages/vblob

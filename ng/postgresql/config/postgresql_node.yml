@@ -21,6 +21,11 @@ warden:
     first: 25001
     last: 45000
   service_log_dir: /var/vcap/services/postgresql/log
+  service_bin_dir:
+    '9.0': /usr/bin
+    '9.1': /usr/bin
+  service_script_dir: /usr/bin
+  service_conf_dir: /etc
   image_dir: /var/vcap/services/postgresql/image
   service_start_timeout: 3
   filesystem_quota: true

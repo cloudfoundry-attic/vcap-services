@@ -14,6 +14,9 @@ port_range:
   first: 15000
   last:  25000
 service_log_dir: /var/vcap/sys/log/memcached
+service_bin_dir:
+  memcached: /usr/bin
+service_script_dir: /usr/bin
 max_clients: 500
 memcached_timeout: 2
 sasl_enabled: false

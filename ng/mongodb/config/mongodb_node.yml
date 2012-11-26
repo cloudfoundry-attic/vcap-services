@@ -9,27 +9,37 @@ ip_route: 127.0.0.1
 logging:
   level: debug
 service_log_dir: /var/vcap/sys/log/mongodb
+service_bin_dir:
+  "1.8": /usr/bin
+  "2.0": /usr/bin
+  "2.2": /usr/bin
+service_script_dir: /usr/bin
+service_conf_dir: /etc
 pid: /var/vcap/sys/run/mongodb_node.pid
 node_id: mongodb_node_free_1
 
-supported_versions: ["1.8", "2.0"]
+supported_versions: ["1.8", "2.0", "2.2"]
 default_version: "2.0"
 
 mongod_path:
   "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongod"
   "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongod"
+  "2.2": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.2/mongod"
 
 mongorestore_path:
   "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongorestore"
   "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongorestore"
+  "2.2": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.2/mongorestore"
 
 mongodump_path:
   "1.8": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-1.8/mongodump"
   "2.0": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.0/mongodump"
+  "2.2": "/tmp/warden/rootfs/usr/share/mongodb/mongodb-2.2/mongodump"
 
 mongod_options:
   "1.8": ""
   "2.0": ""
+  "2.2": ""
 
 port_range:
   first: 25001

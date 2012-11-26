@@ -299,16 +299,16 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def generate_config
     provisioned_service = self
-    vblob_root_dir = "/store/instance/vblob_data"
-    vblob_node_path = "/usr/bin/node"
-    log_file = "/store/log/vblob.log"
-    vblobd_tmp_dir = "/store/tmp"
-    account_file = File.join("/store/instance/", "account.json")
-    config_file = File.join("/store/instance/", "config.json")
-    vblobd_quota = provisioned_service.class.max_disk * 1024 * 1024
+    vblob_root_dir = data_dir
+    vblob_node_path = File.join(node_dir, "bin/node")
+    log_file = File.join(log_dir, "vblob.log")
+    vblobd_tmp_dir = tmp_dir
+    account_file = File.join(base_dir, "account.json")
+    config_file = File.join(base_dir, "config.json")
+    vblobd_quota = self.class.max_disk * 1024 * 1024
     config = @@config_template.result(binding)
 
-    config_path = File.join(provisioned_service.base_dir, "config.json")
+    config_path = File.join(base_dir, "config.json")
     File.open(config_path, "w") {|f| f.write(config)}
   end
 
@@ -318,15 +318,9 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{bin_dir} #{node_dir}", :use_spawn => true}
     options[:service_port] = service_port
-    options[:additional_binds] = [{:src_path => tmp_dir, :dst_path => "/store/tmp",}]
-    options
-  end
-
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options[:bind_dirs] << {:src => node_dir}
     options
   end
 
@@ -338,7 +332,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
   end
 
   def data_dir
-    File.join(base_dir,'vblob_data')
+    File.join(base_dir, "vblob_data")
   end
 
   def data_dir?
@@ -347,6 +341,14 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def tmp_dir
     File.join(@@vblobd_tmp_dir, self[:name])
+  end
+
+  def node_dir
+    self.class.bin_dir["node"]
+  end
+
+  def bin_dir
+    self.class.bin_dir["vblob"]
   end
 
   def add_user(username, password, bind_opts)

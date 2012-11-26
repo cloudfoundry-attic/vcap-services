@@ -40,8 +40,6 @@ class VCAP::Services::Redis::Node
     options[:max_clients] ||= 500
     options[:persistent] ||= false
     # Configuration used in warden
-    options[:instance_data_dir] = "/store/instance/data"
-    options[:instance_log_dir] = "/store/log"
     @redis_port = options[:service_port] = 25001
     @config_command_name = options[:config_command_name] = options[:command_rename_prefix] + "-config"
     @shutdown_command_name = options[:shutdown_command_name] = options[:command_rename_prefix] + "-shutdown"
@@ -370,8 +368,8 @@ class VCAP::Services::Redis::Node::ProvisionedService
       port = @@options[:service_port]
       password = instance.password
       persistent = @@options[:persistent]
-      data_dir = @@options[:instance_data_dir]
-      log_file = File.join(@@options[:instance_log_dir], "redis.log")
+      data_dir = instance.data_dir
+      log_file = File.join(instance.log_dir, "redis.log")
       memory = instance.memory
       config_command = @@options[:config_command_name]
       shutdown_command = @@options[:shutdown_command_name]
@@ -394,13 +392,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start #{version}", :use_spawn => true}
-    options
-  end
-
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
+    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{bin_dir}", :use_spawn => true}
     options
   end
 
@@ -421,10 +413,5 @@ class VCAP::Services::Redis::Node::ProvisionedService
     super
     # Need regenerate configuration file for redis server
     VCAP::Services::Redis::Node::ProvisionedService.create(port, version, plan, name, password, nil, true) if container.nil?
-  end
-
-  # diretory helper
-  def data_dir
-    File.join(base_dir, "data")
   end
 end

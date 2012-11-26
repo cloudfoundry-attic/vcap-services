@@ -317,11 +317,18 @@ class VCAP::Services::Memcached::Node::ProvisionedService
     end
   end
 
+  def bin_dir
+    self.class.bin_dir["memcached"]
+  end
+
   def start_script
     # memcached -m memory_size -p port_num -c connection -v -S
     cmd_components = [
-      'warden_service_ctl',
-      'start',
+      "#{service_script}",
+      "start",
+      "#{base_dir}",
+      "#{log_dir}",
+      "#{bin_dir}",
       "-m #{@@memcached_memory}",
       "-p #{SERVICE_PORT}",
       "-c #{@@max_clients}",
@@ -335,12 +342,6 @@ class VCAP::Services::Memcached::Node::ProvisionedService
     options = super
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = SERVICE_PORT
-    options
-  end
-
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
     options
   end
 

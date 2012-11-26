@@ -457,15 +457,15 @@ EOF
 
   def start_options
     options = super
-    options[:start_script] = {:script => "warden_service_ctl start #{self[:version]} #{self[:name]}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{bin_dir} #{erlang_dir} #{name}", :use_spawn => true}
+    options[:bind_dirs] << {:src => erlang_dir}
     options[:need_map_port] = false
     options
   end
 
-  def stop_options
-    options = super
-    options[:stop_script] = {:script => "warden_service_ctl stop"}
-    options
+  def erlang_dir
+    erlang_bin_dir = self.class.bin_dir["erlang"]
+    File.symlink?(erlang_bin_dir) ? File.readlink(erlang_bin_dir) : erlang_bin_dir
   end
 
   def finish_start?
@@ -499,9 +499,9 @@ EOF
     true
   end
 
-  def stop
+  def stop(container_name=nil)
     stop_proxy
-    super
+    super(container_name)
   end
 
   def start_proxy
@@ -522,7 +522,8 @@ EOF
 
   def stop_proxy
     Process.kill(:SIGTERM, self[:proxy_pid]) unless self[:proxy_pid] == 0
-    self[:proxy_pid] = 0
+    # FIXME: should set proxy_pid to 0 in local db, but in unprovision we delete local db first,
+    # and we don't know the operation is restart or unprovision here, so need consider a grace way to do it
   end
 
   def migration_check

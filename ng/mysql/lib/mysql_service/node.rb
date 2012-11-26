@@ -820,6 +820,9 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
       provisioned_service.version  = version
 
       provisioned_service.prepare_filesystem(@max_disk)
+      FileUtils.cp(File.join(provisioned_service.conf_dir, provisioned_service.service_conf), provisioned_service.base_dir)
+      FileUtils.cp(File.join(provisioned_service.conf_dir, "warden_mysql_init"), provisioned_service.base_dir)
+      FileUtils.mkdir_p(provisioned_service.tmp_dir)
       provisioned_service
     end
   end
@@ -833,21 +836,42 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     end
   end
 
-  ["start", "stop"].each do |op|
+  def service_conf
+    case version
+    when "5.5"
+      "my55.cnf"
+    else
+      "my.cnf"
+    end
+  end
+
+  ["start", "stop", "status"].each do |op|
     define_method "#{op}_script".to_sym do
       case version
       when "5.5"
-        "warden_service_ctl #{op} 55"
+        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{bin_dir} /var/vcap/store/mysql 55"
       else
-        "warden_service_ctl #{op} ''"
+        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{bin_dir} /var/vcap/store/mysql ''"
       end
     end
+  end
+
+  def tmp_dir
+    File.join(base_dir, "tmp")
   end
 
   def start_options
     options = super
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = service_port
+    options[:bind_dirs] = []
+    options[:bind_dirs] << {:src => base_dir, :dst => "/var/vcap/sys/run/mysqld"}
+    options[:bind_dirs] << {:src => data_dir, :dst => "/var/vcap/store/mysql"}
+    options[:bind_dirs] << {:src => log_dir, :dst => "/var/vcap/sys/log/mysql"}
+    options[:bind_dirs] << {:src => tmp_dir, :dst => "/var/vcap/data/mysql_tmp"}
+    options[:bind_dirs] << {:src => bin_dir}
+    options[:bind_dirs] << {:src => File.join(File.dirname(bin_dir), "common")}
+    options[:bind_dirs] << {:src => script_dir}
     options
   end
 
@@ -857,13 +881,14 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     options
   end
 
+  def status_options
+    options = super
+    options[:status_script] = {:script => status_script}
+    options
+  end
+
   def finish_start?
     # Mysql does this in "setup_pool" function, so just return true here
     true
-  end
-
-  #directory helper
-  def data_dir
-    File.join(base_dir, "data")
   end
 end

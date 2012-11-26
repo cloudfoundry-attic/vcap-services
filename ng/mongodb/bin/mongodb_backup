@@ -50,6 +50,9 @@ class VCAP::Services::MongoDB::Backup < VCAP::Services::Base::Backup
       :supported_versions => parse_property(@config, "supported_versions", Array),
       :default_version => parse_property(@config, "default_version", String),
       :service_log_dir => parse_property(@config, "service_log_dir", String),
+      :service_script_dir => parse_property(@config, "service_script_dir", String, :optional => true, :default => "/var/vcap/jobs"),
+      :service_conf_dir => parse_property(@config, "service_conf_dir", String, :optional => true, :default => "/var/vcap/jobs"),
+      :service_bin_dir => parse_property(@config, "service_bin_dir", Hash, :optional => true),
       :image_dir => parse_property(@config, "image_dir", String),
       :timeout => parse_property(@config, "timeout", Integer, :optional => true, :default => 10)
     }

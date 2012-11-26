@@ -11,7 +11,7 @@ logging:
 pid: /var/vcap/sys/run/redis_node.pid
 max_memory: 16
 node_id: redis_node_free_1
-supported_versions: ["2.2"]
+supported_versions: ["2.2", "2.4", "2.6"]
 default_version: "2.2"
 port_range:
   first: 5000
@@ -19,6 +19,11 @@ port_range:
 migration_nfs: /mnt/appcloud
 # z_interval: 30
 service_log_dir: /var/vcap/sys/log/redis
+service_bin_dir:
+  "2.2": /usr/bin
+  "2.4": /usr/bin
+  "2.6": /usr/bin
+service_script_dir: /usr/bin
 command_rename_prefix: protect-command-prefix
 max_clients: 500
 # fqdn_hosts: false
