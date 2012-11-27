@@ -9,9 +9,11 @@ mongodb:
   user: admin
 
 filter:
-  threshold: 0.8            # if disk usage percent equals or exceeds this value then block some operations
+  base_dir: /store/instance/data/
+  quota_files: 4
+  quota_data_size: 240
   enabled: true
 
 logging:
-  level: info
+  level: debug
   path: /tmp/mongodb_proxy/mongodb_proxy.log

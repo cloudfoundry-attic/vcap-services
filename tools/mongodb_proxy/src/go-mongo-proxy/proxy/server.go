@@ -25,8 +25,10 @@ type ProxyConfig struct {
 	MONGODB ConnectionInfo
 
 	FILTER struct {
-		THRESHOLD float64
-		ENABLED   bool
+		BASE_DIR        string
+		QUOTA_FILES     uint32
+		QUOTA_DATA_SIZE uint32
+		ENABLED         bool
 	}
 
 	LOGGING struct {
@@ -77,7 +79,8 @@ func StartProxyServer(conf *ProxyConfig, proxy_log l4g.Logger) (err error) {
 		goto Error
 	} else {
 		if filter.FilterEnabled() {
-			go filter.MonitDiskUsage()
+			go filter.MonitQuotaFiles()
+			go filter.MonitQuotaDataSize()
 		}
 	}
 
