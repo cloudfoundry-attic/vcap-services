@@ -69,6 +69,12 @@ module VCAP::Services::Mysql::WithoutWarden
     end
   end
 
+  def each_pool_with_key
+    @supported_versions.each do |version|
+      yield @pools[version], version
+    end
+  end
+
   def each_connection_with_port
     @supported_versions.each do |version|
       @pools[version].with_connection { |conn| yield conn, @mysql_configs[version]["port"] }

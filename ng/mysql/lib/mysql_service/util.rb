@@ -203,7 +203,7 @@ module VCAP
 
           def inspect
             {
-              :size => @size,
+              :size => @connections.size,
               :checked_out_size => @checked_out.size,
               :checked_out_by => @checked_out.map{|conn| conn.checked_out_by },
               :average_latency_ms => @latency_sum / @queries_served,

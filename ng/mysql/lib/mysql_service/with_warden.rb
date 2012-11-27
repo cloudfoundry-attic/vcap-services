@@ -93,6 +93,16 @@ module VCAP::Services::Mysql::WithWarden
     end
   end
 
+  def each_pool_with_key
+    # we can't iterate using @pools.each because provision and unprovision
+    # will change @pools. Changing @pools during @pools.each will cause an error
+    mysqlProvisionedService.all.each do |instance|
+      conn_pool = fetch_pool(instance.name)
+      next if conn_pool.nil?
+      yield conn_pool, instance.name
+    end
+  end
+
   def each_connection_with_port
     mysqlProvisionedService.all.each do |instance|
       conn_pool = fetch_pool(instance.name)

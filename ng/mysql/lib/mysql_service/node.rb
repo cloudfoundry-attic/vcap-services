@@ -648,6 +648,9 @@ class VCAP::Services::Mysql::Node
     rescue => e
       @logger.error("Error get instance list: #{e}")
     end
+    # connection pool information
+    varz[:pools] = {}
+    each_pool_with_key { |conn_pool, key| varz[:pools][key] = conn_pool.inspect }
     varz
   rescue => e
     @logger.error("Error during generate varz: #{e}")
