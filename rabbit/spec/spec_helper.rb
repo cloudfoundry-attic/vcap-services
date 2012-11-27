@@ -61,9 +61,10 @@ def getNodeTestConfig
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :port_range => parse_property(config, "port_range", Range),
     :admin_port_range => parse_property(config, "admin_port_range", Range),
-    :rabbitmq_server => parse_property(config, "rabbitmq_server", String),
+    :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version => parse_property(config, "default_version", String),
     :rabbitmq_log_dir => "/tmp/rabbit_instances/log",
-    :config_template => File.expand_path("../../resources/rabbitmq.config.erb", __FILE__)
+    :rabbit => parse_property(config, "rabbit", Hash),
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options
