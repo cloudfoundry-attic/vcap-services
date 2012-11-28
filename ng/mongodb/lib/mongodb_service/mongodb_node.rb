@@ -474,9 +474,9 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     if File.exist? lockfile
       case version
       when "1.8"
-        journal_enabled = mongod_exe_options.match(/--journal/)
+        journal_enabled = (mongod_exe_options =~ /(^|\W)--journal($|\W)/)
       when "2.0", "2.2"
-        journal_enabled = !mongod_exe_options.match(/--nojournal/)
+        journal_enabled = !(mongod_exe_options =~ /(^|\W)--nojournal($|\W)/)
       end
       unless journal_enabled
         logger.warn("Service #{self[:name]} not properly shutdown, try repairing its db...")
