@@ -270,7 +270,7 @@ class VCAP::Services::Redis::Node
     varz = {}
     varz[:name] = instance.name
     varz[:port] = instance.port
-    varz[:plan] = instance.plan
+    varz[:plan] = @plan
     varz[:version] = instance.version
     varz[:usage] = {}
     varz[:usage][:max_memory] = instance.memory.to_f * 1024.0

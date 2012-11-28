@@ -1,4 +1,5 @@
 ---
+plan: free
 local_db: sqlite3:/var/vcap/services/memcached/memcached_node.db
 mbus: nats://localhost:4222/
 index: 0
