@@ -183,15 +183,12 @@ module VCAP
 
         # Legacy method to grant user privileges of public schema
         def exe_grant_user_priv(conn)
-        @logger ||= create_logger
-        unless conn
-          @logger.error("No connection to do exe_grant_user_priv")
-          return
-        end
-        grant_user_priv(conn, pg_version(conn))
-        end
-        def grant_user_priv(conn, version)
-          return unless conn
+          @logger ||= create_logger
+          unless conn
+            @logger.error("No connection to do exe_grant_user_priv")
+            return
+          end
+          version = pg_version(conn)
           conn.query("grant create on schema public to public")
           if version == '9'
             conn.query("grant all on all tables in schema public to public")
@@ -290,7 +287,6 @@ module VCAP
             if db_connection_sys_user.nil?
               @logger.error("Unable to grant write access to #{name} for #{sys_user}")
             else
-              db_connection_sys_user.query("vacuum full")
               db_connection_sys_user.close
               do_grant_query(db_connection, user, sys_user)
             end
