@@ -18,6 +18,8 @@ type ProxyConfig struct {
 	HOST string
 	PORT string
 
+	FILTER FilterConfig
+
 	MONGODB ConnectionInfo
 }
 
@@ -43,6 +45,11 @@ func startProxyServer(conf *ProxyConfig) error {
 		return err
 	}
 
+	filter := NewFilter(&conf.FILTER)
+	if filter.FilterEnabled() {
+		go filter.StorageMonitor()
+	}
+
 	fmt.Printf("Start proxy server.\n")
 
 	for {
@@ -59,7 +66,7 @@ func startProxyServer(conf *ProxyConfig) error {
 			continue
 		}
 
-		session := NewSession(clientconn, serverconn)
+		session := NewSession(clientconn, serverconn, filter)
 		go session.Process()
 	}
 
@@ -72,6 +79,12 @@ func main() {
 	conf := &ProxyConfig{}
 	conf.HOST = "127.0.0.1"
 	conf.PORT = "29017"
+
+	conf.FILTER.base_dir = "/store/instance/"
+	conf.FILTER.quota_files = 4
+	conf.FILTER.quota_data_size = 240
+	conf.FILTER.enabled = true
+
 	conf.MONGODB.HOST = "127.0.0.1"
 	conf.MONGODB.PORT = "27017"
 	conf.MONGODB.DBNAME = "db"
