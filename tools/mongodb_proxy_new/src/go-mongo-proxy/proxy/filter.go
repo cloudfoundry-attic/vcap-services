@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"sync/atomic"
@@ -9,10 +9,18 @@ const BLOCKED = 1
 const UNBLOCKED = 0
 
 type FilterConfig struct {
-	base_dir        string // mongo data base dir
-	quota_files     uint32 // quota file number
-	quota_data_size uint32 // megabytes
-	enabled         bool   // enable or not, filter proxy or normal proxy
+	BASE_DIR        string // mongo data base dir
+	QUOTA_FILES     uint32 // quota file number
+	QUOTA_DATA_SIZE uint32 // megabytes
+	ENABLED         bool   // enable or not, filter proxy or normal proxy
+}
+
+type ConnectionInfo struct {
+	HOST   string
+	PORT   string
+	DBNAME string
+	USER   string
+	PASS   string
 }
 
 type Filter interface {
@@ -26,16 +34,18 @@ type ProxyFilterImpl struct {
 	blocked uint32 // 0 means not block, 1 means block
 
 	config *FilterConfig
+	mongo  *ConnectionInfo
 }
 
-func NewFilter(conf *FilterConfig) *ProxyFilterImpl {
+func NewFilter(conf *FilterConfig, conn *ConnectionInfo) *ProxyFilterImpl {
 	return &ProxyFilterImpl{
 		blocked: UNBLOCKED,
-		config:  conf}
+		config:  conf,
+		mongo:   conn}
 }
 
 func (filter *ProxyFilterImpl) FilterEnabled() bool {
-	return filter.config.enabled
+	return filter.config.ENABLED
 }
 
 func (filter *ProxyFilterImpl) PassFilter() bool {
