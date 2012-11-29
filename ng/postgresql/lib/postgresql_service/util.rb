@@ -59,17 +59,15 @@ module VCAP
 
         # Return the public schema id of postgresql
         def get_public_schema_id(conn)
+          schema_id = nil
           if conn
             res = conn.query("select oid, nspname, nspowner from pg_namespace where nspname = 'public'")
-            schema_id = nil
             res.each do |nsp|
               schema_id = nsp['oid']
               break
             end
-            schema_id
-          else
-            nil
           end
+          schema_id
         end
 
         def postgresql_quickcheck(host, user, password, port, database)
@@ -273,36 +271,42 @@ module VCAP
             @logger.error("Default user failed to connect to database #{name} when granting write access")
             return false
           end
-          public_schema_id ||= get_public_schema_id(db_connection)
-          unless public_schema_id
-            @logger.error("Fail to get public schema id")
-            return false
-          end
-          service.pgbindusers.all.each do |binduser|
-            user = binduser.user
-            sys_user = binduser.sys_user
-            sys_password = binduser.sys_password
-            db_connection_sys_user = postgresql_connect(db_connection.host, sys_user,
-                                                     sys_password, db_connection.port, name, :failt_with_nil => true)
-            if db_connection_sys_user.nil?
-              @logger.error("Unable to grant write access to #{name} for #{sys_user}")
-            else
-              db_connection_sys_user.close
-              do_grant_query(db_connection, user, sys_user)
-            end
-            db_connection.query("GRANT TEMP ON DATABASE #{name} to #{user}")
-            db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
-          end
-          grant_schema_write_access(db_connection, public_schema_id, 'public', 'public')
-          schemas = get_conn_schemas(default_connection) || {}
-          schemas.each do |sc, sc_id|
-            grant_schema_write_access(default_connection, sc_id, sc, default_user[:user])
-          end
 
-          db_connection.query("grant create on database #{name} to #{default_user[:user]}")
+          schemas = get_conn_schemas(default_connection) || {}
+          db_connection.transaction do |db_conn|
+            public_schema_id ||= get_public_schema_id(db_conn)
+            unless public_schema_id
+              raise "Fail to get public schema id"
+            end
+            service.pgbindusers.all.each do |binduser|
+              user = binduser.user
+              sys_user = binduser.sys_user
+              sys_password = binduser.sys_password
+              db_conn_sys_user = postgresql_connect(db_conn.host, sys_user,
+                                                  sys_password, db_conn.port, name, :failt_with_nil => true)
+              if db_conn_sys_user.nil?
+                raise "Unable to grant write access to #{name} for #{sys_user}"
+              else
+                db_conn_sys_user.close
+                do_grant_query(db_conn, user, sys_user)
+              end
+              db_conn.query("GRANT TEMP ON DATABASE #{name} to #{user}")
+              db_conn.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
+            end
+            grant_schema_write_access(db_conn, public_schema_id, 'public', 'public')
+            schemas.each do |sc, sc_id|
+              grant_schema_write_access(db_conn, sc_id, sc, default_user[:user])
+            end
+            db_conn.query("grant create on database #{name} to #{default_user[:user]}")
+          end
           service.quota_exceeded = false
           service.save
-          true
+          return true
+        rescue => e
+          @logger.error("Fail to regrant write access of service #{service.name}: " + fmt_error(e))
+          return false
+        ensure
+          default_connection.close if default_connection
         end
 
         # Revoke write access privileges of database
@@ -312,46 +316,51 @@ module VCAP
           name = service.name
           default_user = service.default_user
           unless default_user
-            @logger.warn("No default user #{default_user} for database #{name} when granting write access")
+            @logger.error("No default user #{default_user} for database #{name} when granting write access")
             return false
           end
           default_connection = postgresql_connect(db_connection.host, default_user[:user],
                                                 default_user[:password], db_connection.port, name, :fail_with_nil => true)
           unless default_connection
-            @logger.warn("Default user #{default_user} fail to connect to database #{name} when revoking write access")
+            @logger.error("Default user #{default_user} fail to connect to database #{name} when revoking write access")
             return false
           end
-          public_schema_id ||= get_public_schema_id(db_connection)
-          unless public_schema_id
-            @logger.warn("Fail to get public schema id")
-            return false
-          end
-          # revoke create privilege from database
-          db_connection.query("revoke create on database #{name} from #{default_user[:user]}")
-
-          # revoke write access from public shema
-          revoke_schema_write_access(db_connection, public_schema_id, 'public', 'public')
-
-          # revoke write privilege on all created schemas on the database
-          # only the members in the same group could see the schemas, even super user could not see them
           schemas = get_conn_schemas(default_connection) || {}
-          schemas.each do |sc, sc_id|
-            revoke_schema_write_access(default_connection, sc_id, sc, default_user[:user])
-          end
-          default_connection.close if default_connection
+          db_connection.transaction do |db_conn|
+            public_schema_id ||= get_public_schema_id(db_conn)
+            unless public_schema_id
+              @logger.warn("Fail to get public schema id")
+              return false
+            end
+            # revoke create privilege from database
+            db_conn.query("revoke create on database #{name} from #{default_user[:user]}")
 
-          # revoke temp privilege on the database
-          service.pgbindusers.all.each do |binduser|
-            user = binduser.user
-            sys_user = binduser.sys_user
-            kill_alive_sessions(pgconn, name, user)
-            db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
-            db_connection.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
-            do_revoke_query(db_connection, user, sys_user)
+            # revoke write access from public shema
+            revoke_schema_write_access(db_conn, public_schema_id, 'public', 'public')
+
+            # revoke write privilege on all created schemas on the database
+            schemas.each do |sc, sc_id|
+              revoke_schema_write_access(db_conn, sc_id, sc, default_user[:user])
+            end
+
+            # revoke temp privilege on the database
+            service.pgbindusers.all.each do |binduser|
+              user = binduser.user
+              sys_user = binduser.sys_user
+              kill_alive_sessions(pgconn, name, user)
+              db_conn.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
+              db_conn.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
+              do_revoke_query(db_conn, user, sys_user)
+            end
           end
           service.quota_exceeded = true
           service.save
-          true
+          return true
+        rescue => e
+          @logger.error("Fail to revoke write access for service #{service.name}: " + fmt_error(e))
+          return false
+        ensure
+          default_connection.close if default_connection
         end
 
         # Return information of database
