@@ -714,6 +714,7 @@ describe "Mysql server node" do
         varz[:long_transactions_killed].should >= 0
         varz[:provision_served].should >= 0
         varz[:binding_served].should >= 0
+        varz[:pools].should be_instance_of Hash
         EM.stop
       end
     end
@@ -796,6 +797,18 @@ describe "Mysql server node" do
         end
         # restore db so cleanup code doesn't complain.
         connection.query("create database #{instance}")
+      end
+      EM.stop
+    end
+  end
+
+  it "should report pool size in varz" do
+    EM.run do
+      varz = @node.varz_details
+      if @node.use_warden
+        varz[:pools].should have_key(@db["name"])
+      else
+        @opts[:mysql].keys.each { |key| varz[:pools].should have_key(key) }
       end
       EM.stop
     end
@@ -897,16 +910,19 @@ describe "Mysql server node" do
   end
 
   after :each do
-    @node.create_missing_pools if @node.use_warden
-    @test_dbs.keys.each do |db|
-      begin
-        name = db["name"]
-        @node.unprovision(name, @test_dbs[db])
-        @node.logger.info("Clean up temp database: #{name}")
-      rescue => e
-        @node.logger.info("Error during cleanup #{e}")
-      end
-    end if @test_dbs
+    EM.run do
+      @node.create_missing_pools if @node.use_warden
+      @test_dbs.keys.each do |db|
+        begin
+          name = db["name"]
+          @node.unprovision(name, @test_dbs[db])
+          @node.logger.info("Clean up temp database: #{name}")
+        rescue => e
+          @node.logger.info("Error during cleanup #{e}")
+        end
+      end if @test_dbs
+      EM.stop
+    end
   end
 
   after :all do
