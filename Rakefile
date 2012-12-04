@@ -1,6 +1,6 @@
 require 'tmpdir'
 
-SERVICES_DIR = %w(
+NG_SERVICES_DIR = %w(
   atmos
   couchdb
   echo
@@ -8,15 +8,9 @@ SERVICES_DIR = %w(
   filesystem
   marketplace
   memcached
-  mongodb
-  mysql
   neo4j
   oauth2
-  postgresql
-  rabbit
-  redis
   service_broker
-  vblob
   tools/backup/manager
   ng/mysql
   ng/postgresql
@@ -27,15 +21,23 @@ SERVICES_DIR = %w(
   ng/memcached
 )
 
+NON_NG_SERVICE_DIR = %w(
+  mongodb
+  mysql
+  postgresql
+  rabbit
+  redis
+  vblob
+)
+
 desc "Run integration tests."
 task "tests" do |t|
   system "cd tests; bundle exec rake tests"
 end
 
 namespace "bundler" do
-  def exec_in_svc_dir(pattern=nil)
-    SERVICES_DIR.each do |dir|
-      next if pattern and !(dir =~ /#{pattern}/)
+  def exec_in_svc_dir(dirs, pattern=nil)
+    dirs.each do |dir|
       puts ">>>>>>>> enter #{dir}"
       Dir.chdir(dir) do
         yield dir
@@ -58,27 +60,44 @@ namespace "bundler" do
     open(path, 'w') { |f| f.write(out) }
   end
 
-  # usage: rake bundler:update[oldref,newref,pattern]
-  # for example, to update refs from '1234' to '2345' for all ng services
-  # rake bundler:update[1234,2345,ng/]
-  # pattern is optional, if not provided, update all dirs
+  def dirs_to_run(catalog, pattern)
+    dirs = nil
+    case catalog
+    when "all"
+      dirs = NG_SERVICES_DIR + NON_NG_SERVICE_DIR
+    when "nonng"
+      dirs = NON_NG_SERVICE_DIR
+    else
+      dirs = NG_SERVICES_DIR
+    end
+    dirs.select {|d| d =~ /#{pattern}/}
+  end
+
+  # usage: rake bundler:update[oldref,newref,catalog,pattern]
+  # for example, to update refs from '1234' to '2345' for all services
+  # rake bundler:update[1234,2345,all]
+  # if the bump is for mysql, then
+  # rake bundler:update[1234,2345,all,mysql]
+  # catalog & pattern are optional, if not provided, update ng dirs
   desc "Update git ref in Gemfile"
-  task :update, :oref, :nref, :pattern do |t, args|
-    exec_in_svc_dir(args[:pattern]) { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
+  task :update, :oref, :nref, :catalog, :pattern do |t, args|
+    dirs = dirs_to_run(args[:catalog], args[:pattern])
+    exec_in_svc_dir(dirs) { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
   end
 
   desc "Dry run update"
-  task :update_dry, :oref, :nref, :pattern do |t, args|
-    exec_in_svc_dir(args[:pattern]) { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
+  task :update_dry, :oref, :nref, :catalog, :pattern do |t, args|
+    dirs = dirs_to_run(args[:catalog], args[:pattern])
+    exec_in_svc_dir(dirs) { |_| sh "sed \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile" }
   end
 
-  # usage: rake bundler:gerrit_vendor[gem_name,'<repo>','<refspec>',pattern]
+  # usage: rake bundler:gerrit_vendor[gem_name,'<repo>','<refspec>',catalog,pattern]
   desc "Change the gem source from git reference to local vendor"
-  task :gerrit_vendor, :gem_name, :repo, :refspec, :pattern do |t, args|
+  task :gerrit_vendor, :gem_name, :repo, :refspec, :catalog, :pattern do |t, args|
     gem_name = args[:gem_name]
     repo = args[:repo]
     refspec = args[:refspec]
-    pattern = args[:pattern]
+    dirs = dirs_to_run(args[:catalog], args[:pattern])
 
     working_dir = Dir.mktmpdir
     `git clone #{repo} #{working_dir}`
@@ -101,7 +120,7 @@ namespace "bundler" do
       abort unless system "git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec && gem install #{gem_name}*.gem"
     end
 
-    exec_in_svc_dir(pattern) do |dir|
+    exec_in_svc_dir(dirs) do |dir|
       prune_git('Gemfile', gem_name)
       sh "rm -f vendor/cache/#{gem_name}*.gem && bundle install"
     end
