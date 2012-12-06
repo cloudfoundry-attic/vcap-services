@@ -59,6 +59,8 @@ def getNodeTestConfig
     :port_range => parse_property(config, "port_range", Range),
     :max_memory => parse_property(config, "max_memory", Integer),
     :service_log_dir => "/tmp/redis_log",
+    :service_script_dir => "/var/vcap/jobs/redis_node_ng/bin",
+    :service_bin_dir => {"2.2" => "/var/vcap/packages/redis22", "2.4" => "/var/vcap/packages/redis24", "2.6" => "/var/vcap/packages/redis26"},
     :command_rename_prefix => parse_property(config, "command_rename_prefix", String),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
     :image_dir => "/tmp/redis_image",

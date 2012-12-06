@@ -27,7 +27,7 @@ describe VCAP::Services::Redis::Node do
       @node = VCAP::Services::Redis::Node.new(@options)
       EM.add_timer(1) {EM.stop}
     end
-    @redis_port = @node.options[:instance_port]
+    @redis_port = @node.options[:service_port]
   end
 
   after :all do
