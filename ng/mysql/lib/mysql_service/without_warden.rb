@@ -12,7 +12,7 @@ module VCAP::Services::Mysql::WithoutWarden
     VCAP::Services::Mysql::Node::ProvisionedService
   end
 
-  def pre_send_announcement_internal
+  def pre_send_announcement_internal(options)
     @pool_mutex = Mutex.new
     @pools = {}
 

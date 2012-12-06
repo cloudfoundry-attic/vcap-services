@@ -50,7 +50,6 @@ class VCAP::Services::Redis::Node
     @redis_timeout = options[:redis_timeout] || 2
     @service_start_timeout = options[:service_start_timeout] || 3
     ProvisionedService.init(options)
-    @options = options
     @supported_versions = options[:supported_versions]
     @default_version = options[:default_version]
   end
@@ -67,15 +66,19 @@ class VCAP::Services::Redis::Node
   def pre_send_announcement
     migrate_saved_instances_on_startup
 
-    @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
+    warden_node_init(@options)
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    stop_all_instances
     true
   end
 
@@ -164,7 +167,7 @@ class VCAP::Services::Redis::Node
     dump_file = File.join(backup_dir, "dump.rdb")
     if File.exists?(dump_file)
       if File.new(dump_file).size > 0
-        instance.stop if instance.running?
+        instance.stop
         sleep 1
         FileUtils.cp(dump_file, File.join(instance.data_dir, "dump.rdb"))
         instance.run

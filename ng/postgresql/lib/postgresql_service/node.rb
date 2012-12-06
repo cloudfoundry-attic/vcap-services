@@ -33,7 +33,6 @@ class VCAP::Services::Postgresql::Node
 
   def initialize(options)
     super(options)
-    @options = options.dup
 
     @postgresql_configs = options[:postgresql]
     @max_db_size = (options[:max_db_size] * 1024 * 1024).round
@@ -83,9 +82,7 @@ class VCAP::Services::Postgresql::Node
   def pre_send_announcement
     self.class.setup_datamapper(:default, @local_db)
     pre_send_announcement_prepare
-    @capacity_lock.synchronize do
-      pre_send_announcement_internal
-    end
+    pre_send_announcement_internal(@options)
     check_db_consistency
     setup_timers
   end

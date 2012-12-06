@@ -58,15 +58,19 @@ class VCAP::Services::VBlob::Node
 
   # handle the cases which has already been in the local sqlite database
   def pre_send_announcement
-    @capacity_lock.synchronize do
-      start_instances(ProvisionedService.all)
-    end
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
+    warden_node_init(@options)
+  end
+
+  def service_instances
+    ProvisionedService.all
   end
 
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(ProvisionedService.all)
+    stop_all_instances
   end
 
   def announcement
@@ -224,7 +228,7 @@ class VCAP::Services::VBlob::Node
     @logger.info("disable_instance request: service_credential=#{service_credential}, binding_credentials=#{binding_credentials}")
     provisioned_service = ProvisionedService.get(service_credential['name'])
     raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if provisioned_service.nil?
-    provisioned_service.stop if provisioned_service.running?
+    provisioned_service.stop
     true
   rescue => e
     @logger.warn(e)

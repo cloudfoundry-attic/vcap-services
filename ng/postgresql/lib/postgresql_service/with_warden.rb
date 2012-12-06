@@ -25,6 +25,10 @@ module VCAP::Services::Postgresql::WithWarden
     VCAP::Services::Postgresql::Node::Wardenprovisionedservice
   end
 
+  def service_instances
+    pgProvisionedService.all
+  end
+
   def pgBindUser
     VCAP::Services::Postgresql::Node::Wardenbinduser
   end
@@ -34,12 +38,14 @@ module VCAP::Services::Postgresql::WithWarden
     @connections = {}
   end
 
-  def pre_send_announcement_internal
-    start_instances(pgProvisionedService.all)
+  def pre_send_announcement_internal(options)
+    start_all_instances
+    @capacity_lock.synchronize{ @capacity -= pgProvisionedService.all.size }
     pgProvisionedService.all.each do |provisionedservice|
       global_connection(provisionedservice, true)
       migrate_instance provisionedservice
     end
+    warden_node_init(options)
   end
 
   def migrate_instance provisionedservice
@@ -251,7 +257,7 @@ module VCAP::Services::Postgresql::WithWarden
   def shutdown
     super
     @logger.info("Shutting down instances..")
-    stop_instances(pgProvisionedService.all)
+    stop_all_instances
   end
 
   def get_inst_port(instance)
