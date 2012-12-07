@@ -113,27 +113,39 @@ def get_node_config()
   config = YAML.load_file(config_file)
   mongodb_conf_template = File.join(PWD, "../resources/mongodb.conf.erb")
   options = {
-    :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    :plan => parse_property(config, "plan", String),
-    :capacity => parse_property(config, "capacity", Integer),
-    :mongod_path => parse_property(config, "mongod_path", Hash),
-    :mongod_options => parse_property(config, "mongod_options", Hash),
-    :mongorestore_path => parse_property(config, "mongorestore_path", Hash),
-    :mongodump_path => parse_property(config, "mongodump_path", Hash),
-    :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :node_id => parse_property(config, "node_id", String),
-    :mbus => parse_property(config, "mbus", String),
-    :config_template => mongodb_conf_template,
-    :port_range => parse_property(config, "port_range", Range),
+    # miscellaneous configs
+    :logger      => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
+    :plan        => parse_property(config, "plan", String),
+    :capacity    => parse_property(config, "capacity", Integer),
+    :ip_route    => parse_property(config, "ip_route", String, :optional => true),
+    :node_id     => parse_property(config, "node_id", String),
+    :mbus        => parse_property(config, "mbus", String),
+    :port_range  => parse_property(config, "port_range", Range),
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
-    :base_dir => '/tmp/mongo/instances',
+
+    # parse mongodb wardenized-service control related config
+    :service_script_dir => parse_property(config, "service_script_dir", String),
+    :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
+    :service_conf_dir   => parse_property(config, "service_conf_dir", String),
+
+    # mongodb instances related configs
+    :config_template       => mongodb_conf_template,
+    :supported_versions    => parse_property(config, "supported_versions", Array),
+    :default_version       => parse_property(config, "default_version", String),
+    :service_start_timeout => parse_property(config, "service_start_timeout", Integer),
+
+    # hardcode unit test related directories to /tmp dir
+    :base_dir        => '/tmp/mongo/instances',
     :service_log_dir => '/tmp/mongo/logs',
-    :local_db => 'sqlite3:/tmp/mongo/mongodb_node.db',
-    :image_dir => '/tmp/mongo/images',
-    :max_disk => 128,
-    :supported_versions => parse_property(config, "supported_versions", Array),
-    :default_version => parse_property(config, "default_version", String),
-    :service_start_timeout => parse_property(config, "service_start_timeout", Integer)
+    :local_db        => 'sqlite3:/tmp/mongo/mongodb_node.db',
+    :image_dir       => '/tmp/mongo/images',
+    :max_disk        => 128,
+
+    # parse mongodb binary related config
+    :mongod_path       => parse_property(config, "mongod_path", Hash),
+    :mongod_options    => parse_property(config, "mongod_options", Hash),
+    :mongorestore_path => parse_property(config, "mongorestore_path", Hash),
+    :mongodump_path    => parse_property(config, "mongodump_path", Hash),
   }
   options[:logger].level = Logger::DEBUG
   options
