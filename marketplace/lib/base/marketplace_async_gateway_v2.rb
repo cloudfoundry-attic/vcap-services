@@ -5,17 +5,15 @@ require 'uri'
 require 'timeout'
 
 require 'vcap/component'
+require 'base_async_gateway'
 require_relative 'cc_client_v2'
 
 module VCAP
   module Services
     module Marketplace
-      class MarketplaceAsyncServiceGatewayV2 < VCAP::Services::AsynchronousServiceGateway
+      class MarketplaceAsyncServiceGatewayV2 < VCAP::Services::BaseAsynchronousServiceGateway
 
-        REQ_OPTS    = %w(mbus external_uri cloud_controller_uri).map {|o| o.to_sym}
-
-        set :raise_errors, Proc.new {false}
-        set :show_exceptions, false
+        REQ_OPTS          = %w(cc_api_version mbus external_uri cloud_controller_uri service_auth_tokens).map {|o| o.to_sym}
 
         def initialize(opts)
           super(opts)
@@ -56,6 +54,7 @@ module VCAP
           @handle_fetched        = true # set to true in order to compatible with base asycn gateway.
 
           @refresh_interval      = opts[:refresh_interval] || 300
+          @service_auth_tokens   = opts[:service_auth_tokens]
 
           @marketplace_client    = load_marketplace(opts)
 
@@ -224,7 +223,7 @@ module VCAP
             req, plans = @marketplace_client.generate_ccng_advertise_request(svc, active)
             guid = (@catalog_in_ccdb[label])["guid"]
 
-            plans_to_add, plans_to_update = process_plans(plans, @catalog_in_ccdb[label]["plans"])
+            plans_to_add, plans_to_update = process_plans(plans, @catalog_in_ccdb[label]["service"]["plans"])
 
             @logger.debug("Refresh offering: #{req.inspect}")
             advertise_service_to_cc(req, guid, plans_to_add, plans_to_update)
@@ -248,7 +247,8 @@ module VCAP
           new_offerings = marketplace_offerings - active_offerings
           new_offerings.each do |label|
             svc = @catalog_in_marketplace[label]
-            req, plans_to_add = @marketplace_client.generate_ccng_advertise_request(svc, active)
+            req, plans = @marketplace_client.generate_ccng_advertise_request(svc, active)
+            plans_to_add = plans.values
 
             @logger.debug("Add new offering: #{req.inspect}")
             advertise_service_to_cc(req, nil, plans_to_add, {}) # nil guid => new service, so add all plans
@@ -268,8 +268,6 @@ module VCAP
           update_stats("advertise_services", !result)
           result
         end
-
-
 
         ############  Varz Processing ##############
 
@@ -363,6 +361,13 @@ module VCAP
         #
         helpers do
 
+          def is_a_valid_auth_token(token)
+            configured_tokens = @service_auth_tokens.values
+            valid = configured_tokens.include?(token)
+            @logger.error("Requested token: #{token} is invalid") if !valid
+            valid
+          end
+
           def reply_error(resp='{}')
             async_reply_raw(500, {'Content-Type' => Rack::Mime.mime_type('.json')}, resp)
           end
@@ -374,7 +379,38 @@ module VCAP
 
         #################### Handlers ###################
 
+        # Validate incoming request
+        def validate_incoming_request
+          unless request.media_type == Rack::Mime.mime_type('.json')
+            error_msg = ServiceError.new(ServiceError::INVALID_CONTENT).to_hash
+            abort_request(error_msg)
+          end
+
+          # Check custom service auth tokens
+          unless auth_token && is_a_valid_auth_token(auth_token)
+            error_msg = ServiceError.new(ServiceError::NOT_AUTHORIZED).to_hash
+            @logger.error("Failed auth token check, auth token: #{auth_token} is invalid: #{error_msg.inspect}")
+            abort_request(error_msg)
+          end
+
+          content_type :json
+        end
+
+        error [JsonMessage::ValidationError, JsonMessage::ParseError] do
+          error_msg = ServiceError.new(ServiceError::MALFORMATTED_REQ).to_hash
+          abort_request(error_msg)
+        end
+
+        not_found do
+          error_msg = ServiceError.new(ServiceError::NOT_FOUND, request.path_info).to_hash
+          abort_request(error_msg)
+        end
+
         # Helpers for unit testing
+        get "/" do
+          return {"marketplace" => @marketplace_client.name, "offerings" => @catalog_in_marketplace}.to_json
+        end
+
         post "/marketplace/set/:key/:value" do
           @logger.info("TEST HELPER ENDPOINT - set: key=#{params[:key]}, value=#{params[:value]}")
           Fiber.new {
@@ -387,10 +423,6 @@ module VCAP
             end
           }.resume
           async_mode
-        end
-
-        get "/" do
-          return {"marketplace" => @marketplace_client.name, "offerings" => @catalog_in_marketplace}.to_json
         end
 
         # Provision a marketplace service

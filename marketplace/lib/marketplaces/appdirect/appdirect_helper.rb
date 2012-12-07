@@ -45,12 +45,11 @@ module VCAP
                 data = JSON.parse(response.body) #VCAP::Services::AppDirect::AppDirectCatalogResponse.decode(raw)
                 catalog = []
                 data.each do |service|
-                  # Add checks for specific categories which determine whether the addon should be listed on cc
-                  @logger.debug("Got service '#{service["id"]}' from AppDirect")
-                  if (@whitelist.nil? || @whitelist.include?(service["id"]))
+                  if (@whitelist.nil? || @whitelist.include?(service["name"]))
+                    @logger.info("Accepting whitelisted service: #{service["name"]}")
                     catalog << service
                   else
-                    @logger.warn("Ignoring service Offering: #{service["id"]} since it is not whitelisted")
+                    @logger.warn("Ignoring service Offering: #{service["name"]} since it is not whitelisted")
                   end
                 end
                 @logger.info("Got #{catalog.size} services from AppDirect")

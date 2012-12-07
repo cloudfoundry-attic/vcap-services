@@ -43,8 +43,14 @@ module VCAP
             appdirect_catalog = @helper.load_catalog
             catalog = {}
             appdirect_catalog.each { |s|
-              name, provider = load_mapped_name_and_provider(s["id"], s["provider"])
+              name, provider = load_mapped_name_and_provider(s["name"], s["vendor"])
 
+              # Mutate / Duplicate the offering keys for uniformity with ccdb keys
+              s["id"]       = s["name"]
+              s["info_url"] = s["infoUrl"]
+              s["provider"] = provider
+
+              s["version"] ||= "1.0"   # UNTIL AD fixes this...
               key = key_for_service(name, s["version"], provider)
               catalog[key] = s
             }
@@ -64,93 +70,35 @@ module VCAP
             end
 
             [svc_label, svc_provider]
-         end
-
+          end
 
           def generate_cc_advertise_request(ad_svc_offering, active = true)
-            name, provider = load_mapped_name_and_provider(ad_svc_offering["id"], ad_svc_offering["provider"])
-
-            req = {}
-            req[:label] = "#{name}-#{ad_svc_offering["version"]}"
-            req[:active] = active && ad_svc_offering["active"]
-            req[:description] = ad_svc_offering["description"]
-
-            req[:provider] = provider
-
-            req[:supported_versions] = [ ad_svc_offering["version"] ]
-            req[:version_aliases]    =  { "current" => ad_svc_offering["version"] }
-
-            req[:url] = @external_uri
-
-            wildcards = @acls[:wildcards] if @acls
-
-            users_from_config = @acls[:users] if @acls
-            ad_devs = ad_svc_offering["developers"] if ad_svc_offering["development"]
-            ad_dev_emails = ad_devs.map { |u| u["email"] } if ad_devs
-            users = (users_from_config || []) + (ad_dev_emails || []) if users_from_config || ad_dev_emails
-
-            req[:acls] = {} if users || wildcards
-            req[:acls][:users] = users if users
-            req[:acls][:wildcards] = wildcards if wildcards
-
-            if ad_svc_offering["plans"] and ad_svc_offering["plans"].count > 0
-              req[:plans] = []
-              ad_svc_offering["plans"].each do |plan|
-                req[:plans] << plan["id"]
-                # No plan options yet
-              end
-            else
-              req[:plans] = ["default"]
-            end
-
-            req[:tags] = [] # A non-null value to allow tags clone during bind
-            req[:timeout] = 5 + @node_timeout
-            req
+            raise "Unsupported"
           end
 
           def generate_ccng_advertise_request(ad_svc_offering, active = true)
-            # service name can be in id (if offering is from marketplace) or label (if offering is from ccdb)
+            # service name can be in id (if ad_svc_offering is from marketplace) or label (if ad_svc_offering is from ccdb)
             # See marketplace/lib/base/marketplace_async_gateway_v2.rb:- advertise_services
 
-            name, provider = load_mapped_name_and_provider(
-              ad_svc_offering["id"] || ad_svc_offering["label"],
-              ad_svc_offering["provider"])
+            label = ad_svc_offering["id"] || ad_svc_offering["label"]
 
             req = {}
-            req[:label] = name
-            req[:version] = ad_svc_offering["version"]
-            req[:active] = active && ad_svc_offering["active"]
+            req[:label]       = label
+            req[:version]     = ad_svc_offering["version"]
             req[:description] = ad_svc_offering["description"]
+            req[:info_url]    = ad_svc_offering["info_url"]
+            req[:provider]    = ad_svc_offering["provider"]
 
-            req[:provider] = provider
+            req[:active] = active
 
-            # req[:supported_versions] = [ ad_svc_offering["version"] ]
-            # req[:version_aliases]    =  { "current" => ad_svc_offering["version"] }
-
-            req[:url] = @external_uri
-
-            wildcards = @acls[:wildcards] if @acls
-
-            users_from_config = @acls[:users] if @acls
-            ad_devs = ad_svc_offering["developers"] if ad_svc_offering["development"]
-            ad_dev_emails = ad_devs.map { |u| u["email"] } if ad_devs
-            users = (users_from_config || []) + (ad_dev_emails || []) if users_from_config || ad_dev_emails
-
-            req[:acls] = {} if users || wildcards
-            req[:acls][:users] = users if users
-            req[:acls][:wildcards] = wildcards if wildcards
-
-            req[:timeout] = 5 + @node_timeout
+            req[:url]     = @external_uri
+            req[:acls]    = @acls
+            req[:timeout] = @node_timeout
 
             # Setup plans
             plans = {}
-            plans["default"] = {"name" => "default", "description" => "default plan" }
-
-            if ad_svc_offering["plans"] and ad_svc_offering["plans"].count > 0
-              plans = {}
-              ad_svc_offering["plans"].each do |plan|
-                plans[plan["id"]] = { "name" => plan["id"], "description" => plan["description"] }
-              end
+            ad_svc_offering["plans"].each do |plan|
+              plans[plan["id"]] = { "name" => plan["id"], "description" => plan["description"] }
             end
 
             [ req, plans ]
@@ -173,7 +121,7 @@ module VCAP
 
             order = {
               "user" => {
-                "uuid" => nil,
+                "uuid" => request.email, # TODO: replace with actual UUID from ccng
                 "email" => request.email
               },
               "offering" => {
