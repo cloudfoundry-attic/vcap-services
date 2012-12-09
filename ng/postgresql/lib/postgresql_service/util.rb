@@ -15,6 +15,13 @@ module VCAP
           "#{e}: [#{e.backtrace.join(" | ")}]"
         end
 
+        def ignore_exception
+          begin
+            yield
+          rescue => e
+          end
+        end
+
         def create_logger(logdev, rotation, level)
           if String === logdev
             dir = File.dirname(logdev)
@@ -23,8 +30,8 @@ module VCAP
           logger = Logger.new(logdev, rotation)
           logger.level = case level
             when "DEBUG" then Logger::DEBUG
-            when "INFO" then Logger::INFO
-            when "WARN" then Logger::WARN
+            when "INFO"  then Logger::INFO
+            when "WARN"  then Logger::WARN
             when "ERROR" then Logger::ERROR
             when "FATAL" then Logger::FATAL
             else Logger::UNKNOWN
@@ -57,6 +64,78 @@ module VCAP
           return version[0]['version'].scan(reg)[0][0][0]
         end
 
+        def postgresql_connect(host, user, password, port, database, opts={})
+          quick_mode = opts[:quick] || false
+          opts.merge!(
+            :fail_with_nil => true,
+            :connect_timeout => 3,
+            :try_num => 1,
+            :exception_sleep => 0,
+            :quiet => true,
+            :async => true
+          ) if quick_mode
+
+          fail_with_nil = opts[:fail_with_nil] || true
+          connect_timeout = opts[:connect_timeout] || 3
+          try_num = opts[:try_num] || 5
+          exception_sleep = opts[:exception_sleep] || 1
+          quiet = opts[:quiet] || false
+          async = opts[:async] || true
+
+          @logger ||= Logger.new(STDOUT)
+          try_num.times do
+            begin
+              @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database} (fail_with_nil: #{fail_with_nil})") unless quiet
+              conn_opts = {
+                :host => host,
+                :port => port,
+                :options => nil,
+                :tty => nil,
+                :dbname => database,
+                :user => user,
+                :password => password,
+                :connect_timeout => connect_timeout
+              }
+
+              if async
+                conn = PGconn.connect_start(conn_opts)
+                raise "Async connect_start failed." if conn.status == PGconn::CONNECTION_BAD
+                socket = IO.for_fd(conn.socket)
+                socket.autoclose = false
+                status = conn.connect_poll
+                while status != PGconn::PGRES_POLLING_OK && status != PGconn::PGRES_POLLING_FAILED
+                  case status
+                  when PGconn::PGRES_POLLING_READING
+                    raise "Async connect timed out when reading" unless IO.select( [socket], [], [], connect_timeout )
+                  when PGconn::PGRES_POLLING_WRITING
+                    raise "Async connect timed out when writing" unless IO.select( [], [socket], [], connect_timeout )
+                  end
+                  status = conn.connect_poll
+                end
+                raise "Async connect failed " if status == PGconn::PGRES_POLLING_FAILED
+              else
+                conn = PGconn.connect(conn_opts)
+              end
+
+              version = pg_version(conn)
+              @logger.info("Connected PostgreSQL server - version: #{version}") unless quiet
+              return conn
+            rescue => e
+              @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}") unless quiet
+              sleep(exception_sleep) if exception_sleep > 0
+            end
+          end
+
+          if fail_with_nil
+            @logger.warn("PostgreSQL connection unrecoverable") unless quiet
+            return nil
+          else
+            @logger.fatal("PostgreSQL connection unrecoverable")
+            shutdown if self.respond_to?(:shutdown)
+            exit
+          end
+        end
+
         # Return the public schema id of postgresql
         def get_public_schema_id(conn)
           schema_id = nil
@@ -68,60 +147,6 @@ module VCAP
             end
           end
           schema_id
-        end
-
-        def postgresql_quickcheck(host, user, password, port, database)
-          ret = true
-          begin
-            connect = PGconn.connect(host, port, nil, nil, database, user, password)
-            if connect
-              pg_version(connect)
-              connect.close
-            else
-              ret = false
-            end
-          rescue => e
-            ret = false
-          end
-          ret
-        end
-
-        def postgresql_connect(host, user, password, port, database, opts={})
-          fail_with_nil = opts[:fail_with_nil] || false
-          connect_timeout = opts[:connect_timeout] || 3
-          try_num = opts[:try_num] || 5
-          exception_sleep = opts[:exception_sleep] || 2
-
-          @logger ||= Logger.new(STDOUT)
-          try_num.times do
-            begin
-              @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database} (fail_with_nil: #{fail_with_nil})")
-              connect = PGconn.connect(
-                :host => host,
-                :port => port,
-                :options => nil,
-                :tty => nil,
-                :dbname => database,
-                :user => user,
-                :password => password,
-                :connect_timeout => connect_timeout)
-              version = pg_version(connect)
-              @logger.info("PostgreSQL server version: #{version}")
-              @logger.info("Connected")
-              return connect
-            rescue PGError => e
-              @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}")
-              sleep(exception_sleep)
-            end
-          end
-          if fail_with_nil
-            @logger.warn("PostgreSQL connection unrecoverable")
-            return nil
-          else
-            @logger.fatal("PostgreSQL connection unrecoverable")
-            shutdown if self.respond_to?(:shutdown)
-            exit
-          end
         end
 
         # Return all schemas owned by current logined user
@@ -265,8 +290,12 @@ module VCAP
             @logger.error("No default user #{default_user} for database #{name} when granting write access")
             return false
           end
-          default_connection = postgresql_connect(db_connection.host, default_user[:user],
-                                                default_user[:password], db_connection.port, name, :fail_with_nil => true)
+          default_connection = postgresql_connect(
+                                 db_connection.host,
+                                 default_user[:user],
+                                 default_user[:password],
+                                 db_connection.port,
+                                 name, :quick => true)
           unless default_connection
             @logger.error("Default user failed to connect to database #{name} when granting write access")
             return false
@@ -282,8 +311,7 @@ module VCAP
               user = binduser.user
               sys_user = binduser.sys_user
               sys_password = binduser.sys_password
-              db_conn_sys_user = postgresql_connect(db_conn.host, sys_user,
-                                                  sys_password, db_conn.port, name, :failt_with_nil => true)
+              db_conn_sys_user = postgresql_connect(db_conn.host, sys_user, sys_password, db_conn.port, name, :quick => true)
               if db_conn_sys_user.nil?
                 raise "Unable to grant write access to #{name} for #{sys_user}"
               else
@@ -319,8 +347,12 @@ module VCAP
             @logger.error("No default user #{default_user} for database #{name} when granting write access")
             return false
           end
-          default_connection = postgresql_connect(db_connection.host, default_user[:user],
-                                                default_user[:password], db_connection.port, name, :fail_with_nil => true)
+          default_connection = postgresql_connect(
+                                 db_connection.host,
+                                 default_user[:user],
+                                 default_user[:password],
+                                 db_connection.port,
+                                 name, :quick => true)
           unless default_connection
             @logger.error("Default user #{default_user} fail to connect to database #{name} when revoking write access")
             return false
@@ -479,8 +511,9 @@ module VCAP
         end
 
         # Drop the database and re-create it for restoring/rolling back
-        def reset_db(host, port, vcap_user, vcap_pass, name, service)
-          pgconn = PGconn.new(host, port, nil, nil, "postgres", vcap_user, vcap_pass)
+        def reset_db(host, port, vcap_user, vcap_pass, database, service)
+          pgconn = postgresql_connect(host, vcap_user, vcap_pass, port, database)
+          name = service.name
           disable_db_conn(pgconn, name, service)
           kill_alive_sessions(pgconn, name)
           db_info = get_db_info(pgconn, name)
@@ -494,7 +527,7 @@ module VCAP
           # should re-grant write privilege on database to parent role for restoring schemas
           # at the same time, for the database is recreated, the size should be under quota, it is safe to do this.
           # service.exceeded_quota should be false after this.
-          dbconn = PGconn.new(host, port, nil, nil, name, vcap_user, vcap_pass)
+          dbconn = postgresql_connect(host, vcap_user, vcap_pass, port, name)
           unless grant_write_access_internal(dbconn, service)
             raise "Fail to grant write access when reseting the database #{name}"
           end
@@ -667,11 +700,8 @@ module VCAP
             datacl = message['datacl']
             if not datacl==nil
               users = datacl[1,datacl.length-1].split(',')
-              for user in users
-                if user.split('=')[0].empty?
-                else
-                  db_list.push([datname, user.split('=')[0]])
-                end
+              for user in users do
+                db_list.push([datname, user.split('=')[0]]) unless user.split('=')[0].empty?
               end
             end
           }

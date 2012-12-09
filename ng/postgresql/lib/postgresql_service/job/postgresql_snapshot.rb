@@ -98,15 +98,15 @@ module VCAP::Services::Postgresql::Snapshot
       dump_file_name = @snapshot_files[0]
       raise "Can't find snapshot file #{snapshot_file_path}" unless File.exists?(dump_file_name)
 
-      host, port, vcap_user, vcap_pass, restore_bin =
-        %w(host port user pass restore_bin).map{ |k| postgres_config[k]}
+      host, port, vcap_user, vcap_pass, database, restore_bin =
+        %w(host port user pass database restore_bin).map{ |k| postgres_config[k]}
 
       if use_warden
         host = service.ip
       end
 
       # Need a user who is a superuser to disable db access and then kill all live sessions first
-      reset_db(host, port, vcap_user, vcap_pass, name, service)
+      reset_db(host, port, vcap_user, vcap_pass, database, service)
       # Import the dump file
       parent_user = default_user[:user]
       parent_pass = default_user[:password]

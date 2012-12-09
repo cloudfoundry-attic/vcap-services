@@ -11,7 +11,7 @@ class VCAP::Services::Postgresql::Node
 
   def revoke_write_access(service)
     name = service.name
-    db_connection = management_connection(service)
+    db_connection = management_connection(service, true, :quick => true)
     if db_connection.nil?
       @logger.warn("Unable to revoke write access to #{name}: fail to connect to #{name}")
       return false
@@ -29,7 +29,7 @@ class VCAP::Services::Postgresql::Node
 
   def grant_write_access(service)
     name = service.name
-    db_connection = management_connection(service)
+    db_connection = management_connection(service, true, :quick => true)
     if db_connection.nil?
       @logger.warn("Unable to grant write access to #{name}: fail to connect to #{name}")
       return false
@@ -46,12 +46,16 @@ class VCAP::Services::Postgresql::Node
   end
 
   def enforce_storage_quota
+    acquired = @enforce_quota_lock.try_lock
+    return unless acquired
     sizes = dbs_size()
     pgProvisionedService.all.each do |service|
       enforce_instance_storage_quota(service, sizes[service.name])
     end
   rescue => e
     @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
+  ensure
+    @enforce_quota_lock.unlock if acquired
   end
 
   def enforce_instance_storage_quota(service, database_size=nil)

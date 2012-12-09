@@ -12,7 +12,6 @@ end
 module VCAP::Services::Postgresql::WithWarden
 
   include VCAP::Services::Postgresql::Util
-  include VCAP::Services::Postgresql::Pagecache
   include VCAP::Services::Base::Warden::NodeUtils
 
   def self.included(base)
@@ -52,13 +51,11 @@ module VCAP::Services::Postgresql::WithWarden
     nil
   end
 
+  # initialize or reset the persistent connection slot
   def init_global_connection(instance)
     return unless instance
     @connection_mutex.synchronize do
-      # close first if possible
-      if @connections[instance.name] && @connections[instance.name][:conn]
-        @connections[instance.name][:conn]
-      end
+      ignore_exception { @connections[instance.name][:conn].close }
       @connections[instance.name] = { :time => Time.now.to_i, :conn => false }
     end
   end
@@ -66,12 +63,11 @@ module VCAP::Services::Postgresql::WithWarden
   def setup_global_connection(instance)
     return unless instance
     conn = postgresql_connect(
-          instance.ip,
-          postgresql_config(instance)['user'],
-          postgresql_config(instance)['pass'],
-          instance.service_port,
-          "postgres",
-          :fail_with_nil => true
+      instance.ip,
+      postgresql_config(instance)['user'],
+      postgresql_config(instance)['pass'],
+      instance.service_port,
+      postgresql_config(instance)['database']
     )
     @connection_mutex.synchronize do
       @connections[instance.name] = { :time => Time.now.to_i, :conn => conn }
@@ -101,64 +97,44 @@ module VCAP::Services::Postgresql::WithWarden
     end
   end
 
-  def global_connection(instance=nil, keep_alive=false)
+  def global_connection(instance, keep_alive=false)
     conn = nil
-    if instance
-      if instance.is_a?String
-        name = instance
-      else
-        name = instance.name
-      end
-      fetched_conn = fetch_global_connection(name)
-      time = fetched_conn[:time]
-      conn = fetched_conn[:conn]
-      if keep_alive && (conn != false && (conn.nil? || connection_exception(conn)))
-        instance = pgProvisionedService.get(name) if instance.is_a?String
-        return nil unless instance.ip
-        conn = postgresql_connect(
-          instance.ip,
-          postgresql_config(instance)['user'],
-          postgresql_config(instance)['pass'],
-          instance.service_port,
-          "postgres",
-          :fail_with_nil => true
-        )
-        @connection_mutex.synchronize do
-          @connections[name] = { :time => Time.now.to_i, :conn => conn }
-        end
-      end
-      if conn === false
-        delete_global_connection(name) if keep_alive && time && (Time.now.to_i - time) > 300
-        conn = nil
-      end
-    end
-    conn
-  end
-
-  def management_connection(instance, super_user=true)
-    conn = nil
-    if super_user
-      # use the super user defined in the configuration file
+    return conn unless instance
+    name = instance.name
+    fetched_conn = fetch_global_connection(name)
+    time, conn = %w{time, conn}.map { |ele| fetched_conn[ele.to_sym] }
+    if keep_alive && (conn != false && (conn.nil? || connection_exception(conn)))
+      return nil unless instance.ip
       conn = postgresql_connect(
         instance.ip,
         postgresql_config(instance)['user'],
         postgresql_config(instance)['pass'],
         instance.service_port,
-        instance.name,
-        :fail_with_nil => true
+        postgresql_config(instance)['database']
       )
-    else
-      # use the default user of the service_instance
-      conn = postgresql_connect(
-        instance.ip,
-        instance.default_user,
-        instance.default_password,
-        instance.service_port,
-        instance.name,
-        :fail_with_nil => true
-      )
+      @connection_mutex.synchronize do
+        @connections[name] = { :time => Time.now.to_i, :conn => conn }
+      end
+    end
+    if conn === false
+      # will delete the connection slot that is out-of-date
+      delete_global_connection(name) if keep_alive && time && (Time.now.to_i - time) > 300
+      conn = nil
     end
     conn
+  end
+
+  def management_connection(instance, super_user=true, conn_opts={})
+    user = super_user ? postgresql_config(instance)['user'] : instance.default_username
+    password = super_user ? postgresql_config(instance)['pass'] : instance.default_password
+    postgresql_connect(
+      instance.ip,
+      user,
+      password,
+      instance.service_port,
+      instance.name,
+      conn_opts
+    )
   end
 
   def node_ready?
@@ -168,10 +144,33 @@ module VCAP::Services::Postgresql::WithWarden
 
   #keep connection alive, and check db liveness
   def postgresql_keep_alive
+    acquired = @keep_alive_lock.try_lock
+    return unless acquired
     # maintain the global connections
-    pgProvisionedService.all.each do |instance|
-      global_connection(instance, true)
+    instances = pgProvisionedService.all.map { |inst| inst }
+    temp_lock = Mutex.new
+    threads = []
+    idx = 0
+    10.times do |i|
+      threads << Thread.new(i) do |tid|
+        loop do
+          inst = nil
+          temp_lock.synchronize do
+            Thread.exit if idx >= instances.size
+            inst = instances[idx]
+            idx += 1
+          end
+          global_connection(inst, true) if inst
+        end
+      end
     end
+    threads.each do |t|
+      t.join
+    end
+  rescue => e
+    @logger.error("Fail to run postgresql_keep_alive for #{fmt_error(e)}")
+  ensure
+    @keep_alive_lock.unlock if acquired
   end
 
   def get_db_stat
@@ -198,9 +197,9 @@ module VCAP::Services::Postgresql::WithWarden
     db_list
   end
 
-  def db_size(db)
+  def db_size(instance)
     size = 0
-    conn = global_connection(db)
+    conn = global_connection(instance)
     return nil unless conn
     res = conn.query("select pg_tablespace_size('pg_default') + pg_tablespace_size('pg_global') as sum_size")
     res.each do |x|
@@ -229,29 +228,29 @@ module VCAP::Services::Postgresql::WithWarden
   end
 
   def kill_long_queries
+    acquired = @kill_long_queries_lock.try_lock
+    return unless acquired
     pgProvisionedService.all.each do |service|
       conn = global_connection(service)
       @long_queries_killed += kill_long_queries_internal(conn, postgresql_config(service)['user'], @max_long_query) if conn
     end
   rescue => e
     @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
+  ensure
+    @kill_long_queries_lock.unlock if acquired
   end
 
   def kill_long_transaction
+    acquired = @kill_long_transaction_lock.try_lock
+    return unless acquired
     pgProvisionedService.all.each do |service|
       conn = global_connection(service)
       @long_tx_killed += kill_long_transaction_internal(conn, postgresql_config(service)['user'], @max_long_tx) if conn
     end
   rescue => e
     @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
-  end
-
-  def setup_timers
-    EM.add_periodic_timer(VCAP::Services::Postgresql::Node::KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
-    EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
-    EM.add_periodic_timer(@max_long_tx.to_f / 2) {kill_long_transaction} if @max_long_tx > 0
-    EM.add_periodic_timer(VCAP::Services::Postgresql::Node::STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
-    setup_image_cache_cleaner(@options)
+  ensure
+    @kill_long_transaction_lock.unlock if acquired
   end
 
   def shutdown

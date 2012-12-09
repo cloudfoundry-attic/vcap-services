@@ -34,7 +34,7 @@ module VCAP::Services::Postgresql::WithoutWarden
     @supported_versions.each do |version|
       host, user, pass, port, database =
         %w(host user pass port database).map {|k| @postgresql_configs[version][k]}
-      @connections[version] = postgresql_connect(host, user, pass, port, database)
+      @connections[version] = postgresql_connect(host, user, pass, port, database, :fail_with_nil => false)
     end
   end
 
@@ -212,37 +212,55 @@ module VCAP::Services::Postgresql::WithoutWarden
     @logger.warn("Exception while managing maxconnlimit on database #{name}: #{x}")
   end
 
+  # global connection is a persistent connection to postgresql server
+  # each version has one which shard by all instances
   def init_global_connection(instance)
     @connection_mutex.synchronize do
-      @connections[instance.name] ||= @connections[instance.version]
-    end
-    @connections[instance.name]
-  end
-
-  def setup_global_connection(instance)
-    init_global_connection instance
-  end
-
-  def global_connection(instance)
-    @connection_mutex.synchronize do
-      @connections[instance.name]
+      @connections[instance.name] = instance.version
+      @connections[instance.version]
     end
   end
 
-  def management_connection(instance, super_user=true)
+  alias_method :setup_global_connection, :init_global_connection
+
+  # get global persistent connection according to instance's name or version
+  def fetch_global_connection(name_or_ver)
     conn = nil
-    version = instance.version
-    db_name = instance.name
-    host, user, pass, port =
-      %w(host user pass port).map {|k| @postgresql_configs[version][k]}
-    if super_user
-      conn = postgresql_connect(host, user, pass, port, db_name, :fail_with_nil => true)
-    else
-      # use the default user of the service_instance
-      default_user = instance.pgbindusers.all(:default_user => true)[0]
-      conn = postgresql_connect(host, default_user.user, default_user.password, port, db_name, :fail_with_nil => true)
+    version = name_or_ver
+    @connection_mutex.synchronize do
+      version = @supported_versions.include?(name_or_ver) ? name_or_ver : @connections[name_or_ver]
+      conn = @connections[version]
     end
     conn
+  end
+
+  # only delete slot, not to close
+  def delete_global_connection(name_or_ver)
+    return if @supported_versions.include?(name_or_ver)
+    @connection_mutex.synchronize do
+      @connections.delete(name_or_ver)
+    end
+  end
+
+  # alias of fetch_global_connection
+  def global_connection(instance)
+    fetch_global_connection(instance.version)
+  end
+
+  # create connection for super-user or default user
+  def management_connection(instance, super_user=true, conn_opts={})
+    conn = nil
+    version = instance.version
+    name = instance.name
+    host, user, pass, port =
+      %w(host user pass port).map {|k| @postgresql_configs[version][k]}
+    unless super_user
+      # use the default user of the service_instance
+      default_user = instance.pgbindusers.all(:default_user => true)[0]
+      user = default_user.user
+      pass = default_user.password
+    end
+    postgresql_connect(host, user, pass, port, name, conn_opts)
   end
 
   def node_ready?
@@ -255,14 +273,32 @@ module VCAP::Services::Postgresql::WithoutWarden
 
   #keep connection alive, and check db liveness
   def postgresql_keep_alive
+    acquired = @keep_alive_lock.try_lock
+    return unless acquired
     @supported_versions.each do |version|
-      if connection_exception(@connections[version])
+      conn = fetch_global_connection(version)
+      if conn.nil? || connection_exception(conn)
         @logger.warn("PostgreSQL connection for #{version} is lost, trying to keep alive.")
         host, user, pass, port, database =
           %w(host user pass port database).map {|k| @postgresql_configs[version][k]}
-        @connections[version] = postgresql_connect(host, user, pass, port, database, :fail_with_nil => true)
+        new_conn = postgresql_connect(host, user, pass, port, database)
+        unless new_conn
+          @logger.error("Fail not reconnect to postgresql server - #{version}")
+          next
+        end
+        begin
+          conn.close
+        rescue => e
+        end if conn
+        @connection_mutex.synchronize do
+          @connections[version] = new_conn
+        end
       end
     end
+  rescue => e
+    @logger.error("Fail to run postgresql_keep_alive for #{fmt_error(e)} ")
+  ensure
+    @keep_alive_lock.unlock if acquired
   end
 
   def get_db_stat
@@ -288,10 +324,10 @@ module VCAP::Services::Postgresql::WithoutWarden
     avg_overhead
   end
 
-  def db_size(db)
+  def db_size(instance)
     sum = 0
-    avg_overhead = db_overhead(db.name)
-    sz = global_connection(db).query("select pg_database_size('#{db.name}') size")
+    avg_overhead = db_overhead(instance.name)
+    sz = global_connection(instance).query("select pg_database_size('#{instance.name}') size")
     sz.each do |x|
       sum += x['size'].to_i + avg_overhead
     end
@@ -319,26 +355,31 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def kill_long_queries
+    acquired = @kill_long_queries_lock.try_lock
+    return unless acquired
     @supported_versions.each do |version|
       conn = @connections[version]
       super_user = @postgresql_configs[version]['user']
       @long_queries_killed +=  kill_long_queries_internal(conn, super_user, @max_long_query)
     end
+  rescue => e
+    @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
+  ensure
+    @kill_long_queries_lock.unlock if acquired
   end
 
   def kill_long_transaction
+    acquired = @kill_long_transaction_lock.try_lock
+    return unless acquired
     @supported_versions.each do |version|
       conn = @connections[version]
       super_user = @postgresql_configs[version]['user']
       @long_tx_killed += kill_long_transaction_internal(conn, super_user, @max_long_tx)
     end
-  end
-
-  def setup_timers
-    EM.add_periodic_timer(VCAP::Services::Postgresql::Node::KEEP_ALIVE_INTERVAL) {postgresql_keep_alive}
-    EM.add_periodic_timer(@max_long_query.to_f / 2) {kill_long_queries} if @max_long_query > 0
-    EM.add_periodic_timer(@max_long_tx.to_f / 2) {kill_long_transaction} if @max_long_tx > 0
-    EM.add_periodic_timer(VCAP::Services::Postgresql::Node::STORAGE_QUOTA_INTERVAL) {enforce_storage_quota}
+  rescue => e
+    @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
+  ensure
+    @kill_long_transaction_lock.unlock if acquired
   end
 
   def get_inst_port(instance)
@@ -353,15 +394,4 @@ module VCAP::Services::Postgresql::WithoutWarden
     true
   end
 
-  def fetch_global_connection(name)
-    @connection_mutex.synchronize do
-      @connections[name]
-    end
-  end
-
-  def delete_global_connection(name)
-    @connection_mutex.synchronize do
-      @connections.delete(name)
-    end
-  end
-end
+ end

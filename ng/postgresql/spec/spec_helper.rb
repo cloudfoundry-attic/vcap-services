@@ -91,6 +91,10 @@ def getNodeTestConfig()
     options[:image_dir] = parse_property(warden_config, "image_dir", String)
     options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
+    options[:service_log_dir] = parse_property(warden_config, "service_log_dir", String)
+    options[:service_script_dir] = parse_property(warden_config, "service_script_dir", String, :optional => true, :default => "/var/vcap/jobs")
+    options[:service_conf_dir] = parse_property(warden_config, "service_conf_dir", String, :optional => true, :default => "/var/vcap/jobs")
+    options[:service_bin_dir] = parse_property(warden_config, "service_bin_dir", Hash, :optional => true)
   else
     options[:ip_route] = "127.0.0.1"
   end
