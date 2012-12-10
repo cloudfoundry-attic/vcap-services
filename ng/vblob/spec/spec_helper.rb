@@ -85,17 +85,28 @@ def get_node_config()
   config = YAML.load_file(config_file)
   vblob_conf_template = File.join(PWD, "../resources/vblob.conf.erb")
   options = {
-    :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    :plan => parse_property(config, "plan", String),
-    :capacity => parse_property(config, "capacity", Integer),
-    :vblobd_path => parse_property(config, "vblobd_path", String),
-    :vblobd_auth => parse_property(config, "vblobd_auth", String),
-    :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :node_id => parse_property(config, "node_id", String),
-    :mbus => parse_property(config, "mbus", String),
-    :config_template => vblob_conf_template,
+    # micellaneous configs
+    :logger     => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
+    :plan       => parse_property(config, "plan", String),
+    :capacity   => parse_property(config, "capacity", Integer),
+    :ip_route   => parse_property(config, "ip_route", String, :optional => true),
+    :node_id    => parse_property(config, "node_id", String),
+    :mbus       => parse_property(config, "mbus", String),
     :port_range => parse_property(config, "port_range", Range),
-    :max_disk => parse_property(config, "max_disk", Integer),
+
+    # parse vblobd wardenized-service control related config
+    :service_script_dir => parse_property(config, "service_script_dir", String),
+    :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
+    :service_log_dir    => parse_property(config, "service_log_dir", String),
+
+    # vblobd instance related configs
+    :vblobd_auth        => parse_property(config, "vblobd_auth", String),
+    :config_template    => vblob_conf_template,
+    :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version    => parse_property(config, "default_version", String),
+    :max_disk           => parse_property(config, "max_disk", Integer),
+
+    # hardcode unit test related directories to /tmp dir
     :base_dir => '/tmp/vblob/instance',
     :log_dir => '/tmp/vblob/log',
     :vblobd_tmp_dir => '/tmp/vblob/tmp',
