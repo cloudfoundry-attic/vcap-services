@@ -39,10 +39,10 @@ warden:
     last:  45000
   service_log_dir: /var/vcap/services/mysql/log
   service_bin_dir:
-    '5.1': /usr/bin
-    '5.5': /usr/bin
-  service_script_dir: /usr/bin
-  service_conf_dir: /etc
+    '5.1': /var/vcap/packages/mysql
+    '5.5': /var/vcap/packages/mysql55
+  service_script_dir: /var/vcap/jobs/mysql_node_ng/bin
+  service_conf_dir: /var/vcap/jobs/mysql_node_ng/config
   image_dir: /var/vcap/services/mysql/image
   service_start_timeout: 3
   filesystem_quota: false

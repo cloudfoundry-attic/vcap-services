@@ -626,6 +626,8 @@ describe "Mysql server node" do
       @test_dbs[db] = []
       @node.dump_instance(db, nil , '/tmp')
       @node.unprovision(db['name'], [])
+      # give base code some time to remove the instance directories
+      sleep 1 if @node.use_warden
       @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_mysql(db)
       expect { conn.query('SELECT 1')}.should_not raise_error
