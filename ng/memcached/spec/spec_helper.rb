@@ -49,13 +49,20 @@ def get_node_config()
   memcached_conf_template = File.join(PWD, "../resources/memcached.conf.erb")
 
   options = {
-    :logger => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
-    :plan => parse_property(config, "plan", String),
-    :base_dir => parse_property(config, "base_dir", String),
-    :capacity => 50,
-    :node_id => parse_property(config, "node_id", String),
-    :port_range => Range.new(5000, 25000),
-    :mbus => parse_property(config, "mbus", String),
+    # micellaneous configs
+    :logger     => Logger.new(parse_property(config, "log_file", String, :optional => true) || STDOUT, "daily"),
+    :plan       => parse_property(config, "plan", String),
+    :capacity   => parse_property(config, "capacity", Integer),
+    :node_id    => parse_property(config, "node_id", String),
+    :port_range => parse_property(config, "port_range", Range),
+    :mbus       => parse_property(config, "mbus", String),
+
+    # parse memcached wardenized-service control related config
+    :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
+    :service_script_dir => parse_property(config, "service_script_dir", String),
+
+    #hardcode unit test related directories to /tmp dir
+    :base_dir   => "/tmp/memcached/instances",
     :service_log_dir => "/tmp/memcached/memcached_log",
     :max_clients => parse_property(config, "max_clients", Integer),
     :memcached_memory => parse_property(config, "memcached_memory", Integer),
