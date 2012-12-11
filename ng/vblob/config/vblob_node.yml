@@ -10,17 +10,18 @@ logging:
   level: debug
 service_log_dir: /var/vcap/sys/service-log/vblob
 service_bin_dir:
-  vblob: /usr/bin
-  node: /usr/bin
-service_script_dir: /usr/bin
+  vblob: /var/vcap/packages/vblob
+  node: /var/vcap/packages/node
+service_script_dir: /var/vcap/jobs/vblob_node_ng/bin
+supported_versions: ['0.51']
+default_version: '0.51'
+vblobd_tmp_dir: /tmp
 pid: /var/vcap/sys/run/vblob_node.pid
 node_id: vblob_node_free_1
 vblobd_path: /var/vcap/packages/vblob
 vblobd_auth: disabled
-vblobd_tmp_dir: /tmp
 max_disk: 2048
 vblobd_obj_limit: 32768
-supported_versions: ['0.51']
 port_range:
   first: 45001
   last: 65000
@@ -28,3 +29,4 @@ port_range:
 # max_nats_payload: 1048576
 # fqdn_hosts: false
 # op_time_limit: 6
+# service_start_timeout: 3

@@ -108,7 +108,10 @@ describe "vblob wardenization" do
     it "should keep the result after node restart" do
       @node.shutdown
       is_port_open?(@provisioned_service[:ip], @provisioned_service.service_port).should be_false
-      @node.pre_send_announcement
+      EM.run do
+        @node.pre_send_announcement
+        EM.add_timer(1) {EM.stop}
+      end
       @provisioned_service = @node.get_instance(@response['name'])
       is_port_open?(@provisioned_service[:ip], @provisioned_service.service_port).should be_true
     end
