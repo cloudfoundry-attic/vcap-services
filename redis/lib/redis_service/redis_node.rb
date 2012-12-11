@@ -443,6 +443,8 @@ class VCAP::Services::Redis::Node
       $0 = "Starting Redis instance: #{instance.name}"
       close_fds
 
+      log_dir = instance_log_dir(instance.name)
+      FileUtils.mkdir_p(log_dir) unless Dir.exist?(log_dir)
       dir = instance_dir(instance.name)
       config_path = File.join(dir, "redis.conf")
       executable = redis_exe_path(get_version(instance))
