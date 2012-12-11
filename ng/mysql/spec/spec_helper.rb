@@ -89,38 +89,50 @@ end
 def getNodeTestConfig()
   config_file = File.join(config_base_dir, 'mysql_node.yml')
   config = YAML.load_file(config_file)
+  spec_tmp_dir = "/tmp/mysql_node_spec"
   options = {
-    :logger => getLogger,
-    :base_dir => parse_property(config, "base_dir", String),
-    :plan => parse_property(config, "plan", String),
-    :capacity => parse_property(config, "capacity", Integer),
-    :gzip_bin => parse_property(config, "gzip_bin", String),
-    :max_db_size => parse_property(config, "max_db_size", Integer),
-    :max_long_query => parse_property(config, "max_long_query", Integer),
-    :node_id => parse_property(config, "node_id", String),
-    :connection_pool_size => parse_property(config, "connection_pool_size", Hash),
-    :mbus => parse_property(config, "mbus", String),
-    :local_db => parse_property(config, "local_db", String),
-    :mysql => parse_property(config, "mysql", Hash),
-    :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :max_long_tx => parse_property(config, "max_long_tx", Integer),
-    :kill_long_tx => parse_property(config, "kill_long_tx", Boolean),
-    :max_user_conns => parse_property(config, "max_user_conns", Integer, :optional => true),
-    :connection_wait_timeout => 10,
-    :max_disk => parse_property(config, "max_disk", Integer),
-    :use_warden => parse_property(config, "use_warden", Boolean),
+    # service node related configs
+    :logger             => getLogger,
+    :node_tmp_dir       => spec_tmp_dir,
+    :plan               => parse_property(config, "plan", String),
+    :capacity           => parse_property(config, "capacity", Integer),
+    :gzip_bin           => parse_property(config, "gzip_bin", String),
+    :node_id            => parse_property(config, "node_id", String),
+    :mbus               => parse_property(config, "mbus", String),
+    :ip_route           => parse_property(config, "ip_route", String, :optional => true),
+    :use_warden         => parse_property(config, "use_warden", Boolean),
     :supported_versions => parse_property(config, "supported_versions", Array),
+
+    # service instance related configs
+    :mysql                   => parse_property(config, "mysql", Hash),
+    :max_db_size             => parse_property(config, "max_db_size", Integer),
+    :max_long_query          => parse_property(config, "max_long_query", Integer),
+    :connection_pool_size    => parse_property(config, "connection_pool_size", Hash),
+    :max_long_tx             => parse_property(config, "max_long_tx", Integer),
+    :kill_long_tx            => parse_property(config, "kill_long_tx", Boolean),
+    :max_user_conns          => parse_property(config, "max_user_conns", Integer, :optional => true),
+    :connection_wait_timeout => 10,
+    :max_disk                => parse_property(config, "max_disk", Integer),
+
+    # hard code unit test directories of mysql unit test to /tmp
+    :base_dir => File.join(spec_tmp_dir, "data"),
+    :local_db => File.join("sqlite3:", spec_tmp_dir, "mysql_node.db"),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)
-    options[:service_log_dir] = parse_property(warden_config, "service_log_dir", String)
-    options[:service_script_dir] = parse_property(warden_config, "service_script_dir", String, :optional => true, :default => "/var/vcap/jobs")
-    options[:service_conf_dir] = parse_property(warden_config, "service_conf_dir", String, :optional => true, :default => "/var/vcap/jobs")
-    options[:service_bin_dir] = parse_property(warden_config, "service_bin_dir", Hash, :optional => true)
-    options[:image_dir] = parse_property(warden_config, "image_dir", String)
+
+    options[:service_log_dir]    = File.join(spec_tmp_dir, "log")
+    options[:service_script_dir] = parse_property(warden_config, "service_script_dir", String)
+    options[:service_conf_dir]   = parse_property(warden_config, "service_conf_dir", String)
+    options[:service_bin_dir]    = parse_property(warden_config, "service_bin_dir", Hash)
+
     options[:port_range] = parse_property(warden_config, "port_range", Range)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
     options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
+
+    # hardcode the directories for mysql unit tests to /tmp
+    options[:service_log_dir] = File.join(spec_tmp_dir, "log")
+    options[:image_dir]       = File.join(spec_tmp_dir, "image_dir")
   else
     options[:ip_route] = "127.0.0.1"
   end
