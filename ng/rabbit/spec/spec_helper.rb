@@ -49,33 +49,45 @@ def getNodeTestConfig
     config_file = File.join(config_base_dir, "rabbitmq_node.yml")
   end
   config = YAML.load_file(config_file)
-  options = {
-    :logger => getLogger,
-    :base_dir => "/tmp/rabbitmq_instances",
-    :node_id => parse_property(config, "node_id", String),
-    :mbus => parse_property(config, "mbus", String),
-    :local_db_file => "/tmp/rabbitmq_node_" + Time.now.to_i.to_s + ".db",
-    :ip_route => parse_property(config, "ip_route", String, :optional => true),
-    :plan => parse_property(config, "plan", String),
-    :capacity => parse_property(config, "capacity", Integer),
-    :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
-    :port_range => parse_property(config, "port_range", Range),
-    :service_log_dir => "/tmp/rabbitmq_instances/log",
-    :image_dir => "/tmp/redis_image",
-    :max_disk => parse_property(config, "max_disk", Integer),
-    :migration_nfs => "/tmp/migration",
-    :supported_versions => parse_property(config, "supported_versions", Array),
-    :default_version => parse_property(config, "default_version", String),
-    :service_start_timeout => parse_property(config, "service_start_timeout", Integer, :optional => true),
-    :vm_memory_high_watermark => parse_property(config, "vm_memory_high_watermark", Float, :optional => true),
-    :bandwidth_per_second => parse_property(config, "bandwidth_per_second", Float),
-  }
   proxy_config = parse_property(config, "bandwidth_proxy", Hash)
-  options[:proxy_bin] = parse_property(proxy_config, "bin", String)
-  options[:proxy_window] = parse_property(proxy_config, "window", Integer)
-  options[:proxy_limit] = parse_property(proxy_config, "size", Integer)
+  options = {
+    # micellaneous configs
+    :logger     => getLogger,
+    :plan       => parse_property(config, "plan", String),
+    :capacity   => parse_property(config, "capacity", Integer),
+    :ip_route   => parse_property(config, "ip_route", String, :optional => true),
+    :node_id    => parse_property(config, "node_id", String),
+    :mbus       => parse_property(config, "mbus", String),
+    :port_range => parse_property(config, "port_range", Range),
+
+    # parse rabbitmq wardenized-service control related config
+    :service_script_dir => parse_property(config, "service_script_dir", String),
+    :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
+    :service_log_dir    => parse_property(config, "service_log_dir", String),
+
+    # rabbitmq related configs
+    :rabbit                   => parse_property(config, "rabbit", Hash),
+    :supported_versions       => parse_property(config, "supported_versions", Array),
+    :default_version          => parse_property(config, "default_version", String),
+    :max_clients              => parse_property(config, "max_clients", Integer, :optional => true),
+    :service_start_timeout    => parse_property(config, "service_start_timeout", Integer, :optional => true),
+    :vm_memory_high_watermark => parse_property(config, "vm_memory_high_watermark", Float, :optional => true),
+
+    # proxy related config
+    :proxy_bin            => parse_property(proxy_config, "bin", String),
+    :proxy_window         => parse_property(proxy_config, "window", Integer),
+    :proxy_limit          => parse_property(proxy_config, "size", Integer),
+    :bandwidth_per_second => parse_property(config, "bandwidth_per_second", Float),
+
+    # hardcode unit test related directories to /tmp dir
+    :base_dir        => "/tmp/rabbitmq_instances",
+    :local_db_file   => "/tmp/rabbitmq_node_" + Time.now.to_i.to_s + ".db",
+    :service_log_dir => "/tmp/rabbitmq_instances/log",
+    :image_dir       => "/tmp/rabbitmq_image",
+    :max_disk        => 128,
+    :migration_nfs   => "/tmp/migration",
+  }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
-  options[:rabbit] = parse_property(config, "rabbit", Hash)
   options
 end
 
