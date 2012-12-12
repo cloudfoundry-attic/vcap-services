@@ -26,7 +26,7 @@ describe 'Mysql Connection Pool Test' do
     @logger = @opts[:logger]
     @opts.freeze
     @mysql_configs = @opts[:mysql]
-    @default_version = @opts[:supported_versions][0]
+    @default_version = @opts[:default_version]
     host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_configs[@default_version][opt] }
     @pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => 20)
   end

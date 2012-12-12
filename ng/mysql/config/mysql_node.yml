@@ -12,6 +12,7 @@ logging:
 pid: /var/vcap/sys/run/mysql_node.pid
 node_id: mysql_node_free_1
 supported_versions: ['5.1']
+default_version: '5.1'
 max_db_size: 20
 max_long_query: 3
 max_long_tx: 30
