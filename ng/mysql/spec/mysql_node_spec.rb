@@ -931,5 +931,6 @@ describe "Mysql server node" do
     @tmpfiles.each do |tmpfile|
       FileUtils.rm_r tmpfile
     end
+    FileUtils.rm_rf @opts[:node_tmp_dir]
   end
 end
