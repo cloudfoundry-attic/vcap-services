@@ -133,6 +133,7 @@ class VCAP::Services::Memcached::Node
     super
     @logger.info("Shutting down instances..")
     stop_all_instances
+    true
   end
 
   def announcement

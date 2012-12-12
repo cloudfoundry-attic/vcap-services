@@ -7,16 +7,20 @@ base_dir: /var/vcap/services/memcached/instances
 logging:
   level: debug
 pid: /var/vcap/sys/run/memcached_node.pid
+service_log_dir: /var/vcap/sys/service-log/memcached
+service_script_dir: /var/vcap/jobs/memcached_node_ng/bin
+service_bin_dir:
+  memcached: /var/vcap/packages/memcached
+
+supported_versions: ['1.4']
+default_version: '1.4'
+
 capacity: 50
 node_id: memcached_node_1
 memcached_memory: 16
 port_range:
   first: 15000
   last:  25000
-service_log_dir: /var/vcap/sys/log/memcached
-service_bin_dir:
-  memcached: /usr/bin
-service_script_dir: /usr/bin
 max_clients: 500
 memcached_timeout: 2
 sasl_enabled: false
