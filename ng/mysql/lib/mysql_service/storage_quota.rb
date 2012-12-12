@@ -29,7 +29,9 @@ class VCAP::Services::Mysql::Node
     end
     sizes = connection.query(
       'SELECT table_schema "name",
-       sum( data_length + index_length ) "size"
+       sum( IF(engine = "MyISAM",
+       data_length + index_length - data_free,
+       data_length + index_length) ) "size"
        FROM information_schema.TABLES
        GROUP BY table_schema')
     result ={}
