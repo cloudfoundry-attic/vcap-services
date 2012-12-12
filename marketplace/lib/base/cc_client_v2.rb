@@ -63,14 +63,6 @@ module VCAP
 
               if @service_auth_tokens.has_key?(key.to_sym)
                 entity = s["entity"]
-                svc = {
-                  "label"       => entity["label"],
-                  "description" => entity["description"],
-                  "provider"    => entity["provider"],
-                  "version"     => entity["version"],
-                  "url"         => entity["url"],
-                  "info_url"    => entity["info_url"]
-                }
 
                 plans = {}
                 entity["service_plans"].each { |p|
@@ -81,10 +73,19 @@ module VCAP
                   }
                 }
 
+                svc = {
+                  "id"          => entity["label"],
+                  "description" => entity["description"],
+                  "provider"    => entity["provider"],
+                  "version"     => entity["version"],
+                  "url"         => entity["url"],
+                  "info_url"    => entity["info_url"],
+                  "plans"       => plans
+                }
+
                 registered_services[key] = {
                   "guid"    => s["metadata"]["guid"],
                   "service" => svc,
-                  "plans"   => plans,
                 }
 
                 @logger.debug("Found #{key} = #{registered_services[key].inspect}")
