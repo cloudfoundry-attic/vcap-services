@@ -620,15 +620,24 @@ module VCAP
           end
 
           begin
-            # (extract(epoch from current_timestamp) - extract(epoch from query_start)) as runtime
-            # Notice: we should use current_timestamp or timeofday, the difference is that the current_timestamp only executed once at the beginning of the transaction, while dayoftime will return a text string of wall-clock time and advances during the transaction
-            # Filtering the long queries in the pg statement is better than filtering using the iteration of ruby after select all activties
-            process_list = connection.query("select * from (select procpid, datname, query_start, usename, (extract(epoch from current_timestamp) - extract(epoch from query_start)) as run_time from pg_stat_activity where query_start is not NULL and usename != '#{super_user}' and current_query !='<IDLE>') as inner_table  where run_time > #{max_long_query}")
+            process_list = connection.query(
+              "select * from (select procpid, datname, query_start, usename,
+              (extract(epoch from current_timestamp) - extract(epoch from query_start)) as run_time,
+              current_query from pg_stat_activity where query_start is not NULL and usename != '#{super_user}'
+              and current_query !='<IDLE>' and current_query != '<IDLE> in transaction')
+              as inner_table  where run_time > #{max_long_query}")
             process_list.each do |proc|
               unless is_default_bind_user(proc["usename"])
-                connection.query("select pg_terminate_backend(#{proc['procpid']})")
-                @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{Time.now.to_i - Time::parse(proc['query_start']).to_i} info:#{proc['current_query']}")
-                long_queries_killed += 1
+                # Cancel the exact query when exceeding the query time limitation
+                res = connection.query("select pg_cancel_backend(#{proc['procpid']}) from pg_stat_activity
+                                        where procpid = #{proc['procpid']} and current_query = '#{proc['current_query']}'
+                                        and query_start = (timestamp '#{proc['query_start']}')")
+                res.each do |cancel_query|
+                  if cancel_query['pg_cancel_backend'] == 't'
+                    @logger.info("Killed long query: user:#{proc['usename']} db:#{proc['datname']} time:#{proc['run_time']} info:#{proc['current_query']}")
+                    long_queries_killed += 1
+                  end
+                end
               end
             end
           rescue PGError => e
@@ -645,13 +654,22 @@ module VCAP
             return long_tx_killed
           end
           begin
-            # see kill_long_queries
-            process_list = connection.query("select * from (select procpid, datname, xact_start, usename, (extract(epoch from current_timestamp) - extract(epoch from xact_start)) as run_time from pg_stat_activity where xact_start is not NULL and usename != '#{super_user}') as inner_table where run_time > #{max_long_tx}")
+            process_list = connection.query(
+              "select * from (select procpid, datname, xact_start, usename,
+              (extract(epoch from current_timestamp) - extract(epoch from xact_start)) as run_time,
+              current_query from pg_stat_activity where xact_start is not NULL and usename != '#{super_user}')
+              as inner_table where run_time > #{max_long_tx}")
             process_list.each do |proc|
               unless is_default_bind_user(proc["usename"])
-                connection.query("select pg_terminate_backend(#{proc['procpid']})")
-                @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{Time.now.to_i - Time::parse(proc['xact_start']).to_i}")
-                long_tx_killed += 1
+                # Terminate the connection when exceeding the transaction time limitation
+                res = connection.query("select current_query, pg_terminate_backend(#{proc['procpid']}) from pg_stat_activity
+                                        where procpid = #{proc['procpid']} and xact_start = (timestamp '#{proc['xact_start']}')")
+                res.each do |term_query|
+                  if term_query['pg_terminate_backend'] == "t"
+                    @logger.info("Killed long transaction: user:#{proc['usename']} db:#{proc['datname']} active_time:#{proc['run_time']} info:#{term_query['current_query']}")
+                    long_tx_killed += 1
+                  end
+                end
               end
             end
           rescue PGError => e

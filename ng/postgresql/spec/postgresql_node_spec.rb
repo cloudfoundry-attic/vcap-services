@@ -502,7 +502,7 @@ describe "Postgresql node normal cases" do
         bind_conn.query("begin")
         bind_conn.query("select * from c for update")
         EM.add_timer(opts[:max_long_tx] * 3) {
-          expect { conn.query("select * from c for update") }.should raise_error
+          expect { bind_conn.query("select * from c for update") }.should raise_error
           bind_conn.close if bind_conn
           EM.stop
         }
@@ -1295,8 +1295,12 @@ describe "Postgresql node special cases" do
     db = node.provision(@default_plan, nil, @default_version)
     db_instance = node.pgProvisionedService.get(db['name'])
     node.get_status(db_instance).should == 'ok'
+    expect { node.global_connection(db_instance).query("select current_timestamp") }.should_not raise_error
     node.global_connection(db_instance).close
+    node.get_status(db_instance).should == 'ok'
+    expect { node.global_connection(db_instance).query("select current_timestamp") }.should raise_error
     node.postgresql_keep_alive
     node.get_status(db_instance).should == 'ok'
+    expect {node.global_connection(db_instance).query("select current_timestamp") }.should_not raise_error
   end
 end
