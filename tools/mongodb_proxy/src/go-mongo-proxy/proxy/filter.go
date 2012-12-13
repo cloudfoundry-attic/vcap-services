@@ -234,7 +234,7 @@ func (f *IOFilterProtocol) MonitQuotaDataSize() {
 		}
 
 		logger.Debug("Get current disk occupied size %v.", dbsize)
-		if dbsize >= float64(action.quota_data_size*1024*1024) {
+		if dbsize >= float64(action.quota_data_size)*float64(1024*1024) {
 			atomic.StoreUint32(&action.blocked, BLOCKED)
 		} else {
 			atomic.CompareAndSwapUint32(&action.blocked, BLOCKED, UNBLOCKED)
