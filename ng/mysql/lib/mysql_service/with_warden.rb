@@ -103,19 +103,23 @@ module VCAP::Services::Mysql::WithWarden
     end
   end
 
-  def each_connection_with_port
-    mysqlProvisionedService.all.each do |instance|
-      conn_pool = fetch_pool(instance.name)
-      next if conn_pool.nil?
-      conn_pool.with_connection { |conn| yield conn, get_port(instance) }
-    end
+  def each_connection_with_port(&blk)
+    each_connection_with_identifier(:port, &blk)
   end
 
-  def each_connection_with_key
+  def each_connection_with_key(&blk)
+    each_connection_with_identifier(:name, &blk)
+  end
+
+  def each_connection_with_identifier(id)
     mysqlProvisionedService.all.each do |instance|
       conn_pool = fetch_pool(instance.name)
       next if conn_pool.nil?
-      conn_pool.with_connection { |conn| yield conn, instance.name }
+      begin
+        conn_pool.with_connection { |conn| yield conn, instance.send(id) }
+      rescue => e
+        @logger.warn("with_connection failed: #{e}")
+      end
     end
   end
 
