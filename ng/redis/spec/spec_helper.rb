@@ -67,6 +67,7 @@ def getNodeTestConfig
     :migration_nfs => "/tmp/migration",
     :supported_versions => parse_property(config, "supported_versions", Array),
     :default_version => parse_property(config, "default_version", String),
+    :disabled_file => "/tmp/redis_instances/DISABLED",
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options
