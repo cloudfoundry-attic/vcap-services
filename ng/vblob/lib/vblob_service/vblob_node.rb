@@ -322,7 +322,7 @@ class VCAP::Services::VBlob::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{bin_dir} #{node_dir}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{common_dir} #{bin_dir} #{node_dir}", :use_spawn => true}
     options[:service_port] = service_port
     options[:bind_dirs] << {:src => node_dir}
     options

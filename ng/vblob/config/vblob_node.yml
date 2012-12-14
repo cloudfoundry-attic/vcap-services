@@ -12,7 +12,7 @@ service_log_dir: /var/vcap/sys/service-log/vblob
 service_bin_dir:
   vblob: /var/vcap/packages/vblob
   node: /var/vcap/packages/node
-service_script_dir: /var/vcap/jobs/vblob_node_ng/bin
+service_common_dir: /var/vcap/store/vblob_common
 supported_versions: ['0.51']
 default_version: '0.51'
 vblobd_tmp_dir: /tmp

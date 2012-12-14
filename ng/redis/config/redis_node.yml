@@ -20,10 +20,10 @@ migration_nfs: /mnt/appcloud
 # z_interval: 30
 service_log_dir: /var/vcap/sys/log/redis
 service_bin_dir:
-  "2.2": /usr/bin
-  "2.4": /usr/bin
-  "2.6": /usr/bin
-service_script_dir: /usr/bin
+  "2.2":  /var/vcap/packages/redis22
+  "2.4":  /var/vcap/packages/redis24
+  "2.4":  /var/vcap/packages/redis26
+service_common_dir: /var/vcap/store/redis_common
 command_rename_prefix: protect-command-prefix
 max_clients: 500
 # fqdn_hosts: false

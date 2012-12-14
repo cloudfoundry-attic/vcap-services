@@ -124,9 +124,8 @@ def get_node_config()
     :max_clients => parse_property(config, "max_clients", Integer, :optional => true),
 
     # parse mongodb wardenized-service control related config
-    :service_script_dir => parse_property(config, "service_script_dir", String),
     :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
-    :service_conf_dir   => parse_property(config, "service_conf_dir", String),
+    :service_common_dir => parse_property(config, "service_common_dir", String),
 
     # mongodb instances related configs
     :config_template       => mongodb_conf_template,

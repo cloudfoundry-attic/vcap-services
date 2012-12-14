@@ -14,8 +14,7 @@ service_bin_dir:
   "2.0": /var/vcap/packages/mongodb20
   "2.2": /var/vcap/packages/mongodb22
   "proxy": /var/vcap/packages/mongodb_proxy
-service_script_dir: /var/vcap/jobs/mongodb_node_ng/bin
-service_conf_dir: /var/vcap/jobs/mongodb_node_ng/config
+service_common_dir: /var/vcap/store/mongodb_common
 pid: /var/vcap/sys/run/mongodb_node.pid
 node_id: mongodb_node_free_1
 

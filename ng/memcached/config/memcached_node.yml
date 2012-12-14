@@ -8,10 +8,9 @@ logging:
   level: debug
 pid: /var/vcap/sys/run/memcached_node.pid
 service_log_dir: /var/vcap/sys/service-log/memcached
-service_script_dir: /var/vcap/jobs/memcached_node_ng/bin
 service_bin_dir:
   memcached: /var/vcap/packages/memcached
-
+service_common_dir: /var/vcap/store/memcached_common
 supported_versions: ['1.4']
 default_version: '1.4'
 

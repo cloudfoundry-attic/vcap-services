@@ -59,7 +59,7 @@ def get_node_config()
 
     # parse memcached wardenized-service control related config
     :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
-    :service_script_dir => parse_property(config, "service_script_dir", String),
+    :service_common_dir => parse_property(config, "service_common_dir", String),
 
     #hardcode unit test related directories to /tmp dir
     :base_dir   => "/tmp/memcached/instances",

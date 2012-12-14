@@ -61,9 +61,8 @@ def getNodeTestConfig
     :port_range => parse_property(config, "port_range", Range),
 
     # parse rabbitmq wardenized-service control related config
-    :service_script_dir => parse_property(config, "service_script_dir", String),
     :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
-    :service_log_dir    => parse_property(config, "service_log_dir", String),
+    :service_common_dir => parse_property(config, "service_common_dir", String),
 
     # rabbitmq related configs
     :rabbit                   => parse_property(config, "rabbit", Hash),
@@ -86,6 +85,7 @@ def getNodeTestConfig
     :image_dir       => "/tmp/rabbitmq_image",
     :max_disk        => 128,
     :migration_nfs   => "/tmp/migration",
+    :disabled_file => "/tmp/redis_instances/DISABLED",
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options

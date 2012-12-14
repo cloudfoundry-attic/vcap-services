@@ -381,8 +381,6 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
       p_service.version   = args['version']
 
       p_service.prepare_filesystem(self.max_disk)
-      FileUtils.cp(File.join(p_service.conf_dir, "mongodb.conf"), p_service.base_dir)
-      FileUtils.cp(File.join(p_service.conf_dir, "mongodb_proxy.yml"), p_service.base_dir)
       p_service
     end
 
@@ -497,27 +495,23 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "#{service_script} start /store/instance /store/log #{bin_dir} #{proxy_bin_dir} #{adminpass} #{mongod_exe_options}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start /store/instance /store/log #{common_dir} #{bin_dir} #{proxy_bin_dir} #{adminpass} #{mongod_exe_options}", :use_spawn => true}
     options[:service_port] = PROXY_PORT
-    options[:bind_dirs] = []
-    options[:bind_dirs] << {:src => base_dir, :dst => "/store/instance"}
-    options[:bind_dirs] << {:src => log_dir, :dst => "/store/log"}
-    options[:bind_dirs] << {:src => bin_dir}
+    update_bind_dirs(options[:bind_dirs], {:src => base_dir}, {:src => base_dir, :dst => "/store/instance"})
+    update_bind_dirs(options[:bind_dirs], {:src => log_dir}, {:src => log_dir, :dst => "/store/log"})
     options[:bind_dirs] << {:src => proxy_bin_dir}
-    options[:bind_dirs] << {:src => File.join(File.dirname(bin_dir), "common")}
-    options[:bind_dirs] << {:src => script_dir}
     options
   end
 
   def stop_options
     options = super
-    options[:stop_script] = {:script => "#{service_script} stop /store/instance /store/log"}
+    options[:stop_script] = {:script => "#{service_script} stop /store/instance /store/log #{common_dir}"}
     options
   end
 
   def status_options
     options = super
-    options[:status_script] = {:script => "#{service_script} status /store/instance /store/log"}
+    options[:status_script] = {:script => "#{service_script} status /store/instance /store/log #{common_dir}"}
     options
   end
 

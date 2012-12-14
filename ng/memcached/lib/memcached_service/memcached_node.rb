@@ -330,6 +330,7 @@ class VCAP::Services::Memcached::Node::ProvisionedService
       "start",
       "#{base_dir}",
       "#{log_dir}",
+      "#{common_dir}",
       "#{bin_dir}",
       "-m #{@@memcached_memory}",
       "-p #{SERVICE_PORT}",

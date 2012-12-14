@@ -282,6 +282,7 @@ describe VCAP::Services::Redis::Node do
 
     it "should import db file from right location after import instance" do
       @node.unprovision(@credentials["name"])
+      sleep 1
       @node.import_instance(@credentials, @binding_credentials_map, @node.options[:migration_nfs], :free)
       credentials_list = @node.update_instance(@credentials, @binding_credentials_map)
       credentials_list.size.should == 2

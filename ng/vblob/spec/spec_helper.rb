@@ -95,8 +95,8 @@ def get_node_config()
     :port_range => parse_property(config, "port_range", Range),
 
     # parse vblobd wardenized-service control related config
-    :service_script_dir => parse_property(config, "service_script_dir", String),
     :service_bin_dir    => parse_property(config, "service_bin_dir", Hash),
+    :service_common_dir => parse_property(config, "service_common_dir", String),
     :service_log_dir    => parse_property(config, "service_log_dir", String),
 
     # vblobd instance related configs

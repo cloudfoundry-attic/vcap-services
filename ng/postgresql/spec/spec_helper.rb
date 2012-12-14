@@ -92,9 +92,8 @@ def getNodeTestConfig()
     options[:filesystem_quota] = parse_property(warden_config, "filesystem_quota", Boolean, :optional => true)
     options[:service_start_timeout] = parse_property(warden_config, "service_start_timeout", Integer, :optional => true, :default => 3)
     options[:service_log_dir] = parse_property(warden_config, "service_log_dir", String)
-    options[:service_script_dir] = parse_property(warden_config, "service_script_dir", String, :optional => true, :default => "/var/vcap/jobs")
-    options[:service_conf_dir] = parse_property(warden_config, "service_conf_dir", String, :optional => true, :default => "/var/vcap/jobs")
     options[:service_bin_dir] = parse_property(warden_config, "service_bin_dir", Hash, :optional => true)
+    options[:service_common_dir] = parse_property(warden_config, "service_common_dir", String, :optional => true, :default => "/var/vcap/store/postgresql_common")
   else
     options[:ip_route] = "127.0.0.1"
   end

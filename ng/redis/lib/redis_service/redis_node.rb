@@ -395,7 +395,7 @@ class VCAP::Services::Redis::Node::ProvisionedService
 
   def start_options
     options = super
-    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{bin_dir}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{common_dir} #{bin_dir}", :use_spawn => true}
     options
   end
 

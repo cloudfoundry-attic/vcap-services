@@ -460,7 +460,7 @@ EOF
 
   def start_options
     options = super
-    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{bin_dir} #{erlang_dir} #{name}", :use_spawn => true}
+    options[:start_script] = {:script => "#{service_script} start #{base_dir} #{log_dir} #{common_dir} #{bin_dir} #{erlang_dir} #{name}", :use_spawn => true}
     options[:bind_dirs] << {:src => erlang_dir}
     options[:need_map_port] = false
     options

@@ -823,8 +823,6 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
       provisioned_service.version  = version
 
       provisioned_service.prepare_filesystem(@max_disk)
-      FileUtils.cp(File.join(provisioned_service.conf_dir, provisioned_service.service_conf), provisioned_service.base_dir)
-      FileUtils.cp(File.join(provisioned_service.conf_dir, "warden_mysql_init"), provisioned_service.base_dir)
       FileUtils.mkdir_p(provisioned_service.tmp_dir)
       provisioned_service
     end
@@ -852,9 +850,9 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     define_method "#{op}_script".to_sym do
       case version
       when "5.5"
-        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{bin_dir} /var/vcap/store/mysql 55"
+        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{common_dir} #{bin_dir} /var/vcap/store/mysql 55"
       else
-        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{bin_dir} /var/vcap/store/mysql ''"
+        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{common_dir} #{bin_dir} /var/vcap/store/mysql ''"
       end
     end
   end
@@ -867,14 +865,10 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
     options = super
     options[:start_script] = {:script => start_script, :use_spawn => true}
     options[:service_port] = service_port
-    options[:bind_dirs] = []
-    options[:bind_dirs] << {:src => base_dir, :dst => "/var/vcap/sys/run/mysqld"}
+    update_bind_dirs(options[:bind_dirs], {:src => base_dir}, {:src => base_dir, :dst => "/var/vcap/sys/run/mysqld"})
+    update_bind_dirs(options[:bind_dirs], {:src => log_dir}, {:src => log_dir, :dst => "/var/vcap/sys/log/mysql"})
     options[:bind_dirs] << {:src => data_dir, :dst => "/var/vcap/store/mysql"}
-    options[:bind_dirs] << {:src => log_dir, :dst => "/var/vcap/sys/log/mysql"}
     options[:bind_dirs] << {:src => tmp_dir, :dst => "/var/vcap/data/mysql_tmp"}
-    options[:bind_dirs] << {:src => bin_dir}
-    options[:bind_dirs] << {:src => File.join(File.dirname(bin_dir), "common")}
-    options[:bind_dirs] << {:src => script_dir}
     options
   end
 
