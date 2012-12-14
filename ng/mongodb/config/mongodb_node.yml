@@ -32,9 +32,9 @@ mongorestore_path:
   "2.2": "/var/vcap/packages/mongodb22/bin/mongorestore"
 
 mongodump_path:
-  "1.8": "/var/vcap/packages/mongodb18/bin/mongorestore"
-  "2.0": "/var/vcap/packages/mongodb20/bin/mongorestore"
-  "2.2": "/var/vcap/packages/mongodb22/bin/mongorestore"
+  "1.8": "/var/vcap/packages/mongodb18/bin/mongodump"
+  "2.0": "/var/vcap/packages/mongodb20/bin/mongodump"
+  "2.2": "/var/vcap/packages/mongodb22/bin/mongodump"
 
 mongod_options:
   "1.8": ""
