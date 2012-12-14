@@ -8,19 +8,16 @@ NOTE: For mongodb 2.0.6 version, mongodb process would crash if it fails to
 
 [ how to build ]
 
-1. install dependency
-    cd <working directory>/vcap-services/tools/mongodb_proxy/src
+1. env settings
+    GOPATH="<working directory>/vcap-services/tools/mongodb_proxy"
+    export GOPATH
 
-    mkdir -p github.com/xushiwei/goyaml/
-    git clone git://github.com/xushiwei/goyaml.git github.com/xushiwei/goyaml/
+2. install dependencies
+    go get github.com/xushiwei/goyaml
+    go get github.com/moovweb/log4go
+    go get github.com/xushiwei/mgo/src/labix.org/v2/mgo
 
-    git clone git://github.com/xushiwei/mgo.git /tmp/mgo
-    mv /tmp/mgo/src/labix.org .
-
-    mkdir -p github.com/moovweb/log4go/
-    git clone git://github.com/moovweb/log4go.git github.com/moovweb/log4go/
-
-2. go build
+3. go build
     # env settings
 
     GOPATH="<working directory>/vcap-services/tools/mongodb_proxy"
@@ -31,7 +28,7 @@ NOTE: For mongodb 2.0.6 version, mongodb process would crash if it fails to
 
     The executable binary is located at $GOPATH/bin
 
-3. go test
+4. go test
     NOTE: Please manually boot up the mongod process and set database user account first.
 
     cd <working directory>/vcap-services/tools/mongodb_proxy/src/go-mongo-proxy/proxy/
