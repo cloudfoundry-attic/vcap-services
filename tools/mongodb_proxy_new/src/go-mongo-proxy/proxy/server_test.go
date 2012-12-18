@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"fmt"
@@ -20,12 +20,17 @@ func initTestConfig() {
 	config.MONGODB.DBNAME = "db"
 	config.MONGODB.USER = "admin"
 	config.MONGODB.PASS = "123456"
+
+	config.FILTER.BASE_DIR = "/store/instance/data/"
+	config.FILTER.QUOTA_FILES = 4
+	config.FILTER.QUOTA_DATA_SIZE = 240
+	config.FILTER.ENABLED = true
 }
 
 func startTestProxyServer() {
 	if !proxy_started {
 		initTestConfig()
-		go startProxyServer(&config)
+		go Start(&config, nil)
 		proxy_started = true
 	}
 }

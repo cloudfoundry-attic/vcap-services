@@ -1,18 +1,10 @@
-package main
+package proxy
 
 import (
 	"flag"
-	"fmt"
 	"net"
 )
-
-type ConnectionInfo struct {
-	HOST   string
-	PORT   string
-	DBNAME string
-	USER   string
-	PASS   string
-}
+import l4g "github.com/moovweb/log4go"
 
 type ProxyConfig struct {
 	HOST string
@@ -21,7 +13,14 @@ type ProxyConfig struct {
 	FILTER FilterConfig
 
 	MONGODB ConnectionInfo
+
+	LOGGING struct {
+		LEVEL string
+		PATH  string
+	}
 }
+
+var logger l4g.Logger
 
 func startProxyServer(conf *ProxyConfig) error {
 	proxyaddrstr := flag.String("proxy listen address", conf.HOST+":"+conf.PORT, "host:port")
@@ -29,39 +28,39 @@ func startProxyServer(conf *ProxyConfig) error {
 
 	proxyaddr, err := net.ResolveTCPAddr("tcp", *proxyaddrstr)
 	if err != nil {
-		fmt.Printf("TCP addr resolve error: [%v].\n", err)
+		logger.Error("TCP addr resolve error: [%v].", err)
 		return err
 	}
 
 	mongoaddr, err := net.ResolveTCPAddr("tcp", *mongoaddrstr)
 	if err != nil {
-		fmt.Printf("TCP addr resolve error: [%v].\n", err)
+		logger.Error("TCP addr resolve error: [%v].", err)
 		return err
 	}
 
 	proxyfd, err := net.ListenTCP("tcp", proxyaddr)
 	if err != nil {
-		fmt.Printf("TCP server listen error: [%v].\n", err)
+		logger.Error("TCP server listen error: [%v].", err)
 		return err
 	}
 
-	filter := NewFilter(&conf.FILTER)
+	filter := NewFilter(&conf.FILTER, &conf.MONGODB)
 	if filter.FilterEnabled() {
 		go filter.StorageMonitor()
 	}
 
-	fmt.Printf("Start proxy server.\n")
+	logger.Info("Start proxy server.")
 
 	for {
 		clientconn, err := proxyfd.AcceptTCP()
 		if err != nil {
-			fmt.Printf("TCP server accept error: [%v].\n", err)
+			logger.Error("TCP server accept error: [%v].", err)
 			continue
 		}
 
 		serverconn, err := net.DialTCP("tcp", nil, mongoaddr)
 		if err != nil {
-			fmt.Printf("TCP connect error: [%v].\n", err)
+			logger.Error("TCP connect error: [%v].", err)
 			clientconn.Close()
 			continue
 		}
@@ -70,26 +69,16 @@ func startProxyServer(conf *ProxyConfig) error {
 		go session.Process()
 	}
 
-	fmt.Printf("Stop proxy server.\n")
+	logger.Info("Stop proxy server.")
 	return nil
 }
 
-// NOTE: Following hard code configuration will be removed finally.
-func main() {
-	conf := &ProxyConfig{}
-	conf.HOST = "127.0.0.1"
-	conf.PORT = "29017"
-
-	conf.FILTER.base_dir = "/store/instance/"
-	conf.FILTER.quota_files = 4
-	conf.FILTER.quota_data_size = 240
-	conf.FILTER.enabled = true
-
-	conf.MONGODB.HOST = "127.0.0.1"
-	conf.MONGODB.PORT = "27017"
-	conf.MONGODB.DBNAME = "db"
-	conf.MONGODB.USER = "admin"
-	conf.MONGODB.PASS = "123456"
-
-	startProxyServer(conf)
+func Start(conf *ProxyConfig, log l4g.Logger) error {
+	if log == nil {
+		logger = make(l4g.Logger)
+		logger.AddFilter("stdout", l4g.DEBUG, l4g.NewConsoleLogWriter())
+	} else {
+		logger = log
+	}
+	return startProxyServer(conf)
 }

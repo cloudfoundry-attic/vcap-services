@@ -1,7 +1,6 @@
-package main
+package proxy
 
 import (
-	"fmt"
 	"io"
 	"net"
 )
@@ -48,23 +47,23 @@ func (session *ProxySessionImpl) ForwardClientMsg() {
 		nread, err := clientfd.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("TCP session with mongodb client will be closed soon.\n")
+				logger.Debug("TCP session with mongodb client will be closed soon.")
 				break
 			}
-			fmt.Printf("TCP read from client error: [%v].\n", err)
+			logger.Debug("TCP read from client error: [%v].", err)
 			continue
 		}
 
 		// filter process
 		if filter.FilterEnabled() && !filter.PassFilter() {
-			fmt.Printf("TCP session with mongodb client is blocked by filter.\n")
+			logger.Debug("TCP session with mongodb client is blocked by filter.")
 			break
 		}
 
 		nwrite, err := serverfd.Write(buffer[0:nread])
 		if err != nil || nwrite < nread {
 			// TODO: error detection & handling
-			fmt.Printf("TCP write to server error: [%v].\n", err)
+			logger.Debug("TCP write to server error: [%v].", err)
 			continue
 		}
 	}
@@ -73,7 +72,7 @@ func (session *ProxySessionImpl) ForwardClientMsg() {
 	clientfd.CloseRead()
 	serverfd.CloseWrite()
 
-	fmt.Printf("ForwardClientMsg go routine exits.\n")
+	logger.Debug("ForwardClientMsg go routine exits.")
 }
 
 func (session *ProxySessionImpl) ForwardServerMsg() {
@@ -92,17 +91,17 @@ func (session *ProxySessionImpl) ForwardServerMsg() {
 		nread, err := serverfd.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("TCP session with mongodb server will be closed soon.\n")
+				logger.Debug("TCP session with mongodb server will be closed soon.")
 				break
 			}
-			fmt.Printf("TCP read from server error: [%v].\n", err)
+			logger.Debug("TCP read from server error: [%v].", err)
 			continue
 		}
 
 		nwrite, err := clientfd.Write(buffer[0:nread])
 		if err != nil || nwrite < nread {
 			// TODO: error detection & handling
-			fmt.Printf("TCP write to client error: [%v].\n", err)
+			logger.Debug("TCP write to client error: [%v].", err)
 			continue
 		}
 	}
@@ -111,7 +110,7 @@ func (session *ProxySessionImpl) ForwardServerMsg() {
 	serverfd.CloseRead()
 	clientfd.CloseWrite()
 
-	fmt.Printf("ForwardServerMsg go routine exits.\n")
+	logger.Debug("ForwardServerMsg go routine exits.")
 }
 
 func (session *ProxySessionImpl) Shutdown() {

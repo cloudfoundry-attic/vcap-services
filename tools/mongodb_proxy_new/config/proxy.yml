@@ -13,3 +13,7 @@ filter:
   quota_files: 4
   quota_data_size: 240
   enabled: true
+
+logging:
+  level: debug
+  path: /tmp/mongodb_proxy/mongodb_proxy.log
