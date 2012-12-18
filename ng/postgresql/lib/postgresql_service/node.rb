@@ -61,13 +61,13 @@ class VCAP::Services::Postgresql::Node
     @use_warden = @options[:use_warden] || false
     if @use_warden
       require "postgresql_service/with_warden"
-      extend VCAP::Services::Postgresql::WithWarden
+      self.class.send(:include, VCAP::Services::Postgresql::WithWarden)
       @service_start_timeout = options[:service_start_timeout] || 3
       init_ports(options[:port_range])
       pgProvisionedService.init(options)
     else
       require "postgresql_service/without_warden"
-      extend VCAP::Services::Postgresql::WithoutWarden
+      self.class.send(:include, VCAP::Services::Postgresql::WithoutWarden)
     end
   end
 
@@ -667,7 +667,7 @@ class VCAP::Services::Postgresql::Node
   end
 
   def varz_details()
-    varz = {}
+    varz = super
     # db stat
     varz[:db_stat] = get_db_stat
     varz[:max_capacity] = @max_capacity
