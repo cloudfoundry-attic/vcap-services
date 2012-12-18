@@ -58,7 +58,7 @@ describe "Mysql server node" do
     @opts = getNodeTestConfig
     @opts.freeze
     @default_plan = "free"
-    @default_version = @opts[:supported_versions][0]
+    @default_version = @opts[:default_version]
     @default_opts = "default"
 
     # Setup code must be wrapped in EM.run
@@ -873,7 +873,7 @@ describe "Mysql server node" do
           node.fetch_pool(@db['name']).with_connection do |conn|
             # override server side timeout
             conn.query("set @@wait_timeout=10")
-            expect{ conn.query("select sleep(5)") }.should raise_error(Timeout::Error)
+            expect{ conn.query("select sleep(5)") }.should raise_error(Mysql2::Error, /Timeout/)
           end
         ensure
           # restore original timeout

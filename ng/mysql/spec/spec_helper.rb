@@ -102,6 +102,7 @@ def getNodeTestConfig()
     :ip_route           => parse_property(config, "ip_route", String, :optional => true),
     :use_warden         => parse_property(config, "use_warden", Boolean),
     :supported_versions => parse_property(config, "supported_versions", Array),
+    :default_version    => parse_property(config, "default_version", String),
 
     # service instance related configs
     :mysql                   => parse_property(config, "mysql", Hash),
