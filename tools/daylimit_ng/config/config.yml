@@ -1,0 +1,8 @@
+---
+limitwindow: 10
+limitsize: 2000
+logfile: /tmp/daylimit_ng.log
+fetchinteval: 2
+blockrate: 600
+unblockrate: 2000
+wardenbin: /var/vcap/packages/warden/warden/bin/warden
