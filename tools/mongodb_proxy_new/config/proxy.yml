@@ -15,5 +15,5 @@ filter:
   enabled: true
 
 logging:
-  level: debug
+  level: info
   path: /tmp/mongodb_proxy/mongodb_proxy.log
