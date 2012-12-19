@@ -2,7 +2,6 @@
 cloud_controller_uri: api.vcap.me
 ip_route: localhost
 index: 0
-token: changemarketplacetoken
 mbus: nats://localhost:4222/
 logging:
   level: debug
@@ -20,16 +19,10 @@ acls:
   users: []
 
 external_uri: "http://test-mpgw.vcap.me"
-refresh_interval: 300
+refresh_interval: 120
 
-cc_version: v2
-
-uaa_endpoint: "https://uaa.vcap.me"
-
-client_auth_credentials:
-  username: mpgwadmin
-  password: password
-
-service_tokens:
-  foo_provider: fooprovidertoken
-  testservice_TestProvider: testmarketplacetoken
+cc_api_version: v1
+token: testservicetoken
+service_auth_tokens:
+  testservice_TestProvider: testservicetoken
+  fooservice_FooProvider: fooservicetoken

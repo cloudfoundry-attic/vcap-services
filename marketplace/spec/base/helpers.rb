@@ -1,3 +1,5 @@
+require 'uuid'
+
 class MarketplaceGatewayHelper
   CC_PORT = 34567
 
@@ -5,8 +7,16 @@ class MarketplaceGatewayHelper
   GW_COMPONENT_PORT = 10000
   LOCALHOST = "127.0.0.1"
 
-  def self.get_config
-    config = load_test_config
+  def initialize
+    @override_config = {}
+  end
+
+  def set(key, value)
+    @override_config[key] = value
+  end
+
+  def get_config
+    config = load_config("test")
     config[:cloud_controller_uri] = "#{LOCALHOST}:#{CC_PORT}"
     config[:mbus] = "nats://nats:nats@#{VCAP.local_ip}:4222"
     config[:host] = LOCALHOST
@@ -16,22 +26,32 @@ class MarketplaceGatewayHelper
     config[:user] = "u"
     config[:password] = "p"
     config[:node_timeout] = 1
+    config[:cc_api_version] = "v1"
+
+    @override_config.each { |k, v| config[k.to_sym] = v }
+
     config
   end
 
-  def self.create_mpgw
+  def create_mpgw
     gw = Gateway.new(get_config)
     gw.start
     gw
   end
 
-  def self.create_cc
+  def create_cc
     cc = MockCloudController.new
     cc.start
     cc
   end
 
-  def self.create_client()
+  def create_ccng
+    cc = MockCloudControllerNG.new
+    cc.start
+    cc
+  end
+
+  def create_client()
     config = get_config
     Client.new(config)
   end
@@ -74,11 +94,82 @@ class MarketplaceGatewayHelper
     end
   end
 
+  class MockCloudControllerNG
+    def initialize
+      @server = Thin::Server.new("#{LOCALHOST}", CC_PORT, Handler.new)
+    end
+
+    def start
+      Thread.new { @server.start }
+      while !@server.running?
+        sleep 0.1
+      end
+    end
+
+    def stop
+      @server.stop if @server
+    end
+
+    class Handler < Sinatra::Base
+
+      def initialize()
+        @offerings = {}
+        @offering_plans = {}
+      end
+
+      post "/v2/services" do
+        svc_uuid = UUIDTools::UUID.random_create.to_s
+        offering = {
+          "metadata" => { "guid" => svc_uuid, "url" => "/v2/services/#{svc_uuid}", "created_at" => Time.now.to_s, "updated_at" => nil },
+          "entity" => JSON.parse(request.body.read)
+        }
+        offering["entity"]["service_plans_url"] = "/v2/services/#{svc_uuid}/service_plans"
+        @offerings[svc_uuid] = offering
+
+        puts "\n*#*#*#*#* CCNG::Registered #{offering["entity"]["active"] == true ? "*ACTIVE*" : "*INACTIVE*"} offering: #{offering.inspect}\n\n"
+        Yajl::Encoder.encode(offering)
+      end
+
+      post "/v2/service_plans" do
+        svc_plan_uuid = UUIDTools::UUID.random_create.to_s
+        svc_plan = {
+          "metadata" => { "guid" => svc_plan_uuid, "url" => "/v2/service_plans/#{svc_plan_uuid}", "created_at" => Time.now.to_s, "updated_at" => nil },
+          "entity" => JSON.parse(request.body.read)
+        }
+        svc_plan["entity"]["service_instance_guids"] = []
+        svc_plan["entity"]["service_instances_url"] = "/v2/service_plans/#{svc_plan_uuid}/service_instance"
+        svc_plan["entity"]["service_url"] = "/v2/services/#{svc_plan["entity"]["service_guid"]}"
+
+        puts "\n*#*#*#*#* CCNG::Registered Plan: #{svc_plan.inspect}\n\n"
+
+        svc_uuid = svc_plan["entity"]["service_guid"]
+
+        @offerings[svc_uuid]["entity"]["service_plans"] ||= []
+        @offerings[svc_uuid]["entity"]["service_plans"] << svc_plan
+
+        @offering_plans[svc_plan_uuid] = svc_plan
+
+        Yajl::Encoder.encode(svc_plan)
+      end
+
+      get "/v2/services" do
+        puts "*#*#*#*#* CCNG::GET(/v2/services):"
+        Yajl::Encoder.encode({
+          "total_results" => @offerings.size,
+          "total_pages"   => 1,
+          "prev_url"      => nil,
+          "next_url"      => nil,
+          "resources"     => @offerings.values
+        })
+      end
+    end
+  end
+
   class Gateway
 
     def initialize(cfg)
       @config = cfg
-      @mpgw = VCAP::Services::Marketplace::MarketplaceAsyncServiceGateway.new(@config)
+      @mpgw = VCAP::Services::Marketplace::MarketplaceServiceGateway.new(@config)
       @server = Thin::Server.new(@config[:host], @config[:port], @mpgw)
     end
 

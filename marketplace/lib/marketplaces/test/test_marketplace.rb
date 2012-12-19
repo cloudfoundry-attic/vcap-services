@@ -29,8 +29,13 @@ module VCAP
               "version" => "1.0",
               "name" => "My Test Service",
               "description" => "My test Service",
-              "plans" => [ "free" ],
-              "provider" => "TestProvider"
+              "plans" => [ "D100", "free" ],
+              "default_plan" => "D100",
+              "provider" => "TestProvider",
+              "supported_versions" => ["1.0"],
+              "version_aliases" => { "current" => "1.0" },
+              "timeout" => @node_timeout,
+              "url" => @external_uri
             }
 
             @catalog = {}
@@ -48,7 +53,12 @@ module VCAP
                 "name" => "Foo Service",
                 "description" => "Foo Service",
                 "plans" => [ "free" ],
-                "provider" => "FooProvider"
+                "default_plan" => "free",
+                "provider" => "FooProvider",
+                "supported_versions" => ["1.0"],
+                "version_aliases" => { "current" => "1.0" },
+                "timeout" => @node_timeout,
+                "url" => @external_uri
               }
 
               service_key = key_for_service(fooservice["id"], fooservice["version"], fooservice["provider"])
@@ -82,45 +92,6 @@ module VCAP
             !(offerings_list.include?(id))
           end
 
-          def generate_cc_advertise_request(svc, active = true)
-            req = {}
-            req[:label] = "#{svc["id"]}-#{svc["version"]}"
-            req[:active] = active
-            req[:description] = svc["description"]
-            req[:provider] = svc["provider"]
-
-            req[:supported_versions] = [ svc["version"] ]
-            req[:version_aliases]    =  { "current" => svc["version"] }
-
-            req[:acls] = @acls
-            req[:url] = @external_uri
-            req[:plans] = svc["plans"]
-            req[:tags] = []
-            req[:timeout] = 5 + @node_timeout
-            req
-          end
-
-          def generate_ccng_advertise_request(svc, active = true)
-            req = {}
-            req[:label] = svc["id"]
-            req[:version] = svc["version"]
-            req[:active] = active
-            req[:description] = svc["description"]
-            req[:provider] = svc["provider"]
-
-            req[:acls] = @acls
-            req[:url] = @external_uri
-            req[:timeout] = 5 + @node_timeout
-
-            # req[:supported_versions] = [ svc["version"] ]
-            # req[:version_aliases]    =  { "current" => svc["version"] }
-
-            plans = {}
-            svc["plans"].each { |p| plans[p] = { "name" => p, "description" => "#{p} plan"} }
-
-            [ req, plans ]
-          end
-
           def provision_service(request_body)
             if @runtime_config[:sleep_before_provision] > 0
               @logger.info("Sleep before provision is set to: #{@runtime_config[:sleep_before_provision]} sec, Sleeping...")
@@ -141,9 +112,9 @@ module VCAP
             @logger.info("Successfully unprovisioned service #{service_id}")
           end
 
-          def bind_service_instance(service_id, request)
+          def bind_service_instance(service_id, binding_options)
             binding = {
-              :configuration => {:data => {:binding_options => request.binding_options}},
+              :configuration => {:data => {:binding_options => binding_options}},
               :credentials => { "url" => "http://testservice.com/#{UUIDTools::UUID.random_create.to_s}" },
               :service_id => UUIDTools::UUID.random_create.to_s
             }

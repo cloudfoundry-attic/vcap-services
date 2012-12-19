@@ -1,4 +1,7 @@
 # Copyright (c) 2009-2012 VMware, Inc.
+
+require 'abstract'
+
 module VCAP
   module Services
     module Marketplace
@@ -7,39 +10,26 @@ module VCAP
         def initialize(opts_unused)
         end
 
-        def name
-          "UNKNOWN"
-        end
+        # name
+        abstract :name
 
-        def get_catalog
-          {}
-        end
+        # get_catalog
+        abstract :get_catalog
 
+        # offering_disabled?(name, offerings)
+        abstract :offering_disabled?
 
-        # TODO: Merge these 2 functions...
-        def generate_cc_advertise_request(svc, active = true)
-          {}
-        end
+        # provision_service(request_body)
+        abstract :provision_service
 
-        def generate_ccng_advertise_request(svc, active = true)
-          {}
-        end
+        # unprovision_service(service_id)
+        abstract :unprovision_service
 
-        def offering_disabled?(name, offerings)
-          false
-        end
+        # bind_service_instance(service_id, bind_options)
+        abstract :bind_service_instance
 
-        def provision_service(request_body)
-        end
-
-        def unprovision_service(service_id)
-        end
-
-        def bind_service_instance(service_id, request)
-        end
-
-        def unbind_service(service_id, binding_id)
-        end
+        # unbind_service(service_id, binding_id)
+        abstract :unbind_service
 
         def varz_details
           {}

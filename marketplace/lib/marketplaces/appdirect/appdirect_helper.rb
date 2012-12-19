@@ -30,19 +30,45 @@ module VCAP
 
               @appdirect_endpoint = appdirect_config[:endpoint]
               @whitelist          = opts[:offering_whitelist]
+              @test_mode          = opts[:test_mode]
 
-              @consumer = OAuth::Consumer.new(appdirect_config[:key], appdirect_config[:secret])
-              @access_token = OAuth::AccessToken.new(@consumer)
+              if !@test_mode
+                consumer = OAuth::Consumer.new(appdirect_config[:key], appdirect_config[:secret])
+                @access_token = OAuth::AccessToken.new(consumer)
+              end
+            end
+
+            # helper method
+            def perform_request(verb, url, header, body)
+              if @test_mode
+                f = Fiber.current
+
+                http = EM::HttpRequest.new(url).get if verb == "get"
+                http = EM::HttpRequest.new(url).post(:head => header, :body => body) if verb == "post"
+                http = EM::HttpRequest.new(url).delete(:head => header) if verb == "delete"
+
+                http.callback { f.resume(http) }
+                http.errback { f.resume(http) }
+
+                Fiber.yield
+
+                [http.response_header.status, http.response]
+              else
+                response = @access_token.get(url) if verb =="get"
+                response = @access_token.post(url, body, header) if verb == "post"
+                response = @access_token.delete(url, header) if verb == "delete"
+                [Integer(response.code), response.body]
+              end
             end
 
             def load_catalog
               url = "#{@appdirect_endpoint}/api/#{OFFERINGS_PATH}"
               @logger.debug("Getting service listing from: #{url}")
 
-              response = @access_token.get(url)
-              http_status = Integer(response.code)
+              http_status, response_body = perform_request("get", url, nil, nil)
+
               if http_status == 200
-                data = JSON.parse(response.body) #VCAP::Services::AppDirect::AppDirectCatalogResponse.decode(raw)
+                data = JSON.parse(response_body) #VCAP::Services::AppDirect::AppDirectCatalogResponse.decode(raw)
                 catalog = []
                 data.each do |service|
                   if (@whitelist.nil? || @whitelist.include?(service["name"]))
@@ -67,16 +93,16 @@ module VCAP
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}"
                 @logger.info("Posting provision request: #{url}")
 
-                response = @access_token.post(url, body, HEADER)
-                http_status = Integer(response.code)
+                http_status, response_body = perform_request("post", url, HEADER, body)
+
                 if http_status >= 200 and http_status < 300
                   @logger.info("Provision successful")
-                  JSON.parse(response.body)
+                  JSON.parse(response_body)
                 else
                   # 400 bad request
                   # 500 if AppDirect has issues
                   # 503 if ISV is down
-                  @logger.error("Failed to provision: #{body} due to: #{http_status} - #{response.body}")
+                  @logger.error("Failed to provision: #{body} due to: #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_PURCHASE, http_status)
                 end
               else
@@ -90,13 +116,13 @@ module VCAP
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}/bindings"
                 @logger.info("Posting bind request: #{url}")
 
-                response = @access_token.post(url, body, HEADER)
-                http_status = Integer(response.code)
+                http_status, response_body = perform_request("post", url, HEADER, body)
+
                 if http_status >= 200 and http_status < 300
                   @logger.info("Bind successful: #{order_id}")
-                  JSON.parse(response.body)
+                  JSON.parse(response_body)
                 else
-                  @logger.error("Bind request #{body} failed due to: #{http_status} - #{response.body}")
+                  @logger.error("Bind request #{body} failed due to: #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_BIND, http_status)
                 end
               else
@@ -109,12 +135,12 @@ module VCAP
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}/bindings/#{binding_id}"
                 @logger.info("Unbind request: #{url}")
 
-                response = @access_token.delete(url, HEADER)
-                http_status = Integer(response.code)
+                http_status, response_body = perform_request("delete", url, HEADER, nil)
+
                 if http_status >= 200 and http_status < 300
                   @logger.info("Unbind success for: OrderID: #{order_id}, BindingId: #{binding_id}")
                 else
-                  @logger.error("Failed to unbind service (id=#{order_id}): #{http_status} - #{response.body}")
+                  @logger.error("Failed to unbind service (id=#{order_id}): #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_UNBIND, http_status)
                 end
               else
@@ -127,12 +153,12 @@ module VCAP
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}"
                 @logger.info("Unprovision request: #{url}")
 
-                response = @access_token.delete(url, HEADER)
-                http_status = Integer(response.code)
+                http_status, response_body = perform_request("delete", url, HEADER, nil)
+
                 if http_status >= 200 and http_status < 300
                   @logger.info("Unprovision success for order id: #{order_id}")
                 else
-                  @logger.error("Failed to unprovision service (id=#{order_id}): #{http_status} - #{response.body}")
+                  @logger.error("Failed to unprovision service (id=#{order_id}): #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_CANCEL, http_status)
                 end
               else

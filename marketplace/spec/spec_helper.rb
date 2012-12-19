@@ -27,6 +27,34 @@ require "yaml"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "..", "..")
 
+module VCAP
+  module Services
+    module Marketplace
+      class MarketplaceServiceGateway < VCAP::Services::BaseAsynchronousServiceGateway
+
+        # Helpers for unit testing
+        get "/" do
+          return {"marketplace" => @marketplace_client.name, "offerings" => @marketplace_client.get_catalog}.to_json
+        end
+
+        post "/marketplace/set/:key/:value" do
+          @logger.info("TEST HELPER ENDPOINT - set: key=#{params[:key]}, value=#{params[:value]}")
+          Fiber.new {
+            begin
+              @marketplace_client.set_config(params[:key], params[:value])
+              refresh_catalog_and_update_cc(true)
+              async_reply("")
+            rescue => e
+              reply_error(e.inspect)
+            end
+          }.resume
+          async_mode
+        end
+      end
+    end
+  end
+end
+
 def symbolize_keys(hash)
   if hash.is_a? Hash
     new_hash = {}
@@ -39,29 +67,14 @@ def symbolize_keys(hash)
   end
 end
 
-def load_appdirect_config()
+def load_config(marketplace_name)
   config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "marketplace_gateway.yml"))
   config = symbolize_keys(config)
-  appdirect_config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "appdirect.yml"))
-  appdirect_config = symbolize_keys(appdirect_config)
 
-  config = config.merge(appdirect_config)
-  config[:logger] = make_logger()
-  config[:host] = VCAP.local_ip(config[:ip_route])
-  config[:port] ||= VCAP.grab_ephemeral_port
-  config[:url] = "http://#{config[:host]}:#{config[:port]}"
+  marketplace_config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "#{marketplace_name}.yml"))
+  marketplace_config = symbolize_keys(marketplace_config)
 
-  config
-end
-
-def load_test_config()
-  config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "test_marketplace_gateway.yml"))
-  config = symbolize_keys(config)
-
-  test_config = YAML.load_file(File.join(File.dirname(__FILE__), "..", "config", "test.yml"))
-  test_config = symbolize_keys(test_config)
-
-  config = config.merge(test_config)
+  config = config.merge(marketplace_config)
   config[:logger] = make_logger()
 
   config
@@ -72,9 +85,3 @@ def make_logger()
   logger.level = Logger::DEBUG
   logger
 end
-
-def load_fixture(filename, resp = '{}')
-  File.read("#{File.dirname(__FILE__)}/fixtures/#{filename}") rescue resp
-end
-
-
