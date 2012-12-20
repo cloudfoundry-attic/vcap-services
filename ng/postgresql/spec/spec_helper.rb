@@ -82,6 +82,7 @@ def getNodeTestConfig()
     :use_warden => parse_property(config, "use_warden", Boolean, :optional => true, :default => false),
     :supported_versions => parse_property(config, "supported_versions", Array),
     :default_version => parse_property(config, "default_version", String),
+    :disabled_file => parse_property(config, "disabled_file", String, :optional => true, :default => "/var/vcap/stor    e/DISABLED"),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)

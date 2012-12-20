@@ -317,7 +317,13 @@ module VCAP::Services::Postgresql::WithoutWarden
 
   def db_overhead(name)
     avg_overhead = 0
-    res = fetch_global_connection(name).query("select ((sum(pg_database_size(datname)) + avg(pg_tablespace_size('pg_global')))/#{@capacity}) as avg_overhead from pg_database where datname in ('#{@sys_dbs.join('\', \'')}');")
+    divider = @max_capacity
+    @capacity_lock.synchronize do
+      divider = divider - @capacity if @capacity < 0
+    end
+    res = fetch_global_connection(name).query(
+      "select ((sum(pg_database_size(datname)) + avg(pg_tablespace_size('pg_global')))/#{divider})
+      as avg_overhead from pg_database where datname in ('#{@sys_dbs.join('\', \'')}');")
     res.each do |x|
       avg_overhead = x['avg_overhead'].to_f.ceil
     end
