@@ -20,7 +20,7 @@ module VCAP::Services::Postgresql::WithWarden
     else
       @logger.info("Not to start instances")
       pgProvisionedService.all.each do |provisionedservice|
-        global_connection(provisionedservice, true)
+        setup_global_connection(provisionedservice)
         migrate_instance provisionedservice
       end
     end
@@ -52,9 +52,15 @@ def getLogger()
   return logger
 end
 
-def connect_to_postgresql(options)
+def connect_to_postgresql(options, extra_opts={})
   host, user, password, port, db =  %w{hostname user password port name}.map { |opt| options[opt] }
-  PGconn.connect(host, port, nil, nil, db, user, password)
+  VCAP::Services::Postgresql::Util::PGDBconn.new({
+    :host => host,
+    :port => port,
+    :user => user,
+    :password => password,
+    :dbname => db }.merge!(extra_opts)
+  )
 end
 
 def config_base_dir
@@ -82,7 +88,10 @@ def getNodeTestConfig()
     :use_warden => parse_property(config, "use_warden", Boolean, :optional => true, :default => false),
     :supported_versions => parse_property(config, "supported_versions", Array),
     :default_version => parse_property(config, "default_version", String),
-    :disabled_file => parse_property(config, "disabled_file", String, :optional => true, :default => "/var/vcap/stor    e/DISABLED"),
+    :disabled_file => parse_property(config, "disabled_file", String, :optional => true, :default => "/var/vcap/store/DISABLED"),
+    :db_connect_timeout => parse_property(config, "db_connect_timeout", Integer, :optional => true, :default => 3),
+    :db_query_timeout => parse_property(config, "db_query_timeout", Integer, :optional => true, :default => 10),
+    :db_use_async_query => parse_property(config, "db_use_async_query", Boolean, :optional => true, :default => true),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)

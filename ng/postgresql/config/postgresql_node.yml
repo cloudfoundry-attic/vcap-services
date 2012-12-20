@@ -15,6 +15,9 @@ max_db_size: 30
 max_long_query: 3
 max_long_tx: 30
 max_db_conns: 20
+db_connect_timeout: 3
+db_query_timeout: 10
+db_use_async_query: true
 use_warden: false
 warden:
   port_range:

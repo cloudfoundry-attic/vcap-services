@@ -1,5 +1,6 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require 'pg'
+require 'postgresql_service/pg_timeout'
 
 module VCAP
   module Services
@@ -76,47 +77,31 @@ module VCAP
           ) if quick_mode
 
           fail_with_nil = opts[:fail_with_nil] || true
-          connect_timeout = opts[:connect_timeout] || 3
+          connect_timeout = opts[:connect_timeout]
           try_num = opts[:try_num] || 5
           exception_sleep = opts[:exception_sleep] || 1
           quiet = opts[:quiet] || false
           async = opts[:async] || true
 
           @logger ||= Logger.new(STDOUT)
+          conn_opts = {
+            :host => host,
+            :port => port,
+            :options => nil,
+            :tty => nil,
+            :dbname => database,
+            :user => user,
+            :password => password
+          }
+
+          # if connect_timeout not set, will use PGDBconn.default_connect_timeout
+          # see postgresql_service/pg_timeout
+          conn_opts.merge!(:connect_timeout => connect_timeout) if connect_timeout
+
           try_num.times do
             begin
               @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database} (fail_with_nil: #{fail_with_nil})") unless quiet
-              conn_opts = {
-                :host => host,
-                :port => port,
-                :options => nil,
-                :tty => nil,
-                :dbname => database,
-                :user => user,
-                :password => password,
-                :connect_timeout => connect_timeout
-              }
-
-              if async
-                conn = PGconn.connect_start(conn_opts)
-                raise "Async connect_start failed." if conn.status == PGconn::CONNECTION_BAD
-                socket = IO.for_fd(conn.socket)
-                socket.autoclose = false
-                status = conn.connect_poll
-                while status != PGconn::PGRES_POLLING_OK && status != PGconn::PGRES_POLLING_FAILED
-                  case status
-                  when PGconn::PGRES_POLLING_READING
-                    raise "Async connect timed out when reading" unless IO.select( [socket], [], [], connect_timeout )
-                  when PGconn::PGRES_POLLING_WRITING
-                    raise "Async connect timed out when writing" unless IO.select( [], [socket], [], connect_timeout )
-                  end
-                  status = conn.connect_poll
-                end
-                raise "Async connect failed " if status == PGconn::PGRES_POLLING_FAILED
-              else
-                conn = PGconn.connect(conn_opts)
-              end
-
+              conn = PGDBconn.new(conn_opts)
               version = pg_version(conn)
               @logger.info("Connected PostgreSQL server - version: #{version}") unless quiet
               return conn

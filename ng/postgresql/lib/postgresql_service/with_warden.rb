@@ -33,15 +33,14 @@ module VCAP::Services::Postgresql::WithWarden
   end
 
   def pre_send_announcement_prepare
-    @connection_mutex = Mutex.new
-    @connections = {}
+    prepare_global_connections
   end
 
   def pre_send_announcement_internal(options)
     start_all_instances
     @capacity_lock.synchronize{ @capacity -= pgProvisionedService.all.size }
     pgProvisionedService.all.each do |provisionedservice|
-      global_connection(provisionedservice, true)
+      setup_global_connection(provisionedservice)
       migrate_instance provisionedservice
     end
     warden_node_init(options)
@@ -91,7 +90,7 @@ module VCAP::Services::Postgresql::WithWarden
       conn_info = @connections[name]
       if conn_info
         conn = conn_info[:conn]
-        conn.close if conn
+        add_discarded_connection(name, conn)
         @connections.delete(name)
       end
     end
@@ -104,13 +103,15 @@ module VCAP::Services::Postgresql::WithWarden
     fetched_conn = fetch_global_connection(name)
     time, conn = %w{time, conn}.map { |ele| fetched_conn[ele.to_sym] }
     if keep_alive && (conn != false && (conn.nil? || connection_exception(conn)))
+      add_discarded_connection(name, conn)
       return nil unless instance.ip
       conn = postgresql_connect(
         instance.ip,
         postgresql_config(instance)['user'],
         postgresql_config(instance)['pass'],
         instance.service_port,
-        postgresql_config(instance)['database']
+        postgresql_config(instance)['database'],
+        :fail_with_nil => nil, :exception_sleep => 0, :try_num => 1
       )
       @connection_mutex.synchronize do
         @connections[name] = { :time => Time.now.to_i, :conn => conn }
@@ -167,6 +168,7 @@ module VCAP::Services::Postgresql::WithWarden
     threads.each do |t|
       t.join
     end
+    close_discarded_connections
   rescue => e
     @logger.error("Fail to run postgresql_keep_alive for #{fmt_error(e)}")
   ensure
