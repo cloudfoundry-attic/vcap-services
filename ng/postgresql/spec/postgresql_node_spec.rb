@@ -183,6 +183,7 @@ describe "Postgresql node normal cases" do
       @test_dbs[db] = []
       @node.dump_instance(db, [], '/tmp')
       @node.unprovision(db['name'], [])
+      sleep 1 if @opts[:use_warden]
       @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_postgresql(db)
       expect { conn.query('select 1') }.should_not raise_error
