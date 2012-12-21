@@ -196,6 +196,7 @@ module VCAP
             @latency_sum = 0
             @queries_served = 1
             @worst_latency = 0
+            @shutting_down = false
             for i in 1..@size do
               @connections << Connection.new(@options)
             end
@@ -267,8 +268,14 @@ module VCAP
           end
 
           def shutdown
-            close
-            @connections.clear
+            @connections.synchronize do
+              if @checked_out.size == 0
+                close
+                @connections.clear
+              else
+                @shutting_down = true
+              end
+            end
           end
 
           # Check the connction with mysql
@@ -297,6 +304,7 @@ module VCAP
 
           def checkout
             @connections.synchronize do
+              raise "Mysql server at #{@options[:host]} is shutting down" if @shutting_down
               loop do
                 if @checked_out.size < @connections.size
                   conn = (@connections - @checked_out).first
@@ -331,6 +339,7 @@ module VCAP
               @checked_out.delete conn
               @cond.signal
             end
+            shutdown if @shutting_down
           end
 
           def current_connection_id

@@ -11,7 +11,7 @@ module VCAP
     module Mysql
       module Util
         class ConnectionPool
-          attr_reader :connections
+          attr_reader :connections, :shutting_down
           attr_accessor :max, :min
         end
       end
@@ -169,7 +169,6 @@ describe 'Mysql Connection Pool Test' do
           sleep(1)                    #make sure connections are created but not checked in
           conn.query("select 1")
         end
-        #@logger.info("In thread #{Thread.current.object_id}: " + pool.connections.inspect)
       end
     end
     threads.each(&:join)
@@ -178,5 +177,32 @@ describe 'Mysql Connection Pool Test' do
     sleep(3)                          #wait for expiration of connections
     pool.keep_alive                   #remove the expired connections
     pool.connections.size.should == 1
+  end
+
+  it "should lazy shutdown mysql connection pool" do
+    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| @mysql_configs[@default_version][opt] }
+    pool = connection_pool_klass.new(:host => host, :username => user, :password => password, :database => "mysql",
+                                     :port => port.to_i, :socket => socket, :pool => 1, :logger => @logger)
+    Thread.new do
+      pool.with_connection do |conn|
+        sleep(0.5)
+        conn.query("select 1")
+      end
+    end
+
+    sleep(0.2) #wait for the thread to check out the connection
+    pool.shutdown
+    pool.shutting_down.should == true
+    pool.connections.size.should > 0   #should still keep the connections
+    pool.connections.each { |conn| conn.active?.should == true }
+
+    expect do
+      pool.with_connection do |conn|
+        conn.query("select 1")
+      end
+    end.should raise_error(StandardError, /shutting down/)
+
+    sleep(2)
+    pool.connections.size.should == 0  #connections should have been closed and removed
   end
 end

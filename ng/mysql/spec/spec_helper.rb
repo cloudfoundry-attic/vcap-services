@@ -52,7 +52,7 @@ class ::TrueClass; include Boolean; end
 class ::FalseClass; include Boolean; end
 
 def getLogger()
-  logger = Logger.new( STDOUT)
+  logger = Logger.new(STDOUT)
   logger.level = Logger::ERROR
   return logger
 end

@@ -757,7 +757,11 @@ class VCAP::Services::Mysql::Node
 
   def each_connection
     each_pool do |conn_pool|
-      conn_pool.with_connection { |conn| yield conn }
+      begin
+        conn_pool.with_connection { |conn| yield conn }
+      rescue => e
+        @logger.warn("with_connection failed: #{e}")
+      end
     end
   end
 end
