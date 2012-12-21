@@ -11,8 +11,8 @@ logging:
   level: debug
 pid: /var/vcap/sys/run/mysql_node.pid
 node_id: mysql_node_free_1
-supported_versions: ['5.1']
-default_version: '5.1'
+supported_versions: ['5.1', '5.5']
+default_version: '5.5'
 max_db_size: 20
 max_long_query: 3
 max_long_tx: 30
@@ -25,8 +25,15 @@ mysql:
     port: 3306
     user: root
     pass: root
-    mysqldump_bin: mysqldump
-    mysql_bin: mysql
+    mysqldump_bin: /var/vcap/packages/mysql/bin/mysqldump
+    mysql_bin: /var/vcap/packages/mysql/bin/mysql
+  '5.5':
+    host: localhost
+    port: 3307
+    user: root
+    pass: root
+    mysqldump_bin: /var/vcap/packages/mysql55/bin/mysqldump
+    mysql_bin: /var/vcap/packages/mysql55/bin/mysql
 connection_pool_size:
   min: 5
   max: 10
