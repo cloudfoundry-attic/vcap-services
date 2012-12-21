@@ -2,22 +2,25 @@ $:.unshift(File.dirname(__FILE__))
 require_relative "../spec_helper"
 require_relative "mocks"
 require_relative "../do"
+require_relative "../../lib/marketplaces/appdirect/appdirect_marketplace"
 require_relative "../../lib/marketplaces/appdirect/appdirect_helper"
 require_relative "../../lib/marketplaces/appdirect/appdirect_error"
 
 require "fiber"
 
-describe VCAP::Services::Marketplace::Appdirect::AppdirectHelper do
+describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
 
   include Do
 
   before :all do
-    @config = load_appdirect_config
+    @config = load_config("appdirect")
     @logger = @config[:logger]
     @config[:appdirect][:endpoint] = Mocks.get_endpoint
     @config[:offering_whitelist] = ["mongolab_dev", "mongolab", "asms_dev", "james_dev"]
 
-    @appdirect = VCAP::Services::Marketplace::Appdirect::AppdirectHelper.new(@config, @logger)
+    @config[:test_mode] = true # this way we'll use Net::Http rather than OAuthConsumer
+
+    @appdirect = VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace.new(@config)
   end
 
   it "get_catalog should get Activity Streams in the catalog" do
@@ -29,7 +32,7 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectHelper do
           @catalog = @appdirect.get_catalog
           @catalog.should_not be_nil
           @catalog.keys.count.should == 4
-          @catalog["asms_dev-1.0"]["name"].should == "Activity Streams"
+          @catalog["asms_dev-1.0"]["description"].should == "Activity Streams Engine"
         end
         f.resume
       }
@@ -42,25 +45,30 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectHelper do
       mep = nil
       Do.at(0) { mep = Mocks.create_mock_endpoint("mongolab/") }
       Do.at(1) {
-        req = load_fixture("mongolab/#{VCAP::Services::Marketplace::Appdirect::AppdirectHelper::SERVICES_PATH}/post_request.json")
+        fixture_file_name = "mongolab/#{VCAP::Services::Marketplace::Appdirect::AppdirectHelper::SERVICES_PATH}/post_request.json"
+        fixture = JSON.parse(Mocks.load_fixture(fixture_file_name))
+        provision_req = Yajl::Encoder.encode({
+          :label => "#{fixture["offering"]["id"]}-#{fixture["offering"]["version"]}",
+          :plan => fixture["configuration"]["plan"],
+          :name => fixture["configuration"]["name"],
+          :version => fixture["offering"]["version"],
+          :email => fixture["user"]["email"]
+        })
+
         f = Fiber.new do
-          puts "Posting#{req.inspect}"
-          receipt = @appdirect.purchase_service(req)
+          puts "Posting: #{provision_req.inspect}"
+          receipt = @appdirect.provision_service(provision_req)
           receipt.should_not be_nil
-          receipt["offering"]["id"].should ==  "mongolab_dev"
-          receipt["uuid"].should_not be_nil
-          @order_id = receipt["uuid"]
-          receipt["id"].should_not be_nil
+          receipt[:configuration][:name].should == fixture["configuration"]["name"]
+          receipt[:service_id].should_not be_nil
+          @order_id = receipt[:service_id]
 
           puts "Now binding the service"
-
-          req = {}
-          receipt = @appdirect.bind_service(req, @order_id)
-          puts "Got resp #{receipt.inspect}"
+          receipt = @appdirect.bind_service_instance(@order_id, {})
           receipt.should_not be_nil
-          receipt["uuid"].should_not be_nil
-          @binding_id = receipt["uuid"]
-          receipt["credentials"].should_not be_nil
+          receipt[:service_id].should_not be_nil
+          @binding_id = receipt[:service_id]
+          receipt[:credentials].should_not be_nil
 
           puts "Now unbinding service - binding_id: #{@binding_id}"
 
@@ -68,7 +76,7 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectHelper do
           unbind_receipt.should be_true
 
           puts "Now cancelling the service"
-          @cancel_receipt = @appdirect.cancel_service(@order_id)
+          @cancel_receipt = @appdirect.unprovision_service(@order_id)
           @cancel_receipt.should be_true
         end
         f.resume

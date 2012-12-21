@@ -12,6 +12,11 @@ class Mocks
     mep
   end
 
+  def self.load_fixture(filename, resp = '{}')
+    puts "Loading fixture: #{File.dirname(__FILE__)}/fixtures/#{filename}"
+    File.read("#{File.dirname(__FILE__)}/fixtures/#{filename}") rescue resp
+  end
+
   class MockEndpoint
     def initialize(scenario)
       @server = Thin::Server.new("#{HOST}", PORT, Handler.new(scenario))

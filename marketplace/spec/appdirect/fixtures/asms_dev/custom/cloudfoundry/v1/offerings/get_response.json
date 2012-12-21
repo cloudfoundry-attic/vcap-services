@@ -1,8 +1,7 @@
 [
     {
-        "id":"mongolab_dev",
+        "name":"mongolab_dev",
         "version":"2.0",
-        "name":"MongoLab",
         "description":"Cloud hosted and managed MongoDB",
         "plans":[
             {
@@ -20,9 +19,8 @@
         "active":true
     },
     {
-        "id":"mongolab",
+        "name":"mongolab",
         "version":"2.0",
-        "name":"MongoLab",
         "description":"Cloud hosted and managed MongoDB",
         "plans":[
             {
@@ -40,9 +38,8 @@
         "active":true
     },
     {
-        "id":"asms_dev",
+        "name":"asms_dev",
         "version":"1.0",
-        "name":"Activity Streams",
         "description":"Activity Streams Engine",
         "plans":[
             {
@@ -60,9 +57,8 @@
         "active":true
     },
     {
-        "id":"james_dev",
+        "name":"james_dev",
         "version":"0.1",
-        "name":"James",
         "description":"James",
         "plans":[
             {

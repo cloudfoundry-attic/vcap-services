@@ -1,6 +1,7 @@
 # Copyright (c) 2009-2012 VMware, Inc.
 require 'fiber'
 require 'service_error'
+require_relative 'appdirect_helper'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'base/marketplace_base'
@@ -44,17 +45,35 @@ module VCAP
             catalog = {}
             appdirect_catalog.each { |s|
               name, provider = load_mapped_name_and_provider(s["name"], s["vendor"])
+              version = s["version"] || "1.0" # UNTIL AD fixes this...
+              key = key_for_service(name, version, provider)
 
-              # Mutate / Duplicate the offering keys for uniformity with ccdb keys
-              s["id"]       = s["name"]
-              s["info_url"] = s["infoUrl"]
-              s["provider"] = provider
+              # Setup acls
+              # TODO: Use per service offering acls
+              acls = @acls
 
-              s["version"] ||= "1.0"   # UNTIL AD fixes this...
-              key = key_for_service(name, s["version"], provider)
-              catalog[key] = s
+              # Setup plans
+              plans = {}
+              if s["plans"] and s["plans"].count > 0
+                s["plans"].each do |plan|
+                  plans[plan["id"]] = plan["description"]
+                end
+              end
+
+              # Finally, generate the catalog entry
+              catalog[key] = {
+                "id"          => name,
+                "version"     => version,
+                "description" => s["description"],
+                "info_url"    => s["infoUrl"],
+                "plans"       => plans,
+                "provider"    => provider,
+                "acls"        => acls,
+                "url"         => @external_uri,
+                "timeout"     => @node_timeout,
+                "tags"        => [], # unused in ccng, in cc a non-null value to allow tags clone during bind
+              }
             }
-
             catalog
           end
 
@@ -72,38 +91,6 @@ module VCAP
             [svc_label, svc_provider]
           end
 
-          def generate_cc_advertise_request(ad_svc_offering, active = true)
-            raise "Unsupported"
-          end
-
-          def generate_ccng_advertise_request(ad_svc_offering, active = true)
-            # service name can be in id (if ad_svc_offering is from marketplace) or label (if ad_svc_offering is from ccdb)
-            # See marketplace/lib/base/marketplace_async_gateway_v2.rb:- advertise_services
-
-            label = ad_svc_offering["id"] || ad_svc_offering["label"]
-
-            req = {}
-            req[:label]       = label
-            req[:version]     = ad_svc_offering["version"]
-            req[:description] = ad_svc_offering["description"]
-            req[:info_url]    = ad_svc_offering["info_url"]
-            req[:provider]    = ad_svc_offering["provider"]
-
-            req[:active] = active
-
-            req[:url]     = @external_uri
-            req[:acls]    = @acls
-            req[:timeout] = @node_timeout
-
-            # Setup plans
-            plans = {}
-            ad_svc_offering["plans"].each do |plan|
-              plans[plan["id"]] = { "name" => plan["id"], "description" => plan["description"] }
-            end
-
-            [ req, plans ]
-          end
-
           def offering_disabled?(id, offerings_list)
             # Translate service name if a custom mapping was defined
             id = @service_id_map[id] if @service_id_map.keys.include?(id)
@@ -113,6 +100,8 @@ module VCAP
             !(offerings_list.include?(id))
           end
 
+          ##### Handle the 4 operations #####
+
           def provision_service(request_body)
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
             id,version = request.label.split("-")
@@ -121,7 +110,7 @@ module VCAP
 
             order = {
               "user" => {
-                "uuid" => request.email, # TODO: replace with actual UUID from ccng
+                "uuid" => nil, # TODO: replace with actual UUID from ccng
                 "email" => request.email
               },
               "offering" => {
@@ -151,14 +140,13 @@ module VCAP
             @helper.cancel_service(service_id)
           end
 
-          def bind_service_instance(service_id, request)
-            order = {
-              "options" => request.binding_options
-            }
+          def bind_service_instance(service_id, binding_options)
+            order = { "options" => binding_options }
+
             resp = @helper.bind_service(order, service_id)
             @logger.debug("Bind response from AppDirect: #{resp.inspect}")
             {
-              :configuration => {:data => {:binding_options => request.binding_options}},
+              :configuration => {:data => {:binding_options => binding_options}},
               :credentials => resp["credentials"],
               :service_id => resp["uuid"],  #Important this is the binding_id
             }
