@@ -88,7 +88,11 @@ module VCAP::Services::Mysql::WithoutWarden
   end
 
   def extra_size_per_db(connection, dbs_size)
-    system_and_extra_size(connection, dbs_size) / @max_capacity
+    avg_factor = @max_capacity
+    @capacity_lock.synchronize do
+       avg_factor -= @capacity if @capacity < 0
+    end
+    system_and_extra_size(connection, dbs_size) / avg_factor
   end
 
   #override new_port to make it do nothing

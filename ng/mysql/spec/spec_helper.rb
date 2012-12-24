@@ -118,6 +118,7 @@ def getNodeTestConfig()
     # hard code unit test directories of mysql unit test to /tmp
     :base_dir => File.join(spec_tmp_dir, "data"),
     :local_db => File.join("sqlite3:", spec_tmp_dir, "mysql_node.db"),
+    :disabled_file => File.join(spec_tmp_dir, "DISABLED"),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)
