@@ -6,7 +6,7 @@ service:
   description: 'OAuth2 service'
   plans: ['free']
   default_plan: 'free'
-  tags: ['oauth2','uaa']
+  tags: ['oauth2', 'uaa']
   timeout: 60
   supported_versions: ["1.0"]
   version_aliases:
