@@ -54,6 +54,7 @@ class VCAP::Services::Rabbit::Node
     # Default value is 2 seconds.
     @rabbitmq_timeout = @options[:rabbitmq_timeout] || 2
     @service_start_timeout = @options[:service_start_timeout] || 5
+    @service_parallel_start_timeout = @options[:service_parallel_start_timeout] || 10
     @instance_parallel_start_count = 3
     @default_permissions = '{"configure":".*","write":".*","read":".*"}'
     options[:initial_username] = @initial_username = "guest"
@@ -63,7 +64,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def pre_send_announcement
-    start_all_instances
+    start_all_instances(@service_parallel_start_timeout)
     @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
     warden_node_init(@options)
   end
@@ -318,7 +319,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def get_admin_port(port)
-    port + 10000
+    @rabbitmq_admin_port
   end
 
   def get_instance(name)
@@ -369,7 +370,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       instance = get(credentials["name"]) if credentials
       instance = new if instance == nil
       instance.port = port
-      instance.admin_port = port
+      instance.admin_port = admin_port
       instance.version = (version || options[:default_version]).to_s
       instance.proxy_pid = 0
       if credentials
@@ -391,7 +392,6 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
       # Generate configuration
       port = @@options[:service_port]
-      admin_port = @@options[:service_admin_port]
       vm_memory_high_watermark = @@options[:vm_memory_high_watermark]
       # In RabbitMQ, If the file_handles_high_watermark is x, then the socket limitation is trunc(x * 0.9) - 2,
       # to let the @max_clients be a more accurate limitation,
@@ -406,9 +406,9 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
         Open3.capture3("umount #{instance.base_dir}") if File.exist?(instance.base_dir)
       rescue => e
       end
-      FileUtils.rm_rf(instance.base_dir)
-      FileUtils.rm_rf(instance.log_dir)
-      FileUtils.rm_rf(instance.image_file)
+      [instance.base_dir, instance.log_dir, instance.image_file].each do |f| 
+        FileUtils.rm_rf(f)
+      end
       instance.prepare_filesystem(max_disk)
       FileUtils.mkdir_p(instance.config_dir)
       FileUtils.mkdir_p(instance.log_dir)
