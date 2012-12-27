@@ -647,7 +647,6 @@ class VCAP::Services::MongoDB::Node
       FileUtils.rm_f(config_path)
       File.open(config_path, "w") {|f| f.write(config)}
 
-      @logger.debug("Mongo Executable: #{executable}, Options: #{options}")
       cmd = "#{executable} #{options} -f #{config_path}"
 
       close_fds

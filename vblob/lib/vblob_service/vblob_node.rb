@@ -286,10 +286,8 @@ class VCAP::Services::VBlob::Node
       @logger.debug("vblob pid:#{provisioned_service.pid} terminated")
       return_port(provisioned_service.port)
       pid = Process.fork do
-        @logger.debug("started to remove vblob instance #{instance_name} log and data directory")
         FileUtils.rm_rf(dir)
         FileUtils.rm_rf(log_dir)
-        @logger.debug("vblob instance #{instance_name} log and data directory removed")
       end
       Process.detach(pid) if pid
     else
