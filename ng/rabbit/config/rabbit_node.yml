@@ -41,8 +41,3 @@ max_disk: 128
 image_dir: /var/vcap/services/rabbit/rabbitmq_image
 vm_memory_high_watermark: 0.00474
 bandwidth_per_second: 0.09
-bandwidth_proxy:
-  bin: /var/vcap/packages/bandwidth_proxy/bin/bandwidth_proxy
-  # Set default window to 1 day
-  window: 86400
-  size: 2

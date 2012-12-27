@@ -49,7 +49,6 @@ def getNodeTestConfig
     config_file = File.join(config_base_dir, "rabbitmq_node.yml")
   end
   config = YAML.load_file(config_file)
-  proxy_config = parse_property(config, "bandwidth_proxy", Hash)
   options = {
     # micellaneous configs
     :logger     => getLogger,
@@ -71,12 +70,7 @@ def getNodeTestConfig
     :max_clients              => parse_property(config, "max_clients", Integer, :optional => true),
     :service_start_timeout    => parse_property(config, "service_start_timeout", Integer, :optional => true),
     :vm_memory_high_watermark => parse_property(config, "vm_memory_high_watermark", Float, :optional => true),
-
-    # proxy related config
-    :proxy_bin            => parse_property(proxy_config, "bin", String),
-    :proxy_window         => parse_property(proxy_config, "window", Integer),
-    :proxy_limit          => parse_property(proxy_config, "size", Integer),
-    :bandwidth_per_second => parse_property(config, "bandwidth_per_second", Float),
+    :bandwidth_per_second     => parse_property(config, "bandwidth_per_second", Float),
 
     # hardcode unit test related directories to /tmp dir
     :base_dir        => "/tmp/rabbitmq_instances",
