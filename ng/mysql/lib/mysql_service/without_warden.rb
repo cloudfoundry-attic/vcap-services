@@ -63,27 +63,16 @@ module VCAP::Services::Mysql::WithoutWarden
     @mysql_configs[provisioned_service.version]["port"]
   end
 
-  def each_pool
-    @supported_versions.each do |version|
-      yield @pools[version]
-    end
-  end
-
-  def each_pool_with_key
+  def each_pool_with_identifier
     @supported_versions.each do |version|
       yield @pools[version], version
     end
   end
 
-  def each_connection_with_port
-    @supported_versions.each do |version|
-      @pools[version].with_connection { |conn| yield conn, @mysql_configs[version]["port"] }
-    end
-  end
-
-  def each_connection_with_key
-    @supported_versions.each do |version|
-      @pools[version].with_connection { |conn| yield conn, version } #version as key
+  def extract_attr(identifier, attribute) #identifier is version
+    case attribute
+    when :port then @mysql_configs[identifier]["port"]
+    when :key  then identifier
     end
   end
 
