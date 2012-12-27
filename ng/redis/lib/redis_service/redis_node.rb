@@ -137,7 +137,7 @@ class VCAP::Services::Redis::Node
   end
 
   def varz_details
-    varz = {}
+    varz = super
     varz[:max_capacity] = @max_capacity
     varz[:available_capacity] = @capacity
     varz[:provisioned_instances] = []

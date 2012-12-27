@@ -171,7 +171,7 @@ class VCAP::Services::Rabbit::Node
   end
 
   def varz_details
-    varz = {}
+    varz = super
     varz[:provisioned_instances] = []
     varz[:provisioned_instances_num] = 0
     varz[:max_capacity] = @max_capacity

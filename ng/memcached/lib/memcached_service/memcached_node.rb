@@ -221,7 +221,7 @@ class VCAP::Services::Memcached::Node
   end
 
   def varz_details
-    varz = {}
+    varz = super
     varz[:provisioned_instances_num] = 0
     varz[:max_instances_num] = @options[:capacity] / capacity_unit
 

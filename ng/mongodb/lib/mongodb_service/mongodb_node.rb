@@ -290,6 +290,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def varz_details
+    varz = super
     # Do disk summary
     du_hash = {}
     du_all_out = `cd #{@base_dir}; du -sk * 2> /dev/null`
@@ -320,13 +321,13 @@ class VCAP::Services::MongoDB::Node
       @logger.error("Error get instance list: #{e}")
     end
 
-    {
+    varz.merge!({
       :running_services     => stats,
       :disk                 => du_hash,
       :max_capacity         => @max_capacity,
       :available_capacity   => @capacity,
       :instances            => provisioned_instances
-    }
+    })
   end
 end
 

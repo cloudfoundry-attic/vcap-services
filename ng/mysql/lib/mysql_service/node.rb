@@ -43,17 +43,12 @@ class VCAP::Services::Mysql::Node
     @use_warden = false unless @use_warden === true
     if @use_warden
       require "mysql_service/with_warden"
-      class << self
-        include VCAP::Services::Mysql::WithWarden
-        include VCAP::Services::Base::Utils
-        include VCAP::Services::Base::Warden::NodeUtils
-        def service_instances
-          mysqlProvisionedService.all
-        end
-      end
+      self.class.send(:include, VCAP::Services::Mysql::WithWarden)
+      self.class.send(:include, VCAP::Services::Base::Utils)
+      self.class.send(:include, VCAP::Services::Base::Warden::NodeUtils)
     else
       require "mysql_service/without_warden"
-      class << self; include VCAP::Services::Mysql::WithoutWarden; end
+      self.class.send(:include, VCAP::Services::Mysql::WithoutWarden)
     end
 
     init_internal(options)
@@ -89,6 +84,10 @@ class VCAP::Services::Mysql::Node
     Mysql2::Client.logger = @logger
     @supported_versions = options[:supported_versions]
     mysqlProvisionedService.init(options)
+  end
+
+  def service_instances
+    mysqlProvisionedService.all
   end
 
   def pre_send_announcement
@@ -622,8 +621,8 @@ class VCAP::Services::Mysql::Node
     return [o, e, s]
   end
 
-  def varz_details()
-    varz = {}
+  def varz_details
+    varz = super
     # how many queries served since startup
     varz[:queries_since_startup] = get_queries_status
     # queries per second

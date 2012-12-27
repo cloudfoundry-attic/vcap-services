@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: dcba6b3ddc444b0eff1b5ae24d140744e068bfa1
-  ref: dcba6b3
+  revision: 1b08b0c4eb2f2b89d1091c5cf8d9c52624926557
+  ref: 1b08b0c4eb
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -74,7 +74,7 @@ GEM
     bcrypt-ruby (2.1.4)
     beefcake (0.3.7)
     builder (3.0.0)
-    cf-uaa-lib (1.3.1)
+    cf-uaa-lib (1.3.3)
       multi_json
     ci_reporter (1.6.9)
       builder (>= 2.1.2)

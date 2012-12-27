@@ -14,7 +14,7 @@ module VCAP::Services::Postgresql::WithoutWarden
   include VCAP::Services::Postgresql::Util
 
   def self.included(base)
-    unless base.is_a? VCAP::Services::Postgresql::Node
+    unless base == VCAP::Services::Postgresql::Node
       raise "WithoutWarden should be included in a Node instance"
     end
   end
@@ -400,4 +400,4 @@ module VCAP::Services::Postgresql::WithoutWarden
     true
   end
 
- end
+end
