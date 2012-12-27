@@ -280,6 +280,7 @@ describe VCAP::Services::Rabbit::Node do
       @binding_credentials_list.each do |credentials|
         credentials["port"] = new_port
       end
+      sleep 2 # Wait old instance folder to be deleted
       @node.import_instance(@instance_credentials, @binding_credentials_map, @dump_dir, :free)
       @instance = @node.get_instance(@instance_credentials["name"])
       credentials_list = @node.update_instance(@instance_credentials, @binding_credentials_map)
