@@ -1,7 +1,7 @@
 package main
 
 import (
-	"daylimit_ng/daylimit_ng"
+	"daylimit/daylimit"
 	"flag"
 	"fmt"
 	"os"
@@ -25,7 +25,7 @@ type serviceCheckPoint struct {
 var items map[string]*serviceCheckPoint = make(map[string]*serviceCheckPoint)
 
 var configFile string
-var warden *daylimit_ng.Warden
+var warden *daylimit.Warden
 
 func SizeCheck(id string, size int64) {
 	ckInfo, ok := items[id]
@@ -39,7 +39,7 @@ func SizeCheck(id string, size int64) {
 		ckInfo = items[id]
 	}
 	ckInfo.Size = size
-	config := daylimit_ng.Config()
+	config := daylimit.Config()
 	if time.Since(ckInfo.LastCheck) > time.Duration(config.LimitWindow)*time.Second {
 		tw := time.Duration(config.LimitWindow)
 		ckInfo.LastSize = ckInfo.Size
@@ -47,9 +47,9 @@ func SizeCheck(id string, size int64) {
 		if ckInfo.Status == BLOCK {
 			// Unblock connection
 			if ok := warden.Unblock(ckInfo.Id); ok {
-				daylimit_ng.Logger().Infof("Unblock container [%s]", ckInfo.Id)
+				daylimit.Logger().Infof("Unblock container [%s]", ckInfo.Id)
 			} else {
-				daylimit_ng.Logger().Errorf("Unblock container failed [%s]", ckInfo.Id)
+				daylimit.Logger().Errorf("Unblock container failed [%s]", ckInfo.Id)
 			}
 			ckInfo.Status = UNBLOCK
 		}
@@ -57,20 +57,20 @@ func SizeCheck(id string, size int64) {
 		// Block connection
 		ckInfo.Status = BLOCK
 		if ok := warden.Block(ckInfo.Id); ok {
-			daylimit_ng.Logger().Infof("Block container [%s]", ckInfo.Id)
+			daylimit.Logger().Infof("Block container [%s]", ckInfo.Id)
 		} else {
-			daylimit_ng.Logger().Errorf("Block container failed [%s]", ckInfo.Id)
+			daylimit.Logger().Errorf("Block container failed [%s]", ckInfo.Id)
 		}
 	}
 }
 
 func runDaemon() {
 	var errNum int8
-	ticker := time.Tick(time.Duration(daylimit_ng.Config().FetchInteval) * time.Second)
+	ticker := time.Tick(time.Duration(daylimit.Config().FetchInteval) * time.Second)
 	for _ = range ticker {
-		info, err := daylimit_ng.GetList()
+		info, err := daylimit.GetList()
 		if err != nil {
-			daylimit_ng.Logger().Errorf("Get throughput size error:[%s]", err)
+			daylimit.Logger().Errorf("Get throughput size error:[%s]", err)
 			errNum++
 			if errNum >= MAXERR {
 				os.Exit(2)
@@ -98,11 +98,11 @@ func main() {
 		flag.Usage()
 	}
 
-	if err := daylimit_ng.LoadConfig(configFile); err != nil {
+	if err := daylimit.LoadConfig(configFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Load config file error: %s", err)
 		os.Exit(2)
 	}
-	config := daylimit_ng.Config()
+	config := daylimit.Config()
 
 	if f, err := os.Open(config.WardenBin); err != nil {
 		fmt.Fprintf(os.Stderr, "Open warden bin file error: %s", err)
@@ -111,7 +111,7 @@ func main() {
 		f.Close()
 	}
 
-	warden = &daylimit_ng.Warden{
+	warden = &daylimit.Warden{
 		Bin:          config.WardenBin,
 		BlockRate:    config.BlockRate,
 		BlockBurst:   config.BlockRate,
@@ -119,6 +119,6 @@ func main() {
 		UnblockBurst: config.UnblockRate,
 	}
 
-	daylimit_ng.InitLog(config.LogFile)
+	daylimit.InitLog(config.LogFile)
 	runDaemon()
 }

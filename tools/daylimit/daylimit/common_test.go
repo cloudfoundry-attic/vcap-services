@@ -1,4 +1,4 @@
-package daylimit_ng
+package daylimit
 
 import (
 	. "launchpad.net/gocheck"
