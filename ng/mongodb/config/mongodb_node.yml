@@ -19,7 +19,7 @@ pid: /var/vcap/sys/run/mongodb_node.pid
 node_id: mongodb_node_free_1
 
 supported_versions: ["1.8", "2.0", "2.2"]
-default_version: "2.0"
+default_version: "2.2"
 
 mongod_path:
   "1.8": "/var/vcap/packages/mongodb18/bin/mongod"
