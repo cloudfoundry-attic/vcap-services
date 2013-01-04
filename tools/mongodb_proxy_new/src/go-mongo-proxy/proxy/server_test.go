@@ -21,7 +21,7 @@ func initTestConfig() {
 	config.MONGODB.USER = "admin"
 	config.MONGODB.PASS = "123456"
 
-	config.FILTER.BASE_DIR = "/store/instance/data/"
+	config.FILTER.BASE_DIR = "/mnt/appcloud/data1"
 	config.FILTER.QUOTA_FILES = 4
 	config.FILTER.QUOTA_DATA_SIZE = 240
 	config.FILTER.ENABLED = true
@@ -70,7 +70,7 @@ func TestMongodbDataOps(t *testing.T) {
 	} else {
 		defer session.Close()
 
-		db := session.DB("admin")
+		db := session.DB(config.MONGODB.DBNAME)
 		err = db.Login(config.MONGODB.USER, config.MONGODB.PASS)
 		if err != nil {
 			t.Error("Failed to login database admin as %s:%s: [%s].",

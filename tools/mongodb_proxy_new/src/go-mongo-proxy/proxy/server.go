@@ -1,8 +1,11 @@
 package proxy
 
 import (
-	"flag"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 import l4g "github.com/moovweb/log4go"
 
@@ -21,24 +24,13 @@ type ProxyConfig struct {
 }
 
 var logger l4g.Logger
+var sighnd chan os.Signal
 
 func startProxyServer(conf *ProxyConfig) error {
-	proxyaddrstr := flag.String("proxy listen address", conf.HOST+":"+conf.PORT, "host:port")
-	mongoaddrstr := flag.String("mongo listen address", conf.MONGODB.HOST+":"+conf.MONGODB.PORT, "host:port")
+	proxyaddrstr := conf.HOST + ":" + conf.PORT
+	mongoaddrstr := conf.MONGODB.HOST + ":" + conf.MONGODB.PORT
 
-	proxyaddr, err := net.ResolveTCPAddr("tcp", *proxyaddrstr)
-	if err != nil {
-		logger.Error("TCP addr resolve error: [%v].", err)
-		return err
-	}
-
-	mongoaddr, err := net.ResolveTCPAddr("tcp", *mongoaddrstr)
-	if err != nil {
-		logger.Error("TCP addr resolve error: [%v].", err)
-		return err
-	}
-
-	proxyfd, err := net.ListenTCP("tcp", proxyaddr)
+	proxyfd, err := net.Listen("tcp", proxyaddrstr)
 	if err != nil {
 		logger.Error("TCP server listen error: [%v].", err)
 		return err
@@ -46,31 +38,88 @@ func startProxyServer(conf *ProxyConfig) error {
 
 	filter := NewFilter(&conf.FILTER, &conf.MONGODB)
 	if filter.FilterEnabled() {
-		go filter.StorageMonitor()
+		go filter.StartStorageMonitor()
 	}
+
+	manager := NewSessionManager()
+
+	setupSignal()
 
 	logger.Info("Start proxy server.")
 
 	for {
-		clientconn, err := proxyfd.AcceptTCP()
-		if err != nil {
+		select {
+		case <-sighnd:
+			goto Exit
+		default:
+		}
+
+		// Golang does not provide 'Timeout' IO function, so we
+		// make it on our own.
+		clientconn, err := asyncAcceptTCP(proxyfd, time.Second)
+		if err == ErrTimeout {
+			continue
+		} else if err != nil {
 			logger.Error("TCP server accept error: [%v].", err)
 			continue
 		}
 
-		serverconn, err := net.DialTCP("tcp", nil, mongoaddr)
+		// If we cannot connect to backend mongodb instance within 5 seconds,
+		// then we disconnect with client.
+		serverconn, err := net.DialTimeout("tcp", mongoaddrstr, time.Second*5)
 		if err != nil {
 			logger.Error("TCP connect error: [%v].", err)
 			clientconn.Close()
 			continue
 		}
 
-		session := NewSession(clientconn, serverconn, filter)
+		session := manager.NewSession(clientconn, serverconn, filter)
 		go session.Process()
 	}
 
+Exit:
 	logger.Info("Stop proxy server.")
+	manager.WaitAllFinish()
+	filter.WaitForFinish()
 	return nil
+}
+
+type tcpconn struct {
+	err error
+	fd  net.Conn
+}
+
+var asynctcpconn chan tcpconn
+
+func asyncAcceptTCP(serverfd net.Listener, timeout time.Duration) (net.Conn, error) {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+
+	if asynctcpconn == nil {
+		asynctcpconn = make(chan tcpconn, 1)
+		go func() {
+			connfd, err := serverfd.Accept()
+			if err != nil {
+				asynctcpconn <- tcpconn{err, nil}
+			} else {
+				asynctcpconn <- tcpconn{nil, connfd}
+			}
+		}()
+	}
+
+	select {
+	case p := <-asynctcpconn:
+		asynctcpconn = nil
+		return p.fd, p.err
+	case <-t.C:
+		return nil, ErrTimeout
+	}
+	panic("Oops, unreachable")
+}
+
+func setupSignal() {
+	sighnd = make(chan os.Signal, 1)
+	signal.Notify(sighnd, syscall.SIGTERM)
 }
 
 func Start(conf *ProxyConfig, log l4g.Logger) error {
