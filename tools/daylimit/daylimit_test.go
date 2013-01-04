@@ -1,7 +1,7 @@
 package main
 
 import (
-	"daylimit_ng/daylimit_ng"
+	"daylimit/daylimit"
 	. "launchpad.net/gocheck"
 	"testing"
 	"time"
@@ -14,10 +14,10 @@ var _ = Suite(&MainSuite{})
 func Test(t *testing.T) { TestingT(t) }
 
 func (ms *MainSuite) TestSizeCheck(c *C) {
-	daylimit_ng.LoadConfig("./config/config.yml")
-	config := daylimit_ng.Config()
-	daylimit_ng.InitLog("")
-	warden = &daylimit_ng.Warden{
+	daylimit.LoadConfig("./config/config.yml")
+	config := daylimit.Config()
+	daylimit.InitLog("")
+	warden = &daylimit.Warden{
 		Bin:          config.WardenBin,
 		BlockRate:    config.BlockRate,
 		BlockBurst:   config.BlockRate,
