@@ -34,6 +34,8 @@ class VCAP::Services::Rabbit::Node
   include VCAP::Services::Base::Utils
   include VCAP::Services::Base::Warden::NodeUtils
 
+  attr_reader :service_admin_port
+
   def initialize(options)
     super(options)
     init_ports(options[:port_range])
@@ -49,7 +51,7 @@ class VCAP::Services::Rabbit::Node
     options[:proxy_limit] ||= 1
     # Configuration used in warden
     @rabbitmq_port = options[:service_port] = 10001
-    @rabbitmq_admin_port = options[:service_admin_port] = 20001
+    @service_admin_port = options[:service_admin_port] = 20001
     # Timeout for redis client operations, node cannot be blocked on any redis instances.
     # Default value is 2 seconds.
     @rabbitmq_timeout = @options[:rabbitmq_timeout] || 2
@@ -96,10 +98,10 @@ class VCAP::Services::Rabbit::Node
 
     if credentials
       port = new_port(credentials["port"])
-      instance = ProvisionedService.create(port, get_admin_port(port), plan, credentials, version)
+      instance = ProvisionedService.create(port, get_external_admin_port(port), plan, credentials, version)
     else
       port = new_port
-      instance = ProvisionedService.create(port, get_admin_port(port), plan, nil, version)
+      instance = ProvisionedService.create(port, get_external_admin_port(port), plan, nil, version)
     end
     instance.run do
       # Use initial credentials to create provision user
@@ -318,8 +320,8 @@ class VCAP::Services::Rabbit::Node
     }
   end
 
-  def get_admin_port(port)
-    @rabbitmq_admin_port
+  def get_external_admin_port(port)
+    port + 10000
   end
 
   def get_instance(name)
@@ -357,20 +359,13 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
   class << self
 
-    def init(options)
-      super
-      @service_admin_port = @@options[:service_admin_port]
-    end
-
-    attr_reader :service_admin_port
-
-    def create(port, admin_port, plan=nil, credentials=nil, version=nil)
+    def create(port, external_admin_port, plan=nil, credentials=nil, version=nil)
       raise "Parameter missing" unless port && admin_port
       # The instance could be an old instance without warden support
       instance = get(credentials["name"]) if credentials
       instance = new if instance == nil
       instance.port = port
-      instance.admin_port = admin_port
+      instance.admin_port = external_admin_port
       instance.version = (version || options[:default_version]).to_s
       instance.proxy_pid = 0
       if credentials
@@ -392,6 +387,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
 
       # Generate configuration
       port = @@options[:service_port]
+      service_admin_port = @@options[:service_admin_port]
       vm_memory_high_watermark = @@options[:vm_memory_high_watermark]
       # In RabbitMQ, If the file_handles_high_watermark is x, then the socket limitation is trunc(x * 0.9) - 2,
       # to let the @max_clients be a more accurate limitation,
@@ -535,7 +531,7 @@ EOF
       # Regenerate the configuration, need change the port to service_admin_port
       config_file = File.join(config_dir, "rabbitmq.config")
       content = File.read(config_file)
-      content = content.gsub(/port, \d{5}/, "port, #{@@options[:service_admin_port]}")
+      content = content.gsub(/port, \d{5}/, "port, #{service_admin_port}")
       File.open(config_file, "w") {|f| f.write(content)}
     end
   end
@@ -543,6 +539,10 @@ EOF
   # diretory helper
   def config_dir
     File.join(base_dir, "config")
+  end
+
+  def service_admin_port
+    @@options[:service_admin_port]
   end
 
 end

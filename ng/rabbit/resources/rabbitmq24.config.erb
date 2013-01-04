@@ -1,4 +1,4 @@
 [
   {rabbit, [{vm_memory_high_watermark, <%= vm_memory_high_watermark %>}, {file_handles_high_watermark, <%= file_handles_high_watermark %>}, {msg_store_file_size_limit, 1048576}]},
-  {rabbit_mochiweb, [{port, <%= admin_port %>}]}
+  {rabbit_mochiweb, [{port, <%= service_admin_port %>}]}
 ].
