@@ -27,6 +27,7 @@ module VCAP
             testservice = {
               "id" => "testservice",
               "version" => "1.0",
+              "label" => "testservice-1.0",
               "name" => "My Test Service",
               "description" => "My test Service",
               "plans" => [ "D100", "free" ],
@@ -50,6 +51,7 @@ module VCAP
               fooservice = {
                 "id" => "fooservice",
                 "version" => "1.0",
+                "label" => "fooservice-1.0",
                 "name" => "Foo Service",
                 "description" => "Foo Service",
                 "plans" => [ "free" ],

@@ -25,7 +25,7 @@ This AppDirect Gateway acts as a proxy between the Cloud Controller and App Dire
 ``` bash
 
 $ bundle install
-$ rspec spec
+$ rake spec
 
 ```
 
