@@ -85,41 +85,20 @@ module VCAP::Services::Mysql::WithWarden
     end
   end
 
-  def each_pool
-    mysqlProvisionedService.all.each do |instance|
-      conn_pool = fetch_pool(instance.name)
-      next if conn_pool.nil?
-      yield conn_pool
-    end
-  end
-
-  def each_pool_with_key
+  def each_pool_with_identifier
     # we can't iterate using @pools.each because provision and unprovision
     # will change @pools. Changing @pools during @pools.each will cause an error
     mysqlProvisionedService.all.each do |instance|
       conn_pool = fetch_pool(instance.name)
       next if conn_pool.nil?
-      yield conn_pool, instance.name
+      yield conn_pool, instance
     end
   end
 
-  def each_connection_with_port(&blk)
-    each_connection_with_identifier(:port, &blk)
-  end
-
-  def each_connection_with_key(&blk)
-    each_connection_with_identifier(:name, &blk)
-  end
-
-  def each_connection_with_identifier(id)
-    mysqlProvisionedService.all.each do |instance|
-      conn_pool = fetch_pool(instance.name)
-      next if conn_pool.nil?
-      begin
-        conn_pool.with_connection { |conn| yield conn, instance.send(id) }
-      rescue => e
-        @logger.warn("with_connection failed: #{e}")
-      end
+  def extract_attr(identifier, attribute) #identifier is instance
+    case attribute
+    when :port then identifier.port
+    when :key  then identifier.name
     end
   end
 
