@@ -1,368 +1,260 @@
 package proxy
 
 import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
-	"labix.org/v2/mgo"
-	"labix.org/v2/mgo/bson"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strconv"
+	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
-
-const OP_UNKNOWN = 0
-const OP_REPLY = 1
-const OP_MSG = 1000
-const OP_UPDATE = 2001
-const OP_INSERT = 2002
-const RESERVED = 2003
-const OP_QUERY = 2004
-const OP_GETMORE = 2005
-const OP_DELETE = 2006
-const OP_KILL_CURSORS = 2007
-
-const STANDARD_HEADER_SIZE = 16
-const RESPONSE_HEADER_SIZE = 20
 
 const BLOCKED = 1
 const UNBLOCKED = 0
 
-type FilterAction struct {
-	base_dir        string // mongodb data base dir
-	quota_files     uint32 // quota file number
-	dbfiles         map[string]int
-	quota_data_size uint32    // megabytes
-	enabled         bool      // enable or not
-	dirty           chan bool // indicate whether write operation received
+const DIRTY_EVENT = 'd'
+const STOP_EVENT = 's'
+
+type FilterConfig struct {
+	BASE_DIR        string // mongo data base dir
+	QUOTA_FILES     uint32 // quota file number
+	QUOTA_DATA_SIZE uint32 // megabytes
+	ENABLED         bool   // enable or not, filter proxy or normal proxy
+}
+
+type ConnectionInfo struct {
+	HOST   string
+	PORT   string
+	DBNAME string
+	USER   string
+	PASS   string
+}
+
+type Filter interface {
+	FilterEnabled() bool
+	PassFilter(op_code int) bool
+	IsDirtyEvent(op_code int) bool
+	EnqueueDirtyEvent()
+	StartStorageMonitor()
+	WaitForFinish()
+}
+
+type ProxyFilterImpl struct {
 	// atomic value, use atomic wrapper function to operate on it
-	blocked uint32 // 0 means not block, 1 means block
+	mablocked uint32 // 0 means not block, 1 means block
+	mfblocked uint32 // 0 means not block, 1 means block
+
+	// event channel
+	data_size_channel  chan byte // DIRTY event, STOP event
+	file_count_channel chan byte // DIRTY event
+
+	config *FilterConfig
+	mongo  *ConnectionInfo
+
+	// goroutine wait channel
+	lock    sync.Mutex
+	running uint32
+	wait    chan byte
 }
 
-type IOFilterProtocol struct {
-	conn_info ConnectionInfo
-	action    FilterAction
-	shutdown  chan bool
+func NewFilter(conf *FilterConfig, conn *ConnectionInfo) *ProxyFilterImpl {
+	return &ProxyFilterImpl{
+		mablocked:          UNBLOCKED,
+		mfblocked:          UNBLOCKED,
+		data_size_channel:  make(chan byte, 100),
+		file_count_channel: make(chan byte, 1),
+		config:             conf,
+		mongo:              conn,
+		running:            0,
+		wait:               make(chan byte, 1)}
 }
 
-func NewIOFilterProtocol(conf *ProxyConfig) *IOFilterProtocol {
-	filter := &IOFilterProtocol{
-		conn_info: conf.MONGODB,
+func (filter *ProxyFilterImpl) FilterEnabled() bool {
+	return filter.config.ENABLED
+}
 
-		action: FilterAction{
-			base_dir:        conf.FILTER.BASE_DIR,
-			quota_files:     conf.FILTER.QUOTA_FILES,
-			dbfiles:         make(map[string]int),
-			quota_data_size: conf.FILTER.QUOTA_DATA_SIZE,
-			enabled:         conf.FILTER.ENABLED,
-			dirty:           make(chan bool, 100),
-			blocked:         UNBLOCKED},
+// If data size exceeds quota or disk files number exceeds quota,
+// then we block the client operations.
+func (filter *ProxyFilterImpl) PassFilter(op_code int) bool {
+	// When we read state of 'mfblockeded', the state of 'mablocked' may
+	// change from 'UNBLOCKED' to 'BLOCKED', so, our implementation only
+	// achieves soft limit not hard limit. Since we have over quota storage
+	// space settings, this is not a big issue.
+	return (op_code != OP_UPDATE && op_code != OP_INSERT) ||
+		(atomic.LoadUint32(&filter.mablocked) == UNBLOCKED &&
+			atomic.LoadUint32(&filter.mfblocked) == UNBLOCKED)
+}
 
-		shutdown: make(chan bool),
+func (filter *ProxyFilterImpl) IsDirtyEvent(op_code int) bool {
+	return op_code == OP_UPDATE || op_code == OP_INSERT ||
+		op_code == OP_DELETE
+}
+
+func (filter *ProxyFilterImpl) EnqueueDirtyEvent() {
+	filter.data_size_channel <- DIRTY_EVENT
+}
+
+func (filter *ProxyFilterImpl) StartStorageMonitor() {
+	go filter.MonitorQuotaDataSize()
+	go filter.MonitorQuotaFiles()
+}
+
+func (filter *ProxyFilterImpl) WaitForFinish() {
+	if filter.config.ENABLED {
+		filter.data_size_channel <- STOP_EVENT
+		filter.file_count_channel <- STOP_EVENT
+		<-filter.wait
+	}
+}
+
+// Data size monitor depends on output format of mongodb command, the format is
+// united in all of current supported versions, 1.8, 2.0 and 2.2. And we must
+// get the data size information from mongodb command interface.
+func (filter *ProxyFilterImpl) MonitorQuotaDataSize() {
+	dbhost := filter.mongo.HOST
+	port := filter.mongo.PORT
+	dbname := filter.mongo.DBNAME
+	user := filter.mongo.USER
+	pass := filter.mongo.PASS
+	quota_data_size := filter.config.QUOTA_DATA_SIZE
+
+	filter.lock.Lock()
+	filter.running++
+	filter.lock.Unlock()
+
+	var size float64
+	for {
+		event := <-filter.data_size_channel
+		if event == STOP_EVENT {
+			break
+		}
+
+		if err := startMongoSession(dbhost, port); err != nil {
+			logger.Error("Failed to connect to %s:%s, [%s].", dbhost, port, err)
+			goto Error
+		}
+
+		if !readMongodbSize(dbname, user, pass, &size) {
+			logger.Error("Failed to read database '%s' size.", dbname)
+			goto Error
+		}
+
+		if size >= float64(quota_data_size)*float64(1024*1024) {
+			logger.Critical("Data size exceeds quota.")
+			atomic.StoreUint32(&filter.mablocked, BLOCKED)
+		} else {
+			atomic.StoreUint32(&filter.mablocked, UNBLOCKED)
+		}
+
+		continue
+	Error:
+		atomic.StoreUint32(&filter.mablocked, BLOCKED)
 	}
 
-	return filter
-}
+	endMongoSession()
 
-func (f *IOFilterProtocol) DestroyFilter() {
-	f.action.dirty <- true
-	f.shutdown <- true
-}
-
-func (f *IOFilterProtocol) FilterEnabled() bool {
-	return f.action.enabled
-}
-
-func (f *IOFilterProtocol) PassFilter(op_code int32) (pass bool) {
-	return ((op_code != OP_UPDATE) && (op_code != OP_INSERT)) ||
-		(atomic.LoadUint32(&f.action.blocked) == UNBLOCKED)
-}
-
-func (f *IOFilterProtocol) HandleMsgHeader(stream []byte) (message_length,
-	op_code int32) {
-	if len(stream) < STANDARD_HEADER_SIZE {
-		return 0, OP_UNKNOWN
+	filter.lock.Lock()
+	filter.running--
+	if filter.running == 0 {
+		filter.wait <- STOP_EVENT
 	}
-
-	buf := bytes.NewBuffer(stream[0:4])
-	// Note that like BSON documents, all data in the mongo wire
-	// protocol is little-endian.
-	err := binary.Read(buf, binary.LittleEndian, &message_length)
-	if err != nil {
-		logger.Error("Failed to do binary read message_length [%s].", err)
-		return 0, OP_UNKNOWN
-	}
-
-	buf = bytes.NewBuffer(stream[12:16])
-	err = binary.Read(buf, binary.LittleEndian, &op_code)
-	if err != nil {
-		logger.Error("Failed to do binary read op_code [%s].", err)
-		return 0, OP_UNKNOWN
-	}
-
-	if op_code == OP_UPDATE ||
-		op_code == OP_INSERT ||
-		op_code == OP_DELETE {
-		f.action.dirty <- true
-	}
-	return message_length, op_code
+	filter.lock.Unlock()
 }
 
-func (f *IOFilterProtocol) MonitQuotaFiles() {
-	var buf []byte
-	var fd, wd int
+// Data file number monitor depends on mongodb disk file layout, the layout is
+// united in all of current supported versions, 1.8, 2.0 and 2.2.
+//
+// For example:
+//
+// Say base dir path is '/tmp/mongodb' and database name is 'db', then the disk
+// file layout would be, /tmp/mongodb/db.ns, /tmp/mongodb/db.0, /tmp/mongodb/db.1,
+// and /tmp/mongodb/db.2 ...
+func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
+	var fd, wd, nread int
+	var err error
+	buffer := make([]byte, 256)
+	dbfiles := make(map[string]int)
+	asyncops := NewAsyncOps()
 
-	conn_info := &f.conn_info
-	action := &f.action
+	dbname := filter.mongo.DBNAME
+	base_dir := filter.config.BASE_DIR
+	quota_files := filter.config.QUOTA_FILES
 
-	base_dir := action.base_dir
-	quota_files := action.quota_files
+	filter.lock.Lock()
+	filter.running++
+	filter.lock.Unlock()
+
 	filecount := 0
-
-	expr := "^" + conn_info.DBNAME + "\\.[0-9]+"
-	re, err := regexp.Compile(expr)
-	if err != nil {
-		logger.Error("Failed to compile regexp error: [%s].", err)
+	filecount = iterateDatafile(dbname, base_dir, dbfiles)
+	if filecount < 0 {
+		logger.Error("Failed to iterate data files under %s.", base_dir)
 		goto Error
 	}
 
-	filecount = iterate_dbfile(action, base_dir, re)
 	logger.Info("At the begining time we have disk files: [%d].", filecount)
-	if uint32(filecount) > quota_files {
+	if filecount > int(quota_files) {
 		logger.Critical("Disk files exceeds quota.")
-		atomic.StoreUint32(&action.blocked, BLOCKED)
+		atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 	}
 
+	// Golang does not recommend to invoke system call directly, but
+	// it does not contain any 'inotify' wrapper function
 	fd, err = syscall.InotifyInit()
 	if err != nil {
 		logger.Error("Failed to call InotifyInit: [%s].", err)
 		goto Error
 	}
 
-	wd, err = syscall.InotifyAddWatch(fd, base_dir, syscall.IN_CREATE|syscall.IN_OPEN|
-		syscall.IN_MOVED_TO|syscall.IN_DELETE)
+	wd, err = syscall.InotifyAddWatch(fd, base_dir, syscall.IN_CREATE|syscall.IN_MOVED_TO|syscall.IN_DELETE)
 	if err != nil {
 		logger.Error("Failed to call InotifyAddWatch: [%s].", err)
 		syscall.Close(fd)
 		goto Error
 	}
 
-	buf = make([]byte, 256)
-	for {
-		nread, err := syscall.Read(fd, buf)
-		if nread < 0 {
-			if err == syscall.EINTR {
-				break
-			} else {
-				logger.Error("Failed to read inotify event: [%s].", err)
-			}
-		} else {
-			err = parse_inotify_event(action, buf[0:nread], re, &filecount)
-			if err != nil {
-				logger.Error("Failed to parse inotify event.")
-				atomic.StoreUint32(&action.blocked, BLOCKED)
-			} else {
-				logger.Debug("Current db disk file number: [%d].", filecount)
-				if uint32(filecount) > quota_files {
-					logger.Critical("Disk files exceeds quota.")
-					atomic.StoreUint32(&action.blocked, BLOCKED)
-				} else {
-					atomic.CompareAndSwapUint32(&action.blocked, BLOCKED, UNBLOCKED)
-				}
-			}
-		}
-	}
-
-	syscall.InotifyRmWatch(fd, uint32(wd))
-	syscall.Close(fd)
-	return
-
-Error:
-	atomic.StoreUint32(&action.blocked, BLOCKED)
-}
-
-func (f *IOFilterProtocol) MonitQuotaDataSize() {
-	conn_info := &f.conn_info
-	action := &f.action
-
-	var dbsize float64
+	defer func() {
+		syscall.InotifyRmWatch(fd, uint32(wd))
+		syscall.Close(fd)
+	}()
 
 	for {
 		select {
-		case <-f.shutdown:
-			return
+		case event := <-filter.file_count_channel:
+			if event == STOP_EVENT {
+				goto Error
+			}
 		default:
 		}
 
-		// if dirty channel is empty then go routine will block
-		<-action.dirty
-		// featch all pending requests from the channel
-		for {
-			select {
-			case <-action.dirty:
+		nread, err = asyncops.AsyncRead(syscall.Read, fd, buffer, time.Second)
+		if err != nil {
+			if err == ErrTimeout {
 				continue
-			default:
-				// NOTE: here 'break' can not skip out of for loop
-				goto HandleQuotaDataSize
 			}
-		}
-
-	HandleQuotaDataSize:
-		// if 'blocked' flag is set then it indicates that disk file number
-		// exceeds the QuotaFile, then DataSize account is not necessary.
-		if atomic.LoadUint32(&f.action.blocked) == BLOCKED {
-			continue
-		}
-
-		logger.Debug("Recalculate data size after getting message from dirty channel.\n")
-
-		session, err := mgo.Dial(conn_info.HOST + ":" + conn_info.PORT)
-		if err != nil {
-			logger.Error("Failed to connect to %s:%s [%s].", conn_info.HOST,
-				conn_info.PORT, err)
-			session = nil
-			goto Error
-		}
-
-		dbsize = 0.0
-
-		if !read_mongodb_dbsize(f, &dbsize, session) {
-			goto Error
-		}
-
-		logger.Debug("Get current disk occupied size %v.", dbsize)
-		if dbsize >= float64(action.quota_data_size)*float64(1024*1024) {
-			atomic.StoreUint32(&action.blocked, BLOCKED)
+			logger.Error("Failed to read inotify event: [%s].", err)
+			break
 		} else {
-			atomic.CompareAndSwapUint32(&action.blocked, BLOCKED, UNBLOCKED)
-		}
-
-		session.Close()
-		continue
-
-	Error:
-		if session != nil {
-			session.Close()
-		}
-		atomic.StoreUint32(&action.blocked, BLOCKED)
-	}
-}
-
-/******************************************/
-/*                                        */
-/*          Internal Go Routine           */
-/*                                        */
-/******************************************/
-func read_mongodb_dbsize(f *IOFilterProtocol, size *float64, session *mgo.Session) bool {
-	conn_info := &f.conn_info
-
-	var stats bson.M
-	var temp float64
-
-	db := session.DB(conn_info.DBNAME)
-	err := db.Login(conn_info.USER, conn_info.PASS)
-	if err != nil {
-		logger.Error("Failed to login database db as %s:%s: [%s].",
-			conn_info.USER, conn_info.PASS, err)
-		return false
-	}
-
-	err = db.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
-	if err != nil {
-		logger.Error("Failed to get database %s stats [%s].",
-			conn_info.DBNAME, err)
-		return false
-	}
-
-	if !parse_dbstats(stats["dataSize"], &temp) {
-		logger.Error("Failed to read db_data_size.")
-		return false
-	}
-	db_data_size := temp
-	*size += db_data_size
-
-	if !parse_dbstats(stats["indexSize"], &temp) {
-		logger.Error("Failed to read db_index_size.")
-		return false
-	}
-	db_index_size := temp
-	*size += db_index_size
-
-	logger.Debug("Get db data size %v.", *size)
-	return true
-}
-
-/******************************************/
-/*                                        */
-/*       Internal Support Routines        */
-/*                                        */
-/******************************************/
-func iterate_dbfile(f *FilterAction, dirpath string, re *regexp.Regexp) int {
-	filecount := 0
-	dbfiles := f.dbfiles
-	visit_file := func(path string, f os.FileInfo, err error) error {
-		if err == nil && !f.IsDir() && re.Find([]byte(f.Name())) != nil {
-			dbfiles[f.Name()] = 1
-			filecount++
-		}
-		return nil
-	}
-	filepath.Walk(dirpath, visit_file)
-	return filecount
-}
-
-func parse_inotify_event(f *FilterAction, buf []byte, re *regexp.Regexp, filecount *int) error {
-	var event syscall.InotifyEvent
-	var filename string
-
-	index := 0
-	dbfiles := f.dbfiles
-	for index < len(buf) {
-		err := binary.Read(bytes.NewBuffer(buf[0:len(buf)]), binary.LittleEndian, &event)
-		if err != nil {
-			logger.Error("Failed to do binary read inotify event: [%s].", err)
-			return err
-		}
-		start := index + syscall.SizeofInotifyEvent
-		end := start + int(event.Len)
-		filename = string(buf[start:end])
-		if re.Find([]byte(filename)) != nil {
-			logger.Debug("Get filename from inotify event: [%s].", filename)
-			switch event.Mask {
-			case syscall.IN_CREATE:
-				fallthrough
-			case syscall.IN_OPEN:
-				fallthrough
-			case syscall.IN_MOVED_TO:
-				if _, ok := dbfiles[filename]; !ok {
-					*filecount++
-					dbfiles[filename] = 1
+			err = parseInotifyEvent(dbname, buffer[0:nread], &filecount, dbfiles)
+			if err != nil {
+				logger.Error("Failed to parse inotify event.")
+				atomic.StoreUint32(&filter.mfblocked, BLOCKED)
+			} else {
+				logger.Debug("Current db disk file number: [%d].", filecount)
+				if filecount > int(quota_files) {
+					logger.Critical("Disk files exceeds quota.")
+					atomic.StoreUint32(&filter.mfblocked, BLOCKED)
+				} else {
+					atomic.StoreUint32(&filter.mfblocked, UNBLOCKED)
 				}
-			case syscall.IN_DELETE:
-				*filecount--
-				delete(dbfiles, filename)
 			}
 		}
-		index = end
 	}
-	return nil
-}
 
-/*
- * NOTE: if disk data file gets very large, then the returned data size value would
- *       be encoded in 'float' format but not 'integer' format, such as
- *       2.098026476e+09, if we parse the value in 'integer' format then we get
- *       error. It always works if we parse an 'integer' value in 'float' format.
- */
-func parse_dbstats(value interface{}, result *float64) bool {
-	temp, err := strconv.ParseFloat(fmt.Sprintf("%v", value), 64)
-	if err != nil {
-		logger.Error("Failed to convert data type: [%v].", err)
-		return false
+Error:
+	atomic.StoreUint32(&filter.mfblocked, BLOCKED)
+
+	filter.lock.Lock()
+	filter.running--
+	if filter.running == 0 {
+		filter.wait <- STOP_EVENT
 	}
-	*result = temp
-	return true
+	filter.lock.Unlock()
 }

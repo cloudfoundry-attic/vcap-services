@@ -1,10 +1,9 @@
 [ mognodb proxy ]
 
-A proxy server to monitor mongodb disk usage and memory usage.
+A proxy server to monitor mongodb disk usage.
 
-NOTE: For mongodb 2.0.6 version, mongodb process would crash if it fails to
-      allocate disk file when it wants to flush journal. And, if memory runs
-      out, mmap returns MAP_FAILED, mongodb process would crash, either.
+NOTE: The mongodb process would crash if it fails to allocate disk file
+      when it wants to flush journal.
 
 [ how to build ]
 
@@ -18,12 +17,6 @@ NOTE: For mongodb 2.0.6 version, mongodb process would crash if it fails to
     go get github.com/xushiwei/mgo/src/labix.org/v2/mgo
 
 3. go build
-    # env settings
-
-    GOPATH="<working directory>/vcap-services/tools/mongodb_proxy"
-    export GOPATH
-
-    # build
     go install proxyctl
 
     The executable binary is located at $GOPATH/bin

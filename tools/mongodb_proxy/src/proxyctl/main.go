@@ -6,7 +6,6 @@ import (
 	"go-mongo-proxy/proxy"
 	"os"
 )
-
 import l4g "github.com/moovweb/log4go"
 
 var log l4g.Logger
@@ -33,5 +32,5 @@ func main() {
 	log_init(log, conf)
 	defer log_fini(log)
 
-	proxy.StartProxyServer(conf, log)
+	proxy.Start(conf, log)
 }

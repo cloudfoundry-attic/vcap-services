@@ -4,14 +4,10 @@ import (
 	"fmt"
 	"labix.org/v2/mgo"
 	"labix.org/v2/mgo/bson"
-	"path/filepath"
-	"syscall"
 	"testing"
 )
-import l4g "github.com/moovweb/log4go"
 
 var config ProxyConfig
-var log l4g.Logger
 
 var proxy_started = false
 
@@ -25,28 +21,16 @@ func initTestConfig() {
 	config.MONGODB.USER = "admin"
 	config.MONGODB.PASS = "123456"
 
-	config.FILTER.BASE_DIR = "/mnt/appcloud/data1/"
+	config.FILTER.BASE_DIR = "/mnt/appcloud/data1"
 	config.FILTER.QUOTA_FILES = 4
 	config.FILTER.QUOTA_DATA_SIZE = 240
 	config.FILTER.ENABLED = true
-
-	config.LOGGING.LEVEL = "debug"
-	config.LOGGING.PATH = "/tmp/mongodb_proxy/proxy.log"
-}
-
-func initLog() {
-	log_level := l4g.INFO
-	log_path := config.LOGGING.PATH
-	syscall.Mkdir(filepath.Dir(log_path), 0755)
-	log = make(l4g.Logger)
-	log.AddFilter("file", log_level, l4g.NewFileLogWriter(log_path, true))
 }
 
 func startTestProxyServer() {
 	if !proxy_started {
 		initTestConfig()
-		initLog()
-		go StartProxyServer(&config, log)
+		go Start(&config, nil)
 		proxy_started = true
 	}
 }
@@ -86,7 +70,7 @@ func TestMongodbDataOps(t *testing.T) {
 	} else {
 		defer session.Close()
 
-		db := session.DB("admin")
+		db := session.DB(config.MONGODB.DBNAME)
 		err = db.Login(config.MONGODB.USER, config.MONGODB.PASS)
 		if err != nil {
 			t.Error("Failed to login database admin as %s:%s: [%s].",

@@ -1,9 +1,11 @@
 package main
 
-import "go-mongo-proxy/proxy"
+import (
+	"go-mongo-proxy/proxy"
+	"os"
+	"path/filepath"
+)
 import l4g "github.com/moovweb/log4go"
-import "path/filepath"
-import "syscall"
 
 func log_init(log l4g.Logger, conf *proxy.ProxyConfig) {
 	log_level := l4g.INFO
@@ -20,7 +22,7 @@ func log_init(log l4g.Logger, conf *proxy.ProxyConfig) {
 		log_level = l4g.CRITICAL
 	}
 	log_path := conf.LOGGING.PATH
-	syscall.Mkdir(filepath.Dir(log_path), 0755)
+	os.MkdirAll(filepath.Dir(log_path), 0755)
 	log.AddFilter("file", log_level, l4g.NewFileLogWriter(log_path, true))
 }
 
