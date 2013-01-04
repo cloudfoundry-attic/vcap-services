@@ -31,15 +31,11 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     opts = {
       :service_name => @config["service_name"],
       :backup_cmd => @config["backup_cmd"],
-      :host => @config["mysql"]["host"],
-      :port => @config["mysql"]["port"],
-      :user => @config["mysql"]["user"],
-      :passwd => @config["mysql"]["pass"],
+      :mysql => @config["mysql"],
       :backup_path => @config["backup_base_dir"],
       :compress_cmd => @config["compress_cmd"],
     }
 
-    use_warden= @config["use_warden"] || false
     @config["local_db"] ||= "sqlite3:/var/vcap/store/mysql_node.db"
 
     missing_opts = opts.keys.select{|key| opts[key] == nil}
@@ -47,28 +43,20 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
       echo "Missing required configuration items #{missing_opts.inspect}",true
       return 1
     end
-    # Optional socket config
-    opts[:socket] = @config["mysql"]["socket"]
     # Optional backup timeout config, default is no timeout
     opts[:timeout] = @config["timeout"] || 0
 
-    conn = Mysql2::Client.new(:host => opts[:host], :username => opts[:user], :password => opts[:passwd], :database => 'mysql', :port => opts[:port].to_i, :socket => opts[:socket])
-    result = conn.query("show databases;")
-    dbs = []
-    result.each {|db| dbs << db["Database"] }
     current_time = Time.now
-
-    service_class = VCAP::Services::Mysql::Node::WardenProvisionedService
-    if use_warden
-      DataMapper.setup(:default, @config["local_db"])
-      dbs = service_class.all.map {|s| s.name}
-    end
+    use_warden = @config["use_warden"] || false
+    service_class = use_warden ? VCAP::Services::Mysql::Node::WardenProvisionedService : VCAP::Services::Mysql::Node::ProvisionedService
+    DataMapper.setup(:default, @config["local_db"])
+    dbs = service_class.all.map {|s| s.name}
 
     echo "Begin backup at #{current_time}"
     success, failed, ignored = [0,0,0]
     dbs.each do |name|
-      opts[:host] = service_class.get(name).ip if use_warden
-      result = exe_backup_db(opts.merge({:name => name, :ts => current_time}))
+      instance = service_class.get(name)
+      result = exe_backup_db(update_opts(use_warden, opts, instance, current_time))
       case result
       when 0
         success += 1
@@ -88,18 +76,10 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
   def exe_backup_db(opts)
     backup_cmd, compress_cmd, name, ts =
       %w(backup_cmd compress_cmd name ts).map{|k| opts[k.to_sym]}
-    if IGNORE_DB.include?(name)
-      echo "Ignore backup database #{name}."
-      return -1
-    elsif SYSTEM_DB.include?(name)
-      # for system database, dir structure looks like \backups\<service-name>\
-      # <db-name>\<seconds_since_epoc>\<node_id>\<service specific data>
-      full_path = get_dump_path(name, :mode => 1, :time => ts)
-    else
-      # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
-      # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
-      full_path = get_dump_path(name, :time => ts)
-    end
+
+    # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
+    # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
+    full_path = get_dump_path(name, :time => ts)
     opts.merge!({:full_path => full_path})
     # options substitution
     backup_cmd = opts.keys.inject(backup_cmd) do|cmd, key|
@@ -124,10 +104,28 @@ class VCAP::Services::Mysql::Backup < VCAP::Services::Base::Backup
     return 1
   end
 
+  def update_opts(use_warden, opts, instance, current_time)
+    mysql_config = opts[:mysql][instance.version]
+    user = mysql_config["user"]
+    passwd = mysql_config["pass"]
+    socket = mysql_config["socket"]
+    name = instance.name
+    mysqldump_bin = mysql_config["mysqldump_bin"]
+    host = port = nil
+    if use_warden
+      host = VCAP.local_ip
+      port = instance.port
+    else
+      host = mysql_config["host"]
+      port = mysql_config["port"]
+    end
+    opts.merge({:dump_bin => mysqldump_bin, :host => host, :port => port,
+      :user => user, :passwd => passwd, :socket => socket, :name => name, :ts => current_time})
+  end
+
   def cleanup(path)
     FileUtils.rm_rf(path) if path
   end
 end
 
 VCAP::Services::Mysql::Backup.new.start
-
