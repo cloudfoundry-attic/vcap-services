@@ -28,9 +28,7 @@ module VCAP::Services::Postgresql::WithoutWarden
   end
 
   def pre_send_announcement_prepare
-    @connection_mutex = Mutex.new
-    @connections = {}
-
+    prepare_global_connections
     @supported_versions.each do |version|
       host, user, pass, port, database =
         %w(host user pass port database).map {|k| @postgresql_configs[version][k]}
@@ -281,20 +279,18 @@ module VCAP::Services::Postgresql::WithoutWarden
         @logger.warn("PostgreSQL connection for #{version} is lost, trying to keep alive.")
         host, user, pass, port, database =
           %w(host user pass port database).map {|k| @postgresql_configs[version][k]}
-        new_conn = postgresql_connect(host, user, pass, port, database)
+        new_conn = postgresql_connect(host, user, pass, port, database, :fail_with_nil => nil, :exception_sleep => 0, :try_num => 1)
         unless new_conn
           @logger.error("Fail not reconnect to postgresql server - #{version}")
           next
         end
-        begin
-          conn.close
-        rescue => e
-        end if conn
+        add_discarded_connection(version, conn)
         @connection_mutex.synchronize do
           @connections[version] = new_conn
         end
       end
     end
+    close_discarded_connections
   rescue => e
     @logger.error("Fail to run postgresql_keep_alive for #{fmt_error(e)} ")
   ensure
@@ -317,12 +313,12 @@ module VCAP::Services::Postgresql::WithoutWarden
 
   def db_overhead(name)
     avg_overhead = 0
-    divider = @max_capacity
+    avg_factor = @max_capacity
     @capacity_lock.synchronize do
-      divider = divider - @capacity if @capacity < 0
+      avg_factor = avg_factor - @capacity if @capacity < 0
     end
     res = fetch_global_connection(name).query(
-      "select ((sum(pg_database_size(datname)) + avg(pg_tablespace_size('pg_global')))/#{divider})
+      "select ((sum(pg_database_size(datname)) + avg(pg_tablespace_size('pg_global')))/#{avg_factor})
       as avg_overhead from pg_database where datname in ('#{@sys_dbs.join('\', \'')}');")
     res.each do |x|
       avg_overhead = x['avg_overhead'].to_f.ceil

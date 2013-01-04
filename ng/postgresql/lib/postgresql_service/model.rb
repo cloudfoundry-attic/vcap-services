@@ -178,6 +178,22 @@ module VCAP
           DataMapper::auto_upgrade! if auto_upgrade
         end
 
+        def self.pgProvisionedServiceClass(use_warden)
+          if use_warden
+            VCAP::Services::Postgresql::Node::Wardenprovisionedservice
+          else
+            VCAP::Services::Postgresql::Node::Provisionedservice
+          end
+        end
+
+        def self.pgBindUserClass(use_warden)
+          if use_warden
+            VCAP::Services::Postgresql::Node::WardenBinduser
+          else
+            VCAP::Services::Postgresql::Node::Binduser
+          end
+        end
+
       end
     end
   end

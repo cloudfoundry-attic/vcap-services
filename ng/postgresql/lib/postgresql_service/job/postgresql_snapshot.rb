@@ -20,6 +20,7 @@ module VCAP::Services::Postgresql::Snapshot
       use_warden = @config['use_warden'] || false
 
       VCAP::Services::Postgresql::Node.setup_datamapper(:default, @config['local_db'])
+      VCAP::Services::Postgresql::Util::PGDBconn.init
       provisionedservice = VCAP::Services::Postgresql::Node::pgProvisionedServiceClass(use_warden).get(name)
 
       # dump the db and get the dump file size
@@ -88,6 +89,7 @@ module VCAP::Services::Postgresql::Snapshot
     def restore_db(name, snapshot_id)
       use_warden = @config['use_warden'] || false
       VCAP::Services::Postgresql::Node.setup_datamapper(:default, @config["local_db"])
+      VCAP::Services::Postgresql::Util::PGDBconn.init
       service = VCAP::Services::Postgresql::Node::pgProvisionedServiceClass(use_warden).get(name)
       raise "No information for provisioned service with name #{name}." unless service
       default_user = service.pgbindusers.all(:default_user => true)[0]

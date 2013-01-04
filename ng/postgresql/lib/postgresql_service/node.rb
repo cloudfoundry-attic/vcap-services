@@ -21,6 +21,7 @@ require "postgresql_service/model"
 require "postgresql_service/storage_quota"
 require "postgresql_service/postgresql_error"
 require "postgresql_service/pagecache"
+require "postgresql_service/pg_timeout"
 
 class VCAP::Services::Postgresql::Node
 
@@ -58,6 +59,9 @@ class VCAP::Services::Postgresql::Node
     @kill_long_transaction_lock = Mutex.new
     @enforce_quota_lock = Mutex.new
 
+    # connect_timeout & query_timeout
+    PGDBconn.init(options)
+
     @use_warden = @options[:use_warden] || false
     if @use_warden
       require "postgresql_service/with_warden"
@@ -71,20 +75,11 @@ class VCAP::Services::Postgresql::Node
     end
   end
 
-  def self.pgProvisionedServiceClass(use_warden)
-    if use_warden
-      VCAP::Services::Postgresql::Node::Wardenprovisionedservice
-    else
-      VCAP::Services::Postgresql::Node::Provisionedservice
-    end
-  end
-
-  def self.pgBindUserClass(use_warden)
-    if use_warden
-      VCAP::Services::Postgresql::Node::WardenBinduser
-    else
-      VCAP::Services::Postgresql::Node::Binduser
-    end
+  def prepare_global_connections
+    @connection_mutex = Mutex.new
+    @discarded_mutex = Mutex.new
+    @connections = {}
+    @discarded_connections = {}
   end
 
   def pre_send_announcement
@@ -103,10 +98,10 @@ class VCAP::Services::Postgresql::Node
   end
 
   def setup_timers
-    EM.add_periodic_timer(VCAP::Services::Postgresql::Node::KEEP_ALIVE_INTERVAL) { EM.defer{postgresql_keep_alive} }
+    EM.add_periodic_timer(KEEP_ALIVE_INTERVAL) { EM.defer{postgresql_keep_alive} }
     EM.add_periodic_timer(@max_long_query.to_f / 2) { EM.defer{kill_long_queries} } if @max_long_query > 0
     EM.add_periodic_timer(@max_long_tx.to_f / 2) { EM.defer{kill_long_transaction} } if @max_long_tx > 0
-    EM.add_periodic_timer(VCAP::Services::Postgresql::Node::STORAGE_QUOTA_INTERVAL) { EM.defer{enforce_storage_quota} }
+    EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) { EM.defer{enforce_storage_quota} }
     setup_image_cache_cleaner(@options)
   end
 
@@ -220,7 +215,7 @@ class VCAP::Services::Postgresql::Node
 
   def unprovision(name, credentials)
     return if name.nil?
-    @logger.info("Unprovision database:#{name} and its #{credentials.size} bindings")
+    @logger.info("Unprovision database:#{name} and its #{credentials ? credentials.size : 0} bindings")
     provisionedservice = pgProvisionedService.get(name)
     raise PostgresqlError.new(PostgresqlError::POSTGRESQL_CONFIG_NOT_FOUND, name) if provisionedservice.nil?
     # Delete all bindings, ignore not_found error since we are unprovision
@@ -714,6 +709,58 @@ class VCAP::Services::Postgresql::Node
       ignore_exception { conn.close if conn }
     end
     res
+  end
+
+  def add_discarded_connection(name, conn)
+   unless PGDBconn.async?
+      ignore_exception { conn.close if conn }
+      return
+   end
+   @discarded_mutex.synchronize do
+     @discarded_connections[name] = Array.new unless @discarded_connections[name]
+     @discarded_connections[name] << conn
+   end
+  end
+
+  def close_discarded_connections
+    return unless PGDBconn.async?
+    # try to clean the discarded connections
+    @discarded_mutex.synchronize do
+      to_delete = []
+
+      @discarded_connections.each do |name, conns|
+        if !conns || conns.empty?
+            to_delete << name
+            next
+        end
+
+        closed_conn_num = 0
+        conns.each do |conn|
+          unless conn
+            closed_conn_num += 1
+            next
+          end
+          begin
+            ac = conn.conn_mutex.try_lock
+            if ac
+              ignore_exception{ conn.close if conn }
+              closed_conn_num += 1
+            end
+          ensure
+            conn.conn_mutex.unlock if ac
+          end
+        end
+
+        if closed_conn_num == conns.size
+          to_delete << name
+          conns.clear
+        end
+      end
+
+      to_delete.each do |name|
+        @discarded_connections.delete(name)
+      end
+    end
   end
 
 end

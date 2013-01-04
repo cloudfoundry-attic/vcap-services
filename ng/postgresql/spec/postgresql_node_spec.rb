@@ -10,7 +10,7 @@ module VCAP
   module Services
     module Postgresql
       class Node
-        attr_reader :connection, :connections, :logger, :available_storage, :provision_served, :binding_served
+        attr_reader :connection, :connections, :discarded_connections, :logger, :available_storage, :provision_served, :binding_served
         def get_service(db)
           pgProvisionedService.first(:name => db['name'])
         end
@@ -69,6 +69,127 @@ describe "Postgresql node normal cases" do
       expect {@node.global_connection(@db_instance).query("SELECT 1")}.should_not raise_error
       @node.get_inst_port(@db_instance).should == @db['port']
       EM.stop
+    end
+  end
+
+  it "should add timeout to query" do
+    EM.run do
+      ori_default_query_timeout = VCAP::Services::Postgresql::Util::PGDBconn.default_query_timeout
+      opts = @opts.dup
+      opts[:db_query_timeout] = 1
+      opts[:not_start_instances] = true if opts[:use_warden]
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      EM.add_timer(2) do
+        begin
+          @conn = @node.global_connection(@db_instance)
+          conn = node.global_connection(@db_instance)
+          # make sure the connections are active
+          expect {@conn.query('select current_timestamp')}.should_not raise_error
+          expect {conn.query('select current_timestamp')}.should_not raise_error
+          @conn.query_timeout.should == ori_default_query_timeout
+          conn.query_timeout.should == 1
+          expect {@conn.query('select pg_sleep(2)')}.should_not raise_error
+          expect {conn.query('select pg_sleep(2)')}.should raise_error
+        ensure
+          VCAP::Services::Postgresql::Util::PGDBconn.default_query_timeout = ori_default_query_timeout
+          EM.stop
+        end
+      end
+    end
+  end
+
+  it "should support async query/transaction" do
+    NUM = 10
+    TEST_TIME = 5
+    EM.run do
+      ori_use_async_query = VCAP::Services::Postgresql::Util::PGDBconn.use_async_query
+      opts = @opts.dup
+      opts[:db_use_async_query] = true
+      opts[:not_start_instances] = true if opts[:use_warden]
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      EM.add_timer(2) do
+        threads = []
+        begin
+          conn = node.global_connection(@db_instance)
+          (conn.async?).should be_true
+          db_num = conn.query("select count(*) as num from pg_database;").first['num'];
+          end_time = start_time = Time.now.to_f
+          # other threads in the process won't be blocked by database queries
+          threads << Thread.new do
+            cal = 0
+            TEST_TIME.times do
+              sleep 1
+              cal += 1
+            end
+            end_time = Time.now.to_f
+          end
+          NUM.times do
+            threads << Thread.new do
+              loop do
+                my_db_num = conn.query("select count(*) as num from pg_database;").first['num']
+                db_num.should == my_db_num
+                Thread.exit if  Time.now.to_f - start_time > TEST_TIME
+              end
+            end
+          end
+          NUM.times do
+            threads << Thread.new do
+              loop do
+                my_db_num = 0
+                conn.transaction do |c|
+                  my_db_num = c.query("select count(*) as num from pg_database;").first['num']
+                end
+                db_num.should == my_db_num
+                Thread.exit if  Time.now.to_f - start_time > TEST_TIME
+              end
+            end
+          end
+          threads.each{|t| t.join}
+          (end_time - start_time).should >= 5
+          (end_time - start_time).should < 6
+        ensure
+          VCAP::Services::Postgresql::Util::PGDBconn.use_async_query = ori_use_async_query
+          EM.stop
+        end
+      end
+    end
+  end
+
+  it "should handle discarded connections correctly" do
+    EM.run do
+      ori_use_async_query = VCAP::Services::Postgresql::Util::PGDBconn.use_async_query
+      opts = @opts.dup
+      opts[:db_use_async_query] = true
+      opts[:not_start_instances] = true if opts[:use_warden]
+      node = VCAP::Services::Postgresql::Node.new(opts)
+      EM.add_timer(2) do
+        begin
+          conn = node.global_connection(@db_instance)
+          # make sure the connections are active
+          expect {conn.query('select current_timestamp')}.should_not raise_error
+          conn.async?.should == true
+          t1 = Thread.new do
+            begin
+              conn.query("select pg_sleep(2)")
+            rescue
+              nil
+            end
+          end
+          node.add_discarded_connection(@db['name'], conn)
+          node.add_discarded_connection('fake_name', nil)
+          node.discarded_connections[@db['name']].size.should == 1
+          node.discarded_connections['fake_name'].size.should == 1
+          expect { node.discarded_connections[@db['name']].first.query("select current_timestamp") }.should_not raise_error
+          node.postgresql_keep_alive
+          node.discarded_connections[@db['name']].nil?.should == true
+          node.discarded_connections['fake_name'].nil?.should == true
+          node.postgresql_keep_alive
+        ensure
+          t1.join
+          VCAP::Services::Postgresql::Util::PGDBconn.use_async_query = ori_use_async_query
+          EM.stop
+        end
+      end
     end
   end
 
@@ -638,11 +759,8 @@ describe "Postgresql node normal cases" do
       available_storage = @node.available_storage
       provision_served = @node.provision_served
       binding_served = @node.binding_served
-      if @opts[:use_warden]
-        NUM = 20
-      else
-        NUM = 20
-      end
+      # Async query could increase the concurrency, so use smaller number here
+      NUM = VCAP::Services::Postgresql::Util::PGDBconn.async? && @opts[:use_warden] ? 5 : 20
       threads = []
       NUM.times do
         threads << Thread.new do
@@ -1249,7 +1367,8 @@ describe "Postgresql node special cases" do
     db = node.provision(@default_plan, nil, @default_version)
     conn = connect_to_postgresql(db)
     expect { conn.query("SELECT 1") }.should_not raise_error
-    expect { connect_to_postgresql(db) }.should raise_error(PGError, /too many connections for database .*/)
+    expect { connect_to_postgresql(db, :async => false ) }.should raise_error(PGError, /too many connections for database .*/)
+    expect { connect_to_postgresql(db, :async => true) }.should raise_error
     conn.close if conn
     node.unprovision(db["name"], [])
   end
