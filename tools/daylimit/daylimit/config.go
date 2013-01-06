@@ -12,13 +12,13 @@ var config *ConfigInfo = nil
 var loaded bool = false
 
 type ConfigInfo struct {
-	LimitWindow  int64
-	LimitSize    int64
-	LogFile      string
-	FetchInteval int64
-	BlockRate    int64
-	UnblockRate  int64
-	WardenBin    string
+	LimitWindow   int64
+	LimitSize     int64
+	LogFile       string
+	FetchInterval int64
+	BlockRate     int64
+	UnblockRate   int64
+	WardenBin     string
 }
 
 func Config() *ConfigInfo {

@@ -66,7 +66,7 @@ func SizeCheck(id string, size int64) {
 
 func runDaemon() {
 	var errNum int8
-	ticker := time.Tick(time.Duration(daylimit.Config().FetchInteval) * time.Second)
+	ticker := time.Tick(time.Duration(daylimit.Config().FetchInterval) * time.Second)
 	for _ = range ticker {
 		info, err := daylimit.GetList()
 		if err != nil {

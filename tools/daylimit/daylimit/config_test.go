@@ -33,7 +33,7 @@ func (ts *ConfigSuite) TestLoadConfig(c *C) {
 		vals[keyval[0]] = keyval[1]
 	}
 	c.Assert(config.BlockRate, Equals, getInt(vals["blockrate"]))
-	c.Assert(config.FetchInteval, Equals, getInt(vals["fetchinteval"]))
+	c.Assert(config.FetchInterval, Equals, getInt(vals["fetchinterval"]))
 	c.Assert(config.LimitSize, Equals, getInt(vals["limitsize"]))
 	c.Assert(config.LimitWindow, Equals, getInt(vals["limitwindow"]))
 	c.Assert(config.LogFile, Equals, vals["logfile"])
