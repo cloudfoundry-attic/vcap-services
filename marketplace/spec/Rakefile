@@ -12,13 +12,15 @@ require 'ci/reporter/rake/rspec'
 require "simplecov"
 require "simplecov-rcov"
 
+include Rake::DSL
+
 coverage_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_coverage"))
 reports_dir = File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_reports"))
 
 ENV['CI_REPORTS'] = reports_dir
 
 desc "Run specs using RCov"
-task "spec:ci" => ["ci:setup:rspec", "simcov"]
+task "spec:ci" => ["simcov"]
 
 RSpec::Core::RakeTask.new do |t|
   t.pattern = "**/*_spec.rb"
@@ -38,9 +40,7 @@ task "simcov" => "cleanup_coverage" do
   SimpleCov.coverage_dir('spec_coverage')
   SimpleCov.start do
     add_filter "/spec/"
-    spec_dir = File.expand_path("..", __FILE__)
-    Rspec::Core::Runner.disable_autorun!
-    Rspec::Core::Runner.run([spec_dir], STDERR, STDOUT)
+    sh "rake ci:setup:rspec spec"
   end
 end
 
