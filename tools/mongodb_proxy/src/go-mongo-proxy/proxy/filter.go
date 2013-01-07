@@ -128,17 +128,17 @@ func (filter *ProxyFilterImpl) MonitorQuotaDataSize() {
 		}
 
 		if err := startMongoSession(dbhost, port); err != nil {
-			logger.Error("Failed to connect to %s:%s, [%s].", dbhost, port, err)
+			logger.Errorf("Failed to connect to %s:%s, [%s].", dbhost, port, err)
 			goto Error
 		}
 
 		if !readMongodbSize(dbname, user, pass, &size) {
-			logger.Error("Failed to read database '%s' size.", dbname)
+			logger.Errorf("Failed to read database '%s' size.", dbname)
 			goto Error
 		}
 
 		if size >= float64(quota_data_size)*float64(1024*1024) {
-			logger.Critical("Data size exceeds quota.")
+			logger.Fatalf("Data size exceeds quota.")
 			atomic.StoreUint32(&filter.mablocked, BLOCKED)
 		} else {
 			atomic.StoreUint32(&filter.mablocked, UNBLOCKED)
@@ -185,13 +185,13 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 	filecount := 0
 	filecount = iterateDatafile(dbname, base_dir, dbfiles)
 	if filecount < 0 {
-		logger.Error("Failed to iterate data files under %s.", base_dir)
+		logger.Errorf("Failed to iterate data files under %s.", base_dir)
 		goto Error
 	}
 
-	logger.Info("At the begining time we have disk files: [%d].", filecount)
+	logger.Infof("At the begining time we have disk files: [%d].", filecount)
 	if filecount > int(quota_files) {
-		logger.Critical("Disk files exceeds quota.")
+		logger.Fatalf("Disk files exceeds quota.")
 		atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 	}
 
@@ -199,13 +199,13 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 	// it does not contain any 'inotify' wrapper function
 	fd, err = syscall.InotifyInit()
 	if err != nil {
-		logger.Error("Failed to call InotifyInit: [%s].", err)
+		logger.Errorf("Failed to call InotifyInit: [%s].", err)
 		goto Error
 	}
 
 	wd, err = syscall.InotifyAddWatch(fd, base_dir, syscall.IN_CREATE|syscall.IN_MOVED_TO|syscall.IN_DELETE)
 	if err != nil {
-		logger.Error("Failed to call InotifyAddWatch: [%s].", err)
+		logger.Errorf("Failed to call InotifyAddWatch: [%s].", err)
 		syscall.Close(fd)
 		goto Error
 	}
@@ -229,17 +229,17 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 			if err == ErrTimeout {
 				continue
 			}
-			logger.Error("Failed to read inotify event: [%s].", err)
+			logger.Errorf("Failed to read inotify event: [%s].", err)
 			break
 		} else {
 			err = parseInotifyEvent(dbname, buffer[0:nread], &filecount, dbfiles)
 			if err != nil {
-				logger.Error("Failed to parse inotify event.")
+				logger.Errorf("Failed to parse inotify event.")
 				atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 			} else {
-				logger.Debug("Current db disk file number: [%d].", filecount)
+				logger.Debugf("Current db disk file number: [%d].", filecount)
 				if filecount > int(quota_files) {
-					logger.Critical("Disk files exceeds quota.")
+					logger.Fatalf("Disk files exceeds quota.")
 					atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 				} else {
 					atomic.StoreUint32(&filter.mfblocked, UNBLOCKED)

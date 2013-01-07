@@ -28,7 +28,7 @@ func startMongoSession(dbhost, port string) error {
 	if newsession {
 		session, err = mgo.Dial(dbhost + ":" + port)
 		if err != nil {
-			logger.Error("Failed to connect %s:%s, [%s].", dbhost, port, err)
+			logger.Errorf("Failed to connect %s:%s, [%s].", dbhost, port, err)
 			return err
 		}
 	}
@@ -71,29 +71,29 @@ func readMongodbSize(dbname, user, pass string, size *float64) bool {
 	db := session.DB(dbname)
 	err := db.Login(user, pass)
 	if err != nil {
-		logger.Error("Failed to login database db as %s:%s, [%s].", user, pass, err)
+		logger.Errorf("Failed to login database db as %s:%s, [%s].", user, pass, err)
 		return false
 	}
 
 	err = db.Run(bson.D{{"dbStats", 1}, {"scale", 1}}, &stats)
 	if err != nil {
-		logger.Error("Failed to get database %s stats [%s].", dbname, err)
+		logger.Errorf("Failed to get database %s stats [%s].", dbname, err)
 		return false
 	}
 
 	if !parseMongodbStats(stats["dataSize"], &temp) {
-		logger.Error("Failed to read db_data_size.")
+		logger.Errorf("Failed to read db_data_size.")
 		return false
 	}
 	*size += temp
 
 	if !parseMongodbStats(stats["indexSize"], &temp) {
-		logger.Error("Failed to read db_index_size.")
+		logger.Errorf("Failed to read db_index_size.")
 		return false
 	}
 	*size += temp
 
-	logger.Debug("Get db data total size %v.", *size)
+	logger.Debugf("Get db data total size %v.", *size)
 	return true
 }
 
@@ -106,7 +106,7 @@ func readMongodbSize(dbname, user, pass string, size *float64) bool {
 func parseMongodbStats(value interface{}, result *float64) bool {
 	temp, err := strconv.ParseFloat(fmt.Sprintf("%v", value), 64)
 	if err != nil {
-		logger.Error("Failed to convert data type: [%v].", err)
+		logger.Errorf("Failed to convert data type: [%v].", err)
 		return false
 	}
 	*result = temp

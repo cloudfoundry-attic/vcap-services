@@ -31,14 +31,14 @@ func parseMsgHeader(packet []byte) (pkt_len, op_code uint32) {
 	// protocol is little-endian.
 	err := binary.Read(buf, binary.LittleEndian, &pkt_len)
 	if err != nil {
-		logger.Error("Failed to do binary read message_length [%s].", err)
+		logger.Errorf("Failed to do binary read message_length [%s].", err)
 		return 0, OP_UNKNOWN
 	}
 
 	buf = bytes.NewBuffer(packet[12:16])
 	err = binary.Read(buf, binary.LittleEndian, &op_code)
 	if err != nil {
-		logger.Error("Failed to do binary read op_code [%s].", err)
+		logger.Errorf("Failed to do binary read op_code [%s].", err)
 		return 0, OP_UNKNOWN
 	}
 

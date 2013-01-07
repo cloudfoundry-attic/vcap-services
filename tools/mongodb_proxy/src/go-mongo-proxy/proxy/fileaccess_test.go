@@ -53,6 +53,8 @@ func fileCreator() {
 }
 
 func TestIterateDatafile(t *testing.T) {
+	logger = setupStdoutLogger()
+
 	setupDatafile()
 
 	defer cleanDatafile()
@@ -72,6 +74,8 @@ func TestIterateDatafile(t *testing.T) {
 }
 
 func TestParseInotifyEvent(t *testing.T) {
+	logger = setupStdoutLogger()
+
 	setupDatafile()
 
 	defer cleanDatafile()

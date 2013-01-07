@@ -17,7 +17,7 @@ func iterateDatafile(dbname string, dirpath string, dbfiles map[string]int) int 
 	expr := fmt.Sprintf("^%s\\.[0-9]+", dbname)
 	re, err := regexp.Compile(expr)
 	if err != nil {
-		logger.Error("Failed to compile regexp error: [%s].", err)
+		logger.Errorf("Failed to compile regexp error: [%s].", err)
 		return -1
 	}
 
@@ -44,7 +44,7 @@ func parseInotifyEvent(dbname string, buffer []byte, filecount *int, dbfiles map
 	expr := fmt.Sprintf("^%s\\.[0-9]+", dbname)
 	re, err := regexp.Compile(expr)
 	if err != nil {
-		logger.Error("Failed to compile regexp error: [%s].", err)
+		logger.Errorf("Failed to compile regexp error: [%s].", err)
 		return err
 	}
 
@@ -52,7 +52,7 @@ func parseInotifyEvent(dbname string, buffer []byte, filecount *int, dbfiles map
 	for index < len(buffer) {
 		err := binary.Read(bytes.NewBuffer(buffer[0:len(buffer)]), binary.LittleEndian, &event)
 		if err != nil {
-			logger.Error("Failed to do binary read inotify event: [%s].", err)
+			logger.Errorf("Failed to do binary read inotify event: [%s].", err)
 			return err
 		}
 
@@ -62,7 +62,7 @@ func parseInotifyEvent(dbname string, buffer []byte, filecount *int, dbfiles map
 		// Trim the tailing 'null' byte
 		filename = strings.Trim(string(buffer[start:end]), string(0x0))
 		if re.Find([]byte(filename)) != nil {
-			logger.Debug("Get filename from inotify event: [%s].", filename)
+			logger.Debugf("Get filename from inotify event: [%s].", filename)
 			switch event.Mask {
 			case syscall.IN_CREATE:
 				fallthrough

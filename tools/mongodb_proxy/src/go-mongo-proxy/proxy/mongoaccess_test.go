@@ -6,6 +6,8 @@ import (
 )
 
 func TestReadMongodbSize(t *testing.T) {
+	logger = setupStdoutLogger()
+
 	dbhost := "127.0.0.1"
 	port := "27017"
 	dbname := "db"

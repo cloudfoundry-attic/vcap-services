@@ -1,13 +1,13 @@
 package proxy
 
 import (
+	steno "github.com/cloudfoundry/gosteno"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 )
-import l4g "github.com/moovweb/log4go"
 
 type ProxyConfig struct {
 	HOST string
@@ -23,7 +23,7 @@ type ProxyConfig struct {
 	}
 }
 
-var logger l4g.Logger
+var logger steno.Logger
 var sighnd chan os.Signal
 
 func startProxyServer(conf *ProxyConfig) error {
@@ -32,7 +32,7 @@ func startProxyServer(conf *ProxyConfig) error {
 
 	proxyfd, err := net.Listen("tcp", proxyaddrstr)
 	if err != nil {
-		logger.Error("TCP server listen error: [%v].", err)
+		logger.Errorf("TCP server listen error: [%v].", err)
 		return err
 	}
 
@@ -60,7 +60,7 @@ func startProxyServer(conf *ProxyConfig) error {
 		if err == ErrTimeout {
 			continue
 		} else if err != nil {
-			logger.Error("TCP server accept error: [%v].", err)
+			logger.Errorf("TCP server accept error: [%v].", err)
 			continue
 		}
 
@@ -68,7 +68,7 @@ func startProxyServer(conf *ProxyConfig) error {
 		// then we disconnect with client.
 		serverconn, err := net.DialTimeout("tcp", mongoaddrstr, time.Second*5)
 		if err != nil {
-			logger.Error("TCP connect error: [%v].", err)
+			logger.Errorf("TCP connect error: [%v].", err)
 			clientconn.Close()
 			continue
 		}
@@ -122,10 +122,29 @@ func setupSignal() {
 	signal.Notify(sighnd, syscall.SIGTERM)
 }
 
-func Start(conf *ProxyConfig, log l4g.Logger) error {
+func setupStdoutLogger() steno.Logger {
+	level, err := steno.GetLogLevel("debug")
+	if err != nil {
+		panic(err)
+	}
+
+	sinks := make([]steno.Sink, 0)
+	sinks = append(sinks, steno.NewIOSink(os.Stdout))
+
+	stenoConfig := &steno.Config{
+		Sinks: sinks,
+		Codec: steno.NewJsonCodec(),
+		Level: level,
+	}
+
+	steno.Init(stenoConfig)
+
+	return steno.NewLogger("mongodb_proxy")
+}
+
+func Start(conf *ProxyConfig, log steno.Logger) error {
 	if log == nil {
-		logger = make(l4g.Logger)
-		logger.AddFilter("stdout", l4g.DEBUG, l4g.NewConsoleLogWriter())
+		logger = setupStdoutLogger()
 	} else {
 		logger = log
 	}

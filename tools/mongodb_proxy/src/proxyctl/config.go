@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/xushiwei/goyaml"
 	"go-mongo-proxy/proxy"
 	"io/ioutil"
+	"launchpad.net/goyaml"
 )
 
 var conf proxy.ProxyConfig

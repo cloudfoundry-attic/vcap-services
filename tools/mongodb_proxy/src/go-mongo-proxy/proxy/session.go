@@ -133,10 +133,10 @@ func (session *ProxySessionImpl) ForwardClientMsg() {
 		nread, err = clientfd.Read(buffer.LimitedCursor(length))
 		if err != nil {
 			if err == io.EOF {
-				logger.Debug("TCP session with mongodb client will be closed soon.")
+				logger.Debugf("TCP session with mongodb client will be closed soon.")
 				break
 			}
-			logger.Warn("TCP read from client error: [%v].", err)
+			logger.Warnf("TCP read from client error: [%v].", err)
 			break
 		}
 
@@ -180,10 +180,10 @@ func (session *ProxySessionImpl) ForwardClientMsg() {
 		nwrite, err = serverfd.Write(buffer.Data())
 		if err != nil {
 			if err == io.ErrUnexpectedEOF {
-				logger.Debug("TCP session with mongodb server encounter unexpected EOF: [%v].", err)
+				logger.Debugf("TCP session with mongodb server encounter unexpected EOF: [%v].", err)
 				break
 			}
-			logger.Warn("TCP write to server error: [%v].", err)
+			logger.Warnf("TCP write to server error: [%v].", err)
 			break
 		}
 
@@ -246,17 +246,17 @@ func (session *ProxySessionImpl) ForwardServerMsg() {
 				logger.Debug("TCP session with mongodb server will be closed soon.")
 				break
 			}
-			logger.Warn("TCP read from server error: [%v].", err)
+			logger.Warnf("TCP read from server error: [%v].", err)
 			break
 		}
 
 		_, err = clientfd.Write(buffer[0:nread])
 		if err != nil {
 			if err == io.ErrUnexpectedEOF {
-				logger.Debug("TCP session with mongodb client encounter unexpected EOF: [%v].", err)
+				logger.Debugf("TCP session with mongodb client encounter unexpected EOF: [%v].", err)
 				break
 			}
-			logger.Warn("TCP write to client error: [%v].", err)
+			logger.Warnf("TCP write to client error: [%v].", err)
 			break
 		}
 	}

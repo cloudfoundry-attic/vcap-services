@@ -3,12 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	steno "github.com/cloudfoundry/gosteno"
 	"go-mongo-proxy/proxy"
 	"os"
 )
-import l4g "github.com/moovweb/log4go"
 
-var log l4g.Logger
+var log steno.Logger
 
 func main() {
 	var config_path, password string
@@ -28,9 +28,8 @@ func main() {
 	conf := load_config(config_path)
 	conf.MONGODB.PASS = password
 
-	log = make(l4g.Logger)
-	log_init(log, conf)
-	defer log_fini(log)
+	setup_steno(conf)
+	log = steno.NewLogger("mongodb_proxy")
 
 	proxy.Start(conf, log)
 }
