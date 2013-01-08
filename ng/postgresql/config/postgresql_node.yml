@@ -38,10 +38,18 @@ postgresql:
     user: vcap
     pass: vcap
     database: postgres
-    restore_bin: pg_restore
-    dump_bin: pg_dump
-supported_versions: ['9.0']
-default_version: '9.0'
+    restore_bin: /var/vcap/packages/postgresql/bin/pg_restore
+    dump_bin: /var/vcap/packages/postgresql/bin/pg_dump
+  '9.1':
+    host: 127.0.0.1
+    port: 5433
+    user: vcap
+    pass: vcap
+    database: postgres
+    restore_bin: /var/vcap/packages/postgresql91/bin/pg_restore
+    dump_bin: /var/vcap/packages/postgresql91/bin/pg_dump
+supported_versions: ['9.0', '9.1']
+default_version: '9.1'
 
 # z_interval: 30
 # fqdn_hosts: false
