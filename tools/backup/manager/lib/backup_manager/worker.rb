@@ -88,14 +88,5 @@ module VCAP::Services::Backup::Worker
     @manager.logger.error "Failed to get_live_service_ins #{e.message}"
   end
 
-  def n_midnights_ago(n)
-    t = Time.at(@manager.time)
-    t = t - t.utc_offset # why oh why does Time.at assume local timezone?!
-    _, _, _, d, m, y = t.to_a
-    t = Time.utc(y, m, d)
-    t = t - n * ONE_DAY
-    t.to_i
-  end
-
 end
 

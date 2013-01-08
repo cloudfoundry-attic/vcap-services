@@ -42,11 +42,17 @@ class BackupManagerTests
     def initialize(options)
       super(options)
       @tasks = []
-      if options[:target] == "backups"
+      case options[:target]
+      when "backups"
         @tasks = [MockRotator.new(self,options[:rotation])]
-      elsif options[:target] == "snapshots"
+      when "snapshots"
         @tasks = [MockSnapshotCleaner.new(self, options[:cleanup])]
+      when "jobs"
+        @tasks = [MockJobCleaner.new(self, options[:job_cleanup])]
+      else
+        @logger.error("invalid option")
       end
+
       @shutdown_invoked = false
     end
 
@@ -105,10 +111,16 @@ class BackupManagerTests
     def rmdashr(path)
     end
   end
+
+  class MockJobCleaner < VCAP::Services::Backup::JobCleaner
+  end
 end
+
+
 
 require 'backup_manager/rotator'
 require 'backup_manager/snapshot_cleaner'
+require 'backup_manager/job_cleaner'
 
 module BackupWorkerTests
 
@@ -366,6 +378,82 @@ class BackupSnapshotCleanerTests
     def member(snapshots, relpath)
       path = File.join(@manager.root, relpath)
       snapshots.index { |a| a == path }
+    end
+  end
+end
+
+class JobCleanerTests
+  MAX_DAYS = 7
+  def self.create_cleaner(opts)
+    logger = Logger.new(STDOUT)
+    manager = MockJobManager.new(logger)
+    opts.merge!({:logger => logger})
+
+    yield JobCleanerTester.new(manager, opts, {})
+  end
+  def time
+    Time.parse("2010-01-20 09:10:20 UTC").to_i
+  end
+
+  class JobCleanerTester < VCAP::Services::Backup::JobCleaner
+    attr_reader :jobs
+    def initialize(manager, options, services_redis)
+      super(manager, options, services_redis)
+      @jobs=[
+      {
+        :job_id => "1",
+        :status => "completed",
+        :start_time => "2012-11-29 02:20:58 +0000",
+        :description => "None"
+      },
+      {
+        :job_id => "2",
+        :status => "queued",
+        :start_time => "2002-11-29 02:20:58 +0000",
+        :description => "None"
+      },
+      {
+        :job_id => "3",
+        :status => "failed",
+        :start_time => "2012-11-29 02:20:58 +0000",
+        :description => "None"
+      },
+      {
+        :job_id => "4",
+        :status => "failed",
+        :start_time => "2002-11-29 02:20:58 +0000",
+        :description => "None"
+      },
+      ]
+      @timeout_no = 0
+      @failed_no = 0
+      @logger = options[:logger]
+    end
+
+    def get_all_jobs
+      job_ids = []
+      @jobs.each { |job| job_ids << job[:job_id] }
+      job_ids
+    end
+    def get_job(job_id)
+      @jobs.select { |job| job[:job_id] == job_id }.first
+    end
+
+    def remove_job(job_id)
+      @jobs.delete_if { |job| job[:job_id] == job_id}
+    end
+  end
+
+  class MockJobManager
+    attr_reader :logger
+    def initialize(logger)
+      @logger = logger
+    end
+    def time
+      Time.parse("2010-01-20 09:10:20 UTC").to_i
+    end
+    def shutdown?
+      false
     end
   end
 end
