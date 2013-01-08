@@ -155,6 +155,7 @@ describe "Mysql server node" do
           content = (0..1022).map{ c[rand(c.size)] }.join
           conn.query("insert into test value('#{content}')")
         end
+
         EM.add_timer(3) do
           expect {conn.query('SELECT 1')}.should raise_error
           conn.close
@@ -616,6 +617,7 @@ describe "Mysql server node" do
         line.should_not be nil
       end
       @tmpfiles << File.join("/tmp", "#{@db['name']}.sql")
+      @tmpfiles << File.join("/tmp", "#{@db['name']}.service")
       EM.stop
     end
   end
@@ -632,6 +634,7 @@ describe "Mysql server node" do
       conn = connect_to_mysql(db)
       expect { conn.query('SELECT 1')}.should_not raise_error
       @tmpfiles << File.join("/tmp", "#{db['name']}.sql")
+      @tmpfiles << File.join("/tmp", "#{db['name']}.service")
       EM.stop
     end
   end
