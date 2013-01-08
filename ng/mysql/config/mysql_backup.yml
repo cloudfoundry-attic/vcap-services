@@ -1,16 +1,24 @@
 ---
 service_name: mysql
 backup_base_dir: /mnt/backup
-backup_cmd: mysqldump --host=:host --user=:user --password=:passwd --result-file=:full_path/:name.sql -R --single-transaction :name
+backup_cmd: ":dump_bin --host=:host --port=:port --user=:user --password=:passwd --result-file=:full_path/:name.sql -R --single-transaction :name"
 compress_cmd: gzip :full_path/:name.sql
 timeout: 120
 node_id: mysql_node_free_1
 pid: /var/vcap/sys/run/mysql_backup.pid
 mysql:
-  host: localhost
-  port: 3306
-  user: root
-  pass: root
+  '5.1':
+    host: localhost
+    port: 3306
+    user: root
+    pass: root
+    mysqldump_bin: /var/vcap/packages/mysql/bin/mysqldump
+  '5.5':
+    host: localhost
+    port: 3307
+    user: root
+    pass: root
+    mysqldump_bin: /var/vcap/packages/mysql55/bin/mysqldump
 logging:
   level: debug
 use_warden: false
