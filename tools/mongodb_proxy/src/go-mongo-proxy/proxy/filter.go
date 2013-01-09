@@ -138,7 +138,7 @@ func (filter *ProxyFilterImpl) MonitorQuotaDataSize() {
 		}
 
 		if size >= float64(quota_data_size)*float64(1024*1024) {
-			logger.Fatalf("Data size exceeds quota.")
+			logger.Error("Data size exceeds quota.")
 			atomic.StoreUint32(&filter.mablocked, BLOCKED)
 		} else {
 			atomic.StoreUint32(&filter.mablocked, UNBLOCKED)
@@ -191,7 +191,7 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 
 	logger.Infof("At the begining time we have disk files: [%d].", filecount)
 	if filecount > int(quota_files) {
-		logger.Fatalf("Disk files exceeds quota.")
+		logger.Error("Disk files exceeds quota.")
 		atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 	}
 
@@ -239,7 +239,7 @@ func (filter *ProxyFilterImpl) MonitorQuotaFiles() {
 			} else {
 				logger.Debugf("Current db disk file number: [%d].", filecount)
 				if filecount > int(quota_files) {
-					logger.Fatalf("Disk files exceeds quota.")
+					logger.Error("Disk files exceeds quota.")
 					atomic.StoreUint32(&filter.mfblocked, BLOCKED)
 				} else {
 					atomic.StoreUint32(&filter.mfblocked, UNBLOCKED)
