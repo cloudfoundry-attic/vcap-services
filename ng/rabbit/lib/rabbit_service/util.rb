@@ -34,7 +34,7 @@ module VCAP
 
         def get_permissions_by_options(binding_options)
           # FIXME: binding options is not implemented, use the full permissions.
-          @default_permissions
+          '{"configure":".*","write":".*","read":".*"}'
         end
 
         def get_permissions(credentials, vhost, username)

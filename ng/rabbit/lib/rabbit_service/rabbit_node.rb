@@ -51,9 +51,6 @@ class VCAP::Services::Rabbit::Node
     @service_start_timeout = @options[:service_start_timeout] || 5
     @service_parallel_start_timeout = @options[:service_parallel_start_timeout] || 10
     @instance_parallel_start_count = 3
-    @default_permissions = '{"configure":".*","write":".*","read":".*"}'
-    options[:initial_username] = @initial_username = "guest"
-    options[:initial_password] = @initial_password = "guest"
     @hostname = get_host
     ProvisionedService.init(options)
   end
@@ -96,17 +93,7 @@ class VCAP::Services::Rabbit::Node
       port = new_port
       instance = ProvisionedService.create(port, get_external_admin_port(port), plan, nil, version)
     end
-    instance.run do
-      # Use initial credentials to create provision user
-      credentials = {"username" => @initial_username, "password" => @initial_password, "hostname" => instance.ip}
-      add_vhost(credentials, instance.vhost)
-      add_user(credentials, instance.admin_username, instance.admin_password)
-      set_permissions(credentials, instance.vhost, instance.admin_username, @default_permissions)
-      # Use provision user credentials to delete initial user for security
-      credentials["username"] = instance.admin_username
-      credentials["password"] = instance.admin_password
-      delete_user(credentials, @initial_username)
-    end
+    instance.run
     @logger.info("Successfully fulfilled provision request: #{instance.name}")
     gen_credentials(instance)
   rescue => e
@@ -353,7 +340,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
   class << self
 
     def create(port, external_admin_port, plan=nil, credentials=nil, version=nil)
-      raise "Parameter missing" unless port && admin_port
+      raise "Parameter missing" unless port && external_admin_port
       # The instance could be an old instance without warden support
       instance = get(credentials["name"]) if credentials
       instance = new if instance == nil
@@ -382,6 +369,9 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
       port = @@options[:service_port]
       service_admin_port = @@options[:service_admin_port]
       vm_memory_high_watermark = @@options[:vm_memory_high_watermark]
+      admin_username = instance.admin_username
+      admin_password = instance.admin_password
+      vhost = instance.vhost
       # In RabbitMQ, If the file_handles_high_watermark is x, then the socket limitation is trunc(x * 0.9) - 2,
       # to let the @max_clients be a more accurate limitation,
       # the file_handles_high_watermark will be set to ceil((@max_clients + 2) / 0.9)
@@ -427,18 +417,6 @@ EOF
 
   def finish_start?
     credentials = {"username" => admin_username, "password" => admin_password, "hostname" => ip}
-    begin
-      # Try to call management API, if success, then return
-      response = create_resource(credentials)["users"].get
-      JSON.parse(response)
-      return true
-    rescue => e
-      return false
-    end
-  end
-
-  def finish_first_start?
-    credentials = {"username" => @@options[:initial_username], "password" => @@options[:initial_password], "hostname" => ip}
     begin
       # Try to call management API, if success, then return
       response = create_resource(credentials)["users"].get
