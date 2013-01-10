@@ -49,14 +49,13 @@ class VCAP::Services::Rabbit::Node
     # Default value is 2 seconds.
     @rabbitmq_timeout = @options[:rabbitmq_timeout] || 2
     @service_start_timeout = @options[:service_start_timeout] || 5
-    @service_parallel_start_timeout = @options[:service_parallel_start_timeout] || 10
     @instance_parallel_start_count = 3
     @hostname = get_host
     ProvisionedService.init(options)
   end
 
   def pre_send_announcement
-    start_all_instances(@service_parallel_start_timeout)
+    start_all_instances
     @capacity_lock.synchronize{ @capacity -= ProvisionedService.all.size }
     warden_node_init(@options)
   end
@@ -385,7 +384,7 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
         Open3.capture3("umount #{instance.base_dir}") if File.exist?(instance.base_dir)
       rescue => e
       end
-      [instance.base_dir, instance.log_dir, instance.image_file].each do |f| 
+      [instance.base_dir, instance.log_dir, instance.image_file].each do |f|
         FileUtils.rm_rf(f)
       end
       instance.prepare_filesystem(max_disk)

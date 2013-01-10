@@ -109,6 +109,7 @@ describe "vblob wardenization" do
       @node.shutdown
       is_port_open?(@provisioned_service[:ip], @provisioned_service.service_port).should be_false
       EM.run do
+        @node.instance_variable_set(:@closing, false)
         @node.pre_send_announcement
         EM.add_timer(1) {EM.stop}
       end
