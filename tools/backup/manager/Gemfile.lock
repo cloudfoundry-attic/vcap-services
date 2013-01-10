@@ -178,8 +178,6 @@ GEM
     rubyzip (0.9.9)
     simplecov (0.4.2)
       simplecov-html (~> 0.4.4)
-    simplecov-clover (0.0.1)
-      simplecov (>= 0.4.1)
     simplecov-html (0.4.5)
     simplecov-rcov (0.2.3)
       simplecov (>= 0.4.1)
@@ -214,7 +212,6 @@ DEPENDENCIES
   rcov
   rspec (>= 2.4.0)
   simplecov
-  simplecov-clover
   simplecov-rcov
   sinatra
   thin

@@ -21,6 +21,5 @@ group :test do
   gem 'sinatra'
   gem 'thin'
   gem "simplecov"
-  gem "simplecov-clover"
   gem "simplecov-rcov"
 end
