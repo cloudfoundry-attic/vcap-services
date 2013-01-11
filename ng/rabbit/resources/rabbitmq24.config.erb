@@ -1,4 +1,4 @@
 [
-  {rabbit, [{vm_memory_high_watermark, <%= vm_memory_high_watermark %>}, {file_handles_high_watermark, <%= file_handles_high_watermark %>}, {msg_store_file_size_limit, 1048576}]},
+  {rabbit, [{vm_memory_high_watermark, <%= vm_memory_high_watermark %>}, {file_handles_high_watermark, <%= file_handles_high_watermark %>}, {msg_store_file_size_limit, 1048576}, {default_user, <<"<%= admin_username %>">>}, {default_pass, <<"<%= admin_password %>">>}, {default_vhost, <<"<%= vhost %>">>}]},
   {rabbit_mochiweb, [{port, <%= service_admin_port %>}]}
 ].
