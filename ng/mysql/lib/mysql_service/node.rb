@@ -180,7 +180,7 @@ class VCAP::Services::Mysql::Node
       begin
         return ConnectionPool.new(:host => host, :username => user, :password => password, :database => "mysql", :port => port.to_i, :socket => socket, :logger => @logger, :pool => @connection_pool_size["min"], :pool_min => @connection_pool_size["min"], :pool_max => @connection_pool_size["max"])
       rescue Mysql2::Error => e
-        @logger.error("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
+        @logger.warn("MySQL connection attempt failed: [#{e.errno}] #{e.error}")
         sleep(1)
       end
     end
@@ -526,6 +526,7 @@ class VCAP::Services::Mysql::Node
     @logger.debug("Dump instance #{prov_cred["name"]} request.")
     name = prov_cred["name"]
     service = mysqlProvisionedService.get(name)
+    File.open(File.join(dump_file_path, "#{name}.service"), 'w') { |f| Marshal.dump(service, f) }
     host, user, password, port, socket, _, mysqldump_bin = instance_configs(service)
     dump_file = File.join(dump_file_path, "#{name}.sql")
     @logger.info("Dump instance #{name} content to #{dump_file}")
@@ -546,9 +547,12 @@ class VCAP::Services::Mysql::Node
   def import_instance(prov_cred, binding_creds_hash, dump_file_path, plan)
     @logger.debug("Import instance #{prov_cred["name"]} request.")
     @logger.info("Provision an instance with plan: #{plan} using data from #{prov_cred.inspect}")
-    # FIXME, base should pass version info as input
-    provision(plan, prov_cred, @supported_versions[0])
+
     name = prov_cred["name"]
+    dump_service = File.join(dump_file_path, "#{name}.service")
+    service = File.open(dump_service, 'r') { |f| Marshal.load(f) }
+    raise "Cannot parse dumpfile in #{dump_service}" if service.nil?
+    provision(plan, prov_cred, service.version)
     provisioned_service = mysqlProvisionedService.get(name)
     import_file = File.join(dump_file_path, "#{name}.sql")
     host, user, password, port, socket, mysql_bin = instance_configs(provisioned_service)
