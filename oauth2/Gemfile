@@ -6,12 +6,11 @@ gem 'vcap_logging', :require => ['vcap/logging'], :git => 'git://github.com/clou
 gem 'vcap_services_base', :git => 'git://github.com/cloudfoundry/vcap-services-base.git', :ref => 'ae094cb53'
 gem 'warden-client', :require => ['warden/client'], :git => 'git://github.com/cloudfoundry/warden.git', :ref => 'fe6cb51'
 gem 'warden-protocol', :require => ['warden/protocol'], :git => 'git://github.com/cloudfoundry/warden.git', :ref => 'fe6cb51'
-gem 'cf-uaa-client', :git => 'git://github.com/cloudfoundry/uaa.git', :ref => 'master'
+gem 'cf-uaa-lib', '>= 1.3.4', "<= 1.3.4"
 
 group :test do
   gem "rake"
   gem "rspec"
-  gem "rcov"
   gem "simplecov"
   gem "simplecov-rcov"
   gem "ci_reporter"

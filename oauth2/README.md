@@ -121,17 +121,30 @@ The standard `uaa.yml` would have:
 
 A BOSH manifest would have something like this:
 
-    clients:
-      oauth2service:
-        secret: oauth2servicesecret
-        scope: openid,cloud_controller.read,cloud_controller.write
-        authorities: uaa.resource,oauth.service,clients.read,clients.write,clients.secret
-        authorized-grant-types: client_credentials,implicit
-        redirect-uri: http://uaa.cloudfoundry.com/redirect/oauth2service # can be anything
-        override: true
-    client:
-      autoapprove:
-        - vmc
-        - dashboard
-        - oauth2service
-        # ... others
+    - name: oauth2_gateway
+      template: oauth2_gateway
+      instances: 1
+      resource_pool: infrastructure
+      networks:
+      - name: default
+
+and properties like this:
+
+      oauth2_gateway:
+        token: 3735928559
+
+      uaa:
+        # ...
+        clients:
+          oauth2service:
+            secret: oauth2servicesecret
+            scope: openid,cloud_controller.read,cloud_controller.write
+            authorities: uaa.resource,oauth.service,clients.read,clients.write,clients.secret
+            authorized-grant-types: client_credentials,implicit
+            redirect-uri: http://uaa.cloudfoundry.com/redirect/oauth2service # can be anything
+            override: true
+        autoapprove:
+          - vmc
+          - dashboard
+          - oauth2service
+          # ... others

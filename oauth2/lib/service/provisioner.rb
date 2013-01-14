@@ -12,12 +12,14 @@
 #++
 
 require 'uaa/token_issuer'
-require 'uaa/client_reg'
+require 'uaa/scim'
 
 module CF::UAA::OAuth2Service
 end
 
 class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
+
+  include CF::UAA::Http
 
   DEFAULT_UAA_URL = "http://uaa.vcap.me"
   DEFAULT_LOGIN_URL = "http://uaa.vcap.me"
@@ -38,7 +40,6 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
     @redirect_uri =  options[:service][:redirect_uri] || "#{@uaa_url}/redirect/#{@client_id}"
     @logger.debug("Initializing: #{options}")
     @logger.info("UAA: #{@uaa_url}, Login: #{@login_url}")
-    @async = options[:service][:async].nil? ? true : options[:service][:async]
   end
 
   def provision_service(request, prov_handle=nil, &blk)
@@ -78,8 +79,8 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
     @logger.debug("[#{service_description}] Attempting to unprovision instance (instance id=#{instance_id})")
     svc = @prov_svcs[instance_id]
     raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc == nil
-    async do
-      client.delete(instance_id)
+    attempt do
+      client.delete(:client, instance_id)
     end
     bindings = find_all_bindings(instance_id)
     @prov_svcs.delete(instance_id)
@@ -150,20 +151,20 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
 
   def update_redirect_uri(credentials, config)
 
-    async do
+    attempt do
 
       @logger.debug("Updating redirect uris, credentials=#{credentials}, config=#{config}")
 
       client_id = credentials["client_id"]
-      details = client.get(client_id)
+      details = client.get(:client, client_id)
       if details.nil?
         @logger.warn("No client details for: #{client_id}")
         return
       end
 
       @logger.debug("Found client details: #{details}")
-      owner = config["email"] || details[:owner]
-      name = config["name"]
+      owner = config[:email] || config["email"] || details[:owner] || details["owner"]
+      name = config[:name] || config["name"]
 
       unless owner.nil?
 
@@ -176,29 +177,31 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
           username: owner}
 
         request_headers = {
-          content_type: "application/x-www-form-urlencoded",
-          accept: "application/json",
-          authorization: @auth_header }
+          "content-type" => "application/x-www-form-urlencoded",
+          "accept" => "application/json",
+          "authorization" => @auth_header }
 
-        status, body, headers = client.request(@uaa_url, :post, "/oauth/authorize", URI.encode_www_form(credentials), request_headers)
-        reply_uri = URI.parse(headers[:location])
-        params = CF::UAA::Util.decode_form_to_hash(reply_uri.fragment)
+        status, body, headers = http_post(@uaa_url, "/oauth/authorize", URI.encode_www_form(credentials), request_headers)
+        reply_uri = URI.parse(headers["location"])
+        params = CF::UAA::Util.decode_form(reply_uri.fragment)
 
-        apps = client.json_get(@cloud_controller_uri, "/apps", "bearer #{params[:access_token]}", request_headers)
+        request_headers = {
+          "accept" => "application/json",
+          "authorization" => "bearer #{params['access_token']}" }
+        apps = json_get(@cloud_controller_uri, "/apps", :sym, request_headers)
         @logger.debug("Apps from cloud controller: #{apps}")
 
         redirect_uri = ["#{@uaa_url}/redirect/#{client_id}"]
         apps.each do |app|
-          next if app[:uris].nil? or app[:services].nil? or app[:services].empty?
-          next if name and !app[:services].include?(name)
+          next if app[:uris].nil?
           app[:uris].each do |uri|
             redirect_uri << "#{@redirect_protocol}#{uri}"
           end
         end
-        details[:redirect_uri] = redirect_uri
+        details["redirect_uri"] = redirect_uri
         @logger.debug("Updating client details with redirects: #{redirect_uri}")
         begin
-          client.update(details)
+          client.put(:client, details)
         rescue CF::UAA::NotFound
           @logger.debug("Not found (already deleted?)")
         end
@@ -214,28 +217,21 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
     token = CF::UAA::TokenIssuer.new(@uaa_url, @client_id, @client_secret).client_credentials_grant
     @logger.info("Client token: #{token}")
     @auth_header = token.auth_header
-    @client = CF::UAA::ClientReg.new(@uaa_url, @auth_header)
-    @client.async = @async
+    @client = CF::UAA::Scim.new(@uaa_url, @auth_header)
     @client
   end
 
-  def async(&blk)
+  def attempt(&blk)
     attempts = 0
     begin
-      if @async
-        Fiber.new {
-          blk.call()
-        }.resume
-      else
-        blk.call()
-      end
+      blk.call()
     rescue => e
       attempts = attempts + 1
       if attempts < 2
-        @logger.info("Failed. Retrying.")
+        @logger.info("Failed (#{e}). Retrying.")
         retry
       else
-        @logger.info("Failed last attempt.")
+        @logger.info("Failed last attempt (#{e}) .")
         raise e
       end
     end
@@ -243,8 +239,8 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
 
   def gen_credentials(name, owner)
     client_secret = UUIDTools::UUID.random_create.to_s
-    async do
-      client.create(:client_id=>name, :client_secret=>client_secret,
+    attempt do
+      client.add(:client, :client_id=>name, :client_secret=>client_secret,
                    :scope => ["cloud_controller.read", "cloud_controller.write", "openid"],
                    :authorized_grant_types => ["authorization_code", "refresh_token"],
                    :access_token_validity => 10*60,
