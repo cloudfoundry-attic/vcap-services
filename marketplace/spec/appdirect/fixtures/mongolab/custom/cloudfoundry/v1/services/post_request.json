@@ -5,13 +5,11 @@
     },
     "offering" : {
         "id" : "mongolab_dev",
-        "version" : "2.0"
+        "version" : "2.0",
+        "provider" : "mongolab_dev_provider"
     },
     "configuration" : {
         "plan" : "free",
-        "name" : "def",
-        "options" : {
-            "cloud" : "joyent-cloud"
-        }
+        "name" : "def"
     }
 }

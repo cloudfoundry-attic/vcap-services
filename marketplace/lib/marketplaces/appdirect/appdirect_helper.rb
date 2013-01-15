@@ -71,11 +71,15 @@ module VCAP
                 data = JSON.parse(response_body) #VCAP::Services::AppDirect::AppDirectCatalogResponse.decode(raw)
                 catalog = []
                 data.each do |service|
-                  if (@whitelist.nil? || @whitelist.include?(service["name"]))
-                    @logger.info("Accepting whitelisted service: #{service["name"]}")
+                  label    = service["label"]
+                  provider = service["provider"]
+
+                  service_id = "#{label}_#{provider}"
+                  if (@whitelist.nil? || @whitelist.include?(service_id))
+                    @logger.info("Accepting whitelisted service: #{label} from provider: #{provider}")
                     catalog << service
                   else
-                    @logger.warn("Ignoring service Offering: #{service["name"]} since it is not whitelisted")
+                    @logger.warn("Ignoring service Offering:  #{label} from provider: #{provider} since it is not whitelisted")
                   end
                 end
                 @logger.info("Got #{catalog.size} services from AppDirect")

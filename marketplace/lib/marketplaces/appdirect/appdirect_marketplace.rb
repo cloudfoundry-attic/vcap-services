@@ -30,9 +30,9 @@ module VCAP
             # Maintain a reverse mapping since we'll be changing the service name for CC advertisement
             # A provision request will require the actual service name rather than the one in CCDB
             @service_id_map = {}
-            @mapping.keys.each { |k|
-              service_name = @mapping[k.to_sym][:name]
-              @service_id_map[service_name] = k.to_s
+            @mapping.keys.each { |ad_key|
+              cc_key = "#{@mapping[ad_key][:cc_name]}_#{@mapping[ad_key][:cc_provider]}".to_sym
+              @service_id_map[cc_key] = ad_key
             }
           end
 
@@ -44,7 +44,13 @@ module VCAP
             appdirect_catalog = @helper.load_catalog
             catalog = {}
             appdirect_catalog.each { |s|
-              name, provider = load_mapped_name_and_provider(s["name"], s["vendor"])
+              key = "#{s["label"]}_#{s["provider"]}".to_sym
+              raise "Mapping missing for whitelisted offering - label: #{s["label"]} / provider: #{s["provider"]}" unless @mapping.keys.include?(key)
+
+              mapping  = @mapping[key]
+              name     = mapping[:cc_name]
+              provider = mapping[:cc_provider]
+
               version = s["version"] || "1.0" # UNTIL AD fixes this...
               key = key_for_service(name, version, provider)
 
@@ -56,7 +62,10 @@ module VCAP
               plans = {}
               if s["plans"] and s["plans"].count > 0
                 s["plans"].each do |plan|
-                  plans[plan["id"]] = plan["description"]
+                  plans[plan["id"]] = {
+                    "description" => plan["description"] || plan["id"], # UNTIL AD fixes this...
+                    "free" => plan["free"] || true # UNTIL AD fixes this...
+                  }
                 end
               end
 
@@ -65,7 +74,7 @@ module VCAP
                 "id"          => name,
                 "version"     => version,
                 "description" => s["description"],
-                "info_url"    => s["infoUrl"],
+                "info_url"    => s["info_url"],
                 "plans"       => plans,
                 "provider"    => provider,
                 "acls"        => acls,
@@ -77,51 +86,42 @@ module VCAP
             catalog
           end
 
-          def load_mapped_name_and_provider(name, provider)
-             svc_label = name
-
-             # We'll use the service id as provider unless appdirect sends otherwise
-             svc_provider = provider || name
-             if (@mapping.keys.include?(name.to_sym))
-               service_mapping = @mapping[name.to_sym]
-               svc_label = service_mapping[:name]
-               svc_provider = service_mapping[:provider]
-            end
-
-            [svc_label, svc_provider]
-          end
-
-          def offering_disabled?(id, offerings_list)
-            # Translate service name if a custom mapping was defined
-            id = @service_id_map[id] if @service_id_map.keys.include?(id)
-
-            # Check if its still listed
-            @logger.info("Offering: #{id} - Present in offering list: #{offerings_list.include?(id)}")
-            !(offerings_list.include?(id))
-          end
-
           ##### Handle the 4 operations #####
 
           def provision_service(request_body)
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
             id,version = request.label.split("-")
-            id = @service_id_map[id] if @service_id_map.keys.include?(id)
-            @logger.debug("Provision request for label=#{request.label} (id=#{id}) plan=#{request.plan}, version=#{request.version}")
+
+            cc_key = "#{id}_#{request.provider}".to_sym
+            raise "Mapping does not exist for: #{cc_key.to_s}" unless @service_id_map.keys.include?(cc_key)
+
+            ad_key = @service_id_map[cc_key]
+            raise "Requested mapping for unknown label: #{name} / provider: #{provider}" unless @mapping.keys.include?(ad_key)
+
+            mapping  = @mapping[ad_key]
+            name     = mapping[:ad_name]
+            provider = mapping[:ad_provider]
+
+            @logger.debug("Provision request for offering: #{request.label} (id=#{id}) provider=#{request.provider}, plan=#{request.plan}, version=#{request.version}")
 
             order = {
               "user" => {
-                "uuid" => nil, # TODO: replace with actual UUID from ccng
+                "uuid"  => request.user_guid,
                 "email" => request.email
               },
               "offering" => {
-                "id" => id,
-                "version" => request.version || version
+                "label"    => name,
+                "provider" => provider
               },
               "configuration" => {
                 "plan" => request.plan,
                 "name" => request.name,
-                "options" => {}
-              }
+              },
+
+              # TODO: Uncomment the below block once AD accepts this
+              #"billing" => {
+              #  "space_guid" => request.space_guid
+              #}
             }
             receipt = @helper.purchase_service(order)
 

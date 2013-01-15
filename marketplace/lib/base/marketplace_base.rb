@@ -16,9 +16,6 @@ module VCAP
         # get_catalog
         abstract :get_catalog
 
-        # offering_disabled?(name, offerings)
-        abstract :offering_disabled?
-
         # provision_service(request_body)
         abstract :provision_service
 

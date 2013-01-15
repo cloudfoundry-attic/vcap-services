@@ -1,75 +1,44 @@
 [
     {
-        "name":"New Relic (Dev)",
-        "id" : "newrelic_development",
-        "tiers" : [
+        "label":"newrelic",
+        "description":"New Relic (Dev)",
+        "version":"1.0",
+        "provider":"appdirect",
+        "plans" : [
             {
                 "id": "free",
-                "name" : "free",
-                "description" : "Basic plan"
+                "description" : "Basic plan",
+                "free":true
             }
         ],
-        "development" : true,
-        "developers" : [
-            {
-                "email": "peter@newrelic.com"
-            }
-        ]
+        "info_url":"http://appdirect.com"
     },
     {
-        "name":"New Relic",
-        "id" : "newrelic_production",
-        "tiers" : [
-            {
-                "id": "free",
-                "name" : "free",
-                "description" : "Basic plan"
-            }
-        ],
-        "development" : false,
-        "developers" : [
-            {
-                "email": "peter@newrelic.com"
-            }
-        ]
-    },
-    {
-        "name":"MongoLab",
-        "id" : "mongolab_production",
+        "label":"MongoLab",
         "description":"MongoLab: Cloud MongoDB Hosting",
-        "active" : true,
-        "tiers" :
-            [
-                {
-                    "id": "free",
-                    "name" : "free",
-                    "description" : "Basic plan"
-                }
-            ],
-            "development" : false,
-            "developers" : [
-                {
-                    "email": "jared@mongolab.com"
-                }
-            ]
+        "version":"1.0",
+        "provider":"appdirect",
+        "plans" : [
+            {
+                "id": "free",
+                "description" : "Basic plan",
+                "free":true
+            }
+        ],
+        "info_url":"http://appdirect.com"
     },
     {
-        "name":"Sendgrid",
-        "id" : "sendgrid",
+        "label":"Sendgrid",
         "description":"Email Delivery. Simplified.",
-        "tiers" :
-            [
-                {
-                    "id": "free",
-                    "name" : "free",
-                    "description" : "Basic plan"
-                }
-            ],
-            "development" : false,
-            "developers" : [
-                {
-                    "email": "tim@sendgrid.com"
-                }
-            ]
+        "version":"1.0",
+        "provider":"appdirect",
+        "plans" : [
+            {
+                "id": "free",
+                "description" : "Basic plan",
+                "free":true
+            }
+        ],
+        "info_url":"http://appdirect.com"
     }
 ]

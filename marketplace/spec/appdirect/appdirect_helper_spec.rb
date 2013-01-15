@@ -16,7 +16,27 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
     @config = load_config("appdirect")
     @logger = @config[:logger]
     @config[:appdirect][:endpoint] = Mocks.get_endpoint
-    @config[:offering_whitelist] = ["mongolab_dev", "mongolab", "asms_dev", "james_dev"]
+    @config[:offering_whitelist] = [
+      "mongolab_dev_mongolab_dev_provider",
+      "mongolab_mongolab_provider",
+      "asms_dev_asms_dev_provider",
+      "james_dev_james_dev_provider"
+    ]
+
+    @config[:offering_mapping] = {
+      :mongolab_dev_mongolab_dev_provider => {
+        :cc_name => "mongolab_dev", :cc_provider => "mongolab_dev_provider", :ad_name => "mongolab_dev", :ad_provider => "mongolab_dev_provider"
+      },
+      :mongolab_mongolab_provider => {
+        :cc_name => "mongolab", :cc_provider => "mongolab_provider", :ad_name => "mongolab", :ad_provider => "mongolab_provider"
+      },
+      :asms_dev_asms_dev_provider => {
+        :cc_name => "asms_dev", :cc_provider => "asms_dev_provider", :ad_name => "asms_dev", :ad_provider => "asms_dev_provider"
+      },
+      :james_dev_james_dev_provider => {
+        :cc_name => "james_dev", :cc_provider => "james_dev_provider", :ad_name => "james_dev", :ad_provider => "james_dev_provider"
+      }
+    }
 
     @config[:test_mode] = true # this way we'll use Net::Http rather than OAuthConsumer
 
@@ -52,7 +72,9 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
           :plan => fixture["configuration"]["plan"],
           :name => fixture["configuration"]["name"],
           :version => fixture["offering"]["version"],
-          :email => fixture["user"]["email"]
+          :email => fixture["user"]["email"],
+          :uuid => fixture["user"]["uuid"],
+          :provider => fixture["offering"]["provider"]
         })
 
         f = Fiber.new do
