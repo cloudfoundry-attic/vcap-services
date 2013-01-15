@@ -79,7 +79,8 @@ def getNodeTestConfig
     :image_dir       => "/tmp/rabbitmq_image",
     :max_disk        => 128,
     :migration_nfs   => "/tmp/migration",
-    :disabled_file => "/tmp/redis_instances/DISABLED",
+    :disabled_file   => "/tmp/redis_instances/DISABLED",
+    :filesystem_quota => true,
   }
   options[:local_db] = "sqlite3:" + options[:local_db_file]
   options

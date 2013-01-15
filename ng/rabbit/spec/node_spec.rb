@@ -305,6 +305,37 @@ describe VCAP::Services::Rabbit::Node do
       amqp_start(credentials, instance).should == true
       @node.unprovision(credentials["name"])
     end
+
+    it "should change loop file size if the configuration changed after restart" do
+      credentials = @node.provision(:free)
+      sleep 3
+      [@options[:max_disk] * 2, @options[:max_disk]].each do |to_size|
+        @node.shutdown
+        @options[:max_disk] = to_size
+        EM.run do
+          @node = VCAP::Services::Rabbit::Node.new(@options)
+          EM.add_timer(1) {EM.stop}
+        end
+        instance = @node.get_instance(credentials["name"])
+        amqp_start(credentials, instance).should == true
+        File.size(instance.image_file).should == to_size.to_i * 1024 * 1024
+      end
+
+      # Verify revert case if set to the wrong size
+      @node.shutdown
+      old_size = @options[:max_disk].to_i
+      # Set disk size to 1M which is less than the size needed for sure
+      @options[:max_disk] = 1
+      EM.run do
+        @node = VCAP::Services::Rabbit::Node.new(@options)
+        EM.add_timer(1) {EM.stop}
+      end
+      instance = @node.get_instance(credentials["name"])
+      amqp_start(credentials, instance).should == true
+      File.size(instance.image_file).should == old_size.to_i * 1024 * 1024
+      @options[:max_disk] = old_size
+      @node.unprovision(credentials["name"])
+    end
   end
 
   describe "Node.shutdown" do
