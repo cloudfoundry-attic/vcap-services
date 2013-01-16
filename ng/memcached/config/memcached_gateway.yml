@@ -3,10 +3,10 @@ cloud_controller_uri: http://api.vcap.me
 service:
   name: memcached
   version: "1.4"
-  description: 'Memcached in-memory object cache service'
+  description: 'Memcached in-memory cache'
   plans: ['free']
   default_plan: free
-  tags: ['memcached', 'memcached-1.4', 'key-value', 'nosql']
+  tags: ['key-value', 'nosql']
 ip_route: localhost
 index: 0
 token: changememcachedtoken

@@ -3,10 +3,10 @@
 service:
   name: filesystem
   version: "1.0"
-  description: 'Persistent filesystem service'
+  description: 'Persistent filesystem'
   plans: ['free']
   default_plan: free
-  tags: ['filesystem', 'filesystem-1.0', 'Persistent filesystem service']
+  tags: []
 ip_route: 172.16.218.128
 index: 0
 token: "0xdeadbeef"

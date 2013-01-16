@@ -3,10 +3,10 @@
 service:
   name: postgresql
   version: "9.0"
-  description: 'PostgreSQL database service (vFabric)'
+  description: 'PostgreSQL database (vFabric)'
   plans: ['free']
   default_plan: free
-  tags: ['postgresql', 'postgresql-9.0', 'relational']
+  tags: ['relational']
 ip_route: localhost
 #proxy:
 #   host: proxy
