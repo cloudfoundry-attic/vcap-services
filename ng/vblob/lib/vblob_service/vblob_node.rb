@@ -240,7 +240,7 @@ class VCAP::Services::VBlob::Node
     provisioned_service = ProvisionedService.get(service_credential['name'])
     raise ServiceError.new(ServiceError::NOT_FOUND, service_credential['name']) if provisioned_service.nil?
     provisioned_service.run unless provisioned_service.running?
-    raise VBlobError.new(VBlobError::VBLOB_START_INSTANCE_ERROR) if provisioned_service.wait_service_start == false
+    raise VBlobError.new(VBlobError::VBLOB_START_INSTANCE_ERROR) if provisioned_service.wait_service_start(@service_start_timeout) == false
     true
   rescue => e
     @logger.warn(e)
