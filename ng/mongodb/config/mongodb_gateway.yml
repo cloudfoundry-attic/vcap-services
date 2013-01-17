@@ -3,10 +3,10 @@
 service:
   name: mongodb
   version: "1.8"
-  description: 'MongoDB NoSQL store'
+  description: 'MongoDB NoSQL database'
   plans: ['free']
   default_plan: free
-  tags: ['mongodb', 'mongodb-1.8', 'nosql', 'document']
+  tags: ['nosql', 'document']
   supported_versions: ["1.8"]
   version_aliases:
     "current": "1.8"

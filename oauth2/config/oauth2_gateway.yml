@@ -3,10 +3,10 @@ cloud_controller_uri: api.vcap.me
 service:
   name: oauth2
   version: "1.0"
-  description: 'OAuth2 service'
+  description: 'UAA identity provider'
   plans: ['free']
   default_plan: 'free'
-  tags: ['oauth2', 'uaa']
+  tags: ['uaa']
   timeout: 60
   supported_versions: ["1.0"]
   version_aliases:

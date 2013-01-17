@@ -3,10 +3,10 @@
 service:
   name: mysql
   version: "5.1"
-  description: 'MySQL database service'
+  description: 'MySQL database'
   plans: ['free']
   default_plan: free
-  tags: ['mysql', 'mysql-5.1', 'relational']
+  tags: ['relational']
 ip_route: localhost
 #proxy:
 #   host: proxy

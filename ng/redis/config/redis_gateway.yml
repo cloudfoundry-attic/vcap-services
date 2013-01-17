@@ -3,10 +3,10 @@
 service:
   name: redis
   version: "2.2"
-  description: 'Redis key-value store service'
+  description: 'Redis key-value store'
   plans: ['free']
   default_plan: free
-  tags: ['redis', 'redis-2.2', 'key-value', 'nosql']
+  tags: ['key-value', 'nosql']
   supported_versions: ["2.2"]
   version_aliases:
     "current": "2.2"
