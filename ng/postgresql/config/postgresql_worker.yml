@@ -24,6 +24,7 @@ postgresql:
     host: 127.0.0.1
     port: 5432
     user: vcap
+    pass: vcap
     database: postgres
     restore_bin: pg_restore
     dump_bin: pg_dump

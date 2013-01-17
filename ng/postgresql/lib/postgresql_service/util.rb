@@ -1,5 +1,8 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require 'pg'
+require 'tempfile'
+require 'fileutils'
+require 'open3'
 require 'postgresql_service/pg_timeout'
 
 module VCAP
@@ -47,7 +50,7 @@ module VCAP
         # shell CMD wrapper and logger
         def exe_cmd(cmd, env={}, stdin=nil)
           @logger ||= create_logger
-          @logger.debug("Execute shell cmd:[#{cmd}]")
+          @logger.debug("Execute shell cmd:[#{env}, '#{cmd}']")
           o, e, s = Open3.capture3(env, cmd, :stdin_data => stdin)
           if s.exitstatus == 0
             @logger.info("Execute cmd:[#{cmd}] succeeded.")
@@ -521,6 +524,17 @@ module VCAP
           pgconn.close if pgconn
         end
 
+        # process command that need PGPASSFILE
+        def pgpass_exe_cmd(name, host, port, user, passwd, cmd, &block)
+          (pgpass_file = Tempfile.new('vcap_pgpass')).close
+          FileUtils.chmod 0600, pgpass_file
+          File.open(pgpass_file.path, 'w') { |f| f.puts "#{host}:#{port}:#{name}:#{user}:#{passwd}" }
+          yield pgpass_file.path, cmd
+        ensure
+          # close and unlink
+          pgpass_file.close!
+        end
+
         # Use this method for backuping and snapshoting the database
         # name: name of database
         # host: ip/hostname of your database node
@@ -530,25 +544,22 @@ module VCAP
         # dump_file: the file to store the dumped data
         # opts: optional arguments
         #   dump_bin
-        #   logger
         def dump_database(name, host, port, user, passwd, dump_file, opts = {})
           raise "You must provide the following arguments: name, host, port, user, passwd, dump_file" unless name && host && port && user && passwd && dump_file
 
           dump_bin = opts[:dump_bin] || 'pg_dump'
           dump_cmd = "#{dump_bin} -Fc --host=#{host} --port=#{port} --username=#{user} --file=#{dump_file} #{name}"
 
-          # running the command
-          on_err = Proc.new do |cmd, code, msg|
-            opts[:logger].error("CMD '#{cmd}' exit with code: #{code} & Message: #{msg}") if opts[:logger]  && opts[:logger].respond_to?(:error)
+          pgpass_exe_cmd(name, host, port, user, passwd, dump_cmd) do |pgpass_file, pgpass_cmd|
+            o, e, s = exe_cmd(pgpass_cmd, {'PGPASSFILE' => pgpass_file})
+            return s.exitstatus == 0
           end
-
-          result = CMDHandle.execute(dump_cmd, nil, on_err )
-          raise "Failed to dump database of #{name}" unless result
-          result
         end
 
         # Use this method to filter the un-supported archive elements in HACK style
-        def archive_list(dump_file, opts = {})
+        def archive_list(name, host, port, user, passwd, dump_file, opts = {})
+          raise "You must provide the following arguments: name, host, port, user, passwd, dump_file" unless name && host && port && user && passwd && dump_file
+
           restore_bin = opts[:restore_bin] || 'pg_restore'
           # HACK: exclude the commands that result privllege issue during import
           exclude_cmd_patterns = [
@@ -556,10 +567,12 @@ module VCAP
             "PROCEDURAL LANGUAGE - plpgsql"
           ]
           exclude_cmd = exclude_cmd_patterns.map{|pattern| "grep -v '#{pattern}'"}.join(" | ")
-
           cmd = "#{restore_bin} -l #{dump_file} | #{exclude_cmd} > #{dump_file}.archive_list"
-          o, e, s = exe_cmd(cmd)
-          return s.exitstatus == 0
+
+          pgpass_exe_cmd(name, host, port, user, passwd, cmd) do |pgpass_file, pgpass_cmd|
+            o, e, s = exe_cmd(pgpass_cmd, {'PGPASSFILE' => pgpass_file})
+            return s.exitstatus == 0
+          end
         end
 
         # Use this method for restoring and importing the database
@@ -571,18 +584,17 @@ module VCAP
         # dump_file: the file which stores the dumped data
         # opts: optional arguments
         #   restore_bin
-        #   logger
         def restore_database(name, host, port, user, passwd, dump_file, opts = {})
           raise "You must provide the following arguments: name, host, port, user, passwd, dump_file" unless name && host && port && user && passwd && dump_file
 
-          archive_list(dump_file, opts)
-
+          return false unless archive_list(name, host, port, user, passwd, dump_file, opts)
           restore_bin = opts[:restore_bin] || 'pg_restore'
           restore_cmd = "#{restore_bin} -h #{host} -p #{port} -U #{user} -L #{dump_file}.archive_list -d #{name} #{dump_file} "
 
-          # running the command
-          o, e, s = exe_cmd(restore_cmd)
-          s.exitstatus == 0
+          pgpass_exe_cmd(name, host, port, user, passwd, restore_cmd) do |pgpass_file, pgpass_cmd|
+            o, e, s = exe_cmd(pgpass_cmd, {'PGPASSFILE' => pgpass_file})
+            return s.exitstatus == 0
+          end
         ensure
           FileUtils.rm_rf("#{dump_file}.archive_list")
         end

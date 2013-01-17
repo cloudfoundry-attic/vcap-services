@@ -126,7 +126,7 @@ module VCAP
             options = super
             options[:pre_start_script] = {:script => File.join(script_dir, "pre_service_start.sh"), :use_root => true}
             options[:start_script] = {
-              :script => "#{service_script} start #{base_dir} #{log_dir} #{common_dir} #{bin_dir} #{service_port}",
+              :script => "#{service_script} start #{base_dir} #{log_dir} #{common_dir} #{bin_dir} #{service_port} #{@@postgresql_config[version]["pass"]} #{VCAP.local_ip}",
               :use_spawn => true
             }
             options[:service_port] = service_port
