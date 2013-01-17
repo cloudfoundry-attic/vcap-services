@@ -26,14 +26,14 @@ type ProxyConfig struct {
 var logger steno.Logger
 var sighnd chan os.Signal
 
-func startProxyServer(conf *ProxyConfig) error {
+func startProxyServer(conf *ProxyConfig) {
 	proxyaddrstr := conf.HOST + ":" + conf.PORT
 	mongoaddrstr := conf.MONGODB.HOST + ":" + conf.MONGODB.PORT
 
 	proxyfd, err := net.Listen("tcp", proxyaddrstr)
 	if err != nil {
 		logger.Errorf("TCP server listen error: [%v].", err)
-		return err
+		os.Exit(-1)
 	}
 
 	filter := NewFilter(&conf.FILTER, &conf.MONGODB)
@@ -56,7 +56,7 @@ func startProxyServer(conf *ProxyConfig) error {
 
 		// Golang does not provide 'Timeout' IO function, so we
 		// make it on our own.
-		clientconn, err := asyncAcceptTCP(proxyfd, time.Second)
+		clientconn, err := asyncAcceptTCP(proxyfd, time.Millisecond*100)
 		if err == ErrTimeout {
 			continue
 		} else if err != nil {
@@ -79,9 +79,7 @@ func startProxyServer(conf *ProxyConfig) error {
 
 Exit:
 	logger.Info("Stop proxy server.")
-	manager.WaitAllFinish()
-	filter.WaitForFinish()
-	return nil
+	os.Exit(0)
 }
 
 type tcpconn struct {
@@ -142,11 +140,11 @@ func setupStdoutLogger() steno.Logger {
 	return steno.NewLogger("mongodb_proxy")
 }
 
-func Start(conf *ProxyConfig, log steno.Logger) error {
+func Start(conf *ProxyConfig, log steno.Logger) {
 	if log == nil {
 		logger = setupStdoutLogger()
 	} else {
 		logger = log
 	}
-	return startProxyServer(conf)
+	startProxyServer(conf)
 }
