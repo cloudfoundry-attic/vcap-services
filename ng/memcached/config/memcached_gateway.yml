@@ -6,7 +6,7 @@ service:
   description: 'Memcached in-memory cache'
   plans: ['free']
   default_plan: free
-  tags: ['key-value', 'nosql']
+  tags: ['key-value', 'cache']
 ip_route: localhost
 index: 0
 token: changememcachedtoken
