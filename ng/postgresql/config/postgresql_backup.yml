@@ -10,14 +10,12 @@ postgresql:
     host: localhost
     port: 5432
     user: vcap
-    pass: vcap
     database: postgres
     dump_bin: /var/vcap/packages/postgresql/bin/pg_dump
   '9.1':
     host: localhost
     port: 5433
     user: vcap
-    pass: vcap
     database: postgres
     dump_bin: /var/vcap/packages/postgresql91/bin/pg_dump
 logging:

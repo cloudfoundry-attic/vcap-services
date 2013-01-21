@@ -100,13 +100,13 @@ module VCAP
 
           try_num.times do
             begin
-              @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password}, #{database} (fail_with_nil: #{fail_with_nil})") unless quiet
+              @logger.info("PostgreSQL connect: #{host}, #{port}, #{user}, #{password || "***"}, #{database} (fail_with_nil: #{fail_with_nil})") unless quiet
               conn = PGDBconn.new(conn_opts)
               version = pg_version(conn)
               @logger.info("Connected PostgreSQL server - version: #{version}") unless quiet
               return conn
             rescue => e
-              @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password}") unless quiet
+              @logger.error("PostgreSQL connection attempt failed: #{host} #{port} #{database} #{user} #{password || "***"}") unless quiet
               sleep(exception_sleep) if exception_sleep > 0
             end
           end

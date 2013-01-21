@@ -84,8 +84,8 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
             :ts => current_time,
             :user => default_user[:user],
             :passwd => default_user[:password],
-            :host => use_warden ? VCAP.local_ip : pg_config["host"],
-            :port => use_warden ? provisionedservice.port : pg_config["port"],
+            :host => use_warden ? provisionedservice.ip: pg_config["host"],
+            :port => pg_config["port"],
             :dump_bin => pg_config["dump_bin"]
           }
           result = exe_backup_db(opts.merge(extra_opts))
