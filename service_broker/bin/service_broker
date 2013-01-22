@@ -63,28 +63,14 @@ class VCAP::Services::ServiceBroker::Gateway < VCAP::Services::Base::Gateway
 
     setup_pid
 
-    @config[:host] = VCAP.local_ip(@config[:ip_route])
-    @config[:port] ||= VCAP.grab_ephemeral_port
-    cloud_controller_uri = @config[:cloud_controller_uri] || default_cloud_controller_uri
+    @config[:host]                 = VCAP.local_ip(@config[:ip_route])
+    @config[:port]               ||= VCAP.grab_ephemeral_port
+    @config[:cloud_controller_uri] = @config[:cloud_controller_uri] || default_cloud_controller_uri
+    @config[:node_timeout]         = @config[:node_timeout] || 5
 
     # Go!
     EM.run do
-      sg = async_gateway_class.new(
-             :proxy   => @config[:proxy],
-             :token   => @config[:token],
-             :node_timeout => @config[:node_timeout] || 5,
-             :cloud_controller_uri => cloud_controller_uri,
-             :service  => @config[:service],
-             :host => @config[:host],
-             :port => @config[:port],
-             :mbus => @config[:mbus],
-             :local_db => @config[:local_db],
-             :logger   => @config[:logger],
-             :index    => @config[:index],
-             :ip_route => @config[:ip_route],
-             :external_uri => @config[:external_uri],
-             :z_interval => @config[:z_interval],
-           )
+      sg = async_gateway_class.new(@config)
       Thin::Server.start(@config[:host], @config[:port], sg)
     end
   end

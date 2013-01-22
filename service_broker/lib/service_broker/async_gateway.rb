@@ -4,6 +4,8 @@ require 'dm-types'
 require 'nats/client'
 require 'uuidtools'
 
+require 'base_async_gateway'
+require 'service_error'
 module VCAP
   module Services
     module ServiceBroker
@@ -11,7 +13,9 @@ module VCAP
   end
 end
 
-class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services::AsynchronousServiceGateway
+class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services::BaseAsynchronousServiceGateway
+
+  include VCAP::Services::Base::Error
 
   class BrokeredService
     include DataMapper::Resource
@@ -23,6 +27,10 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     property :version,     String,   :required => true
     property :credentials, Json,     :required => true
     property :acls,        Json
+
+    # TODO: Make these required
+    property :description, String,   :required => false
+    property :provider,    String,   :required => false
   end
 
   REQ_OPTS      = %w(mbus external_uri token cloud_controller_uri).map {|o| o.to_sym}
@@ -45,10 +53,7 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @logger                = opts[:logger] || make_logger()
     @token                 = opts[:token]
     @hb_interval           = opts[:heartbeat_interval] || 60
-    @cld_ctrl_uri          = http_uri(opts[:cloud_controller_uri])
     @external_uri          = parse_uri(opts[:external_uri])
-    @offering_uri          = "#{@cld_ctrl_uri}/services/v1/offerings/"
-    @service_list_uri      = "#{@cld_ctrl_uri}/proxied_services/#{API_VERSION}/offerings"
     @router_start_channel  = nil
     @proxy_opts            = opts[:proxy]
     @ready_to_serve        = false
@@ -73,6 +78,19 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     DataMapper.setup(:default, opts[:local_db])
     DataMapper::auto_upgrade!
 
+    opts[:cloud_controller_uri] = http_uri(opts[:cloud_controller_uri])
+    opts[:gateway_name]         = opts[:gateway_name] || "Service Broker"
+
+    if opts[:cc_api_version] == "v1"
+      require 'catalog_manager_v1'
+      @catalog_manager = VCAP::Services::CatalogManagerV1.new(opts)
+    elsif opts[:cc_api_version] == "v2"
+      require 'catalog_manager_v2'
+      @catalog_manager = VCAP::Services::CatalogManagerV2.new(opts)
+    else
+      raise "Unknown cc_api_version: #{opts[:cc_api_version]}"
+    end
+
     Kernel.at_exit do
       if EM.reactor_running?
         on_exit(false)
@@ -81,16 +99,22 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       end
     end
 
+    migrate_saved_instances_on_startup
+
     ##### Start up
     f = Fiber.new do
       begin
+        @logger.debug("Starting nats...")
         start_nats(opts[:mbus])
-        # get all brokered service offerings
-        fetch_brokered_services
+
+        # setup pre-defined offerings from config file
+        @logger.debug("Setup predefined offerings")
+        setup_pre_defined_services(opts[:service]) if opts[:service]
+
         # active services in local database
+        @logger.debug("Advertise offerings to CC")
         advertise_saved_services
-        # active predefined offerings
-        advertise_pre_defined_services(opts[:service]) if opts[:service]
+
         # Ready to serve
         @logger.info("Service broker is ready to serve incoming request.")
         @ready_to_serve = true
@@ -101,22 +125,17 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     f.resume
   end
 
-  # Validate the incoming request
-  before do
-    unless @ready_to_serve
-      error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
-      abort_request(error_msg)
-    end
-  end
-
-  error [JsonMessage::ValidationError, JsonMessage::ParseError] do
-    error_msg = ServiceError.new(ServiceError::MALFORMATTED_REQ).to_hash
-    abort_request(error_msg)
-  end
-
-  not_found do
-    error_msg = ServiceError.new(ServiceError::NOT_FOUND, request.path_info).to_hash
-    abort_request(error_msg)
+  def migrate_saved_instances_on_startup
+    BrokeredService.all.each do |bsvc|
+      if bsvc.provider.to_s.empty?
+        bsvc.provider = bsvc.name # default provider is name
+        @logger.warn("Unable to set provider for: #{bsvc.inspect}") unless bsvc.save
+      end
+      if bsvc.description.to_s.empty?
+        bsvc.description = bsvc.label # default description is label
+        @logger.warn("Unable to set description for: #{bsvc.inspect}") unless bsvc.save
+      end
+   end
   end
 
   def parse_uri(uri_str)
@@ -142,61 +161,6 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     @router_start_channel = @nats.subscribe('router.start') { @nats.publish('router.register', @router_register_json)}
   end
 
-  def fetch_brokered_services
-    f = Fiber.current
-    req = create_http_request(
-      :head => @cc_req_hdrs
-    )
-
-    f = Fiber.current
-    http = EM::HttpRequest.new(@service_list_uri).get(req)
-    http.callback { f.resume(http) }
-    http.errback { f.resume(http) }
-    Fiber.yield
-
-    if http.error.empty?
-      if http.response_header.status == 200
-        # For V1, we can't get enough information such as services credentials from CC.
-        # If CC return a service label that not known by SB, we simply print it out rather than serve it.
-        resp = VCAP::Services::Api::ListProxiedServicesResponse.decode(http.response)
-        resp.proxied_services.each {|bsvc| @logger.info("Fetch brokered service from CC: label=#{bsvc["label"]}")}
-        return true
-      else
-        @logger.warn("Failed to fetch brokered services, status=#{http.response_header.status}")
-      end
-    else
-      @logger.warn("Failed to fetch brokered services: #{http.error}")
-    end
-    nil
-  rescue => e
-    @logger.warn("Failed to fetch brokered services: #{fmt_error(e)}")
-  end
-
-  def advertise_saved_services(active=true)
-    BrokeredService.all.each do |bsvc|
-      req = VCAP::Services::Api::ServiceOfferingRequest.new({
-        :label                => bsvc.label,
-        :active               => active,
-        :acls                 => bsvc.acls,
-        :url                  => @external_uri.to_s,
-        :plans                => ["default"],
-        :tags                 => [],
-        :supported_versions   => [bsvc.version],
-        :version_aliases      => {:current => bsvc.version},
-      }).extract
-      advertise_brokered_service_to_cc(req)
-    end
-  end
-
-  def advertise_pre_defined_services(services)
-    services[:label] = "#{services[:name]}-#{services[:version]}"
-    %w(name version).each {|key| services.delete(key.to_sym)}
-    req = VCAP::Services::Api::ProxiedServiceOfferingRequest.new(services)
-    advertise_brokered_service(req)
-  rescue => e
-    @logger.warn("Failed to advertise pre-defined services #{services.inspect}: #{e}")
-  end
-
   def stop_nats()
     @nats.unsubscribe(@router_start_channel) if @router_start_channel
     @logger.debug("Unregister uri: #{@router_register_json}")
@@ -214,6 +178,41 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
   end
 
   #################### Handlers ###################
+  # Validate incoming request
+  def validate_incoming_request
+    unless @ready_to_serve
+      error_msg = ServiceError.new(ServiceError::SERVICE_UNAVAILABLE).to_hash
+      @logger.error("Not yet ready to serve: #{error_msg.inspect}")
+      abort_request(error_msg)
+    end
+
+    unless request.media_type == Rack::Mime.mime_type('.json')
+      error_msg = ServiceError.new(ServiceError::INVALID_CONTENT).to_hash
+      @logger.error("Validation failure: #{error_msg.inspect}, request media type: #{request.media_type} is not json")
+      abort_request(error_msg)
+    end
+
+    # Service auth token check
+    unless auth_token && (auth_token == @token)
+      error_msg = ServiceError.new(ServiceError::NOT_AUTHORIZED).to_hash
+      @logger.error("Validation failure: #{error_msg.inspect}, expected token: #{@token}, specified token: #{auth_token}")
+      abort_request(error_msg)
+    end
+  end
+
+  error [JsonMessage::ValidationError, JsonMessage::ParseError] do
+    error_msg = ServiceError.new(ServiceError::MALFORMATTED_REQ).to_hash
+    @logger.error(error_msg.inspect)
+    abort_request(error_msg)
+  end
+
+  not_found do
+    error_msg = ServiceError.new(ServiceError::NOT_FOUND, request.path_info).to_hash
+    @logger.error(error_msg.inspect)
+    abort_request(error_msg)
+  end
+
+  ##### Service Brokers' brokered-service facing handlers ######
 
   # Advertise or modify a brokered service offerings
   post "/service-broker/#{API_VERSION}/offerings" do
@@ -246,6 +245,8 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     }.resume
     async_mode
   end
+
+  ##### Service Broker's CC facing handlers ######
 
   # Provision a brokered service
   post "/gateway/v1/configurations" do
@@ -293,48 +294,95 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     "{}"
   end
 
+  ############ Catalog management #############
+
+  def advertise_saved_services(active=true)
+     @catalog_manager.update_catalog(
+       active,
+       lambda { get_current_brokered_services_catalog },
+       nil)
+  end
+
+  def get_current_brokered_services_catalog
+    catalog = {}
+
+    BrokeredService.all.each do |bsvc|
+      key, entry = brokered_serivce_to_catalog_entry(bsvc)
+      catalog[key] = entry
+    end
+
+    return catalog
+  end
+
+  def brokered_serivce_to_catalog_entry(bsvc)
+    name, version = VCAP::Services::Api::Util.parse_label(bsvc.label)
+    key = @catalog_manager.create_key(name, version, bsvc.provider)
+
+    # TODO: DO NOT assume single 'default' plan with 'default plan' as description
+
+    entry = {
+      "id"                  => name,
+      "version"             => version,
+      "label"               => bsvc.label,
+      "name"                => bsvc.name,
+      "provider"            => bsvc.provider,
+      "description"         => bsvc.description,
+      "active"              => true,
+      "acls"                => bsvc.acls,
+      "url"                 => @external_uri.to_s,
+      "plans"               => ["default"],
+      "default_plan"        => "default",
+      "tags"                => [],
+      "timeout"             => @node_timeout,
+      "supported_versions"  => [bsvc.version],
+      "version_aliases"     => {:current => bsvc.version},
+    }
+
+    [key, entry]
+  end
+
+  def setup_pre_defined_services(services)
+    services[:label] = "#{services[:name]}-#{services[:version]}"
+    %w(name version).each {|key| services.delete(key.to_sym)}
+    req = VCAP::Services::Api::ProxiedServiceOfferingRequest.new(services)
+    advertise_brokered_service(req)
+  rescue => e
+    @logger.warn("Failed to advertise pre-defined services #{services.inspect}: #{e}")
+  end
+
   ################## Helpers ###################
-  #
   helpers do
 
     def advertise_brokered_service(request)
       @logger.debug("Advertise a brokered service: #{request.inspect}")
-      label = request.label
-      des = request.description
-      options = request.options
-
-      options.each do |opt|
+      request.options.each do |opt|
         opt = VCAP.symbolize_keys(opt)
-        svc = {}
-        name, version = VCAP::Services::Api::Util.parse_label(label)
 
-        svc = VCAP::Services::Api::ServiceOfferingRequest.new({
-          :label                => "#{name}_#{opt[:name]}-#{version}",
-          :active               => true,
-          :description          => "#{des} (option '#{opt[:name]}')",
-          :acls                 => opt[:acls],
-          :url                  => @external_uri.to_s,
-          :plans                => ["default"],
-          :tags                 => [],
-          :supported_versions   => [version],
-          :version_aliases      => {:current => version},
-        }).extract
+        name, version = VCAP::Services::Api::Util.parse_label(request.label)
+        label = "#{name}_#{opt[:name]}-#{version}"
+        provider = opt[:provider] || name # use name as provider unless explicitly specified
 
         # update or create local database entry
-        bsvc = BrokeredService.get(svc[:label])
+        bsvc = BrokeredService.get(label)
         if bsvc.nil?
           bsvc = BrokeredService.new
-          bsvc.label = svc[:label]
-          bsvc.version = version
-          bsvc.name = name
+          bsvc.label       = label
+          bsvc.version     = version
+          bsvc.name        = name
+          bsvc.provider    = provider
+          bsvc.description = "#{request.description} (option '#{opt[:name]}')"
         end
-        bsvc.credentials = opt[:credentials]
-        bsvc.acls = opt[:acls]
-        result = advertise_brokered_service_to_cc(svc)
-        if result
-          if not bsvc.save
-            @logger.error("Can't save entry to local database: #{bsvc.errors.inspect}")
-          end
+        bsvc.credentials   = opt[:credentials]
+        bsvc.acls          = opt[:acls]
+
+        key, entry = brokered_serivce_to_catalog_entry(bsvc)
+        svc = {}
+        svc[key] = entry
+
+        @catalog_manager.update_catalog(true, lambda { svc }, nil)
+
+        if not bsvc.save
+          @logger.error("Can't save entry to local database: #{bsvc.errors.inspect}")
         end
       end
       success()
@@ -348,7 +396,6 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
     end
 
     def delete_brokered_service(label)
-      @logger.debug("Delete brokerd service: label=#{label}")
       name, version = VCAP::Services::Api::Util.parse_label(label)
       # Fetch all labels with given name
       bsvcs = BrokeredService.all(:name => name, :version => version)
@@ -356,13 +403,12 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
       raise ServiceError.new(ServiceError::NOT_FOUND, "label #{label}") if bsvcs.empty?
       bsvcs.each do |bsvc|
         # TODO what if we got 404 error when delete a service?
-        result = delete_offerings(bsvc.label)
-        if not result
-          next
-        end
-        if not bsvc.destroy
-          @logger.error("Can't delete brokered service from local database: #{bsvc.errors.inspect}")
-        end
+        name, version = VCAP::Services::Api::Util.parse_label(bsvc.label)
+        provider = bsvc.provider
+        result = @catalog_manager.delete_offering(name, version, provider)
+
+        next unless result
+        @logger.error("Can't delete brokered service from local database: #{bsvc.errors.inspect}") unless bsvc.destroy
       end
       success()
     rescue => e
@@ -372,58 +418,6 @@ class VCAP::Services::ServiceBroker::AsynchronousServiceGateway < VCAP::Services
         @logger.warn("Can't delete brokered service label=#{label}: #{fmt_error(e)}")
         return internal_fail
       end
-    end
-
-    def advertise_brokered_service_to_cc(offering)
-      @logger.debug("advertise service offering to cloud_controller:#{offering.inspect}")
-      return false unless offering
-
-      req = create_http_request(
-        :head => @cc_req_hdrs,
-        :body => Yajl::Encoder.encode(offering),
-      )
-
-      f = Fiber.current
-      http = EM::HttpRequest.new(@offering_uri).post(req)
-      http.callback { f.resume(http) }
-      http.errback { f.resume(http) }
-      Fiber.yield
-
-      if http.error.empty?
-        if http.response_header.status == 200
-          @logger.info("Successfully advertise offerings #{offering.inspect}")
-          return true
-        else
-          @logger.warn("Failed advertise offerings:#{offering.inspect}, status=#{http.response_header.status}")
-        end
-      else
-        @logger.warn("Failed advertise offerings:#{offering.inspect}: #{http.error}")
-      end
-      return false
-    end
-
-    def delete_offerings(label)
-      return false unless label
-
-      req = create_http_request(:head => @cc_req_hdrs)
-      uri = URI.join(@offering_uri, label)
-      f = Fiber.current
-      http = EM::HttpRequest.new(uri).delete(req)
-      http.callback { f.resume(http) }
-      http.errback { f.resume(http) }
-      Fiber.yield
-
-      if http.error.empty?
-        if http.response_header.status == 200
-          @logger.info("Successfully delete offerings label=#{label}")
-          return true
-        else
-          @logger.warn("Failed delete offerings label=#{label}, status=#{http.response_header.status}")
-        end
-      else
-        @logger.warn("Failed delete offerings label=#{label}: #{http.error}")
-      end
-      return false
     end
 
     def provision_brokered_service(request)

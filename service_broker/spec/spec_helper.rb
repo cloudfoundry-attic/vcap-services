@@ -2,17 +2,35 @@
 $:.unshift File.join(File.dirname(__FILE__), '..')
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
-require 'rubygems'
+ENV["RACK_ENV"] = "test"
+
+require "rubygems"
+require "bundler"
+Bundler.require(:default, :test)
+
 require 'rspec'
 require 'bundler/setup'
-require "vcap_services_base"
-require 'rack/test'
 require 'json'
 require 'logger'
 require 'yaml'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'vcap/common'
+
+module VCAP
+  module Services
+    module ServiceBroker
+      class AsynchronousServiceGateway < VCAP::Services::BaseAsynchronousServiceGateway
+
+        # Helpers for unit testing
+        get "/" do
+          return { "gateway" => "ServiceBroker" }.to_json
+        end
+      end
+    end
+  end
+end
+
 
 def load_config()
   config_file = File.join(File.dirname(__FILE__), '..', 'config', 'service_broker.yml')
@@ -22,11 +40,12 @@ def load_config()
   config[:port] ||= VCAP.grab_ephemeral_port
   config[:cloud_controller_uri]  = "api.vcap.me"
   config[:logger] = make_logger()
+  config[:cc_api_version] = "v1"
   config
 end
 
 def make_logger()
   logger = Logger.new(STDOUT)
-  logger.level = Logger::ERROR
+  logger.level = Logger::DEBUG
   logger
 end
