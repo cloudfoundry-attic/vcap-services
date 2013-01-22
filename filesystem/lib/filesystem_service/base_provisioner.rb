@@ -50,7 +50,8 @@ class VCAP::Services::Filesystem::BaseProvisioner < VCAP::Services::Base::Provis
   # Only check instances orphans, there is no binding orphan of filesystem service
   def check_orphan(handles, &blk)
     @logger.debug("[#{service_description}] Check if there are orphans")
-    reset_orphan_stat
+    @staging_orphan_instances = {}
+    @staging_orphan_bindings = {}
     @handles_for_check_orphan = handles.deep_dup
     instances_list = all_instances_list
 

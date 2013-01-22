@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: ae094cb5395ca7fe32ac35bb31c903faba48f4f6
-  ref: ae094cb53
+  revision: 4b9ec3438e474a2ba0459a29e4e2d4b6f1cea6a7
+  ref: 4b9ec3438
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -80,7 +80,7 @@ GEM
       builder (>= 2.1.2)
     curb (0.7.18)
     daemons (1.1.8)
-    data_objects (0.10.11)
+    data_objects (0.10.12)
       addressable (~> 2.1)
     datamapper (1.1.0)
       dm-aggregates (= 1.1.0)
@@ -118,8 +118,8 @@ GEM
       uuidtools (~> 2.1.2)
     dm-validations (1.1.0)
       dm-core (~> 1.1.0)
-    do_sqlite3 (0.10.11)
-      data_objects (= 0.10.11)
+    do_sqlite3 (0.10.12)
+      data_objects (= 0.10.12)
     em-http-request (1.0.0.beta.3)
       addressable (>= 2.2.3)
       em-socksify

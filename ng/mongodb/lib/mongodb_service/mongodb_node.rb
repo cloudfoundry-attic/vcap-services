@@ -50,6 +50,7 @@ class VCAP::Services::MongoDB::Node
     @service_start_timeout = options[:service_start_timeout] || 3
     @supported_versions  = options[:supported_versions]
     @default_version = options[:default_version]
+    @tmp_dir_script =options[:tmp_dir_script]
   end
 
   def migrate_saved_instances_on_startup
@@ -62,6 +63,7 @@ class VCAP::Services::MongoDB::Node
   end
 
   def pre_send_announcement
+    tmp_dir_ctl(:create)
     migrate_saved_instances_on_startup
 
     start_all_instances
@@ -77,6 +79,7 @@ class VCAP::Services::MongoDB::Node
     super
     @logger.info("Shutting down instances..")
     stop_all_instances
+    tmp_dir_ctl(:remove)
   end
 
   def announcement
@@ -111,6 +114,15 @@ class VCAP::Services::MongoDB::Node
       end
     end
     list
+  end
+
+  def tmp_dir_ctl(action)
+    begin
+      self.class.sh "#{@tmp_dir_script} #{action}"
+    rescue => e
+      @logger.warn("Failed to run tmp_dir_script on #{action}: #{e}")
+      raise
+    end
   end
 
   def provision(plan, credential = nil, version = nil)

@@ -25,6 +25,7 @@ class VCAP::Services::MongoDB::NodeBin < VCAP::Services::Base::NodeBin
     options[:mongod_path] = parse_property(config, "mongod_path", Hash)
     options[:mongorestore_path] = parse_property(config, "mongorestore_path", Hash)
     options[:mongod_options] = parse_property(config, "mongod_options", Hash)
+    options[:tmp_dir_script] = parse_property(config, "tmp_dir_script", String)
     options
   end
 

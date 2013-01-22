@@ -44,6 +44,8 @@ module VCAP
         def get_instance(name)
           ProvisionedService.get(name)
         end
+        def tmp_dir_ctl(action)
+        end
       end
     end
   end

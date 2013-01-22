@@ -48,6 +48,7 @@ max_disk: 128
 migration_nfs: /mnt/migration
 filesystem_quota: false
 service_start_timeout: 10
+tmp_dir_script: /var/vcap/jobs/mongodb_node_ng/bin/tmp_dir_ctl
 # max_clients: 500
 # z_interval: 30
 # max_nats_payload: 1048576
