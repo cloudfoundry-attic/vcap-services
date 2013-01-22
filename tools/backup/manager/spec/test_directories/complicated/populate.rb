@@ -16,7 +16,7 @@ TIMESTAMP = ($0==__FILE__ ? Time.now : Time.parse("2010-01-20 09:10:20 UTC")).to
 
 def create_snapshot(root, s, guid, snapshot_id)
   begin
-    path = File.join(root, "service#{s}", guid[0,2], guid[2,2], guid[4,2], guid, snapshot_id.to_s)
+    path = File.join(root, "snapshots", "service#{s}", guid[0,2], guid[2,2], guid[4,2], guid, snapshot_id.to_s)
   end while Dir.exist?(path) # make sure our random timestamps don't collide
   system "mkdir -p #{path}"
   system "touch #{path}/data"

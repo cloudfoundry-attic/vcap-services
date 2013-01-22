@@ -25,25 +25,28 @@ class VCAP::Services::Backup::Rotator
     @options = options
   end
 
-  def scan(service)
-    @manager.logger.info("#{self.class}: Scanning #{service}");
-    ins_list = @serv_ins[File.basename(service)]
-    # we are expecting the directory structure to look like this
-    # root/service/ab/cd/ef/abcdef.../timestamp/data
-    each_subdirectory(service) do |ab|
-      each_subdirectory(ab) do |cd|
-        each_subdirectory(cd) do |ef|
-          each_subdirectory(ef) do |guid|
-            rotate(guid, :orphaned => ins_list && !ins_list.include?(File.basename(guid)))
+  def scan(root)
+    each_subdirectory(root) do |service|
+      # scan if we could get correct instance list for the service
+      @manager.logger.info("#{self.class}: Scanning #{service}");
+      ins_list = @serv_ins[File.basename(service)]
+      # we are expecting the directory structure to look like this
+      # root/service/ab/cd/ef/abcdef.../timestamp/data
+      each_subdirectory(service) do |ab|
+        each_subdirectory(ab) do |cd|
+          each_subdirectory(cd) do |ef|
+            each_subdirectory(ef) do |guid|
+              rotate(guid, :orphaned => ins_list && !ins_list.include?(File.basename(guid)))
+            end
           end
         end
       end
-    end
-    # special case: for mysql we should take care of system data
-    # $root/mysql/{information_schema|mysql}/timestamp
-    if service == File.join(@manager.root, "mysql")
-      rotate(File.join(service, "information_schema"))
-      rotate(File.join(service, "mysql"))
+      # special case: for mysql we should take care of system data
+      # $root/mysql/{information_schema|mysql}/timestamp
+      if service == File.join(@manager.root, "mysql")
+        rotate(File.join(service, "information_schema"))
+        rotate(File.join(service, "mysql"))
+      end
     end
   rescue Interrupt
     raise
@@ -133,26 +136,6 @@ class VCAP::Services::Backup::Rotator
 
   def retain(path, timestamp)
     @manager.logger.debug("Retaining #{path} from #{Time.at(timestamp)}")
-    raise Interrupt, "Interrupted" if @manager.shutdown?
-  end
-
-  def prune(path, timestamp=nil )
-    if timestamp
-      @manager.logger.info("Pruning #{path} from #{Time.at(timestamp)}")
-    else
-      @manager.logger.info("Pruning #{path} ")
-    end
-    rmdashr(path)
-    # also prune any parent directories that have become empty
-    path = parent(path)
-    while path != @manager.root && empty(path)
-      @manager.logger.info("Pruning empty parent #{path}")
-      Dir.delete(path)
-      path = parent(path)
-    end
-  rescue => x
-    @manager.logger.error("Could not prune #{path}: #{x.to_s}")
-  ensure
     raise Interrupt, "Interrupted" if @manager.shutdown?
   end
 
