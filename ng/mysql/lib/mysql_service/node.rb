@@ -876,12 +876,7 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   ["start", "stop", "status"].each do |op|
     define_method "#{op}_script".to_sym do
       passwd = @@options[:mysql][version]["pass"]
-      case version
-      when "5.5"
-        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{common_dir} #{bin_dir} /var/vcap/store/mysql 55 #{passwd}"
-      else
-        "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{common_dir} #{bin_dir} /var/vcap/store/mysql '' #{passwd}"
-      end
+      "#{service_script} #{op} /var/vcap/sys/run/mysqld /var/vcap/sys/log/mysql #{common_dir} #{bin_dir} /var/vcap/store/mysql #{version} #{passwd}"
     end
   end
 
