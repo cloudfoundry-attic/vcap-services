@@ -21,14 +21,16 @@ class VCAP::Services::Backup::Manager < VCAP::Services::Base::Base
     @logger.info("#{self.class}: Initializing")
     @wakeup_interval = options[:wakeup_interval]
     @mountpoint = options[:root] || "/tmp"
-    @root = File.join(@mountpoint, options[:target])
     @tasks = []
     case options[:target]
     when "backups"
+      @root = File.join(@mountpoint, options[:target])
       @tasks << VCAP::Services::Backup::Rotator.new(self, options[:rotation])
     when "snapshots"
+      @root = @mountpoint
       @tasks << VCAP::Services::Backup::SnapshotCleaner.new(self, options[:cleanup])
     when "jobs"
+      @root = File.join(@mountpoint, options[:target])
       @tasks << VCAP::Services::Backup::JobCleaner.new(self, options[:job_cleanup], options[:services_redis])
     else
       @logger.error("Error target: #{options[:target]}")

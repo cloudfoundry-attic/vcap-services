@@ -260,11 +260,11 @@ class BackupSnapshotCleanerTests
     complicated = root_p == 'complicated' # special handling for this one...
     root = ''
     if complicated
-      root = File.join('/tmp','snapshot_spec','test_directories', 'snapshots',root_p)
-      require 'spec/test_directories/snapshots/complicated/populate'
+      root = File.join('/tmp','snapshot_spec','test_directories', root_p)
+      require 'spec/test_directories/complicated/populate'
       populate_complicated(root)
     else
-      root = File.join(File.dirname(__FILE__), 'test_directories', 'snapshots', root_p)
+      root = File.join(File.dirname(__FILE__), 'test_directories', root_p)
     end
     manager = MockManager.new(root, logger)
     opts.merge!({:logger => logger})

@@ -26,19 +26,29 @@ class VCAP::Services::Backup::SnapshotCleaner
     @options[:greedy_mark] = false if @options[:greedy_mark].nil?
   end
 
-  def scan(service)
-    @manager.logger.info("#{self.class}: Scanning #{service}");
-    ins_list = @serv_ins[File.basename(service)]
+  def scan(root)
     # we are expecting the directory structure to look like this
-    # root/service/ab/cd/ef/abcdef.../snapshot_id/packaged_file
-    each_subdirectory(service) do |ab|
-      each_subdirectory(ab) do |cd|
-        each_subdirectory(cd) do |ef|
-          each_subdirectory(ef) do |guid|
-            if ins_list && !ins_list.include?(File.basename(guid))
-              cleanup(guid)
-            else
-              noop(guid, ins_list && ins_list.include?(File.basename(guid)))
+    # snapshot cleaner: root/snapshots/service/ab/cd/ef/abcdef.../snapshot_id/packaged_file
+    # upload file cleaner: root/uploads/service/ab/cd/ef/abcdef.../snapshot_id/packaged_file
+
+    each_subdirectory(root) do |job|
+      if((job =~ /uploads\Z/).nil? && (job =~ /snapshots\Z/).nil?)
+        next
+      end
+      each_subdirectory(job) do |service|
+        # scan if we could get correct instance list for the service
+        @manager.logger.info("#{self.class}: Scanning #{service}");
+        ins_list = @serv_ins[File.basename(service)]
+        each_subdirectory(service) do |ab|
+          each_subdirectory(ab) do |cd|
+            each_subdirectory(cd) do |ef|
+              each_subdirectory(ef) do |guid|
+                if (!ins_list || (ins_list && !ins_list.include?(File.basename(guid))))
+                  cleanup(guid)
+                else
+                  noop(guid, ins_list && ins_list.include?(File.basename(guid)))
+                end
+              end
             end
           end
         end
@@ -63,18 +73,16 @@ class VCAP::Services::Backup::SnapshotCleaner
 
   def cleanup(dir)
     if File.directory? dir then
-      snapshots = {}
-      invalid_num = 0
-      each_subdirectory(dir) do |snapshot|
-        snapshot_id = validate(snapshot)
-        unless snapshot_id.nil?
-          snapshots[snapshot_id] = snapshot
+      dirs = {}
+      each_subdirectory(dir) do |subdir|
+        id = validate(subdir)
+        if !id.nil?
+          dirs[id] = subdir
         else
-          @manager.logger.warn("Ignoring invalid snapshot #{snapshot}")
-          invalid_num += 1
+          @manager.logger.warn("Ignoring invalid directory #{subdir}")
         end
       end
-      try_cleanup(dir, snapshots)
+      try_cleanup(dir, dirs)
     else
       @manager.logger.error("#{self.class}: #{dir} does not exist");
     end
@@ -85,82 +93,77 @@ class VCAP::Services::Backup::SnapshotCleaner
   end
 
   def validate(path)
-    # path is something like:   /root/service/ab/cd/ef/abcdef.../snapshot_id
+    # path is something like: /root/snapshots/service/ab/cd/ef/abcdef.../snapshot_id
+    # or: /root/uploads/service/ab/cd/ef/abcdef.../timestamp
     if (path =~ /.+\/(..)\/(..)\/(..)\/(.+)\/(\d+)\Z/)
       prefix = "#{$1}#{$2}#{$3}"
       guid = $4
-      snapshot_id = $5
-      return snapshot_id.to_i if guid =~ /\A#{prefix}/
+      key = $5
+      return key.to_i if guid =~ /\A#{prefix}/
     else
       nil
     end
   end
 
-  def get_latest_snapshot_id(dir, snapshots)
+  def get_latest_key(dir, jobs)
     latest_key = nil
-    sorted_snapshot_keys =  snapshots.keys.sort { |x, y| y <=> x }
-    sorted_snapshot_keys.each do |key|
-      snap_dir = File.join(dir, key.to_s)
+    sorted_keys =  jobs.keys.sort { |x, y| y <=> x }
+    sorted_keys.each do |key|
+      job_dir = File.join(dir, key.to_s)
       begin
-        if Dir.entries(snap_dir).size > 2
+        if Dir.entries(job_dir).size > 2
           latest_key = key
           break
         end
       rescue => e
-        @manager.logger.warn("Fail to list the entries in #{snap_dir}")
+        @manager.logger.warn("Fail to list the entries in #{job_dir}")
       end
     end
     latest_key
   end
 
-  # cleanup all snapshots
-  def all_cleanup(dir, snapshots)
-    snapshots.keys.sort.each do |key|
-      # delete the sanpshots one by one according from oldest to newest
-      snap_dir = File.join(dir, key.to_s)
-      rmdashr(snap_dir) if File.exists?(snap_dir)
-      @manager.logger.info("Snapshot in #{snap_dir} is deleted.")
-    end
-    rmdashr(dir) if File.exists?(dir)
-    @manager.logger.info("The directory #{dir} and all snapshots under it are all deleted.")
+  # cleanup all snapshots or uploaded files
+  def all_cleanup(dir, jobs)
+    prune(dir) if File.exists?(dir)
+    @manager.logger.info("The directory #{dir} and files/subdirs under it are all deleted.")
   rescue => x
-    @manager.logger.error("Could not cleanup all snapshots under #{dir}: #{x.backtrace}")
+    @manager.logger.error("Could not cleanup all files/subdirs under #{dir}: #{x.backtrace}")
   ensure
     raise Interrupt, "Interrupted" if @manager.shutdown?
   end
 
   # keep marked
-  def keep_mark(dir, snapshots)
-    @manager.logger.debug("Keep the clean mark for snapshots under #{dir}")
+  def keep_mark(dir, jobs)
+    @manager.logger.debug("Keep the clean mark under #{dir}")
   ensure
     raise Interrupt, "Interrupted" if @manager.shutdown?
   end
 
-  # cleanup the snapshots except the latest one and mark the timestamp in a file
-  def mark_cleanup(dir, snapshots, latest_key=nil, previous_marktime=nil)
-    @manager.logger.info("First try to cleanup the snapshots under #{dir}, mark it first.")
+  # cleanup the snapshots or uploaded files except the latest one and mark the timestamp in a file
+  def mark_cleanup(dir, jobs, latest_key=nil, previous_marktime=nil)
+    @manager.logger.info("First try to cleanup the files/subdirs under #{dir}, mark it first.")
     mark_file = File.join(dir, "last_clean_time")
     File.open(mark_file, "w") do |file|
       mark="#{@manager.time.to_s}|#{latest_key}|#{previous_marktime}"
       file.write(mark)
     end
     if @options[:greedy_mark] && latest_key.nil? == false
-      @manager.logger.info("greedy_mark is false, will delete all snapshots except the latest one")
-      snapshots.keys.each do |key|
+      @manager.logger.info("greedy_mark is true, will delete all files/subdirs except the latest one")
+      jobs.keys.each do |key|
         unless key == latest_key
-          snap_dir = File.join(dir, key.to_s)
-          rmdashr(snap_dir) if File.exists?(snap_dir)
-          @manager.logger.info("Snapshot in #{snap_dir} is deleted.")
+          job_dir = File.join(dir, key.to_s)
+          rmdashr(job_dir) if File.exists?(job_dir)
+          @manager.logger.info("Files/subdirs in #{job_dir} is deleted.")
         end
       end
     end
   rescue => x
-    @manager.logger.error("Could not cleanup and mark snapshots under #{dir}: #{x.to_s}")
+    @manager.logger.error("Could not cleanup and mark files under #{dir}: #{x.to_s}")
   ensure
     raise Interrupt, "Interrupted" if @manager.shutdown?
   end
 
-  def try_cleanup(dir, snapshots)
+  def try_cleanup(dir, jobs)
     mark_file = File.join(dir, "last_clean_time")
     if File.exists?(mark_file)
       # not the first time to cleanup
@@ -179,22 +182,22 @@ class VCAP::Services::Backup::SnapshotCleaner
       if last_clean_time =~ /\A(\d+)\Z/
         # check whether exceed the survival time
         if last_clean_time.to_i < n_midnights_ago(@options[:max_days])
-          @manager.logger.warn("The snapshots under #{dir} are too old and this is not the first try to cleanup, all of them will be deleted.")
-          all_cleanup(dir, snapshots)
+          @manager.logger.warn("The file/subdirs under #{dir} are too old and this is not the first try to cleanup, all of them will be deleted.")
+          all_cleanup(dir, jobs)
         else
-          keep_mark(dir, snapshots)
+          keep_mark(dir, jobs)
         end
       else
-        @manager.logger.warn("Try to cleanup the snapshots under #{dir} but the mark file has invalid content, redo mark_cleanup.")
-        latest_key = get_latest_snapshot_id(dir, snapshots)
-        mark_cleanup(dir, snapshots, latest_key, last_clean_time.nil? ? "0" : last_clean_time)
+        @manager.logger.warn("Try to cleanup the file/subdirs under #{dir} but the mark file has invalid content, redo mark_cleanup.")
+        latest_key = get_latest_key(dir, jobs)
+        mark_cleanup(dir, jobs, latest_key, last_clean_time.nil? ? "0" : last_clean_time)
       end
     else
       # the first time to cleanup
-      # keep the latest snapshot and delete all other snapshots
-      latest_key = get_latest_snapshot_id(dir, snapshots)
-      # keep the latest snapshot and mark the timestamp to a file named last_clean_time
-      mark_cleanup(dir, snapshots, latest_key)
+      # keep the latest snapshot or uploaded file  and delete all others
+      latest_key = get_latest_key(dir, jobs)
+      # keep the latest snapshot or uploaded file and mark the timestamp to a file named last_clean_time
+      mark_cleanup(dir, jobs, latest_key)
     end
   rescue Interrupt
     raise

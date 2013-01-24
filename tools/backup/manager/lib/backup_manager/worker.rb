@@ -27,10 +27,7 @@ module VCAP::Services::Backup::Worker
     if Dir.exists?(@manager.root)
       @manager.logger.info("#{self.class}: Running");
       get_live_service_ins
-      each_subdirectory(@manager.root) do |service|
-        # scan if we could get correct instance list for the service
-        scan(service)
-      end
+      scan(@manager.root)
     else
       @manager.logger.warn("Root directory for scanning is not existed.")
     end
@@ -86,6 +83,26 @@ module VCAP::Services::Backup::Worker
     end if @options[:services]
   rescue => e
     @manager.logger.error "Failed to get_live_service_ins #{e.message}"
+  end
+
+  def prune(path, timestamp=nil )
+    if timestamp
+      @manager.logger.info("Pruning #{path} from #{Time.at(timestamp)}")
+    else
+      @manager.logger.info("Pruning #{path} ")
+    end
+    rmdashr(path)
+    # also prune any parent directories that have become empty
+    path = parent(path)
+    while path != @manager.root && empty(path)
+      @manager.logger.info("Pruning empty parent #{path}")
+      Dir.delete(path)
+      path = parent(path)
+    end
+  rescue => x
+    @manager.logger.error("Could not prune #{path}: #{x.to_s}")
+  ensure
+    raise Interrupt, "Interrupted" if @manager.shutdown?
   end
 
 end
