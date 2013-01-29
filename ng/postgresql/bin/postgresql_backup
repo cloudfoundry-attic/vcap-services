@@ -20,6 +20,7 @@ module VCAP
 end
 
 class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
+  include VCAP::Services::Postgresql::Util
 
   def default_config_file
     File.join(File.dirname(__FILE__), '..', 'config', 'postgresql_backup.yml')
@@ -52,7 +53,6 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
     begin
       VCAP::Services::Postgresql::Node.setup_datamapper(:default, opts[:local_db])
     rescue => e
-      # argument error
       echo "Exception while setting up the local database: #{e}"
       return 1
     end
@@ -110,28 +110,30 @@ class VCAP::Services::Postgresql::Backup < VCAP::Services::Base::Backup
 
   def exe_backup_db(opts)
     backup_cmd, name, ts =
-      %w(backup_cmd name ts).map{|k| opts[k.to_sym]}
+      %w(backup_cmd name ts).map{ |k| opts[k.to_sym] }
     # dir structure looks like \backups\<service-name>\<aa>\<bb>\<cc>\
     # <aabbcc-rest-of-instance-guid>\<seconds_since_epoc>\<service specific data>
     full_path = get_dump_path(name)
     opts.merge!({:full_path => full_path})
 
-    # options substitution
     backup_cmd = opts.keys.inject(backup_cmd) do|cmd, key|
       cmd.gsub(":"+key.to_s, opts[key].to_s)
     end
 
-    # running the command
-    on_err = Proc.new do |cmd, code, msg|
-      echo "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}",true
-      cleanup(full_path)
+    pgpass_exe_cmd(name,
+      *(%w(host port user passwd).map{ |k| opts[k.to_sym] }),
+      backup_cmd) do |pgpass_file, pgpass_cmd|
+      on_err = Proc.new do |cmd, code, msg|
+        echo "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}",true
+        cleanup(full_path)
+      end
+      t1 = Time.now
+      FileUtils.mkdir_p(full_path) unless File.exists?(full_path)
+      res = CMDHandle.execute("export PGPASSFILE=#{pgpass_file}; #{pgpass_cmd}", opts[:timeout].to_i, on_err)
+      t2 = Time.now
+      echo "Backup for db #{name} complete in #{t2-t1} seconds."
+      return res ? 0:1
     end
-    t1 = Time.now
-    FileUtils.mkdir_p(full_path) unless File.exists?(full_path)
-    res = CMDHandle.execute("#{backup_cmd}", opts[:timeout].to_i, on_err)
-    t2 = Time.now
-    echo "Backup for db #{name} complete in #{t2-t1} seconds."
-    return res ? 0:1
   rescue => e
     echo "Error when backup db #{opts[:name]} for #{e}: #{e.backtrace.join("\n")}", true
     cleanup(full_path)

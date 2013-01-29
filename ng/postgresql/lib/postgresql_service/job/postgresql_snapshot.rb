@@ -36,8 +36,6 @@ module VCAP::Services::Postgresql::Snapshot
           :service_version => provisionedservice.version
         }
       }
-
-      snapshot
     end
 
     def dump_db(provisionedservice, snapshot_id, use_warden)
@@ -65,8 +63,8 @@ module VCAP::Services::Postgresql::Snapshot
       end
 
       # dump the database
-      dump_database(name, host, port, user, passwd, dump_file_name ,
-                    { :dump_bin => dump_bin, :logger => @logger})
+      raise "Failed to dump database #{name}" unless dump_database(
+        name, host, port, user, passwd, dump_file_name, :dump_bin => dump_bin)
       dump_file_size = -1
       File.open(dump_file_name) { |f| dump_file_size = f.size }
       # we will return the dump file size
@@ -80,10 +78,7 @@ module VCAP::Services::Postgresql::Snapshot
     include VCAP::Services::Postgresql::Util
 
     def execute
-      # try to restore the data
-      result = restore_db(name, snapshot_id)
-
-      true
+      restore_db(name, snapshot_id)
     end
 
     def restore_db(name, snapshot_id)
@@ -112,8 +107,8 @@ module VCAP::Services::Postgresql::Snapshot
       # Import the dump file
       parent_user = default_user[:user]
       parent_pass = default_user[:password]
-      result = restore_database(name, host, port, parent_user, parent_pass, dump_file_name, { :restore_bin => restore_bin, :logger => @logger } )
-      result
+      raise "Failed to restore database #{name}" unless restore_database(
+        name, host, port, parent_user, parent_pass, dump_file_name, :restore_bin => restore_bin)
     end
 
   end

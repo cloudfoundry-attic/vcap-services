@@ -36,6 +36,7 @@ postgresql:
     host: 127.0.0.1
     port: 5432
     user: vcap
+    pass: vcap
     database: postgres
     restore_bin: /var/vcap/packages/postgresql/bin/pg_restore
     dump_bin: /var/vcap/packages/postgresql/bin/pg_dump
@@ -43,6 +44,7 @@ postgresql:
     host: 127.0.0.1
     port: 5433
     user: vcap
+    pass: vcap
     database: postgres
     restore_bin: /var/vcap/packages/postgresql91/bin/pg_restore
     dump_bin: /var/vcap/packages/postgresql91/bin/pg_dump

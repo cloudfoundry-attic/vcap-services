@@ -40,7 +40,6 @@ describe "Postgresql node normal cases" do
     @default_version = @opts[:default_version]
     @default_opts = "default"
     @max_db_conns = @opts[:max_db_conns]
-    ENV['PGPASSWORD'] = @opts[:postgresql][@default_version]['pass']
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = Node.new(@opts)
@@ -209,7 +208,7 @@ describe "Postgresql node normal cases" do
       host, port, user, password = %w(host port user pass).map{|key| postgresql_config[key]}
       tmp_file = "/tmp/#{tmp_db['name']}.dump"
       pg_dump = @opts[:postgresql][@default_version]['dump_bin']
-      result = `#{pg_dump} -Fc -h #{host} -p #{port} -U #{tmp_db['user']} -f #{tmp_file} #{tmp_db['name']}`
+      @node.dump_database(tmp_db['name'], host, port, tmp_db['user'], tmp_db['password'], tmp_file, :dump_bin => pg_dump).should == true
       conn.query("drop table test1")
       conn.query("drop table test_schema.test1")
       res = conn.query("select tablename from pg_catalog.pg_tables where schemaname = 'public';")
@@ -1047,7 +1046,6 @@ describe "Postgresql node normal cases" do
   end
 
   after:all do
-    ENV['PGPASSWORD'] = ''
     FileUtils.rm_f Dir.glob('/tmp/d*.dump')
   end
 end

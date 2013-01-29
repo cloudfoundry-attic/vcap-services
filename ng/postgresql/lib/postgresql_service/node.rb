@@ -529,11 +529,7 @@ class VCAP::Services::Postgresql::Node
     user =  default_user[:user]
     passwd = default_user[:password]
     path = File.join(backup_path, "#{name}.dump")
-    archive_list(path, { :restore_bin => restore_bin })
-
-    cmd = "#{restore_bin} -h #{host} -p #{port} -U #{user} -L #{path}.archive_list -d #{name} #{path}"
-    o, e, s = exe_cmd(cmd)
-    s.exitstatus == 0
+    restore_database(name, host, port, user, passwd, path, :restore_bin => restore_bin)
   rescue => e
     @logger.error("Error during restore: #{fmt_error(e)}")
     nil
@@ -571,18 +567,13 @@ class VCAP::Services::Postgresql::Node
     passwd = default_user[:password]
     dump_file = File.join(dump_file_path, "#{name}.dump")
     @logger.info("Dump instance #{name} content to #{dump_file}")
-
-    cmd = "#{dump_bin} -Fc -h #{host} -p #{port} -U #{user} -f #{dump_file} #{name}"
-    o, e, s = exe_cmd(cmd)
-    raise "Failed to dump #{name}: cmd:#{cmd}, stdout:#{o}, stderr:#{e}, status:#{s}" unless s.exitstatus == 0
-
+    dump_database(name, host, port, user, passwd, dump_file, :dump_bin => dump_bin)
     # dump provisioned instance object
     instance_dump_file = File.join(dump_file_path, 'instance.dump')
     File.open(instance_dump_file, 'w') do |f|
       Marshal.dump(instance, f)
     end
-
-    return true
+    true
   rescue => e
     @logger.error("Error during dump_instance #{fmt_error(e)}")
     nil
@@ -614,15 +605,12 @@ class VCAP::Services::Postgresql::Node
     passwd = default_user[:password]
     import_file = File.join(dump_file_path, "#{name}.dump")
     @logger.info("Import data from #{import_file} to database #{name}")
-    archive_list(import_file, { :restore_bin => restore_bin })
-    cmd = "#{restore_bin} -h #{host} -p #{port} -U #{user} -d #{name} -L #{import_file}.archive_list #{import_file}"
-    o, e, s = exe_cmd(cmd)
-    return s.exitstatus == 0
+    args = [name, host, port, user, passwd, import_file, { :restore_bin => restore_bin }]
+    archive_list(*args)
+    restore_database(*args)
   rescue => e
     @logger.error("Error during import_instance #{fmt_error(e)}")
     nil
-  ensure
-    FileUtils.rm_rf("#{import_file}.archive_list")
   end
 
   def enable_instance(prov_cred, binding_creds_hash)
