@@ -19,6 +19,11 @@ class VCAP::Services::Rabbit::Gateway < VCAP::Services::Base::Gateway
     File.join(config_base_dir, "rabbit_gateway.yml")
   end
 
+  def additional_options
+    {
+      :resque => @config[:resque]
+    }
+  end
 end
 
 VCAP::Services::Rabbit::Gateway.new.start

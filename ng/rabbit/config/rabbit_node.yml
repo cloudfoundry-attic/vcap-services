@@ -37,7 +37,7 @@ rabbit:
 # z_interval: 30
 # max_nats_payload: 1048576
 # fqdn_hosts: false
-max_disk: 128
+max_disk: 10
 image_dir: /var/vcap/services/rabbit/rabbitmq_image
 vm_memory_high_watermark: 0.00474
 bandwidth_per_second: 0.09

@@ -11,6 +11,7 @@ require "vcap_services_base"
 require "nats/client"
 require "vcap/common"
 require "datamapper"
+require "bunny"
 require "amqp"
 require "thread"
 require "rabbit_service/rabbit_node"
@@ -40,6 +41,13 @@ end
 
 def config_base_dir
   File.join(File.dirname(__FILE__), "..", "config")
+end
+
+def loadWorkerTestConfig(local_db_file)
+  config_file = File.join(config_base_dir, "rabbit_worker.yml")
+  config = YAML.load_file(config_file)
+  config[:local_db] = "sqlite3:" + local_db_file
+  ENV['WORKER_CONFIG'] = Yajl::Encoder.encode(config)
 end
 
 def getNodeTestConfig
@@ -77,7 +85,7 @@ def getNodeTestConfig
     :local_db_file   => "/tmp/rabbitmq_node_" + Time.now.to_i.to_s + ".db",
     :service_log_dir => "/tmp/rabbitmq_instances/log",
     :image_dir       => "/tmp/rabbitmq_image",
-    :max_disk        => 128,
+    :max_disk        => 10,
     :migration_nfs   => "/tmp/migration",
     :disabled_file   => "/tmp/redis_instances/DISABLED",
     :filesystem_quota => true,
@@ -87,24 +95,68 @@ def getNodeTestConfig
 end
 
 def amqp_start(credentials, instance)
-  result = false
-  AMQP.start(:host => instance.ip,
-             :port => 10001,
-             :vhost => credentials["vhost"],
-             :user => credentials["user"],
-             :pass => credentials["pass"]) do |conn|
-    result = conn.connected?
-    AMQP.stop {EM.stop}
+  conn = Bunny.new(:host => instance.ip,
+                   :port => 10001,
+                   :vhost => credentials["vhost"],
+                   :user => credentials["user"],
+                   :pass => credentials["pass"])
+  conn.start
+  conn.close
+  true
+rescue
+  false
+end
+
+def amqp_new_queue(credentials, instance, exchange_name, queue_name)
+  conn = Bunny.new(:host => instance.ip,
+                   :port => 10001,
+                   :vhost => credentials["vhost"],
+                   :user => credentials["user"],
+                   :pass => credentials["pass"])
+  conn.start
+  ch = conn.create_channel
+  q = ch.queue(queue_name, :durable => true, :auto_delete => false)
+  x  = ch.direct(exchange_name, :durable => true, :auto_delete => false)
+  conn.close
+end
+
+def amqp_clear_queue(credentials, instance, exchange_name, queue_name)
+  conn = Bunny.new(:host => instance.ip,
+                   :port => 10001,
+                   :vhost => credentials["vhost"],
+                   :user => credentials["user"],
+                   :pass => credentials["pass"])
+  conn.start
+  ch = conn.create_channel
+  q = ch.queue(queue_name, :durable => true, :auto_delete => false)
+  q.delete
+  x  = ch.direct(exchange_name, :durable => true, :auto_delete => false)
+  x.delete
+  conn.close
+end
+
+def amqp_queue_exist?(credentials, queue_name)
+  ret = @node.list_queues(credentials, nil)
+  ret.each do |q|
+    return true if q["name"] == queue_name
   end
-  result
+  false
+end
+
+def amqp_exchange_exist?(credentials, exchange_name)
+  ret = @node.list_exchanges(credentials, nil)
+  ret.each do |e|
+    return true if e["name"] == exchange_name
+  end
+  false
 end
 
 def amqp_connect(credentials, instance)
   EM.run do
     AMQP.connect(:host => instance.ip,
-               :port => 10001,
-               :vhost => credentials["vhost"],
-               :user => credentials["user"],
-               :pass => credentials["pass"])
+                 :port => 10001,
+                 :vhost => credentials["vhost"],
+                 :user => credentials["user"],
+                 :pass => credentials["pass"])
   end
 end
