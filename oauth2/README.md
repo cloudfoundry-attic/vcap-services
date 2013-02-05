@@ -143,8 +143,9 @@ and properties like this:
             authorized-grant-types: client_credentials,implicit
             redirect-uri: http://uaa.cloudfoundry.com/redirect/oauth2service # can be anything
             override: true
-        autoapprove:
-          - vmc
-          - dashboard
-          - oauth2service
-          # ... others
+        client:
+          autoapprove:
+            - vmc
+            - dashboard
+            - oauth2service
+            # ... others
