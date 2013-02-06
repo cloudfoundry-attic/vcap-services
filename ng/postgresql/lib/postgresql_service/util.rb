@@ -43,10 +43,6 @@ module VCAP
           logger
         end
 
-        def generate_credential(length=12)
-          Array.new(length) { VALID_CREDENTIAL_CHARACTERS[rand(VALID_CREDENTIAL_CHARACTERS.length)] }.join
-        end
-
         # shell CMD wrapper and logger
         def exe_cmd(cmd, env={}, stdin=nil)
           @logger ||= create_logger
@@ -149,12 +145,6 @@ module VCAP
           else
             nil
           end
-        end
-
-        # Alter owner of database
-        def reset_owner(pgconn, name, owner)
-          return unless pgconn
-          pgconn.query("alter database #{name} owner to #{owner}")
         end
 
         # Legacy method to alter owner of relationship from sys_user to user

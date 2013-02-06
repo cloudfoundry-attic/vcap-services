@@ -700,14 +700,14 @@ class VCAP::Services::Postgresql::Node
   end
 
   def add_discarded_connection(name, conn)
-   unless PGDBconn.async?
+    unless PGDBconn.async?
       ignore_exception { conn.close if conn }
       return
-   end
-   @discarded_mutex.synchronize do
-     @discarded_connections[name] = Array.new unless @discarded_connections[name]
-     @discarded_connections[name] << conn
-   end
+    end
+    @discarded_mutex.synchronize do
+      @discarded_connections[name] = Array.new unless @discarded_connections[name]
+      @discarded_connections[name] << conn
+    end
   end
 
   def close_discarded_connections
