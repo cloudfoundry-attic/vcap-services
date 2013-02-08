@@ -71,6 +71,59 @@ describe "Postgresql node normal cases" do
     end
   end
 
+  it "should add timeout to connect" do
+    pending "Not to use warden, won't run this case." unless @opts[:use_warden]
+    pending "Not to use async methods, won't run this case." unless @opts[:db_use_async_query]
+    EM.run do
+      default_connect_timeout = VCAP::Services::Postgresql::Util::PGDBconn.default_connect_timeout
+
+      tmp_db = @node.provision(@default_plan, nil, @default_version)
+      tmp_instance = @node.pgProvisionedService.get(tmp_db['name'])
+      @test_dbs[tmp_db] = []
+
+      expect { connect_to_postgresql(tmp_db).close }.should_not raise_error
+
+      begin
+        # simulate the select timeout issue
+        class IO
+          class << self
+            alias_method :select_ori, :select
+            def select(read_array, write_array, error_array, timeout)
+                # block thread for speficied time if timeout is set
+                # or block thread for ever (180 seconds is long enough for test)
+                sleep timeout || 180
+                raise PGError, "simulated select timeout"
+            end
+          end
+        end
+
+        # use default connect_timeout
+        start_time = Time.now.to_f
+        expect { conn = connect_to_postgresql(tmp_db) }.should raise_error(PGError, /simulated select timeout/)
+        connect_time = Time.now.to_f - start_time
+        connect_time.should >= default_connect_timeout
+        connect_time.should < (default_connect_timeout + 1)
+
+        # use specified connect_timeout
+        start_time = Time.now.to_f
+        expect { conn = connect_to_postgresql(tmp_db, :connect_timeout => (default_connect_timeout + 2))}.should raise_error(PGError, /simulated select timeout/)
+        connect_time = Time.now.to_f - start_time
+        connect_time >= default_connect_timeout + 2
+        connect_time.should < (default_connect_timeout + 3)
+
+      ensure
+        # restore the IO.select method
+        class IO
+          class << self
+            alias_method :select, :select_ori
+          end
+        end
+      end
+
+      EM.stop
+    end
+  end
+
   it "should add timeout to query" do
     EM.run do
       ori_default_query_timeout = VCAP::Services::Postgresql::Util::PGDBconn.default_query_timeout
@@ -1071,8 +1124,7 @@ describe "Postgresql node special cases" do
     db = node.provision(@default_plan, nil, @default_version)
     conn = connect_to_postgresql(db)
     expect { conn.query("SELECT 1") }.should_not raise_error
-    expect { connect_to_postgresql(db, :async => false ) }.should raise_error(PGError, /too many connections for database .*/)
-    expect { connect_to_postgresql(db, :async => true) }.should raise_error
+    expect { connect_to_postgresql(db) }.should raise_error(PGError, /too many connections for database .*/)
     conn.close if conn
     node.unprovision(db["name"], [])
   end

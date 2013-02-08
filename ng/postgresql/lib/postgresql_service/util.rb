@@ -72,7 +72,6 @@ module VCAP
             :try_num => 1,
             :exception_sleep => 0,
             :quiet => true,
-            :async => true
           ) if quick_mode
 
           fail_with_nil = opts[:fail_with_nil] || true
@@ -80,7 +79,6 @@ module VCAP
           try_num = opts[:try_num] || 5
           exception_sleep = opts[:exception_sleep] || 1
           quiet = opts[:quiet] || false
-          async = opts[:async] || true
 
           @logger ||= Logger.new(STDOUT)
           conn_opts = {

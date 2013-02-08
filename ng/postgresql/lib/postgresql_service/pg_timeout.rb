@@ -8,7 +8,6 @@ module VCAP
       module Util
 
         class DBconn
-          attr_accessor :connect_timeout
           attr_accessor :query_timeout
           attr_accessor :conn_mutex
           attr_accessor :transaction_tid_mutex
@@ -51,7 +50,7 @@ module VCAP
           end
 
           def initialize(conn_opts)
-            @connect_timeout = conn_opts[:connect_timeout] || self.class.default_connect_timeout
+            conn_opts[:connect_timeout] ||= self.class.default_connect_timeout
             @query_timeout = conn_opts[:query_timeout] || self.class.default_query_timeout
             valid_conn_opts = self.class.validate_conn_opts(conn_opts)
             @conn, @conn_io_socket = async? ? self.class.async_connect(valid_conn_opts) : self.class.connect(valid_conn_opts)
