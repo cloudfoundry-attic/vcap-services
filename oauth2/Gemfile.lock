@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 4b9ec3438e474a2ba0459a29e4e2d4b6f1cea6a7
-  ref: 4b9ec3438
+  revision: 4ff3f4d5b3a8a9a398e860a7b59fe6670076dfd0
+  ref: 4ff3f4d5b3
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib

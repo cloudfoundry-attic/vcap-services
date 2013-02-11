@@ -162,6 +162,19 @@ class MarketplaceGatewayHelper
           "resources"     => @offerings.values
         })
       end
+
+      get "/v2/services/:service_guid/service_plans" do
+        puts "*#*#*#*#* CCNG::GET service plans for service: #{params[:service_guid]}:"
+        entries = @offerings[params[:service_guid]]["entity"]["service_plans"]
+
+        Yajl::Encoder.encode({
+          "total_results" => entries.size,
+          "total_pages"   => 1,
+          "prev_url"      => nil,
+          "next_url"      => nil,
+          "resources"     => entries
+        })
+      end
     end
   end
 
