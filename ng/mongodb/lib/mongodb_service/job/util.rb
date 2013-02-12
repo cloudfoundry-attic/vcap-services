@@ -28,7 +28,9 @@ module VCAP
 
           tar_path = @config['tar_path'] ? @config['tar_path'] : 'tar'
           cmd_timeout = @config['timeout'].to_f
-          tmp_dir = Dir.mktmpdir(nil, @config['tmp_dir'])
+          tmp_dir = @config['tmp_dir'] ? @config['tmp_dir']: '/tmp'
+          FileUtils.mkdir_p(tmp_dir)
+          tmp_dir = Dir.mktmpdir(nil, tmp_dir)
           service = Node::ProvisionedService.get(service_id)
           version = service.version || @config["default_version"]
           mongodump_path = @config['mongodump_path'] ? @config['mongodump_path'][version.to_s] : 'mongodump'
@@ -76,7 +78,9 @@ module VCAP
           mongorestore_path = @config['mongorestore_path'] ? @config['mongorestore_path'][version.to_s] : 'mongorestore'
           tar_path = @config['tar_path'] ? @config['tar_path'] : 'tar'
           cmd_timeout = @config['timeout'].to_f
-          tmp_dir = Dir.mktmpdir(nil, @config['tmp_dir'])
+          tmp_dir = @config['tmp_dir'] ? @config['tmp_dir']: '/tmp'
+          FileUtils.mkdir_p(tmp_dir)
+          tmp_dir = Dir.mktmpdir(nil, tmp_dir)
           service = Node::ProvisionedService.get(service_id)
           db = Mongo::Connection.new(service.ip, 27017).db(service.db)
           db.authenticate(service.admin, service.adminpass)
