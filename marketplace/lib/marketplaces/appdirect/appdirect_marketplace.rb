@@ -101,10 +101,11 @@ module VCAP
 
             @logger.debug("Provision request for offering: #{request.label} (id=#{id}) provider=#{request.provider}, plan=#{request.plan}, version=#{request.version}")
 
+            email = "#{request.space_guid}@cloudfoundry.com" # Generate fake email to allow AD to create accounts in ISV website
             order = {
-              "user" => {
-                "uuid"  => request.user_guid,
-                "email" => request.email
+              "space" => {
+                "uuid"  => request.space_guid,
+                "email" => email
               },
               "offering" => {
                 "label"    => name,
@@ -113,12 +114,7 @@ module VCAP
               "configuration" => {
                 "plan" => request.plan,
                 "name" => request.name,
-              },
-
-              # TODO: Uncomment the below block once AD accepts this
-              #"billing" => {
-              #  "space_guid" => request.space_guid
-              #}
+              }
             }
             receipt = @helper.purchase_service(order)
 
@@ -138,10 +134,10 @@ module VCAP
           end
 
           def bind_service_instance(service_id, binding_options)
-            order = { "options" => binding_options }
-
-            resp = @helper.bind_service(order, service_id)
+            # NOTE: binding_options unused in interations with appdirect
+            resp = @helper.bind_service(service_id)
             @logger.debug("Bind response from AppDirect: #{resp.inspect}")
+
             {
               :configuration => {:data => {:binding_options => binding_options}},
               :credentials => resp["credentials"],
