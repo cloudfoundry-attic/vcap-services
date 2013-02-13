@@ -36,7 +36,7 @@ describe "Mysql server node" do
     @opts.freeze
     # Setup code must be wrapped in EM.run
     EM.run do
-      @node = Node.new(@opts)
+      @node = VCAP::Services::Mysql::Node.new(@opts)
       EM.add_timer(1) { EM.stop }
     end
     @tmpfiles = []
@@ -215,7 +215,7 @@ describe "Mysql server node" do
         db = nil
         expect {
           db = @node.provision(mal_plan)
-        }.should raise_error(MysqlError, /Invalid plan .*/)
+        }.should raise_error(VCAP::Services::Mysql::MysqlError, /Invalid plan .*/)
         db.should == nil
         db_num.should == connection.query("show databases;").count
       end
@@ -255,7 +255,7 @@ describe "Mysql server node" do
     EM.run do
       expect {
         @node.unprovision("not-existing", [])
-      }.should raise_error(MysqlError, /Mysql configuration .* not found/)
+      }.should raise_error(VCAP::Services::Mysql::MysqlError, /Mysql configuration .* not found/)
       # nil input handle
       @node.unprovision(nil, []).should == nil
       EM.stop
