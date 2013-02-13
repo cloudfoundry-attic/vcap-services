@@ -1,0 +1,9 @@
+branches:
+  only:
+    - travis
+rvm:
+  - "1.9.3"
+script: ./ci_build.sh
+env:
+  - FOLDER_NAME=marketplace
+  - FOLDER_NAME=service_broker
