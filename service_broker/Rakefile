@@ -44,7 +44,7 @@ namespace "test" do
   end
 
   task "spec" do |t|
-    run_spec{ sh "rake spec" }
+    run_spec{ sh "rake spec --trace" }
   end
 
   task "spec:rcov" do |t|
@@ -52,6 +52,6 @@ namespace "test" do
   end
 
   task "spec:ci" do |t|
-    run_spec{ sh "rake spec:ci" }
+    run_spec{ sh "rake spec:ci --trace" }
   end
 end
