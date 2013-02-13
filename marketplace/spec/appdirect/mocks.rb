@@ -19,6 +19,8 @@ class Mocks
 
   class MockEndpoint
     def initialize(scenario)
+      Thin::Logging.debug = true
+      
       @server = Thin::Server.new("#{HOST}", PORT, Handler.new(scenario))
     end
 
