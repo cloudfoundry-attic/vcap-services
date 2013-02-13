@@ -299,7 +299,7 @@ module VCAP
             failed = false
             begin
               msg = Timeout::timeout(@node_timeout) do
-                @marketplace_client.bind_service_instance(params['service_id'], req)
+                @marketplace_client.bind_service_instance(params['service_id'], req.binding_options)
               end
               resp = VCAP::Services::Api::GatewayHandleResponse.new(msg).encode
               async_reply(resp)

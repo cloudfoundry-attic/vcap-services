@@ -114,9 +114,9 @@ module VCAP
               end
             end
 
-            def bind_service(order, order_id)
-              if order and order_id
-                body = order.to_json
+            def bind_service(order_id)
+              if order_id
+                body = {}.to_json
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}/bindings"
                 @logger.info("Posting bind request: #{url}")
 
