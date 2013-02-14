@@ -1,5 +1,5 @@
 #!/bin/bash -l
 set -e
-cd $FOLDER_NAME && bundle install --deployment && bundle exec rake spec:ci --trace
-
-
+sudo mkdir -p /var/vcap
+sudo chown travis:travis /var/vcap
+cd $FOLDER_NAME && bundle install --deployment && bundle exec rake spec --trace
