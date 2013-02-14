@@ -136,7 +136,7 @@ describe "Mysql server node" do
             conn = connect_to_mysql(binding)
             conn.query("delete from test")
             # write privilege should restore
-            EM.add_timer(2) do
+            EM.add_timer(5) do   # we need at least 5s for information_schema tables to update with new data_length
               conn = connect_to_mysql(binding)
               expect{ conn.query("insert into test value('test')")}.should_not raise_error
               conn.query("insert into test value('#{content}')")
