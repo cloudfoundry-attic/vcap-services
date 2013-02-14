@@ -16,7 +16,7 @@ class ::FalseClass; include Boolean; end
 
 def getLogger()
   logger = Logger.new( STDOUT)
-  logger.level = Logger::ERROR
+  logger.level = Logger::DEBUG
   return logger
 end
 
