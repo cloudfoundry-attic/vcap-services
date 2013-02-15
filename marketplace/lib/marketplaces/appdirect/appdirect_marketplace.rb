@@ -105,6 +105,7 @@ module VCAP
             order = {
               "space" => {
                 "uuid"  => request.space_guid,
+                "organization_guid" => request.organization_guid,
                 "email" => email
               },
               "offering" => {
