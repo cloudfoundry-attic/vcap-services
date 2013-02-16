@@ -19,9 +19,8 @@ module VCAP::Services::Postgresql::WithWarden
       pre_send_announcement_internal_ori(options)
     else
       @logger.info("Not to start instances")
-      pgProvisionedService.all.each do |provisionedservice|
+      pool_run(pgProvisionedService.all.map { |inst| inst }) do |provisionedservice,  _|
         setup_global_connection(provisionedservice)
-        migrate_instance provisionedservice
       end
     end
   end

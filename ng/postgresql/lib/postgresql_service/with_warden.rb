@@ -39,15 +39,10 @@ module VCAP::Services::Postgresql::WithWarden
   def pre_send_announcement_internal(options)
     start_all_instances
     @capacity_lock.synchronize{ @capacity -= pgProvisionedService.all.size }
-    pgProvisionedService.all.each do |provisionedservice|
+    pool_run(pgProvisionedService.all.map { |inst| inst }) do |provisionedservice,  _|
       setup_global_connection(provisionedservice)
-      migrate_instance provisionedservice
     end
     warden_node_init(options)
-  end
-
-  def migrate_instance provisionedservice
-    nil
   end
 
   # initialize or reset the persistent connection slot
@@ -148,25 +143,8 @@ module VCAP::Services::Postgresql::WithWarden
     acquired = @keep_alive_lock.try_lock
     return unless acquired
     # maintain the global connections
-    instances = pgProvisionedService.all.map { |inst| inst }
-    temp_lock = Mutex.new
-    threads = []
-    idx = 0
-    10.times do |i|
-      threads << Thread.new(i) do |tid|
-        loop do
-          inst = nil
-          temp_lock.synchronize do
-            Thread.exit if idx >= instances.size
-            inst = instances[idx]
-            idx += 1
-          end
-          global_connection(inst, true) if inst
-        end
-      end
-    end
-    threads.each do |t|
-      t.join
+    pool_run(pgProvisionedService.all.map { |inst| inst }) do |instance, _|
+      global_connection(instance, true)
     end
     close_discarded_connections
   rescue => e
