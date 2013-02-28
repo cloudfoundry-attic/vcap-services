@@ -75,6 +75,7 @@ class VCAP::Services::Mysql::Node
     @binding_served = 0
 
     #locks
+    @keep_alive_lock = Mutex.new
     @kill_long_queries_lock = Mutex.new
     @kill_long_transaction_lock = Mutex.new
     @enforce_quota_lock = Mutex.new
@@ -102,7 +103,7 @@ class VCAP::Services::Mysql::Node
 
     keep_alive_interval = KEEP_ALIVE_INTERVAL
     keep_alive_interval = [keep_alive_interval, @connection_wait_timeout.to_f/2].min if @connection_wait_timeout
-    EM.add_periodic_timer(keep_alive_interval) {mysql_keep_alive}
+    EM.add_periodic_timer(keep_alive_interval) { EM.defer{mysql_keep_alive} }
     EM.add_periodic_timer(@max_long_query.to_f/2) { EM.defer{kill_long_queries} } if @max_long_query > 0
     if @max_long_tx > 0
       EM.add_periodic_timer(@max_long_tx.to_f/2) { EM.defer{kill_long_transaction} }
@@ -202,6 +203,8 @@ class VCAP::Services::Mysql::Node
 
   #keep connection alive, and check db liveness
   def mysql_keep_alive
+    acquired = @keep_alive_lock.try_lock
+    return unless acquired
     5.times do
       begin
         each_pool { |conn_pool| conn_pool.keep_alive }
@@ -217,6 +220,8 @@ class VCAP::Services::Mysql::Node
       shutdown
       exit
     end
+  ensure
+    @keep_alive_lock.unlock if acquired
   end
 
   def kill_long_queries

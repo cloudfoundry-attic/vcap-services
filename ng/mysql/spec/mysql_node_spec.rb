@@ -173,7 +173,7 @@ describe "Mysql server node" do
             expect {conn.query('SELECT 1')}.should raise_error
             conn.close
             conn = connect_to_mysql(binding)
-            conn.query("delete from test")
+            conn.query("truncate table test")
             # write privilege should restore
             EM.add_timer(2) do
               conn = connect_to_mysql(binding)
