@@ -665,27 +665,24 @@ class VCAP::Services::Mysql::Node
 
   def get_status(instance)
     res = "ok"
-    host, root_user, root_pass, port, socket= instance_configs(instance)
+    host, root_user, root_pass, port, socket = instance_configs(instance)
 
     begin
-      begin
-        conn = Mysql2::Client.new(:host => host, :username => instance.user, :password => instance.password, :database =>instance.name, :port => port.to_i, :socket => socket)
-      rescue Mysql2::Error => e
-        # user had modified instance password, fallback to root account
-        conn = Mysql2::Client.new(:host => host, :username => root_user, :password => root_pass, :database =>instance.name, :port => port.to_i, :socket => socket)
-        res = "password-modified"
-      end
-      conn.query("SHOW TABLES")
+      res = mysql_status(
+        :host => host,
+        :ins_user => instance.user,
+        :ins_pass => instance.password,
+        :root_user => root_user,
+        :root_pass => root_pass,
+        :db => instance.name,
+        :port => port.to_i,
+        :socket => socket,
+      )
     rescue => e
-      @logger.warn("Error get tables of #{instance.name}: #{e}")
+      @logger.warn("Error get status of #{instance.name}: #{e}")
       res = "fail"
-    ensure
-      begin
-        conn.close if conn
-      rescue => e1
-        #ignore
-      end
     end
+
     res
   end
 
@@ -825,6 +822,7 @@ end
 class VCAP::Services::Mysql::Node::WardenProvisionedService
 
   include DataMapper::Resource
+  include VCAP::Services::Mysql::Util
 
   property :name,            String,   :key => true
   property :port,            Integer,  :unique => true
@@ -852,6 +850,10 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
       provisioned_service.prepare_filesystem(@max_disk)
       FileUtils.mkdir_p(provisioned_service.tmp_dir)
       provisioned_service
+    end
+
+    def options
+      @@options
     end
   end
 
@@ -910,5 +912,35 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   def finish_start?
     # Mysql does this in "setup_pool" function, so just return true here
     true
+  end
+
+  def running?
+    res = true
+    host = self[:ip]
+    ins_user = self[:user]
+    ins_pass = self[:password]
+    db = self[:name]
+    mysql_configs = self.class.options[:mysql][self[:version]]
+    root_user = mysql_configs["user"]
+    root_pass = mysql_configs["pass"]
+    port = mysql_configs["port"].to_i
+    socket = mysql_configs["socket"]
+
+    begin
+      mysql_status(
+        :host => host,
+        :ins_user => ins_user,
+        :ins_pass => ins_pass,
+        :root_user => root_user,
+        :root_pass => root_pass,
+        :db => db,
+        :port => port,
+        :socket => socket,
+      )
+    rescue
+      res = false
+    end
+
+    res
   end
 end

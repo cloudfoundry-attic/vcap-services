@@ -14,12 +14,12 @@ module Mysql2
 
     def initialize(opts={})
       wait_timeout = self.class.default_timeout
-      # client side timeout
-      opts.merge!({
-        :read_timeout => wait_timeout,
-        :connect_timeout => wait_timeout,
-      }) if wait_timeout
-      client = origin_initialize(opts)
+      if wait_timeout
+        opts[:read_timeout] ||= wait_timeout
+        opts[:connect_timeout] ||= wait_timeout
+      end
+      client = nil
+      Timeout.timeout(opts[:connect_timeout]) { client = origin_initialize(opts) }
       # server side timeout
       client.query("set @@wait_timeout=#{wait_timeout}") if wait_timeout
       client

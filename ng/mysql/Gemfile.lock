@@ -145,7 +145,7 @@ GEM
     mime-types (1.21)
     multi_json (1.0.4)
     multipart-post (1.1.5)
-    mysql2 (0.3.10)
+    mysql2 (0.3.11)
     nats (0.4.24)
       daemons (>= 1.1.5)
       eventmachine (>= 0.12.10)
@@ -214,7 +214,7 @@ DEPENDENCIES
   em-http-request
   eventmachine!
   json
-  mysql2
+  mysql2 (~> 0.3.11)
   nats
   rake
   rspec
