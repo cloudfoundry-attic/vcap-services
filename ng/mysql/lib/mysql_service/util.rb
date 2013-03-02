@@ -23,6 +23,43 @@ module VCAP
           "#{e}: [#{e.backtrace.join(" | ")}]"
         end
 
+        def mysql_status(opts={})
+          res = "ok"
+          begin
+            begin
+              conn = Mysql2::Client.new(
+                :host => opts[:host],
+                :username => opts[:ins_user],
+                :password => opts[:ins_pass],
+                :database => opts[:db],
+                :port => opts[:port],
+                :socket => opts[:socket],
+                :connect_timeout => 0.5
+              )
+            rescue Mysql2::Error => e
+              # user had modified instance password, fallback to root account
+              conn = Mysql2::Client.new(
+                :host => opts[:host],
+                :username => opts[:root_user],
+                :password => opts[:root_pass],
+                :database => opts[:db],
+                :port => opts[:port],
+                :socket => opts[:socket],
+                :connect_timeout => 0.5
+              )
+              res = "password-modified"
+            end
+            conn.query("SHOW TABLES")
+          ensure
+            begin
+              conn.close if conn
+            rescue => e1
+              #ignore
+            end
+          end
+          res
+        end
+
         # dump a single database to the given path
         #  db: the name of the database you want to dump
         #  mysql_config: hash contains following keys:
@@ -43,8 +80,8 @@ module VCAP
           cmd = "#{mysql_dump_bin} -h#{host} --user='#{user}' --password='#{password}' -P#{port} #{socket_str if socket} -R --single-transaction #{db}| #{gzip_bin} - > #{dump_file_path}"
           @logger.info("Take snapshot command:#{cmd}")
 
-          on_err = Proc.new do |cmd, code, msg|
-            raise "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}"
+          on_err = Proc.new do |command, code, msg|
+            raise "CMD '#{command}' exit with code: #{code}. Message: #{msg}"
           end
           res = CMDHandle.execute(cmd, nil, on_err)
           res
@@ -97,8 +134,8 @@ module VCAP
           socket_str = "-S #{socket}"
           cmd = "#{gzip_bin} -dc #{dump_file_path}| #{mysql_bin} -h#{host} -P#{port} --user='#{import_user}' --password='#{import_pass}' #{socket_str if socket} #{db}"
           @logger.info("import dump file cmd: #{cmd}")
-          on_err = Proc.new do |cmd, code, msg|
-            raise "CMD '#{cmd}' exit with code: #{code}. Message: #{msg}"
+          on_err = Proc.new do |command, code, msg|
+            raise "CMD '#{command}' exit with code: #{code}. Message: #{msg}"
           end
           res = CMDHandle.execute(cmd, nil, on_err)
           handle_discarded_routines(db, @connection)
@@ -219,7 +256,7 @@ module VCAP
             t1 = Time.now
             yield
           ensure
-            update_latency_metric (Time.now - t1) * 1000
+            update_latency_metric((Time.now - t1) * 1000)
           end
 
           def update_latency_metric(latency)
