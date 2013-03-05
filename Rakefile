@@ -143,7 +143,7 @@ def run_or_raise(cmd)
 end
 
 RSpec::Core::RakeTask.new(:spec) do |t|
-  t.pattern = "#{Rake.application.original_dir}/**/*_spec.rb"
+  t.pattern = "#{Rake.application.original_dir}/spec/**/*_spec.rb"
   t.rspec_opts = ["--format", "documentation", "--colour"]
 end
 
