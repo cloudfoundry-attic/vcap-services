@@ -535,6 +535,7 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
   end
 
   def finish_start?
+    conn = nil
     Timeout::timeout(MONGO_TIMEOUT) do
       conn = Mongo::Connection.new(ip, SERVICE_PORT)
       auth = conn.db("admin").authenticate(admin, adminpass)
@@ -543,15 +544,20 @@ class VCAP::Services::MongoDB::Node::ProvisionedService
     true
   rescue => e
     false
+  ensure
+    conn.close unless conn.nil?
   end
 
   def finish_first_start?
+    conn = nil
     Timeout::timeout(MONGO_TIMEOUT) do
       conn = Mongo::Connection.new(ip, SERVICE_PORT)
     end
     true
   rescue => e
     false
+  ensure
+    conn.close unless conn.nil?
   end
 
   def add_user(username, password)
