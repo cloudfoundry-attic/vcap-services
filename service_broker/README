@@ -2,15 +2,39 @@ Cloud Foundry Service Broker enables consumption of legacy, non-CF services by C
 
 == Enable service broker in vcap_dev_setup & vcap_dev
 
-By default vcap_dev_setup will install service broker, however, vcap_dev puts
-it in the excluded list. So, if we want vcap_dev to start service broker
-automatically, then we should set the environment variable.
+To enable the service broker in vcap_dev_setup, edit the .../cloudfoundry/vcap/dev_setup/deployments/devbox.yml file 
+(or whatever deployment file you are using) and add service_broker to the list of jobs:
 
-export CLOUD_FOUNDRY_EXCLUDED_COMPONENT="..."
+---
+deployment:
+  name: "devbox"
 
-For detailed infomation, please refer to the following link.
+jobs:
+  install:
+    - nats_server
 
-https://github.com/cloudfoundry/vcap/blob/master/dev_setup/README
+    ... snip a bunch of other jobs ...
+
+    - service_broker
+
+and then rerun vcap_dev_setup.
+
+To enable the service broker in an already deploy vcap_dev environment, go into 
+...cloudfoundry/.deployments/devbox/config directory do two things:
+
+1.edit the vcap_components.json file adding "service_broker" 
+2.drop a service_broker.yml file into that same directory
+
+You can find a sample of the service_broker.yml in the ...cloudfoundry/vcap/services/service_broker/config directory.
+Set the values of the token, cloud_controller_uri, mbus, pid and local_db properties appropriately.
+
+This will allow you to start the service broker by executing
+
+vcap_dev start service_broker
+
+or it will be included in the list of components started with a
+
+vcap_dev start
 
 == How to run service broker bvt test case?
 
