@@ -3,6 +3,7 @@ set -e
 sudo mkdir -p /var/vcap/packages
 sudo mkdir -p /var/vcap/store
 sudo chown -R $USER /var/vcap
+gem install aws-sdk
 ./download_binaries_from_s3.rb
 tar xf common.tar.gz -C /
 tar xf packages.tar.gz -C /
