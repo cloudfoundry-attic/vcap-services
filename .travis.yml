@@ -8,3 +8,4 @@ env:
   - FOLDER_NAME=marketplace
   - FOLDER_NAME=service_broker
   - FOLDER_NAME=mysql
+  - FOLDER_NAME=ng/redis
