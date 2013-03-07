@@ -336,7 +336,7 @@ class VCAP::Services::Postgresql::Node
       end
       @logger.info("Done creating #{provisionedservice.inspect}. Took #{Time.now - start}.")
       true
-    rescue PGError => e
+    rescue => e
       @logger.error("Could not create database: #{fmt_error(e)}")
       false
     end
@@ -398,12 +398,12 @@ class VCAP::Services::Postgresql::Node
           db_connection.query("GRANT TEMP ON DATABASE #{name} to #{sys_user}")
           exe_grant_user_priv(db_connection)
         end
-      rescue PGError => e
+      rescue => e
         @logger.error("Could not Initialize user privileges: #{fmt_error(e)}")
       end
       db_connection.close
       true
-    rescue PGError => e
+    rescue => e
       @logger.error("Could not create database user: #{fmt_error(e)}")
       false
     end
@@ -428,7 +428,7 @@ class VCAP::Services::Postgresql::Node
         @logger.error("Could not connect to instance #{name} to delete database.")
         false
       end
-    rescue PGError => e
+    rescue => e
       @logger.error("Could not delete database: #{fmt_error(e)}")
       false
     end
@@ -440,22 +440,24 @@ class VCAP::Services::Postgresql::Node
     db_connection = management_connection(instance, true)
     raise PGError("Fail to connect to database #{db}") unless db_connection
     begin
-      db_connection.query("select pg_terminate_backend(procpid) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
-    rescue PGError => e
+      db_connection.query("select pg_terminate_backend(#{pg_stat_activity_pid_field(instance.version)}) from pg_stat_activity where usename = '#{binduser.user}' or usename = '#{binduser.sys_user}'")
+    rescue => e
       @logger.warn("Could not kill user session: #{e}")
     end
     #Revoke dependencies. Ignore error.
     begin
       db_connection.query("DROP OWNED BY #{binduser.user}")
       db_connection.query("DROP OWNED BY #{binduser.sys_user}")
-      if pg_version(db_connection) == '9'
+      version = pg_version(db_connection, :major => true)
+      case version
+      when '9'
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
         db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
-      else
+      when '8'
         queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{binduser.user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
         queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
@@ -472,19 +474,21 @@ class VCAP::Services::Postgresql::Node
         queries.each do |query_to_do|
           db_connection.query(query_to_do['query_to_do'].to_s)
         end
+      else
+        raise "PostgreSQL version #{version} unsupported"
       end
       db_connection.query("REVOKE ALL ON DATABASE #{db} from #{binduser.user} CASCADE")
       db_connection.query("REVOKE ALL ON SCHEMA PUBLIC from #{binduser.user} CASCADE")
       db_connection.query("REVOKE ALL ON DATABASE #{db} from #{binduser.sys_user} CASCADE")
       db_connection.query("REVOKE ALL ON SCHEMA PUBLIC from #{binduser.sys_user} CASCADE")
-    rescue PGError => e
+    rescue => e
       @logger.warn("Could not revoke user dependencies: #{e}")
     end
     db_connection.query("DROP ROLE #{binduser.user}")
     db_connection.query("DROP ROLE #{binduser.sys_user}")
     db_connection.close
     true
-  rescue PGError => e
+  rescue => e
     @logger.error("Could not delete user '#{binduser.user}': #{fmt_error(e)}")
     false
   end
@@ -546,7 +550,7 @@ class VCAP::Services::Postgresql::Node
     db_connection = management_connection(instance, true)
     raise PGError("Fail to connect to database #{name}") unless db_connection
     block_user_from_db(db_connection, instance)
-    global_connection(instance).query("select pg_terminate_backend(procpid) from pg_stat_activity where datname = '#{name}'")
+    global_connection(instance).query("select pg_terminate_backend(#{pg_stat_activity_pid_field(instance.version)}) from pg_stat_activity where datname = '#{name}'")
     true
   rescue => e
     @logger.error("Error during disable_instance #{fmt_error(e)}")

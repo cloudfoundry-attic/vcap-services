@@ -115,6 +115,8 @@ module VCAP
 
           def service_port
             case version
+            when "9.2"
+              5434
             when "9.1"
               5433
             else
@@ -153,7 +155,6 @@ module VCAP
           def finish_start?
             user, pass, database = %w[user pass database].map{ |ele| @@postgresql_config[version][ele] }
             conn = postgresql_connect(ip, user, pass, service_port, database, :quick => true)
-            pg_version(conn) if conn
             !conn.nil?
           rescue => e
             false

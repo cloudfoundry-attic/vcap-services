@@ -42,7 +42,7 @@ describe "Postgresql node normal cases" do
     @max_db_conns = @opts[:max_db_conns]
     # Setup code must be wrapped in EM.run
     EM.run do
-      @node = Node.new(@opts)
+      @node = VCAP::Services::Postgresql::Node.new(@opts)
       EM.add_timer(0.1) {EM.stop}
     end
   end
@@ -121,6 +121,19 @@ describe "Postgresql node normal cases" do
       end
 
       EM.stop
+    end
+  end
+
+  it "should retrieve version from postgresql connection" do
+    EM.run do
+      begin
+        @conn = @node.global_connection(@db_instance)
+        @node.pg_version(@conn).should == @default_version
+        @node.pg_version(@conn, :full => true).should =~ Regexp.new("#{@default_version}\\.(\\w+)")
+        @node.pg_version(@conn, :major => true).should == @default_version.scan(/(\d+)/)[0][0]
+      ensure
+        EM.stop
+      end
     end
   end
 
@@ -499,7 +512,7 @@ describe "Postgresql node normal cases" do
       expect {
         db=@node.provision(mal_plan, nil, @default_version)
         @test_dbs[db] = []
-      }.should raise_error(PostgresqlError, /Invalid plan .*/)
+      }.should raise_error(VCAP::Services::Postgresql::PostgresqlError, /Invalid plan .*/)
       db.should == nil
       db_num.should == conn.query("select count(*) from pg_database;")[0]['count']
       EM.stop
@@ -573,7 +586,7 @@ describe "Postgresql node normal cases" do
     EM.run do
       expect {
         @node.unprovision("not-existing", [])
-      }.should raise_error(PostgresqlError, /Postgresql configuration .* not found/)
+      }.should raise_error(VCAP::Services::Postgresql::PostgresqlError, /Postgresql configuration .* not found/)
       # nil input handle
       @node.unprovision(nil, []).should == nil
       EM.stop
@@ -585,7 +598,7 @@ describe "Postgresql node normal cases" do
       # no existing instance
       expect {
         @node.unbind({:name => "not-existing"})
-      }.should raise_error(PostgresqlError,/Postgresql configuration .*not found/)
+      }.should raise_error(VCAP::Services::Postgresql::PostgresqlError,/Postgresql configuration .*not found/)
 
       # no existing credential
       credential = @node.bind(@db["name"],  @default_opts)
@@ -1093,7 +1106,7 @@ describe "Postgresql node normal cases" do
       FileUtils.rm_rf "/tmp/vcap_pg_pagecache_clean_test_dir"
       FileUtils.rm_rf "/tmp/vcap_pg_pagecache_clean_test_dir_link"
       # reset back class vars if you changed
-      Node.pgProvisionedServiceClass(true).init(@opts)
+      VCAP::Services::Postgresql::Node.pgProvisionedServiceClass(true).init(@opts)
     end
     @node.class.setup_datamapper(:default, @opts[:local_db])
   end

@@ -27,6 +27,7 @@ warden:
   service_bin_dir:
     '9.0': /var/vcap/packages/postgresql
     '9.1': /var/vcap/packages/postgresql91
+    '9.2': /var/vcap/packages/postgresql92
   service_common_dir: /var/vcap/store/postgresql_common
   image_dir: /var/vcap/services/postgresql/image
   service_start_timeout: 3
@@ -48,7 +49,15 @@ postgresql:
     database: postgres
     restore_bin: /var/vcap/packages/postgresql91/bin/pg_restore
     dump_bin: /var/vcap/packages/postgresql91/bin/pg_dump
-supported_versions: ['9.0', '9.1']
+  '9.2':
+    host: 127.0.0.1
+    port: 5434
+    user: vcap
+    pass: vcap
+    database: postgres
+    restore_bin: /var/vcap/packages/postgresql92/bin/pg_restore
+    dump_bin: /var/vcap/packages/postgresql92/bin/pg_dump
+supported_versions: ['9.0', '9.1', '9.2']
 default_version: '9.1'
 
 # z_interval: 30
