@@ -10,7 +10,7 @@ env:
     - FOLDER_NAME=marketplace
     - FOLDER_NAME=service_broker
     - FOLDER_NAME=mysql
-    - FOLDER_NAME=ng/redis
+    - FOLDER_NAME=ng/redis REQUIRE_PACKAGE=redis.tar.gz WARDENIZED_SERVICE=1
   global:
     - secure: ! 'wvVGoINY/BGNsTbaAvoLAsNrufabl8Mrhd3bl5r+ghTXZOykhdSnmYWKpUqW
 
