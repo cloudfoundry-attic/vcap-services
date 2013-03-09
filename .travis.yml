@@ -1,4 +1,7 @@
 ---
+# Java, because those are the 64bit boxes. We'll change it once Ruby
+# boxes are 64bit, too
+language: java
 branches:
   only:
   - travis
