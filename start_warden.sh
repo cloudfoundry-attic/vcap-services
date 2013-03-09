@@ -30,6 +30,7 @@ cd $START_DIR
 # Wait for warden to come up
 while [ ! -e /tmp/warden.sock ]
 do
+  echo 'Waiting for warden to start. Rechecking in 1 second'
   sleep 1
 done
 

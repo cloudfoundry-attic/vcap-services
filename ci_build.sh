@@ -11,6 +11,7 @@ then
 fi
 if [ $REQUIRE_PACKAGE ]
 then
+  echo 'Installing required packages'
   ./download_binaries_from_s3.rb $REQUIRE_PACKAGE
   tar xf $REQUIRE_PACKAGE -C /
   rm -f $REQUIRE_PACKAGE
