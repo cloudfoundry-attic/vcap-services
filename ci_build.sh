@@ -1,9 +1,10 @@
-#!/bin/bash
+p
+!/bin/bash
 set -e
 sudo mkdir -p /var/vcap/packages
 sudo mkdir -p /var/vcap/store
 sudo chown -R $USER /var/vcap
-sudo gem install --no-ri --no-rdoc aws-sdk
+gem install --no-ri --no-rdoc aws-sdk
 if [ $WARDENIZED_SERVICE ]
 then
   ./start_warden.sh
