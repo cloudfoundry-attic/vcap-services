@@ -23,17 +23,16 @@ START_DIR=`pwd`
   $START_DIR/download_binaries_from_s3.rb warden_rootfs.tar.gz
   sudo mkdir -p /tmp/warden/rootfs
   sudo tar zxf warden_rootfs.tar.gz -C /tmp/warden/rootfs 
-  rvmsudo bundle exec rake warden:start[config/linux.yml] >>/tmp/warden.stdout.log 2>>/tmp/warden.stderr.log &
+  rvmsudo bundle exec rake --trace warden:start[config/linux.yml] >>/tmp/warden.stdout.log 2>>/tmp/warden.stderr.log &
 )
 cd $START_DIR
 
 # Wait for warden to come up
-sleeps=15
+sleeps=5
 while [ ! -e /tmp/warden.sock ] && [ $sleeps -gt 0 ]
 do
   echo 'Waiting for warden to start. Rechecking in 1 second'
   echo "Warden log contents"
-  tail -n 200 '/tmp/warden.stdout.log'
   tail -n 200 '/tmp/warden.stderr.log'
   echo "*****************************"
   let sleeps--
