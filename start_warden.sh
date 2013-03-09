@@ -28,9 +28,15 @@ START_DIR=`pwd`
 cd $START_DIR
 
 # Wait for warden to come up
-while [ ! -e /tmp/warden.sock ]
+sleeps=15
+while [ ! -e /tmp/warden.sock ] && [ $sleeps -gt 0 ]
 do
   echo 'Waiting for warden to start. Rechecking in 1 second'
+  echo "Warden log contents"
+  tail -n 200 '/tmp/warden.stdout.log'
+  tail -n 200 '/tmp/warden.stderr.log'
+  echo "*****************************"
+  let sleeps--
   sleep 1
 done
 
