@@ -82,7 +82,7 @@ namespace "bundler" do
   desc "Update git ref in Gemfile"
   task :update, :oref, :nref, :catalog, :pattern do |t, args|
     dirs = dirs_to_run(args[:catalog], args[:pattern])
-    exec_in_svc_dir(dirs) { |_| sh "sed -i \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
+    exec_in_svc_dir(dirs) { |_| sh "sed -i '' \"s/#{args[:oref]}/#{args[:nref]}/g\" Gemfile && bundle install" }
   end
 
   desc "Dry run update"
@@ -117,7 +117,7 @@ namespace "bundler" do
     end
 
     exec_in_gem_dir(working_dir, gem_name) do
-      abort unless system "git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec && gem install #{gem_name}*.gem"
+      abort unless system "git fetch #{repo} #{refspec} && git checkout FETCH_HEAD && gem build #{gem_name}.gemspec && gem install --ignore-dependencies #{gem_name}*.gem"
     end
 
     exec_in_svc_dir(dirs) do |dir|

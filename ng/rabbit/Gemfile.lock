@@ -32,8 +32,8 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 0346efd96d311e4841a3b93fa13eaa81fd7d037e
-  ref: 0346efd96d
+  revision: 7d23207ec64990460f7f7c38fb43671957948f4e
+  ref: 7d23207e
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -160,13 +160,13 @@ GEM
     rack (1.4.1)
     rake (0.9.2.2)
     rcov (0.9.9)
-    redis (3.0.2)
+    redis (3.0.3)
     redis-namespace (1.2.1)
       redis (~> 3.0.0)
     redisk (0.2.2)
       redis (>= 0.1.1)
       redis-namespace (>= 0.1.0)
-    resque (1.23.0)
+    resque (1.23.1)
       multi_json (~> 1.0)
       redis-namespace (~> 1.0)
       sinatra (>= 0.9.2)
