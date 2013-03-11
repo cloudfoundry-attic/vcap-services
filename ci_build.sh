@@ -1,4 +1,3 @@
-p
 !/bin/bash
 set -e
 sudo mkdir -p /var/vcap/packages

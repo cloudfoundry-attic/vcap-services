@@ -34,6 +34,10 @@ do
   echo 'Waiting for warden to start. Rechecking in 1 second'
   echo "Warden log contents"
   tail -n 200 '/tmp/warden.stderr.log'
+  echo 'STDOUT'
+  tail -n 200 '/tmp/warden.stdout.log'
+  echo 'WARDEN LOG'
+  tail -n 200 '/tmp/warden.log'
   echo "*****************************"
   let sleeps--
   sleep 1
