@@ -1,4 +1,4 @@
-#!/bin/bash 
+#! /bin/bash 
 START_DIR=`pwd`
 (
   git clone --recursive --depth=100 --quiet --branch=master git://github.com/cloudfoundry/warden.git warden
@@ -17,13 +17,13 @@ START_DIR=`pwd`
   sudo apt-get -y install debootstrap quota
 
   cd warden
-  bundle install --deployment
   # rvmsudo bundle exec rake setup:bin[config/linux.yml]
   # Get waren rootfs
   # $START_DIR/download_binaries_from_s3.rb warden_rootfs.tar.gz
   # sudo mkdir -p /tmp/warden/rootfs
   # sudo tar zxf warden_rootfs.tar.gz -C /tmp/warden/rootfs
 
+  bundle install
   rvmsudo bundle exec rake setup[config/linux.yml]
   rvmsudo bundle exec rake --trace warden:start[config/linux.yml] >>/tmp/warden.stdout.log 2>>/tmp/warden.stderr.log &
 )
