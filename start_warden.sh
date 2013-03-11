@@ -18,14 +18,18 @@ START_DIR=`pwd`
 
   cd warden
   bundle install --deployment
-  rvmsudo bundle exec rake setup:bin
+  # rvmsudo bundle exec rake setup:bin[config/linux.yml]
   # Get waren rootfs
-  $START_DIR/download_binaries_from_s3.rb warden_rootfs.tar.gz
-  sudo mkdir -p /tmp/warden/rootfs
-  sudo tar zxf warden_rootfs.tar.gz -C /tmp/warden/rootfs 
+  # $START_DIR/download_binaries_from_s3.rb warden_rootfs.tar.gz
+  # sudo mkdir -p /tmp/warden/rootfs
+  # sudo tar zxf warden_rootfs.tar.gz -C /tmp/warden/rootfs
+
+  rvmsudo bundle exec rake setup[config/linux.yml]
   rvmsudo bundle exec rake --trace warden:start[config/linux.yml] >>/tmp/warden.stdout.log 2>>/tmp/warden.stderr.log &
 )
 cd $START_DIR
+
+uname -a
 
 # Wait for warden to come up
 sleeps=5
@@ -42,6 +46,12 @@ do
   let sleeps--
   sleep 1
 done
+
+if [ $sleeps -eq 0 ]
+then
+  echo 'Warden failed to start, failing the build'
+  exit 1
+if
 
 echo "/tmp/warden.sock exists, let's run the specs"
 
