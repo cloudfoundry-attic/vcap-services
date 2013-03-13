@@ -26,4 +26,5 @@ image_dir: /tmp/rabbitmq_image
 service_bin_dir:
   '2.4': /var/vcap/packages/rabbitmq-2.4
   '2.8': /var/vcap/packages/rabbitmq-2.8
+  '3.0': /var/vcap/packages/rabbitmq-3.0
   erlang: /var/vcap/packages/erlang
