@@ -138,11 +138,18 @@ describe VCAP::Services::Rabbit::Node do
       @instance_credentials = @node.provision(:free)
       @instance = @node.get_instance(@instance_credentials["name"])
       @binding_credentials = @node.bind(@instance_credentials["name"])
+      @admin_credentials = @node.gen_admin_credentials(@instance)
     end
 
     after :all do
       @node.unbind(@binding_credentials)
       @node.unprovision(@instance_credentials["name"])
+    end
+
+    it "should be tagged with 'management' for binding user" do
+      bind_user = @node.list_users(@admin_credentials).find{|user| user["name"] == @binding_credentials["username"]}
+      bind_user.should be
+      bind_user["tags"].should == "management"
     end
 
     it "should access rabbitmq server use the returned credential" do

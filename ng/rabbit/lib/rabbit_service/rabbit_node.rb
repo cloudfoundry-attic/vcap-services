@@ -124,7 +124,7 @@ class VCAP::Services::Rabbit::Node
       pass = "p" + generate_credential
     end
     credentials = gen_admin_credentials(instance)
-    add_user(credentials, user, pass)
+    add_user(credentials, user, pass, "management")
     set_permissions(credentials, instance.vhost, user, get_permissions_by_options(binding_options))
 
     binding_credentials = gen_credentials(instance, user, pass)
