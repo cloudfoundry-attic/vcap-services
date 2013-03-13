@@ -1,0 +1,9 @@
+---
+id: servicesmgmt
+secret: servicesmgmtsecret
+token_server: http://localhost:8089
+auth_server: http://localhost:8088
+cloud_controller_uri: http://localhost:8087
+index: 0
+logging:
+  level: debug

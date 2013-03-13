@@ -1,0 +1,21 @@
+<html>
+  <body>
+    <h2>Hello, <%= username %></h2>
+    <% svcs.each do |svc| %>
+      <h3><li><%= svc[:name] %></li></h3>
+      <p>label: <%= svc[:label] %></p>
+      <p>plan: <%= svc[:plan] %></p>
+      <p>version: <%= svc[:version] %></p>
+      <p>credentials: <%= svc[:credentials] %></p>
+      <% if svc[:label] == "rabbitmq" %>
+        <form id='<%= svc[:id] %>' action='/rabbitmq' method='post'>
+          <input type='hidden' name='id' value='<%= svc[:id] %>'>
+          <input type='hidden' name='label' value='<%= svc[:label] %>'>
+          <input type='hidden' name='credentials' value='<%= svc[:credentials].to_json %>'>
+          <a href='#' onclick="document.getElementById('<%= svc[:id] %>').submit()">Management UI</a>
+        </form>
+      <% end %>
+      <hr>
+    <% end %>
+  </body>
+</html>
