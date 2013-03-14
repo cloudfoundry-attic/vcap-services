@@ -1,0 +1,3 @@
+SRC_URL=http://www.thrysoee.dk/editline/libedit-20121213-3.0.tar.gz
+PKG_NAME=libedit-20121213-3.0
+PKG_FILE=lib/libedit.so

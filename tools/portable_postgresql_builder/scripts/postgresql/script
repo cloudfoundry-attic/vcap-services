@@ -1,0 +1,18 @@
+#!/bin/bash
+
+source ./.build_env
+
+./configure --prefix=$TARGET_DIR --with-libedit-preferred --with-libxml --with-libxslt --with-openssl --with-ldap
+make world
+make check
+rm -rf $TARGET_DIR/bin/*
+rm -rf $TARGET_DIR/lib/*.a
+rm -rf $TARGET_DIR/lib/*.la
+rm -rf $TARGET_DIR/ssl
+rm -rf $TARGET_DIR/etc/*
+rm -rf $TARGET_DIR/share/aclocal
+rm -rf $TARGET_DIR/share/gtk-doc
+rm -rf $TARGET_DIR/share/man
+rm -rf $TARGET_DIR/share/doc
+make install-world
+rm -rf $TARGET_DIR/share/doc/html

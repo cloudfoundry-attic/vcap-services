@@ -1,0 +1,7 @@
+#!/bin/bash
+
+source ./.build_env
+
+./config --prefix=$TARGET_DIR -I$TARGET_DIR/include -L$TARGET_DIR/lib zlib no-asm no-krb5 shared
+make
+make install

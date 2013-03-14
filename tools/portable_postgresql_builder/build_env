@@ -1,0 +1,5 @@
+TARGET_DIR=$1
+export LD_LIBRARY_PATH=$TARGET_DIR/lib:$LD_LIBRARY_PATH
+export CFLAGS="-I$TARGET_DIR/incldue -m64"
+export CPPFLAGS="-I$TARGET_DIR/include -m64"
+export LDFLAGS="-L$TARGET_DIR/lib -m64 -Wl,-rpath -Wl,\\\$\$ORIGIN/../lib"
