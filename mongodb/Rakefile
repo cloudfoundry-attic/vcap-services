@@ -2,6 +2,8 @@ require 'rake'
 require 'yaml'
 require 'yajl'
 
+task "default" => "spec"
+
 desc "Run specs"
 task "spec" => ["test:spec"]
 
