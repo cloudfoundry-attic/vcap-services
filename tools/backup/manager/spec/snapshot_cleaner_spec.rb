@@ -46,19 +46,27 @@ describe BackupSnapshotCleanerTests do
     end
   end
 
-  it "should try to cleanup the snapshots that CC don't know" do
+  it "should try to cleanup the snapshots that CC doesn't know" do
     EM.run do
-      cc = BackupSnapshotCleanerTests::MockCloudController.new
+      cc = BackupRotatorTests::MockCloudController.new
       cc.start
       EM.add_timer(1) do
         Fiber.new {
           opts = @options.merge({
-          :cloud_controller_uri => "localhost:#{BackupSnapshotCleanerTests::CC_PORT}",
+          :cc_api_uri => "localhost:#{BackupRotatorTests::CC_PORT}",
+          :cc_api_version => "v1",
+          :uaa_client_id => "vmc",
+          :uaa_endpoint => "http://uaa.vcap.me",
+          :uaa_client_auth_credentials => {
+            :username => 'sre@vmware.com',
+            :password => 'the_admin_pw'
+          },
           :services => {
             'mongodb' => {'version' =>'1.8','token' =>'0xdeadbeef'},
             'redis' => {'version' =>'2.2','token' =>'0xdeadbeef'},
             'mysql' => {'version' =>'5.1','token' =>'0xdeadbeef'},
-          }
+          },
+          :cc_enable => true
         })
         BackupSnapshotCleanerTests.create_cleaner('cc_test',opts) do |cleaner|
           cleaner.run.should be_true
@@ -74,7 +82,82 @@ describe BackupSnapshotCleanerTests do
         EM.stop
       end
     end
+  end
 
+  it "should try to cleanup the snapshots that CCNG-v1 doesn't know" do
+    EM.run do
+      ccng = BackupRotatorTests::MockCloudControllerNG.new
+      ccng.start
+      EM.add_timer(1) do
+        Fiber.new {
+          opts = @options.merge({
+          :cc_api_uri => "localhost:#{BackupRotatorTests::CCNG_PORT}",
+          :cc_api_version => "v1",
+          :uaa_client_id => "vmc",
+          :uaa_endpoint => "http://uaa.vcap.me",
+          :uaa_client_auth_credentials => {
+            :username => 'sre@vmware.com',
+            :password => 'the_admin_pw'
+          },
+          :services => {
+            'mongodb' => {'version' =>'1.8','token' =>'0xdeadbeef'},
+            'redis' => {'version' =>'2.2','token' =>'0xdeadbeef'},
+            'mysql' => {'version' =>'5.1','token' =>'0xdeadbeef'},
+          },
+          :cc_enable => true
+        })
+        BackupSnapshotCleanerTests.create_cleaner('cc_test',opts) do |cleaner|
+          cleaner.run.should be_true
+          cleaner.nooped.length.should == 6
+          cleaner.mark_cleanuped.length.should == 4
+          cleaner.keep_marked.length.should == 0
+          cleaner.all_cleanuped.length.should == 1
+        end
+        }.resume
+      end
+      EM.add_timer(4) do
+        ccng.stop
+        EM.stop
+      end
+    end
+  end
+
+  it "should try to cleanup the snapshots that CCNG-v2 doesn't know" do
+    EM.run do
+      ccng = BackupRotatorTests::MockCloudControllerNG.new
+      ccng.start
+      EM.add_timer(1) do
+        Fiber.new {
+          opts = @options.merge({
+          :cc_api_uri => "localhost:#{BackupRotatorTests::CCNG_PORT}",
+          :cc_api_version => "v2",
+          :uaa_client_id => "vmc",
+          :uaa_endpoint => "http://uaa.vcap.me",
+          :uaa_client_auth_credentials => {
+            :username => 'sre@vmware.com',
+            :password => 'the_admin_pw'
+          },
+          :services => {
+            'mongodb' => {'version' =>'1.8','token' =>'0xdeadbeef'},
+            'redis' => {'version' =>'2.2','token' =>'0xdeadbeef'},
+            'mysql' => {'version' =>'5.1','token' =>'0xdeadbeef'},
+          },
+          :cc_enable => true
+        })
+        BackupSnapshotCleanerTests.create_cleaner('cc_test',opts) do |cleaner|
+          cleaner.run.should be_true
+          cleaner.nooped.length.should == 6
+          cleaner.mark_cleanuped.length.should == 4
+          cleaner.keep_marked.length.should == 0
+          cleaner.all_cleanuped.length.should == 1
+        end
+        }.resume
+      end
+      EM.add_timer(4) do
+        ccng.stop
+        EM.stop
+      end
+    end
   end
 
   it "should handle a complicated case" do

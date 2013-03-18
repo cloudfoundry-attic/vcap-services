@@ -125,6 +125,7 @@ require 'backup_manager/job_cleaner'
 module BackupWorkerTests
 
   CC_PORT = 45678
+  CCNG_PORT = 45679
   MAX_DAYS = 7
   UNPROVISIONED_MAX_DAYS = 10
 
@@ -190,6 +191,112 @@ module BackupWorkerTests
       end
     end
   end
+
+  class MockCloudControllerNG
+    def initialize
+      @serverng = Thin::Server.new('localhost', CCNG_PORT, Handler.new)
+    end
+
+    def start
+      Thread.new { @serverng.start }
+    end
+
+    def stop
+      @serverng.stop if @serverng
+    end
+
+    class Handler < Sinatra::Base
+
+      get "/services/v1/offerings/:label/handles" do
+        case params['label'].gsub!(/-.*$/,'')
+        when 'mysql'
+          res = Yajl::Encoder.encode({
+            :handles => [{
+            'service_id' => 'd35b51e7814b34eeeb9bbb3a6b8750755',
+            'configuration' => {},
+            'credentials' => {}
+          }]
+          })
+        when 'redis'
+          res = Yajl::Encoder.encode({
+            :handles => [{
+            'service_id' => 'f0fe7695-0310-4043-be12-0a09e59e52d0',
+            'configuration' => {},
+            'credentials' => {}
+          }]
+          })
+        when 'mongodb'
+          res = Yajl::Encoder.encode({
+            :handles => [{
+            'service_id' => 'a7d3b56a-92b4-4e70-8efe-080ae129f83b',
+            'configuration' => {},
+            'credentials' => {}
+          }]
+          })
+        else
+          res = '{}'
+        end
+        res
+      end
+
+      get "/v2/service_instances" do
+        res = {}
+        if params['inline-relations-depth'] == '2'
+          res = {
+            :resources => [{
+              :entity => {
+                :credentials => {
+                  :name => 'd35b51e7814b34eeeb9bbb3a6b8750755'
+                },
+                :service_plan => {
+                  :entity => {
+                    :service => {
+                      :entity => {
+                        :label => 'mysql'
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              :entity => {
+                :credentials => {
+                  :name => 'f0fe7695-0310-4043-be12-0a09e59e52d0'
+                },
+                :service_plan => {
+                  :entity => {
+                    :service => {
+                      :entity => {
+                        :label => 'redis'
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              :entity => {
+                :credentials => {
+                  :name => 'a7d3b56a-92b4-4e70-8efe-080ae129f83b'
+                },
+                :service_plan => {
+                  :entity => {
+                    :service => {
+                      :entity => {
+                        :label => 'mongodb'
+                      }
+                    }
+                  }
+                }
+              }
+            }]
+          }
+        end
+        res.to_json
+      end
+    end
+  end
 end
 
 class BackupRotatorTests
@@ -224,6 +331,8 @@ class BackupRotatorTests
   end
 
   class RotatorTester < VCAP::Services::Backup::Rotator
+    alias_method :ori_get_service_ins_v2, :get_service_ins_v2
+
     def initialize(manager, options)
       super(manager, options)
       @pruned = []
@@ -247,6 +356,14 @@ class BackupRotatorTests
     def member(backups, relpath)
       path = File.join(@manager.root, relpath)
       backups.index { |a| a[0] == path }
+    end
+    def get_client_auth_token
+      return "faketoken"
+    end
+    def get_service_ins_v2(uri)
+      if @options[:cc_enable]
+        ori_get_service_ins_v2(uri)
+      end
     end
   end
 end
@@ -332,6 +449,7 @@ class BackupSnapshotCleanerTests
     alias_method :real_mark_cleanup, :mark_cleanup
     alias_method :real_keep_mark, :keep_mark
     alias_method :real_all_cleanup, :all_cleanup
+    alias_method :ori_get_service_ins_v2, :get_service_ins_v2
 
     def initialize(manager, options)
       super(manager, options)
@@ -378,6 +496,16 @@ class BackupSnapshotCleanerTests
     def member(snapshots, relpath)
       path = File.join(@manager.root, relpath)
       snapshots.index { |a| a == path }
+    end
+
+    def get_client_auth_token
+      return "faketoken"
+    end
+
+    def get_service_ins_v2(uri)
+      if @options[:cc_enable]
+        ori_get_service_ins_v2(uri)
+      end
     end
   end
 end
