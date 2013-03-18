@@ -274,6 +274,7 @@ class VCAP::Services::Rabbit::Node
       "hostname" => @hostname,
       "host" => @hostname,
       "port"  => instance.port,
+      "admin_port"  => instance.admin_port,
       "vhost" => instance.vhost,
     }
     if user && pass # Binding request
@@ -400,6 +401,12 @@ EOF
       end
       instance
     end
+  end
+
+  def run(options=nil, &post_start_block)
+    res = super(options, &post_start_block)
+    map_port(self[:container], admin_port, service_admin_port)
+    res
   end
 
   def start_options
