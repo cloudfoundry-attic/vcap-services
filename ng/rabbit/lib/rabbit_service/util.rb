@@ -22,8 +22,8 @@ module VCAP
           raise RabbitmqError.new(RabbitmqError::RABBITMQ_DELETE_VHOST_FAILED, vhost) if response != ""
         end
 
-        def add_user(credentials, username, password)
-          response = create_resource(credentials)["users/#{username}"].put "{\"password\":\"#{password}\", \"administrator\":true}", :content_type => "application/json"
+        def add_user(credentials, username, password, tags="administrator")
+          response = create_resource(credentials)["users/#{username}"].put "{\"password\":\"#{password}\", \"tags\":\"#{tags}\"}", :content_type => "application/json"
           raise RabbitmqError.new(RabbitmqError::RABBITMQ_ADD_USER_FAILED, username) if response != ""
         end
 
