@@ -147,24 +147,9 @@ module VCAP
         # Legacy method to revoke privileges of public shcema
         def do_revoke_query(db_connection, user, sys_user)
           db_connection.query("revoke create on schema public from #{user} CASCADE")
-          version = pg_version(db_connection, :major => true)
-          case version
-          when '9'
-            db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{user} CASCADE")
-            db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{user} CASCADE")
-            db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{user} CASCADE")
-          when '8'
-            queries = db_connection.query("select 'REVOKE ALL ON '||tablename||' from #{user} CASCADE;' as query_to_do from pg_tables where schemaname = 'public'")
-            queries.each do |query_to_do|
-               db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-            queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE '||relname||' from #{user} CASCADE;' as query_to_do from pg_class where relkind = 'S'")
-            queries.each do |query_to_do|
-               db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-          else
-            raise "PostgreSQL version #{version} unsupported"
-          end
+          db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA PUBLIC from #{user} CASCADE")
+          db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA PUBLIC from #{user} CASCADE")
+          db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA PUBLIC from #{user} CASCADE")
 
           # with the fix for user access rights in r8, actually this line is a no-op.
           # - for newly created users(after the fix), all objects created will be owned by parent
@@ -185,83 +170,29 @@ module VCAP
             return
           end
           conn.query("grant create on schema public to public")
-          version = pg_version(conn, :major => true)
-          case version
-          when '9'
-            conn.query("grant all on all tables in schema public to public")
-            conn.query("grant all on all sequences in schema public to public")
-            conn.query("grant all on all functions in schema public to public")
-          when '8'
-            queries = conn.query("select 'grant all on '||tablename||' to public;' as query_to_do from pg_tables where schemaname = 'public'")
-            queries.each do |query_to_do|
-              conn.query(query_to_do['query_to_do'].to_s)
-            end
-            queries = conn.query("select 'grant all on sequence '||relname||' to public;' as query_to_do from pg_class where relkind = 'S'")
-            queries.each do |query_to_do|
-              conn.query(query_to_do['query_to_do'].to_s)
-            end
-          else
-            raise "PostgreSQL version #{version} not supported"
-          end
+          conn.query("grant all on all tables in schema public to public")
+          conn.query("grant all on all sequences in schema public to public")
+          conn.query("grant all on all functions in schema public to public")
         end
 
         # Grant write access privileges to role on schema
         def grant_schema_write_access(db_connection, schema_id, schema, role)
           return unless db_connection
           db_connection.query("grant create on schema #{schema} to #{role}")
-          version = pg_version(db_connection, :major => true)
-          case version
-          when '9'
-            db_connection.query("grant all on all tables in schema #{schema} to #{role}")
-            db_connection.query("grant all on all sequences in schema #{schema} to #{role}")
-            db_connection.query("grant all on all functions in schema #{schema} to #{role}")
-          when '8'
-            queries = db_connection.query("select 'grant all on #{schema}.'||tablename||' to #{role};' as query_to_do from pg_tables where schemaname = '#{schema}'")
-            queries.each do |query_to_do|
-              db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-            queries = db_connection.query("select 'grant all on sequence #{schema}.'||relname||' to #{role};' as query_to_do from pg_class where relkind = 'S' and relnamespace = #{schema_id}")
-            queries.each do |query_to_do|
-              db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-          else
-            raise "PostgreSQL version #{version} not supported"
-          end
+          db_connection.query("grant all on all tables in schema #{schema} to #{role}")
+          db_connection.query("grant all on all sequences in schema #{schema} to #{role}")
+          db_connection.query("grant all on all functions in schema #{schema} to #{role}")
         end
 
         # Revoke write access privileges from role on schema
         def revoke_schema_write_access(db_connection, schema_id, schema, role)
           return unless db_connection
           db_connection.query("revoke create on schema #{schema} from #{role} CASCADE")
-          version = pg_version(db_connection, :major => true)
-          case version
-          when '9'
-            db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA #{schema} from #{role} CASCADE")
-            db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA #{schema} from #{role} CASCADE")
-            db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA #{schema} from #{role} CASCADE")
-            db_connection.query("grant select,delete,truncate,references,trigger on all tables in schema #{schema} to #{role}")
-            db_connection.query("grant usage,select on all sequences in schema #{schema} to #{role}")
-          when '8'
-            queries = db_connection.query("select 'REVOKE ALL ON #{schema}.'||tablename||' from #{role} CASCADE;' as query_to_do from pg_tables where schemaname = '#{schema}'")
-            queries.each do |query_to_do|
-               db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-            # revoke privileges of sequence should belong to the schema
-            queries = db_connection.query("select 'REVOKE ALL ON SEQUENCE #{schema}.'||relname||' from #{role} CASCADE;' as query_to_do from pg_class where relkind = 'S' and relnamespace = #{schema_id}")
-            queries.each do |query_to_do|
-               db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-            queries = db_connection.query("select 'grant select,delete,truncate,references,trigger on #{schema}.'||tablename||' to #{role};' as query_to_do from pg_tables where schemaname = '#{schema}'")
-            queries.each do |query_to_do|
-               db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-            queries = db_connection.query("select 'grant usage,select on SEQUENCE #{schema}.'||relname||' to #{role};' as query_to_do from pg_class where relkind = 'S' and relnamespace = #{schema_id}")
-            queries.each do |query_to_do|
-               db_connection.query(query_to_do['query_to_do'].to_s)
-            end
-          else
-            raise "PostgreSQL version #{version} not supported"
-          end
+          db_connection.query("REVOKE ALL ON ALL TABLES IN SCHEMA #{schema} from #{role} CASCADE")
+          db_connection.query("REVOKE ALL ON ALL SEQUENCES IN SCHEMA #{schema} from #{role} CASCADE")
+          db_connection.query("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA #{schema} from #{role} CASCADE")
+          db_connection.query("grant select,delete,truncate,references,trigger on all tables in schema #{schema} to #{role}")
+          db_connection.query("grant usage,select on all sequences in schema #{schema} to #{role}")
         end
 
         # Grant write access privilege of database
