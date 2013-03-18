@@ -1,0 +1,25 @@
+---
+branches:
+  only:
+  - travis
+rvm:
+- 1.9.3
+script: ./ci_build.sh
+env:
+  matrix:
+    - FOLDER_NAME=marketplace
+    - FOLDER_NAME=service_broker
+    - FOLDER_NAME=mysql
+    - FOLDER_NAME=ng/redis REQUIRE_PACKAGE=redis.tar.gz WARDENIZED_SERVICE=1
+    - FOLDER_NAME=ng/mongodb REQUIRE_PACKAGE=mongodb.tar.gz WARDENIZED_SERVICE=1
+  global:
+    - secure: ! 'wvVGoINY/BGNsTbaAvoLAsNrufabl8Mrhd3bl5r+ghTXZOykhdSnmYWKpUqW
+
+        n1wfyzwXP6UUysbjs18tzEbz1eyW62PvxreryKB9I/sHbse+TORAymo/fwIT
+
+        Tarn6IV6JAWXV7FNm2a/Enpi1eFVRXa8uHe8vwtjUiYgWk0e8nc='
+    - secure: ! 'Z7jeARLNyvDWVnDY+ZREVspyOF1r6AGNfjfKUZDEuG2HJQD5KDMS1bM3JRaC
+
+        9h26EgFGqQjFOMey7twiaSqx7WXrgIVK23wrPB3qV/LO34VmT3QGlL0dhNJ4
+
+        gu9Ou5oEa1IlcHUKBDC3dIA20dWQygImcRSDCD+7cJXIjWtn1X0='

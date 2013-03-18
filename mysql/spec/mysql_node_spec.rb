@@ -36,7 +36,7 @@ describe "Mysql server node" do
     @opts.freeze
     # Setup code must be wrapped in EM.run
     EM.run do
-      @node = Node.new(@opts)
+      @node = VCAP::Services::Mysql::Node.new(@opts)
       EM.add_timer(1) { EM.stop }
     end
     @tmpfiles = []
@@ -106,8 +106,8 @@ describe "Mysql server node" do
   it "should enforce database size quota" do
     EM.run do
       opts = @opts.dup
-      # reduce storage quota to 4KB.
-      opts[:max_db_size] = 4.0/1024
+      # reduce storage quota to 20KB, default mysql allocates pages of 16kb, so inserting anything will allocate at least 16k
+      opts[:max_db_size] = 20.0/1024
       node = VCAP::Services::Mysql::Node.new(opts)
       EM.add_timer(1) do
         binding = node.bind(@db["name"],  @default_opts)
@@ -115,7 +115,7 @@ describe "Mysql server node" do
         conn = connect_to_mysql(binding)
         conn.query("create table test(data text)")
         c =  [('a'..'z'),('A'..'Z')].map{|i| Array(i)}.flatten
-        content = (0..5000).map{ c[rand(c.size)] }.join
+        content = (0..21000).map{ c[rand(c.size)] }.join   # enough data to exceed quota for sure
         conn.query("insert into test value('#{content}')")
         EM.add_timer(3) do
           expect {conn.query('SELECT 1')}.should raise_error
@@ -136,7 +136,7 @@ describe "Mysql server node" do
             conn = connect_to_mysql(binding)
             conn.query("delete from test")
             # write privilege should restore
-            EM.add_timer(2) do
+            EM.add_timer(5) do   # we need at least 5s for information_schema tables to update with new data_length
               conn = connect_to_mysql(binding)
               expect{ conn.query("insert into test value('test')")}.should_not raise_error
               conn.query("insert into test value('#{content}')")
@@ -215,7 +215,7 @@ describe "Mysql server node" do
         db = nil
         expect {
           db = @node.provision(mal_plan)
-        }.should raise_error(MysqlError, /Invalid plan .*/)
+        }.should raise_error(VCAP::Services::Mysql::MysqlError, /Invalid plan .*/)
         db.should == nil
         db_num.should == connection.query("show databases;").count
       end
@@ -255,7 +255,7 @@ describe "Mysql server node" do
     EM.run do
       expect {
         @node.unprovision("not-existing", [])
-      }.should raise_error(MysqlError, /Mysql configuration .* not found/)
+      }.should raise_error(VCAP::Services::Mysql::MysqlError, /Mysql configuration .* not found/)
       # nil input handle
       @node.unprovision(nil, []).should == nil
       EM.stop

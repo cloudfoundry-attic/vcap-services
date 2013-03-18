@@ -1,4 +1,13 @@
 require 'tmpdir'
+require 'rake'
+require 'tempfile'
+
+require 'rubygems'
+require 'bundler/setup'
+Bundler.require(:default, :test)
+
+require 'rspec'
+require 'rspec/core/rake_task'
 
 NG_SERVICES_DIR = %w(
   atmos
@@ -127,4 +136,27 @@ namespace "bundler" do
 
     FileUtils.rm_rf(working_dir)
   end
+end
+
+def run_or_raise(cmd)
+  raise "Failed to run #{cmd}" unless system(cmd)
+end
+
+RSpec::Core::RakeTask.new(:spec) do |t|
+  t.pattern = "#{Rake.application.original_dir}/spec/**/*_spec.rb"
+  t.rspec_opts = ["--format", "documentation", "--colour"]
+end
+
+namespace "nats" do
+  task :start do
+    run_or_raise "nats-server &" if `ps ax | grep nats-server | grep -v grep`.empty?
+  end
+
+  task :stop do
+    system "pkill -f nats-server"
+  end
+end
+
+task :spec => "nats:start" do
+  Rake::Task["nats:stop"].invoke
 end

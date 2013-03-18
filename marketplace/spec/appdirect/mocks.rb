@@ -19,6 +19,8 @@ class Mocks
 
   class MockEndpoint
     def initialize(scenario)
+      Thin::Logging.debug = true
+      
       @server = Thin::Server.new("#{HOST}", PORT, Handler.new(scenario))
     end
 
@@ -71,7 +73,9 @@ class Mocks
           fixture = "#{File.dirname(__FILE__)}/fixtures/#{@scenario}#{path}/#{verb}_response.json"
 
           puts "LOAD Fixture: #{fixture}"
-          File.read(fixture) rescue resp
+          r = File.read(fixture) rescue resp
+          puts "Fixture loaded: #{r.inspect}"
+          r
         end
       end
 

@@ -23,7 +23,7 @@ mysql:
   host: localhost
   port: 3306
   user: root
-  pass: root
+  pass:
 connection_pool_size: 5
 # connection timeout for all management mysql connection
 connection_wait_timeout: 10

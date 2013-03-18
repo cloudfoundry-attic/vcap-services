@@ -47,6 +47,7 @@ class ServiceBrokerHelper
 
   class MockCloudController
     def initialize
+      Thin::Logging.debug = true
       @server = Thin::Server.new("#{LOCALHOST}", CC_PORT, Handler.new)
     end
 
