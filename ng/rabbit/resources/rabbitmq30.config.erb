@@ -1,0 +1,4 @@
+[
+  {rabbit, [{vm_memory_high_watermark, <%= vm_memory_high_watermark %>}, {file_handles_high_watermark, <%= file_handles_high_watermark %>}, {disk_free_limit, <%= version_config["disk_free_limit"] %>}, {msg_store_file_size_limit, 1048576}, {default_user, <<"<%= admin_username %>">>}, {default_pass, <<"<%= admin_password %>">>}, {default_vhost, <<"<%= vhost %>">>}]},
+  {rabbitmq_management,[{listener, [{port, <%= service_admin_port %>}]}]}
+].

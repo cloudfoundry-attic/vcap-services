@@ -45,7 +45,7 @@ module VCAP::Services::Rabbit::Snapshot
 
       srv =  rabbit_provisioned_service.get(name)
       raise "Can't find service instance:#{name}" unless srv
-      srv.run_command(srv.container, :script => "#{File.join(srv.erlang_dir, "bin", "escript")} #{File.join(srv.script_dir, "backup_or_restore.escript")} backup #{srv.name} #{File.join(srv.base_dir, BACKUP_NAME)}")
+      srv.run_command(srv.container, :script => "#{File.join(srv.erlang_dir, "bin", "escript")} #{File.join(srv.script_dir, "backup_or_restore#{srv.version[0]}.escript")} backup #{srv.name} #{File.join(srv.base_dir, BACKUP_NAME)}")
       FileUtils.cp(File.join(srv.base_dir, BACKUP_NAME), "#{dump_file_name}")
 
       dump_file_size = -1
@@ -85,7 +85,7 @@ module VCAP::Services::Rabbit::Snapshot
       self.class.sh "rm -rf #{File.join(srv.base_dir, "mnesia", "queues")}"
       # Copy the mnesia backup file
       self.class.sh "cp -f #{snapshot_file_path} #{File.join(srv.base_dir, BACKUP_NAME)}"
-      srv.run_command(srv.container, :script => "#{File.join(srv.erlang_dir, "bin", "escript")} #{File.join(srv.script_dir, "backup_or_restore.escript")} restore #{srv.name} #{File.join(srv.base_dir, BACKUP_NAME)}")
+      srv.run_command(srv.container, :script => "#{File.join(srv.erlang_dir, "bin", "escript")} #{File.join(srv.script_dir, "backup_or_restore#{srv.version[0]}.escript")} restore #{srv.name} #{File.join(srv.base_dir, BACKUP_NAME)}")
 
       true
     end
