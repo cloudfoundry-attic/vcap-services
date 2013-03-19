@@ -1,0 +1,4 @@
+#!/bin/bash
+SRC_URL=http://ftp.postgresql.org/pub/source/v9.2.3/postgresql-9.2.3.tar.gz
+PKG_NAME=postgresql-9.2.3
+PKG_FILE=bin/postgres
