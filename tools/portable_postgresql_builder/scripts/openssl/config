@@ -1,0 +1,3 @@
+SRC_URL=http://www.openssl.org/source/openssl-1.0.1e.tar.gz
+PKG_NAME=openssl-1.0.1e
+PKG_FILE=lib/libcrypto.so

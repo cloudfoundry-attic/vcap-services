@@ -1,0 +1,3 @@
+SRC_URL=ftp://ftp.openldap.org/pub/OpenLDAP/openldap-release/openldap-2.4.34.tgz
+PKG_NAME=openldap-2.4.34
+PKG_FILE=lib/libldap.so

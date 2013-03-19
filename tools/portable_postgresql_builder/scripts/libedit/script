@@ -1,0 +1,7 @@
+#!/bin/bash
+
+source ./.build_env
+
+./configure --prefix=$TARGET_DIR
+make
+make install

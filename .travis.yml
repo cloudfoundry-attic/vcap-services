@@ -1,7 +1,4 @@
 ---
-branches:
-  only:
-  - travis
 rvm:
 - 1.9.3
 script: ./ci_build.sh
