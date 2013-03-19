@@ -156,6 +156,13 @@ describe VCAP::Services::Rabbit::Node do
       amqp_start(@binding_credentials, @instance).should == true
     end
 
+    it "should export admin port for binding user" do
+      @binding_credentials["admin_port"].should be
+      credentials = @binding_credentials
+      client = RestClient::Resource.new("http://#{credentials["username"]}:#{credentials["password"]}@#{VCAP.local_ip}:#{credentials["admin_port"]}/api")
+      expect {client["queues"].get}.should_not raise_error
+    end
+
     it "should not allow null credentials to access the instance" do
       credentials = @binding_credentials.clone
       credentials["user"] = ""
