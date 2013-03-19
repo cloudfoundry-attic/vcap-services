@@ -66,7 +66,14 @@ module VCAP
             def init(args)
               super(args)
               @@postgresql_config  = args[:postgresql]
+              @@xlog_enforce_tolerance  = args[:xlog_enforce_tolerance] || 5
             end
+          end
+
+          define_im_properties :xlog_tolerant_times
+
+          def xlog_tolerant?
+            !xlog_tolerant_times || xlog_tolerant_times <= @@xlog_enforce_tolerance
           end
 
           def default_user

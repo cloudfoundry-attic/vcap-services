@@ -133,7 +133,8 @@ module VCAP::Services::Postgresql::WithoutWarden
   def get_db_stat
     @supported_versions.inject([]) do |result, version|
       conn = fetch_global_connection version
-      result +=  get_db_stat_by_connection(conn, @max_db_size, @sys_dbs)
+      xlog_num =  xlog_file_num(conn.settings['data_directory'])
+      result += get_db_stat_by_connection(conn, @max_db_size, @sys_dbs).map! { |db| db[:xlog_num] = xlog_num; db }
     end
   end
 
@@ -227,6 +228,21 @@ module VCAP::Services::Postgresql::WithoutWarden
 
   def set_inst_port(instance, credential)
     true
+  end
+
+  def xlog_enforce
+    acquired = @enforce_xlog_lock.try_lock
+    return unless acquired
+    @supported_versions.each do |version|
+      conn = @connections[version]
+      if xlog_status(conn, conn.settings['data_directory']) != VCAP::Services::Postgresql::Node::XLOG_STATUS_OK
+        xlog_enforce_internal(conn, :alert_only => true)
+      end
+    end
+  rescue => e
+    @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
+  ensure
+    @enforce_xlog_lock.unlock if acquired
   end
 
 end

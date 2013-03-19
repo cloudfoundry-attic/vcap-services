@@ -25,6 +25,8 @@ class VCAP::Services::Postgresql::NodeBin < VCAP::Services::Base::NodeBin
     options[:max_long_tx] = parse_property(config, "max_long_tx", Integer)
     options[:postgresql] = parse_property(config, "postgresql", Hash)
     options[:max_db_conns] = parse_property(config, "max_db_conns", Integer)
+    options[:enable_xlog_enforcer] = parse_property(config, "enable_xlog_enforcer", Boolean, :optional => true, :default => false)
+    options[:xlog_enforce_tolerance] = parse_property(config, "xlog_enforce_tolerance", Integer, :optional => true, :default => 5)
     options[:use_warden] = parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
     options[:supported_versions] = parse_property(config, "supported_versions", Array)
     options[:default_version] = parse_property(config, "default_version", String)

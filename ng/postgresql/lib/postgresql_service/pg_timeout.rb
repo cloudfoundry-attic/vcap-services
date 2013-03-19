@@ -125,6 +125,10 @@ module VCAP
             end
           end
 
+          def settings
+            @db_settings ||= {}
+          end
+
           def close
             @conn_io_socket.close if @conn_io_socket && !@conn_io_socket.closed?
             @conn.close
@@ -177,6 +181,13 @@ module VCAP
               raise e
             end
 
+          end
+
+          def settings
+            @db_settings ||= query("select name, setting from pg_settings").inject({}) do |h, r|
+              h[r['name']] = r['setting']
+              h
+            end
           end
         end
 

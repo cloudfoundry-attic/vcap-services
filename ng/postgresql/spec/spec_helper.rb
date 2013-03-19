@@ -41,6 +41,20 @@ class File
   end
 end
 
+# monkey patch to PGDBconn to record checkpoint number
+class  VCAP::Services::Postgresql::Util::PGDBconn
+  attr_reader :checkpoint_times
+
+  alias_method :query_internal_ori, :query_internal
+  def query_internal(sql)
+    if sql.downcase.strip == "checkpoint"
+      @checkpoint_times ||= 0
+      @checkpoint_times += 1
+    end
+    query_internal_ori(sql)
+  end
+end
+
 module Boolean;end
 class ::TrueClass; include Boolean; end
 class ::FalseClass; include Boolean; end
@@ -91,6 +105,8 @@ def getNodeTestConfig()
     :db_connect_timeout => parse_property(config, "db_connect_timeout", Integer, :optional => true, :default => 3),
     :db_query_timeout => parse_property(config, "db_query_timeout", Integer, :optional => true, :default => 10),
     :db_use_async_query => parse_property(config, "db_use_async_query", Boolean, :optional => true, :default => true),
+    :enable_xlog_enforcer => parse_property(config, "enable_xlog_enforcer", Boolean, :optional => true, :default => false),
+    :xlog_enforce_tolerance => parse_property(config, "xlog_enforce_tolerance", Integer, :optional => true, :default => 5),
   }
   if options[:use_warden]
     warden_config = parse_property(config, "warden", Hash, :optional => true)
