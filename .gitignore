@@ -16,3 +16,5 @@ base/pkg
 coverage
 .gitreview
 bundle/
+integration/log
+integration/tmp

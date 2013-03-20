@@ -1,0 +1,65 @@
+---
+cloud_controller_uri: http://127.0.0.1:8181
+service:
+  name: mysql
+  version: "5.5"
+  description: 'MySQL database'
+  plans:
+    '100':
+      description: 'Shared service instance, 1MB memory, 10MB storage, 10 connections'
+      free: true
+  default_plan: 'free'
+  tags: ['relational']
+  timeout: 10
+  supported_versions: ['5.5']
+  version_aliases:
+    'current': '5.5'
+ip_route: localhost
+#proxy:
+#   host: proxy
+#   port: 8080
+#   keepalive: true
+index: 0
+token: "0xdeadbeef"
+logging:
+  level: debug
+mbus: nats://localhost:4222
+pid: /tmp/mysql_service.pid
+node_timeout: 2
+resque:
+  host: localhost
+  port: 5454
+download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
+
+plan_management:
+  plans:
+    free:
+      low_water: 10
+      high_water: 180
+      lifecycle:
+        snapshot:
+          quota: 5
+        serialization: enable
+        job: enable
+      #allow_over_provisioning: false
+    '100':
+      high_water: 900
+      low_water: 100
+      allow_over_provisioning: false
+      lifecycle:
+        serialization: enable
+        snapshot:
+          quota: 1
+        job: enable
+
+# z_interval: 30
+# check_orphan_interval: 3600
+# double_check_orphan_interval: 300
+uaa_client_id: vmc
+uaa_endpoint: http://localhost:8080/uaa
+uaa_client_auth_credentials:
+  username: marissa
+  password: "koala"
+service_auth_tokens:
+  mysql_core: "mysql-token"
+cc_api_version: v2
