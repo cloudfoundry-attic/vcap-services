@@ -140,12 +140,20 @@ describe BackupRotatorTests do
       EM.add_timer(1) do
         Fiber.new do
           opts = @options.merge({
-          :cloud_controller_uri => "localhost:#{BackupRotatorTests::CC_PORT}",
+          :cc_api_uri => "localhost:#{BackupRotatorTests::CC_PORT}",
+          :cc_api_version => "v1",
+          :uaa_client_id => "vmc",
+          :uaa_endpoint => "http://uaa.vcap.me",
+          :uaa_client_auth_credentials => {
+            :username => 'sre@vmware.com',
+            :password => 'the_admin_pw'
+          },
           :services => {
             'mongodb' => {'version' =>'1.8','token' =>'0xdeadbeef'},
             'redis' => {'version' =>'2.2','token' =>'0xdeadbeef'},
             'mysql' => {'version' =>'5.1','token' =>'0xdeadbeef'},
-          }
+          },
+          :cc_enable => true
         })
         BackupRotatorTests.create_rotator('cc_test',opts) do |rotator|
           rotator.run.should be_true
@@ -161,7 +169,83 @@ describe BackupRotatorTests do
         EM.stop
       end
     end
+  end
 
+
+  it "should rotate the backup whose handles are not known by CCNG-v1" do
+    EM.run do
+      ccng = BackupRotatorTests::MockCloudControllerNG.new
+      ccng.start
+      EM.add_timer(1) do
+        Fiber.new do
+          opts = @options.merge({
+          :cc_api_uri => "localhost:#{BackupRotatorTests::CCNG_PORT}",
+          :cc_api_version => "v1",
+          :uaa_client_id => "vmc",
+          :uaa_endpoint => "http://uaa.vcap.me",
+          :uaa_client_auth_credentials => {
+            :username => 'sre@vmware.com',
+            :password => 'the_admin_pw'
+          },
+          :services => {
+            'mongodb' => {'version' =>'1.8','token' =>'0xdeadbeef'},
+            'redis' => {'version' =>'2.2','token' =>'0xdeadbeef'},
+            'mysql' => {'version' =>'5.1','token' =>'0xdeadbeef'},
+          },
+          :cc_enable => true
+        })
+        BackupRotatorTests.create_rotator('cc_test',opts) do |rotator|
+          rotator.run.should be_true
+          # retain the unknown backup that is within unprovisioned_max_days (9 days ago)
+          rotator.retained('mysql/d1/47/c8/d147c836e304443d1919020da1306a755/1263222000').should be_true
+          # prune the unknown backup that is outdated even it is the last one
+          rotator.pruned('mongodb/73/12/9c/73129c3a-734e-4f3e-a60e-bdefd371f1e6/1163978520').should be_true
+        end
+        end.resume
+      end
+      EM.add_timer(4) do
+        ccng.stop
+        EM.stop
+      end
+    end
+  end
+
+  it "should rotate the backup whose handles are not known by CCNG-v2" do
+    EM.run do
+      ccng = BackupRotatorTests::MockCloudControllerNG.new
+      ccng.start
+      EM.add_timer(1) do
+        Fiber.new do
+          opts = @options.merge({
+          :cc_api_uri => "localhost:#{BackupRotatorTests::CCNG_PORT}",
+          :cc_api_version => "v2",
+          :uaa_client_id => "vmc",
+          :uaa_endpoint => "http://uaa.vcap.me",
+          :uaa_client_auth_credentials => {
+            :username => 'sre@vmware.com',
+            :password => 'the_admin_pw'
+          },
+          :services => {
+            'mongodb' => {'version' =>'1.8','token' =>'0xdeadbeef'},
+            'redis' => {'version' =>'2.2','token' =>'0xdeadbeef'},
+            'mysql' => {'version' =>'5.1','token' =>'0xdeadbeef'},
+          },
+          :cc_enable => true
+        })
+        BackupRotatorTests.create_rotator('cc_test',opts) do |rotator|
+          rotator.run.should be_true
+          # retain the unknown backup that is within unprovisioned_max_days (9 days ago)
+          rotator.retained('mysql/d1/47/c8/d147c836e304443d1919020da1306a755/1263222000').should be_true
+          # prune the unknown backup that is outdated even it is the last one
+          rotator.pruned('mongodb/73/12/9c/73129c3a-734e-4f3e-a60e-bdefd371f1e6/1163978520').should be_true
+        end
+        end.resume
+      end
+      EM.add_timer(4) do
+        ccng.stop
+        EM.stop
+      end
+    end
   end
 
   it "should handle a complicated case" do
