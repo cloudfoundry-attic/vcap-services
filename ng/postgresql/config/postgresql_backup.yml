@@ -20,6 +20,13 @@ postgresql:
     pass: vcap
     database: postgres
     dump_bin: /var/vcap/packages/postgresql91/bin/pg_dump
+  '9.2':
+    host: localhost
+    port: 5434
+    user: vcap
+    pass: vcap
+    database: postgres
+    dump_bin: /var/vcap/packages/postgresql92/bin/pg_dump
 logging:
   level: debug
 pid: /var/vcap/sys/run/postgresql_backup.pid

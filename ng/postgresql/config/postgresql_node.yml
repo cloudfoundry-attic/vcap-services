@@ -60,7 +60,7 @@ postgresql:
     restore_bin: /var/vcap/packages/postgresql92/bin/pg_restore
     dump_bin: /var/vcap/packages/postgresql92/bin/pg_dump
 supported_versions: ['9.0', '9.1', '9.2']
-default_version: '9.1'
+default_version: '9.2'
 
 # z_interval: 30
 # fqdn_hosts: false
