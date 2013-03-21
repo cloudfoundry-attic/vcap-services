@@ -92,9 +92,25 @@ class VCAP::Services::Rabbit::Node
       port = new_port
       instance = ProvisionedService.create(port, get_external_admin_port(port), plan, nil, version)
     end
-    instance.run
+    instance.run do
+      admin_cred = gen_admin_credentials(instance)
+      user = "u" + generate_credential
+      pass = "p" + generate_credential
+      add_user(admin_cred, user, pass, "monitoring")
+      set_permissions(admin_cred, instance.vhost, user, get_permissions_by_options({}))
+      instance.monit_username = user
+      instance.monit_password = pass
+    end
     @logger.info("Successfully fulfilled provision request: #{instance.name}")
-    gen_credentials(instance)
+    gen_credentials(instance) do |cred|
+      cred["username"] = instance.admin_username
+      cred["user"] = instance.admin_username
+      cred["password"] = instance.admin_password
+      cred["pass"] = instance.admin_password
+      cred["admin_port"] = instance.admin_port
+      cred["monit_user"] = instance.monit_username
+      cred["monit_pass"] = instance.monit_password
+    end
   rescue => e
     @logger.error("Error provision instance: #{e}")
     instance.delete if instance
@@ -127,7 +143,12 @@ class VCAP::Services::Rabbit::Node
     add_user(credentials, user, pass, "management")
     set_permissions(credentials, instance.vhost, user, get_permissions_by_options(binding_options))
 
-    binding_credentials = gen_credentials(instance, user, pass)
+    binding_credentials = gen_credentials(instance, user, pass) do |cred|
+      cred["username"] = user
+      cred["user"] = user
+      cred["password"] = pass
+      cred["pass"] = pass
+    end
     @logger.info("Successfully fulfilled bind request: #{binding_credentials}")
     binding_credentials
   rescue => e
@@ -277,17 +298,7 @@ class VCAP::Services::Rabbit::Node
       "admin_port"  => instance.admin_port,
       "vhost" => instance.vhost,
     }
-    if user && pass # Binding request
-      credentials["username"] = user
-      credentials["user"] = user
-      credentials["password"] = pass
-      credentials["pass"] = pass
-    else # Provision request
-      credentials["username"] = instance.admin_username
-      credentials["user"] = instance.admin_username
-      credentials["password"] = instance.admin_password
-      credentials["pass"] = instance.admin_password
-    end
+    yield credentials
     credentials["url"] = "amqp://#{credentials["user"]}:#{credentials["pass"]}@#{credentials["host"]}:#{credentials["port"]}/#{credentials["vhost"]}"
     credentials
   end
@@ -324,6 +335,8 @@ class VCAP::Services::Rabbit::Node::ProvisionedService
   property :admin_port,      Integer,     :unique => true
   property :admin_username,  String,      :required => true
   property :admin_password,  String,      :required => true
+  property :monit_username,  String,      :required => true
+  property :monit_password,  String,      :required => true
   # property plan is deprecated. The instances in one node have same plan.
   property :plan,            Integer,     :required => true
   property :plan_option,     String,      :required => false
