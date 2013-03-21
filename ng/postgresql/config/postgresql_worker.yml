@@ -28,4 +28,20 @@ postgresql:
     database: postgres
     restore_bin: pg_restore
     dump_bin: pg_dump
+  '9.1':
+    host: 127.0.0.1
+    port: 5433
+    user: vcap
+    pass: vcap
+    database: postgres
+    restore_bin: pg_restore
+    dump_bin: pg_dump
+  '9.2':
+    host: 127.0.0.1
+    port: 5434
+    user: vcap
+    pass: vcap
+    database: postgres
+    restore_bin: pg_restore
+    dump_bin: pg_dump
 use_warden: false
