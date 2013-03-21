@@ -158,8 +158,10 @@ module VCAP::Services::Postgresql::WithWarden
     pgProvisionedService.all.each do |instance|
       conn = global_connection(instance)
       if conn
-        res = get_db_stat_by_connection(conn, @max_db_size, @sys_dbs)
-        dbs += res
+        dbs += get_db_stat_by_connection(conn, @max_db_size, @sys_dbs).map! do |db|
+          db[:xlog_num] = xlog_file_num(instance.base_dir)
+          db
+        end
       else
         @logger.warn("No connection to #{instance.name} to get db stat")
       end
@@ -210,7 +212,7 @@ module VCAP::Services::Postgresql::WithWarden
   def kill_long_queries
     acquired = @kill_long_queries_lock.try_lock
     return unless acquired
-    pgProvisionedService.all.each do |service|
+    pool_run(pgProvisionedService.all.map { |inst| inst }) do |service, _|
       conn = global_connection(service)
       @long_queries_killed += kill_long_queries_internal(conn, postgresql_config(service)['user'], @max_long_query) if conn
     end
@@ -223,7 +225,7 @@ module VCAP::Services::Postgresql::WithWarden
   def kill_long_transaction
     acquired = @kill_long_transaction_lock.try_lock
     return unless acquired
-    pgProvisionedService.all.each do |service|
+    pool_run(pgProvisionedService.all.map { |inst| inst }) do |service, _|
       conn = global_connection(service)
       @long_tx_killed += kill_long_transaction_internal(conn, postgresql_config(service)['user'], @max_long_tx) if conn
     end
@@ -250,5 +252,40 @@ module VCAP::Services::Postgresql::WithWarden
   def set_inst_port(instance, credential)
     @logger.debug("Will reuse the port #{credential['port']}") if credential
     instance.port = new_port((credential['port'] if credential))
+  end
+
+  def xlog_enforce
+    acquired = @enforce_xlog_lock.try_lock
+    return unless acquired
+    pool_run(pgProvisionedService.all.map { |inst| inst }) do |service, _|
+      conn = global_connection(service)
+      current_xlog_status = xlog_status(conn, service.base_dir)
+      case current_xlog_status
+      when VCAP::Services::Postgresql::Node::XLOG_STATUS_OK
+        service.xlog_tolerant_times = 0
+      when VCAP::Services::Postgresql::Node::XLOG_STATUS_CHK
+        service.xlog_tolerant_times = 0
+        # issue a force checkpoint
+        xlog_enforce_internal(conn, :xlog_status => VCAP::Services::Postgresql::Node::XLOG_STATUS_CHK)
+      when VCAP::Services::Postgresql::Node::XLOG_STATUS_KILL
+        service.xlog_tolerant_times ||= 0
+        service.xlog_tolerant_times += 1
+        if service.xlog_tolerant?
+          # issue a force checkpoint
+          xlog_enforce_internal(conn, :xlog_status => VCAP::Services::Postgresql::Node::XLOG_STATUS_CHK)
+        else
+          excluded_users = service.pgbindusers.all(:default_user => true).map { |u| u.user }
+          xlog_enforce_internal(
+            conn, :excluded_users => excluded_users,
+            :xlog_status => VCAP::Services::Postgresql::Node::XLOG_STATUS_KILL)
+        end
+      else
+        @logger.warn("Unknown xlog status #{current_xlog_status}")
+      end
+    end
+  rescue => e
+    @logger.warn("PostgreSQL Node exception: " + fmt_error(e))
+  ensure
+    @enforce_xlog_lock.unlock if acquired
   end
 end

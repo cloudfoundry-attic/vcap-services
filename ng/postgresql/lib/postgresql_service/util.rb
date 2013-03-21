@@ -27,7 +27,7 @@ module VCAP
           end
         end
 
-        def create_logger(logdev, rotation, level)
+        def create_logger(logdev=STDOUT, rotation=0, level=Logger::DEBUG)
           if String === logdev
             dir = File.dirname(logdev)
             FileUtils.mkdir_p(dir) unless File.directory?(dir)
@@ -73,7 +73,7 @@ module VCAP
           exception_sleep = opts[:exception_sleep] || 1
           quiet = opts[:quiet] || false
 
-          @logger ||= Logger.new(STDOUT)
+          @logger ||= create_logger
           conn_opts = {
             :host => host,
             :port => port,
@@ -198,7 +198,7 @@ module VCAP
         # Grant write access privilege of database
         def grant_write_access_internal(db_connection, service, public_schema_id=nil)
           return false unless db_connection && service
-          @logger ||= Logger.new(STDOUT)
+          @logger ||= create_logger
           name = service.name
           default_user = service.default_user
           unless default_user
@@ -255,7 +255,7 @@ module VCAP
         # Revoke write access privileges of database
         def revoke_write_access_internal(pgconn, db_connection, service, public_schema_id=nil)
           return false unless pgconn && db_connection && service
-          @logger ||= Logger.new(STDOUT)
+          @logger ||= create_logger
           name = service.name
           default_user = service.default_user
           unless default_user
@@ -294,7 +294,7 @@ module VCAP
             service.pgbindusers.all.each do |binduser|
               user = binduser.user
               sys_user = binduser.sys_user
-              kill_alive_sessions(pgconn, name, user)
+              kill_alive_sessions(pgconn, :db => name, :users => [user])
               db_conn.query("REVOKE TEMP ON DATABASE #{name} from #{user}")
               db_conn.query("REVOKE TEMP ON DATABASE #{name} from #{sys_user}")
               do_revoke_query(db_conn, user, sys_user)
@@ -363,11 +363,28 @@ module VCAP
         end
 
         # Interrupt all activities on database
-        def kill_alive_sessions(conn, db, user=nil)
+        def kill_alive_sessions(conn, opts={})
           return unless conn
+          db = opts[:db]
+          mode = (opts[:mode] || 'include')
+          users = (opts[:users] || [])
+          users << conn.user if mode != 'include'
+
           pid_field = pg_stat_activity_pid_field(pg_version(conn))
-          q = "select pg_terminate_backend(#{pid_field}) from pg_stat_activity where datname='#{db}'"
-          q += " and usename = '#{user}'" if user
+          q =  "select pg_terminate_backend(#{pid_field}) from pg_stat_activity"
+          first_clause = true
+          if db
+            q += " where datname='#{db}'"
+            first_clause = false
+          end
+          if users.count > 0
+            q += first_clause ? " where" : " and"
+            if users.count == 1
+              q += " usename #{mode == 'include' ? '=' : '!='} '#{users[0]}'"
+            else
+              q += " usename #{mode == 'include' ? 'in' : 'not in'} (#{users.map {|u| "'#{u}'"}.join(',')})"
+            end
+          end
           conn.query(q)
         end
 
@@ -430,7 +447,7 @@ module VCAP
           pgconn = postgresql_connect(host, vcap_user, vcap_pass, port, database)
           name = service.name
           disable_db_conn(pgconn, name, service)
-          kill_alive_sessions(pgconn, name)
+          kill_alive_sessions(pgconn, :db => name)
           db_info = get_db_info(pgconn, name)
           # we should considering re-set the privileges (such as create/temp ...) for parent role
           drop_db(pgconn, name)
@@ -608,7 +625,7 @@ module VCAP
         end
 
         def get_db_stat_by_connection(connection, max_db_size, sys_dbs=[])
-          @logger ||= create_logger()
+          @logger ||= create_logger
           result = []
           return result unless connection
           db_stats = connection.query('select datid, datname, version() as version from pg_stat_database')

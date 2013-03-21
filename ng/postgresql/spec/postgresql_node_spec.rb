@@ -789,6 +789,12 @@ describe "Postgresql node normal cases" do
       instance = v[:db_stat].find {|d| d[:name] == @db["name"]}
       instance.should_not be_nil
       instance[:size].should >= 0
+      conn = @node.global_connection(@db_instance)
+      if @opts[:use_warden]
+        instance[:xlog_num].should == @node.xlog_file_num(@db_instance.base_dir)
+      else
+        instance[:xlog_num].should == @node.xlog_file_num(conn.settings['data_directory'])
+      end
       EM.stop
     end
   end
@@ -888,6 +894,189 @@ describe "Postgresql node normal cases" do
       EM.add_timer(3.5) do
         node.should_not == nil
         File.fadvise_files.count.should == 6
+        EM.stop
+      end
+    end
+  end
+
+  it "should enforce xlog file number (periodical timer)" do
+    pending "you should enable xlog_enforcer to test" unless @opts[:enable_xlog_enforcer]
+    EM.run do
+      opts = @opts.dup
+      opts[:enable_xlog_enforcer] = true
+      opts[:xlog_enforce_tolerance] = 1
+      opts[:not_start_instances] = true if opts[:use_warden]
+      node = VCAP::Services::Postgresql::Node.new(opts)
+
+      EM.add_timer(1) do
+
+        db_instance = node.pgProvisionedService.get(@db['name'])
+        conn = node.global_connection(db_instance)
+        expect { conn.query("select 1") }.should_not raise_error
+        binding = node.bind(@db['name'], @default_opts)
+        @test_dbs[@db] << binding
+        binding_conn = connect_to_postgresql(binding)
+        expect { binding_conn.query("select 1") }.should_not raise_error
+
+        # use a default user (parent role), won't be killed
+        default_user = VCAP::Services::Postgresql::Node.pgProvisionedServiceClass(opts[:use_warden])
+                        .get(@db['name'])
+                        .pgbindusers
+                        .all(:default_user => true)[0]
+        user = @db.dup
+        user['user'] = default_user[:user]
+        user['password'] = default_user[:password]
+        default_user_conn = connect_to_postgresql(user)
+        expect { default_user_conn.query("select 1") }.should_not raise_error
+
+        data_dir = Dir.mktmpdir("xlog_test", "/tmp")
+        ori_settings = conn.settings
+        alert_times = 0
+        begin
+          # we won't count the files in real pg_xlog
+          node.stub(:xlog_file_num) do |_|
+            Dir.glob(File.join(data_dir, 'pg_xlog', '*')).select { |f| File.file?(f) }.count
+          end
+          conn.stub(:settings) do
+            new_settings = ori_settings.dup
+            new_settings["data_directory"] = data_dir
+            new_settings["checkpoint_segments"] = 3
+            new_settings
+          end
+          node.stub(:xlog_enforce_internal) do |_, arg_opts|
+           alert_times += 1 if arg_opts[:alert_only]
+          end unless opts[:use_warden]
+
+          pg_xlog_dir = File.join(data_dir, "pg_xlog")
+          Dir.mkdir(pg_xlog_dir)
+
+          node.xlog_file_checkpoint_limit(conn).should == 11 # 3 * 3 + 2
+          node.xlog_file_kill_limit(conn).should == node.xlog_file_checkpoint_limit(conn) + 3 # 4 * 3 + 2
+
+          3.times { |i| FileUtils.touch(File.join(pg_xlog_dir, "00000-#{i}")) }
+
+          node.xlog_file_num(data_dir).should == 3
+          node.xlog_status(conn, data_dir).should == VCAP::Services::Postgresql::Node::XLOG_STATUS_OK
+
+          EM.add_timer(1.1) do
+            expect { binding_conn.query("select 1") }.should_not raise_error
+            expect { default_user_conn.query("select 1") }.should_not raise_error
+            expect { conn.query("select 1") }.should_not raise_error
+            conn.checkpoint_times.nil?.should == true
+            alert_times.should == 0
+            9.times { |i| FileUtils.touch(File.join(pg_xlog_dir, "00001-#{i}")) }
+
+            node.xlog_file_num(data_dir).should == 12
+            node.xlog_status(conn, data_dir).should == VCAP::Services::Postgresql::Node::XLOG_STATUS_CHK
+
+            EM.add_timer(1.1) do
+              if opts[:use_warden]
+                expect { binding_conn.query("select 1") }.should_not raise_error
+                expect { default_user_conn.query("select 1") }.should_not raise_error
+                expect { conn.query("select 1") }.should_not raise_error
+                conn.checkpoint_times.should >= 1
+              else
+                expect { binding_conn.query("select 1") }.should_not raise_error
+                expect { default_user_conn.query("select 1") }.should_not raise_error
+                expect { conn.query("select 1") }.should_not raise_error
+                conn.checkpoint_times.nil?.should == true
+                alert_times.should >= 1
+              end
+              3.times { |i| FileUtils.touch(File.join(pg_xlog_dir, "00002-#{i}")) }
+
+              node.xlog_status(conn, data_dir).should == VCAP::Services::Postgresql::Node::XLOG_STATUS_KILL
+
+              EM.add_timer(2.2) do
+                if opts[:use_warden]
+                  expect { binding_conn.query("select 1") }.should raise_error
+                  expect { default_user_conn.query("select 1") }.should_not raise_error
+                  expect { conn.query("select 1") }.should_not raise_error
+                  conn.checkpoint_times.should >= 3
+                else
+                  expect { binding_conn.query("select 1") }.should_not raise_error
+                  expect { default_user_conn.query("select 1") }.should_not raise_error
+                  expect { conn.query("select 1") }.should_not raise_error
+                  conn.checkpoint_times.nil?.should == true
+                  alert_times.should >= 3
+                end
+                EM.stop
+              end
+            end
+         end
+        ensure
+          FileUtils.rm_f(data_dir)
+        end
+      end
+    end
+  end
+
+  it "should enforce xlog file number (helper functions)" do
+    EM.run do
+      conn = @node.global_connection(@db_instance)
+      binding = @node.bind(@db['name'], @default_opts)
+      @test_dbs[@db] << binding
+      binding_conn = connect_to_postgresql(binding)
+      expect { binding_conn.query("select 1") }.should_not raise_error
+
+      # use a default user (parent role), won't be killed
+      default_user = VCAP::Services::Postgresql::Node.pgProvisionedServiceClass(@opts[:use_warden])
+                      .get(@db['name'])
+                      .pgbindusers
+                      .all(:default_user => true)[0]
+      user = @db.dup
+      user['user'] = default_user[:user]
+      user['password'] = default_user[:password]
+      default_user_conn = connect_to_postgresql(user)
+      expect { default_user_conn.query("select 1") }.should_not raise_error
+
+      chk_segs = conn.settings['checkpoint_segments'].to_i
+      @node.xlog_file_checkpoint_limit(conn).should == chk_segs * 3 + 2
+      @node.xlog_file_kill_limit(conn).should ==  @node.xlog_file_checkpoint_limit(conn) + chk_segs
+      Dir.mktmpdir("xlog_test", "/tmp") do |data_dir|
+        pg_xlog_dir = File.join(data_dir, "pg_xlog")
+        Dir.mkdir(pg_xlog_dir)
+        Dir.mkdir(File.join(pg_xlog_dir, "xyz"))
+        Tempfile.new("00000", File.join(pg_xlog_dir, "xyz"))
+        # won't count directory and files in it
+        @node.xlog_file_num(data_dir).should == 0
+        chk_segs.times do
+          Tempfile.new("00000", pg_xlog_dir)
+        end
+        @node.xlog_file_num(data_dir).should == chk_segs
+        @node.xlog_status(conn, data_dir).should == VCAP::Services::Postgresql::Node::XLOG_STATUS_OK
+
+        (chk_segs * 2 + 3).times do
+          Tempfile.new("00000", pg_xlog_dir)
+        end
+        @node.xlog_status(conn, data_dir).should == VCAP::Services::Postgresql::Node::XLOG_STATUS_CHK
+
+        chk_segs.times do
+          Tempfile.new("00000", pg_xlog_dir)
+        end
+        @node.xlog_status(conn, data_dir).should == VCAP::Services::Postgresql::Node::XLOG_STATUS_KILL
+
+        @node.xlog_enforce_internal(conn, :alert_only => true)
+        expect { binding_conn.query("select 1") }.should_not raise_error
+        expect { default_user_conn.query("select 1") }.should_not raise_error
+        expect { conn.query("select 1") }.should_not raise_error
+        conn.checkpoint_times.nil?.should == true
+
+        @node.xlog_enforce_internal(
+          conn,
+          :xlog_status => VCAP::Services::Postgresql::Node::XLOG_STATUS_CHK)
+        expect { binding_conn.query("select 1") }.should_not raise_error
+        expect { default_user_conn.query("select 1") }.should_not raise_error
+        expect { conn.query("select 1") }.should_not raise_error
+        conn.checkpoint_times.should == 1
+
+        @node.xlog_enforce_internal(
+          conn,
+          :excluded_users => [default_user[:user]],
+          :xlog_status => VCAP::Services::Postgresql::Node::XLOG_STATUS_KILL)
+        expect { binding_conn.query("select 1") }.should raise_error
+        expect { default_user_conn.query("select 1") }.should_not raise_error
+        expect { conn.query("select 1") }.should_not raise_error
+        conn.checkpoint_times.should == 2
         EM.stop
       end
     end
