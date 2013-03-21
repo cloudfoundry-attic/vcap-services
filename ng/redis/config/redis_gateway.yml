@@ -1,5 +1,5 @@
 ---
-# cloud_controller_uri: api.vcap.me
+cloud_controller_uri: http://127.0.0.1:8181
 service:
   name: redis
   version: "2.2"
@@ -21,10 +21,10 @@ token: "0xdeadbeef"
 logging:
   level: debug
 mbus: nats://localhost:4222
-pid: /var/vcap/sys/run/redis_service.pid
-resque:
-  host: localhost
-  port: 5454
+pid: /tmp/redis_service.pid
+# resque:
+  # host: localhost
+  # port: 5454
 download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
 
 plan_management:
@@ -39,3 +39,11 @@ plan_management:
         job: enable
       #allow_over_provisioning: false
 # z_interval: 30
+uaa_client_id: vmc
+uaa_endpoint: http://localhost:8080/uaa
+uaa_client_auth_credentials:
+  username: marissa
+  password: "koala"
+service_auth_tokens:
+  redis_core: "redis-token"
+cc_api_version: v2

@@ -1,0 +1,7 @@
+source "https://rubygems.org"
+
+gem "cf-uaa-lib"
+gem "rspec"
+gem "nats"
+gem "yajl-ruby"
+gem "httpclient"

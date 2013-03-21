@@ -1,5 +1,5 @@
 ---
-cloud_controller_uri: api.vcap.me
+cloud_controller_uri: http://127.0.0.1:8181
 service:
   name: echo
   version: "1.0"
@@ -7,11 +7,21 @@ service:
   plans: ['free']
   default_plan: free
   tags: ['echo', 'echo-1.0', 'echobased', 'demo']
+  supported_versions: ['1.0']
+  version_aliases:
+    'current': '1.0'
 ip_route: localhost
 index: 0
-token: changeechotoken
+uaa_client_id: vmc
+uaa_endpoint: http://localhost:8080/uaa
+uaa_client_auth_credentials:
+  username: marissa
+  password: "koala"
+service_auth_tokens:
+  echo_core: "echo-token"
 logging:
   level: debug
 mbus: nats://localhost:4222
-pid: /var/vcap/sys/run/echo_service.pid
+pid: /tmp/echo_service.pid
 node_timeout: 2
+cc_api_version: v2
