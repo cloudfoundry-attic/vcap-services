@@ -3,31 +3,23 @@ require 'rake'
 require 'tempfile'
 
 require 'rubygems'
-require 'bundler/setup'
-Bundler.require(:default, :test)
+#require 'bundler'
+#Bundler.require(:default, :test)
 
 require 'rspec'
 require 'rspec/core/rake_task'
 
 NG_SERVICES_DIR = %w(
-  atmos
-  couchdb
   echo
-  elasticsearch
-  filesystem
   marketplace
-  memcached
-  neo4j
   oauth2
   service_broker
   tools/backup/manager
   ng/mysql
   ng/postgresql
-  ng/vblob
   ng/mongodb
   ng/redis
   ng/rabbit
-  ng/memcached
 )
 
 NON_NG_SERVICE_DIR = %w(
@@ -36,7 +28,6 @@ NON_NG_SERVICE_DIR = %w(
   postgresql
   rabbit
   redis
-  vblob
 )
 
 desc "Run integration tests."
@@ -159,4 +150,12 @@ end
 
 task :spec => "nats:start" do
   Rake::Task["nats:stop"].invoke
+end
+
+namespace :spec do
+  task :integration do
+    Dir.chdir "spec" do
+      run_or_raise "bundle exec rspec integration"
+    end
+  end
 end

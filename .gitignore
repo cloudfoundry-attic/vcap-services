@@ -16,3 +16,4 @@ base/pkg
 coverage
 .gitreview
 bundle/
+/tmp/
