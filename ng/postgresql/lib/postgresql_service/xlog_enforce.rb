@@ -1,6 +1,4 @@
 # Copyright (c) 2009 - 2013 VMware, Inc.
-require "pg_timeout"
-require "util"
 
 module VCAP; module Services; module Postgresql; end; end; end
 

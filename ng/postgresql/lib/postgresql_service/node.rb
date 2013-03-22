@@ -16,13 +16,13 @@ module VCAP
 end
 
 require "postgresql_service/common"
+require "postgresql_service/postgresql_error"
+require "postgresql_service/pg_timeout"
 require "postgresql_service/util"
 require "postgresql_service/model"
 require "postgresql_service/storage_quota"
 require "postgresql_service/xlog_enforce"
-require "postgresql_service/postgresql_error"
 require "postgresql_service/pagecache"
-require "postgresql_service/pg_timeout"
 
 class VCAP::Services::Postgresql::Node
 
