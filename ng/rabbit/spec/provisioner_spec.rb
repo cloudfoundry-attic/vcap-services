@@ -8,7 +8,10 @@ describe VCAP::Services::Rabbit::Provisioner do
     logger = Logger.new(STDOUT, "daily")
     logger.level = Logger::DEBUG
     EM.run do
-      @provisioner = VCAP::Services::Rabbit::Provisioner.new({:logger => logger, :plan_management => {:plans => {:free => {:low_water => 10}}}})
+      @provisioner = VCAP::Services::Rabbit::Provisioner.new(
+	      {:logger => logger, :cc_api_version => "v1",
+	       :plan_management => {:plans => {:free => {:low_water => 10}}}
+              })
       EM.add_timer(1) {EM.stop}
     end
   end

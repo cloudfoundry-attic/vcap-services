@@ -149,7 +149,8 @@ def getProvisionerTestConfig()
     :version  => config[:service][:version],
     :local_ip => config[:host],
     :plan_management => config[:plan_management],
-    :mbus => config[:mbus]
+    :mbus => config[:mbus],
+    :cc_api_version => "v1",
   }
   options
 end
