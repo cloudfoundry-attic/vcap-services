@@ -1,7 +1,7 @@
 ---
 rvm:
 - 1.9.3
-script: ./ci_build.sh
+script: ./.travis.run
 env:
   matrix:
     - FOLDER_NAME=echo
