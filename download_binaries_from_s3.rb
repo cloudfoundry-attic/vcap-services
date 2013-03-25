@@ -2,7 +2,7 @@
 require 'rubygems'
 require 'aws-sdk'
 
-def download_and_tar(source, destination=source, bucket)
+def download(source, destination=source, bucket)
   puts "Downloading tarball from S3..."
   obj = bucket.objects[source]
   File.open(destination, 'w') do |file|
