@@ -132,11 +132,10 @@ module IntegrationExampleGroup
       FileUtils.mkdir_p "log"
       sh "git clone --recursive git@github.com:cloudfoundry/cloud_controller_ng.git" unless Dir.exist?("cloud_controller_ng")
       Dir.chdir "cloud_controller_ng" do
-        if ENV['NO_CHECKOUT'].nil?
+        unless ENV['NO_CHECKOUT']
           unless `git status -s`.empty?
             raise 'There are outstanding changes in cloud controller. Need to set NO_CHECKOUT env'
           end
-        else
           sh "git fetch && git reset --hard #{ENV['CC_BRANCH']}"
         end
 
