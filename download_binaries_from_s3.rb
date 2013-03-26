@@ -15,4 +15,4 @@ end
 
 s3 = AWS::S3.new
 bucket = s3.buckets['vcap-services-binaries']
-download_and_tar(ARGV[0], bucket)
+download(ARGV[0], bucket)
