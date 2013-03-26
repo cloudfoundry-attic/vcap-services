@@ -1,8 +1,13 @@
 #!/bin/bash
-set -e
+set -e -x
 sudo mkdir -p /var/vcap/packages
 sudo mkdir -p /var/vcap/store
 sudo chown -R $USER /var/vcap
+
+echo $FOLDER_NAME
+echo $WARDENIZED_SERVICE
+echo $REQUIRE_PACKAGE
+
 gem install --no-ri --no-rdoc aws-sdk
 if [ $WARDENIZED_SERVICE ]
 then
