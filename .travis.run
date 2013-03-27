@@ -14,9 +14,10 @@ then
 fi
 if [ $REQUIRE_PACKAGE ]
 then
-  echo 'Installing required packages'
+  echo 'Downloading required packages'
   # Cloudfront is linked to vcap-services-binaries.s3.amazonaws.com in Lobot AWS account
-  curl http://d28jy99omrpiak.cloudfront.net/$REQUIRE_PACKAGE -o $REQUIRE_PACKAGE
+  time curl -Ss http://d28jy99omrpiak.cloudfront.net/$REQUIRE_PACKAGE -o $REQUIRE_PACKAGE
+  echo 'Installing required packages'
   tar xf $REQUIRE_PACKAGE -C /
   rm -f $REQUIRE_PACKAGE
 fi
