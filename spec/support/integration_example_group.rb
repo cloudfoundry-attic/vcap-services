@@ -76,6 +76,31 @@ module IntegrationExampleGroup
     kill_process @mysql_node_pid
   end
 
+  def start_mysql_worker
+    pidfile = "#{TMP_DIR}/pid/mysql_worker.pid"
+
+    Dir.chdir("#{SPEC_ROOT}/../ng/mysql") do
+      Bundler.with_clean_env do
+        sh "bundle install >> #{TMP_DIR}/log/bundle.out"
+        @mysql_worker_pid = Process.spawn(
+          {"CLOUD_FOUNDRY_CONFIG_PATH" =>
+           File.dirname(asset('mysql_worker.yml')),
+           "PIDFILE" => pidfile},
+          "bundle exec bin/mysql_worker",
+          log_options(:mysql_worker)
+        )
+      end
+    end
+
+    # TODO check the worker process is actually running..
+    print "Waiting for mysql_worker...ready!"
+    sleep 5
+  end
+
+  def stop_mysql_worker
+    kill_process @mysql_worker_pid
+  end
+
   def provision_mysql_instance(name)
     inst_data = ccng_post "/v2/service_instances",
       {name: name, space_guid: space_guid, service_plan_guid: plan_guid('mysql', '100')}
