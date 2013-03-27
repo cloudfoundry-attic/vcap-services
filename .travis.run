@@ -1,17 +1,23 @@
-!/bin/bash
-set -e
+#!/bin/bash
+set -e -x
 sudo mkdir -p /var/vcap/packages
 sudo mkdir -p /var/vcap/store
 sudo chown -R $USER /var/vcap
-gem install --no-ri --no-rdoc aws-sdk
+
+echo $FOLDER_NAME
+echo $WARDENIZED_SERVICE
+echo $REQUIRE_PACKAGE
+
 if [ $WARDENIZED_SERVICE ]
 then
   ./start_warden.sh
 fi
 if [ $REQUIRE_PACKAGE ]
 then
+  echo 'Downloading required packages'
+  # Cloudfront is linked to vcap-services-binaries.s3.amazonaws.com in Lobot AWS account
+  time curl -Ss http://d28jy99omrpiak.cloudfront.net/$REQUIRE_PACKAGE -o $REQUIRE_PACKAGE
   echo 'Installing required packages'
-  ./download_binaries_from_s3.rb $REQUIRE_PACKAGE
   tar xf $REQUIRE_PACKAGE -C /
   rm -f $REQUIRE_PACKAGE
 fi
