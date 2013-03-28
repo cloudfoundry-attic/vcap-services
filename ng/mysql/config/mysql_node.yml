@@ -29,7 +29,7 @@ mysql:
     mysql_bin: /var/vcap/packages/mysql/bin/mysql
   '5.5':
     host: localhost
-    port: 3307
+    port: 3306
     user: root
     pass:
     mysqldump_bin: /var/vcap/packages/mysql55/bin/mysqldump
