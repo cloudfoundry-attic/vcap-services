@@ -31,7 +31,7 @@ mysql:
     host: localhost
     port: 3307
     user: root
-    pass: root
+    pass:
     mysqldump_bin: /var/vcap/packages/mysql55/bin/mysqldump
     mysql_bin: /var/vcap/packages/mysql55/bin/mysql
 connection_pool_size:
