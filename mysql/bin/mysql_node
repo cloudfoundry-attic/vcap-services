@@ -36,15 +36,6 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
     options
   end
 
-  
-  def start
-    begin
-      super
-    rescue ConnectionException => e
-      @logger.fatal "e.error"
-      exit
-    end
-  end
 end
 
 VCAP::Services::Mysql::NodeBin.new.start
