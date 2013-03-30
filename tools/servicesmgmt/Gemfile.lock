@@ -1,0 +1,88 @@
+GIT
+  remote: git://github.com/cloudfoundry/common.git
+  revision: b96ec1192d961925d91e17ca3831f8547489d918
+  ref: b96ec1192
+  specs:
+    vcap_logging (1.0.2)
+      rake
+
+GIT
+  remote: git://github.com/cloudfoundry/omniauth-uaa-oauth2.git
+  revision: ffa3468e93952f9f878524dabb1b6d909ba3e9fb
+  ref: ffa3468e93
+  specs:
+    omniauth-uaa-oauth2 (0.0.3)
+      cf-uaa-lib
+      cf-uaa-lib
+      omniauth (~> 1.0)
+
+GIT
+  remote: git://github.com/cloudfoundry/vmc-lib.git
+  revision: 2340cb0f4b16c72bdc1262baaac436c2620f4732
+  submodules: true
+  specs:
+    cfoundry (0.5.3.rc6)
+      cf-uaa-lib (~> 1.3.10)
+      multi_json (~> 1.3)
+      multipart-post (~> 1.1)
+      rubyzip (~> 0.9)
+
+GEM
+  remote: http://rubygems.org/
+  specs:
+    backports (2.6.3)
+    cf-uaa-lib (1.3.10)
+      multi_json
+    diff-lcs (1.1.3)
+    eventmachine (1.0.3)
+    hashie (1.2.0)
+    multi_json (1.7.2)
+    multipart-post (1.2.0)
+    omniauth (1.1.3)
+      hashie (~> 1.2)
+      rack
+    rack (1.5.2)
+    rack-protection (1.4.0)
+      rack
+    rack-proxy (0.3.7)
+      rack
+    rack-test (0.6.1)
+      rack (>= 1.0)
+    rake (10.0.3)
+    rspec (2.12.0)
+      rspec-core (~> 2.12.0)
+      rspec-expectations (~> 2.12.0)
+      rspec-mocks (~> 2.12.0)
+    rspec-core (2.12.2)
+    rspec-expectations (2.12.1)
+      diff-lcs (~> 1.1.3)
+    rspec-mocks (2.12.2)
+    rubyzip (0.9.9)
+    sinatra (1.3.5)
+      rack (~> 1.4)
+      rack-protection (~> 1.3)
+      tilt (~> 1.3, >= 1.3.3)
+    sinatra-contrib (1.3.1)
+      backports (>= 2.0)
+      eventmachine
+      rack-protection
+      rack-test
+      sinatra (~> 1.3.0)
+      tilt (~> 1.3)
+    tilt (1.3.4)
+    yajl-ruby (1.1.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  cfoundry!
+  omniauth-uaa-oauth2!
+  rack
+  rack-proxy
+  rack-test
+  rspec
+  sinatra
+  sinatra-contrib
+  vcap_logging!
+  yajl-ruby
