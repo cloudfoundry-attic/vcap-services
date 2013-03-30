@@ -8,54 +8,53 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: 1dca468ec017ea5d296aeac1aa2fb7a70affba63
-  ref: 1dca468ec0
+  revision: 9ac7e259689a14c6033454cd91db8e1a44c0d0ee
   specs:
-    vcap_common (2.0.4)
-      em-http-request (~> 1.0.0.beta3)
+    vcap_common (2.0.10)
+      em-http-request (~> 1.0.0.beta3, < 1.0.0.beta4)
       eventmachine
       httpclient
       membrane (~> 0.0.2)
       mime-types
       multipart-post
-      nats (~> 0.4.22.beta.8)
+      nats (~> 0.4.24)
       posix-spawn (~> 0.3.6)
-      thin (~> 1.3.1)
-      yajl-ruby (~> 0.8.3)
+      thin
+      yajl-ruby
 
 GEM
   remote: http://rubygems.org/
   specs:
-    addressable (2.3.2)
+    addressable (2.3.3)
     builder (3.0.0)
     ci_reporter (1.6.5)
       builder (>= 2.1.2)
-    daemons (1.1.5)
+    daemons (1.1.9)
     diff-lcs (1.1.3)
     em-http-request (1.0.0.beta.3)
       addressable (>= 2.2.3)
       em-socksify
       eventmachine
       http_parser.rb (>= 0.5.1)
-    em-socksify (0.1.0)
-      eventmachine
-    eventmachine (0.12.11.cloudfoundry.3)
+    em-socksify (0.2.1)
+      eventmachine (>= 1.0.0.beta.4)
+    eventmachine (1.0.3)
     ffi (1.0.11)
     http_parser.rb (0.5.3)
-    httpclient (2.2.5)
-    json_pure (1.6.5)
+    httpclient (2.3.3)
+    json_pure (1.7.7)
     membrane (0.0.2)
-    mime-types (1.19)
+    mime-types (1.22)
     mock_redis (0.4.1)
     multi_json (1.0.4)
-    multipart-post (1.1.5)
-    nats (0.4.22.beta.8)
-      daemons (>= 1.1.4)
+    multipart-post (1.2.0)
+    nats (0.4.26)
+      daemons (>= 1.1.5)
       eventmachine (>= 0.12.10)
-      json_pure (>= 1.6.1)
-      thin (>= 1.3.1)
+      json_pure (>= 1.7.3)
+      thin (>= 1.4.1)
     posix-spawn (0.3.6)
-    rack (1.3.5)
+    rack (1.5.2)
     rack-protection (1.1.4)
       rack
     rack-test (0.6.1)
@@ -83,13 +82,13 @@ GEM
       tilt (~> 1.3, >= 1.3.3)
     sys-filesystem (1.0.0)
       ffi (= 1.0.11)
-    thin (1.3.1)
+    thin (1.5.1)
       daemons (>= 1.0.9)
       eventmachine (>= 0.12.6)
       rack (>= 1.0.0)
     tilt (1.3.3)
     uuidtools (2.1.2)
-    yajl-ruby (0.8.3)
+    yajl-ruby (1.1.0)
 
 PLATFORMS
   ruby
