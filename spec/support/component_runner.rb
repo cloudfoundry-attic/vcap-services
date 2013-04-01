@@ -22,7 +22,10 @@ class ComponentRunner < Struct.new(:tmp_dir)
   end
 
   def log_options(name)
-    {:out => "#{tmp_dir}/log/#{name}.out", :err => "#{tmp_dir}/log/#{name}.err"}
+    {
+      :out => "#{tmp_dir}/log/#{name}.out",
+      :err => "#{tmp_dir}/log/#{name}.err"
+    }
   end
 
   def asset(file_name)
@@ -43,6 +46,7 @@ class ComponentRunner < Struct.new(:tmp_dir)
       if retries > 0
         retry
       else
+        puts
         raise
       end
     end
@@ -62,6 +66,7 @@ class ComponentRunner < Struct.new(:tmp_dir)
       if retries > 0
         retry
       else
+        puts
         raise
       end
     end

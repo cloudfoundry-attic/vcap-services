@@ -8,7 +8,6 @@ module IntegrationExampleGroup
 
   TMP_DIR = File.expand_path('../tmp', SPEC_ROOT)
 
-
   def self.included(base)
     base.instance_eval do
       before :each do |example|
@@ -57,7 +56,6 @@ module IntegrationExampleGroup
               {label: label, provider:'core', token: service_token}
              )
   end
-
 
   def plan_guid(service_name, plan_name)  # ignored for now, hoping the first one is correct
     retries = 30
