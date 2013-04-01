@@ -64,12 +64,12 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
       :credentials => credentials
     }
     @logger.debug("Provisioned #{svc.inspect}")
-    @prov_svcs[svc[:service_id]] = svc
+    add_instance_handle(svc)
 
     blk.call(success(svc))
 
   rescue => e
-    @logger.warn("Exception at provision_service #{e}")
+    @logger.error("Exception at provision_service #{e}: #{e.backtrace.join("\n")}")
     blk.call(internal_fail)
 
   end
@@ -77,21 +77,20 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
   def unprovision_service(instance_id, &blk)
 
     @logger.debug("[#{service_description}] Attempting to unprovision instance (instance id=#{instance_id})")
-    svc = @prov_svcs[instance_id]
+    svc = get_instance_handle instance_id
     raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc == nil
     attempt do
       client.delete(:client, instance_id)
     end
-    bindings = find_all_bindings(instance_id)
-    @prov_svcs.delete(instance_id)
-    bindings.each do |b|
-      @prov_svcs.delete(b[:service_id])
+    find_instance_bindings(instance_id).each do |handle|
+      delete_binding_handle handle
     end
+    delete_instance_handle svc
 
     blk.call(success())
 
   rescue => e
-    @logger.warn("Exception at unprovision_service #{e}")
+    @logger.error("Exception at unprovision_service #{e}: #{e.backtrace.join("\n")}")
     blk.call(internal_fail)
 
   end
@@ -99,7 +98,7 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
   def bind_instance(instance_id, binding_options, bind_handle=nil, &blk)
 
     @logger.debug("[#{service_description}] Attempting to bind to service #{instance_id}")
-    svc = @prov_svcs[instance_id]
+    svc = get_instance_handle(instance_id)
     raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc == nil
 
     service_id = nil
@@ -122,7 +121,7 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
       :credentials => credentials
     }
     @logger.debug("[#{service_description}] Bound: #{res.inspect}")
-    @prov_svcs[service_id] = res
+    add_binding_handle(res)
     blk.call(success(res))
 
   rescue => e
@@ -131,17 +130,18 @@ class CF::UAA::OAuth2Service::Provisioner < VCAP::Services::Base::Provisioner
 
   end
 
-  def unbind_instance(instance_id, handle_id, binding_options, &blk)
+  def unbind_instance(instance_id, binding_id, binding_options, &blk)
 
     @logger.debug("[#{service_description}] Attempting to unbind to service #{instance_id}")
 
-    svc = @prov_svcs[instance_id]
+    svc = get_instance_handle instance_id
     raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc == nil
 
-    handle = @prov_svcs[handle_id]
-    raise ServiceError.new(ServiceError::NOT_FOUND, "handle_id #{handle_id}") if handle.nil?
+    handle = get_binding_handle binding_id
+    raise ServiceError.new(ServiceError::NOT_FOUND, "binding_id #{binding_id}") if handle.nil?
 
-    @prov_svcs.delete(handle_id)
+    delete_binding_handle handle
+
     config = svc[:configuration].nil? ? {} : svc[:configuration].clone
     credentials = svc[:credentials]
     update_redirect_uri(credentials, config)

@@ -56,13 +56,13 @@ module CF::UAA
   end
 
   module Http
-    
+
     private
 
     def http_post(target, path=nil, body=nil, headers={})
       [200, '', {"location"=>'https://uaa.cloudfoundry.com/redirect/client#access_token=TOKEN'}]
     end
-    
+
     def json_get(target, path=nil, authorization=nil, headers={})
       [{:name=>"app", :uris=>['foo.api.vcap.me']}]
     end
@@ -80,7 +80,7 @@ module CF::UAA::OAuth2Service
     before :each do
       CF::UAA::Scim.simulate_fail = false
       EM.run do
-        @provisioner = Provisioner.new({:service=>service_config,:logger=>logger,:additional_options=>{}})
+        @provisioner = Provisioner.new({:service=>service_config,:logger=>logger,:additional_options=>{},:cc_api_version=>"v2"})
         EM.stop
       end
     end
@@ -132,7 +132,7 @@ module CF::UAA::OAuth2Service
         @instance_id.should_not be_nil
 
         @handle_id == nil
-        @provisioner.provision_service(request) do |svc|
+        @provisioner.bind_instance(@instance_id, {}) do |svc|
           @handle_id = svc["response"][:service_id]
         end
 
@@ -176,7 +176,7 @@ module CF::UAA::OAuth2Service
           svc["success"].should be_true
         end
 
-        @provisioner.find_all_bindings(@instance_id).should be_empty
+        @provisioner.find_instance_bindings(@instance_id).should be_empty
 
       end
 

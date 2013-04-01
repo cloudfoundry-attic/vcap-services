@@ -8,4 +8,5 @@ env:
     - FOLDER_NAME=marketplace
     - FOLDER_NAME=service_broker
     - FOLDER_NAME=servicesmgmt
+    - FOLDER_NAME=oauth2
   global: []
