@@ -81,6 +81,7 @@ DEPENDENCIES
   rack
   rack-proxy
   rack-test
+  rake
   rspec
   sinatra
   sinatra-contrib

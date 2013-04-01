@@ -1,5 +1,6 @@
 source :rubygems
 
+gem "rake"
 gem "rack"
 gem "rack-proxy"
 gem "sinatra"
