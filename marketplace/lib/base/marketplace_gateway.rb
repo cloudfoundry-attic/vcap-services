@@ -14,7 +14,7 @@ module VCAP
     module Marketplace
       class MarketplaceServiceGateway < VCAP::Services::BaseAsynchronousServiceGateway
 
-        REQ_OPTS          = %w(cc_api_version mbus external_uri cloud_controller_uri service_auth_tokens).map {|o| o.to_sym}
+        REQ_OPTS = %w(cc_api_version mbus external_uri cloud_controller_uri service_auth_tokens).map {|o| o.to_sym}
 
         def initialize(opts)
           super(opts)

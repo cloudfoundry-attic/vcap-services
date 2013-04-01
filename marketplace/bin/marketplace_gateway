@@ -35,8 +35,7 @@ class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
       @config = YAML.load_file(config_file)
       @config = VCAP.symbolize_keys(@config)
 
-      marketplace = @config[:marketplace]
-      marketplace_config = YAML.load_file(File.join(File.dirname(config_file), "#{marketplace}.yml"))
+      marketplace_config = YAML.load_file(File.join(File.dirname(config_file), "#{@config.fetch(:marketplace)}.yml"))
       marketplace_config = VCAP.symbolize_keys(marketplace_config)
       @config = @config.merge(marketplace_config)
     rescue => e
