@@ -17,3 +17,4 @@ coverage
 .gitreview
 bundle/
 /tmp/
+*/doc

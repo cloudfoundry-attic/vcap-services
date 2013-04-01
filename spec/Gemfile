@@ -5,3 +5,9 @@ gem "rspec"
 gem "nats"
 gem "yajl-ruby"
 gem "httpclient"
+gem "sinatra"
+gem "vcr"
+gem "webmock"
+gem "httpclient"
+
+gem "debugger", group: :test

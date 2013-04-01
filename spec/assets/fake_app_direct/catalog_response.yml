@@ -1,0 +1,67 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://dev3cloudfoundry.appdirect.com/api/custom/cloudfoundry/v1/offerings
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers: {}
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Cache-Control:
+      - no-cache="set-cookie"
+      Content-Type:
+      - application/json;charset=UTF-8
+      Date:
+      - Mon, 01 Apr 2013 22:24:34 GMT
+      Expires:
+      - Thu, 01 Jan 1970 00:00:00 GMT
+      Server:
+      - Apache-Coyote/1.1
+      Set-Cookie:
+      - AWSELB=8983EBAF06FC24B68D5DEBE4021CC21C560B16387506D954DA48CCEAEEB9C34BCBE9406BE22045C08B85EAC220DF3C153DF013A1D923531DE7776C08FBC0E59F7E317E4587;PATH=/;MAX-AGE=3600
+      - JSESSIONID=63FC8E5582474C243ED98A1475608F24-n1; Path=/; Secure; HttpOnly
+      Content-Length:
+      - '6602'
+      Connection:
+      - keep-alive
+    body:
+      encoding: US-ASCII
+      string: ! '[{"label":"mongodb","provider":"mongolab-dev","version":"n/a","description":"Cloud
+        hosted and managed MongoDB","plans":[{"id":"free","description":"Free","free":true},{"id":"small","description":"Small","free":false},{"id":"medium","description":"Medium","free":false},{"id":"large","description":"Large","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/7"},{"label":"mongodb","provider":"mongolab","version":"n/a","description":"Cloud
+        hosted and managed MongoDB","plans":[{"id":"free","description":"Free","free":true},{"id":"small","description":"Small","free":false},{"id":"medium","description":"Medium","free":false},{"id":"large","description":"Large","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/8"},{"label":"j","provider":"o-dev","version":"n/a","description":"lorem
+        ipsum da bomb","plans":[{"id":"y","description":"Lorem ipsum dolores","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/13"},{"label":"cl","provider":"ou-dev","version":"n/a","description":"lorem
+        ipsum da bomb","plans":[{"id":"d","description":"Ipsum medumus","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/13"},{"label":"lrg","provider":"n-dev","version":"n/a","description":"lorem
+        ipsum da bomb","plans":[{"id":"ode","description":"Lorem ipsum large","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/13"},{"label":"j","provider":"o","version":"n/a","description":"lorem
+        ipsum da bomb","plans":[{"id":"y","description":"Lorem ipsum dolores","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/14"},{"label":"cl","provider":"ou","version":"n/a","description":"lorem
+        ipsum da bomb","plans":[{"id":"d","description":"Ipsum medumus","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/14"},{"label":"lrg","provider":"n","version":"n/a","description":"lorem
+        ipsum da bomb","plans":[{"id":"ode","description":"Lorem ipsum large","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/14"},{"label":"database","provider":"paul-dev","version":"n/a","description":null,"plans":[{"id":"small","description":"Small
+        MongoLabs Database","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/15"},{"label":"database","provider":"medium-dev","version":"n/a","description":null,"plans":[{"id":"paul","description":"This
+        database is Medium sized.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/15"},{"label":"database","provider":"paul","version":"n/a","description":null,"plans":[{"id":"small","description":"Small
+        MongoLabs Database","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/16"},{"label":"database","provider":"medium","version":"n/a","description":null,"plans":[{"id":"paul","description":"This
+        database is Medium sized.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/16"},{"label":"mongo","provider":"small-dev","version":"n/a","description":null,"plans":[{"id":"paul","description":"This
+        is a small DB for you.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/17"},{"label":"mongo","provider":"medium-dev","version":"n/a","description":null,"plans":[{"id":"paul","description":"This
+        is a medium DB for you.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/17"},{"label":"mongo","provider":"small","version":"n/a","description":null,"plans":[{"id":"paul","description":"This
+        is a small DB for you.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/18"},{"label":"mongo","provider":"medium","version":"n/a","description":null,"plans":[{"id":"paul","description":"This
+        is a medium DB for you.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/18"},{"label":"aa","provider":"aa-dev","version":"n/a","description":"Addon1
+        multiple","plans":[{"id":"aa","description":"sdf","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/23"},{"label":"bb","provider":"bb-dev","version":"n/a","description":"Addon1
+        multiple","plans":[{"id":"bb","description":"asfsdf","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/23"},{"label":"aa","provider":"aa","version":"n/a","description":"Addon1
+        multiple","plans":[{"id":"aa","description":"sdf","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/24"},{"label":"bb","provider":"bb","version":"n/a","description":"Addon1
+        multiple","plans":[{"id":"bb","description":"asfsdf","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/24"},{"label":"da","provider":"asd-dev","version":"n/a","description":null,"plans":[{"id":"asd","description":"test
+        addon","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/25"},{"label":"nessim","provider":"box-dev","version":"n/a","description":null,"plans":[{"id":"support","description":"This
+        is a professional services addon to provide special support.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/26"},{"label":"nessim","provider":"manual-dev","version":"n/a","description":null,"plans":[{"id":"setup","description":"This
+        is a Manual Setup addon.","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/26"},{"label":"mongodb","provider":"dummy-dev","version":"n/a","description":"Dummy
+        addon that is cool","plans":[{"id":"small","description":"Small MongoDB","free":true},{"id":"medium","description":"Medium
+        MongoDB","free":false},{"id":"large","description":"Large MongoDB","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/27"},{"label":"mongodb","provider":"dummy","version":"n/a","description":"Dummy
+        addon that is cool","plans":[{"id":"small","description":"Small MongoDB","free":true},{"id":"medium","description":"Medium
+        MongoDB","free":false},{"id":"large","description":"Large MongoDB","free":false}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/45"},{"label":"smtp","provider":"sendgrid-dev","version":"n/a","description":"SMTP
+        service by SendGrid","plans":[{"id":"free","description":"Free Package","free":true}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/46"},{"label":"smtp","provider":"sendgrid","version":"n/a","description":"SMTP
+        service by SendGrid","plans":[{"id":"free","description":"Free Package","free":true}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/47"},{"label":"redis","provider":"redistogo-dev","version":"n/a","description":null,"plans":[{"id":"nano","description":"5Mb,
+        1 redis DB, 10 connections, no persistence","free":true}],"info_url":"https://dev3cloudfoundry.appdirect.com/apps/48"}]'
+    http_version: 
+  recorded_at: Mon, 01 Apr 2013 22:24:34 GMT
+recorded_with: VCR 2.4.0

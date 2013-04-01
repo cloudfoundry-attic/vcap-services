@@ -1,0 +1,33 @@
+---
+cloud_controller_uri: localhost:8181
+ip_route: localhost
+index: 0
+mbus: nats://localhost:4222/
+logging:
+  level: debug
+port: 8282
+pid: /tmp/marketplace.pid
+
+# node_timeout is required by base async gateway class. This is defined in #{marketplace}.yml
+# since this value is specific to interactions with #{marketplace}
+
+marketplace: appdirect
+
+acls:
+  wildcards:
+  - "*@example.com"
+  users: []
+
+external_uri: "http://test-mpgw.vcap.me"
+refresh_interval: 120
+
+cc_api_version: v2
+token: testservicetoken
+uaa_client_id: vmc
+uaa_endpoint: http://localhost:8080/uaa
+uaa_client_auth_credentials:
+  username: marissa
+  password: "koala"
+service_auth_tokens:
+  testservice_TestProvider: testservicetoken
+  fooservice_FooProvider: fooservicetoken
