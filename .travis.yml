@@ -7,4 +7,5 @@ env:
     - FOLDER_NAME=echo
     - FOLDER_NAME=marketplace
     - FOLDER_NAME=service_broker
+    - FOLDER_NAME=servicesmgmt
   global: []
