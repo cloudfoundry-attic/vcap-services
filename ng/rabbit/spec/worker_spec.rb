@@ -46,7 +46,13 @@ describe VCAP::Services::Rabbit::Node do
     before :all do
       EM.run do
         @node = VCAP::Services::Rabbit::Node.new(@options)
-        @provisioner = VCAP::Services::Rabbit::Provisioner.new({:logger => getLogger, :plan_management => {:plans => {:free => {:low_water => 10}}}})
+        @provisioner = VCAP::Services::Rabbit::Provisioner.new({
+          :logger => getLogger,
+          :plan_management => {
+            :plans => {:free => {:low_water => 10}},
+          },
+          :cc_api_version => 'v2',
+        })
         EM.add_timer(1) {EM.stop}
       end
       @credentials = @node.provision(:free)
