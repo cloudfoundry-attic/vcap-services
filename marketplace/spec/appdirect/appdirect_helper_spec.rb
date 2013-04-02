@@ -51,7 +51,7 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
         f = Fiber.new do
           @catalog = @appdirect.get_catalog
           @catalog.should_not be_nil
-          @catalog.keys.count.should == 4
+          @catalog.should have(4).keys
           @catalog["asms_dev-1.0"]["description"].should == "Activity Streams Engine"
         end
         f.resume

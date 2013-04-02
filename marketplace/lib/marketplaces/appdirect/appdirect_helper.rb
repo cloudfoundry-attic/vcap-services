@@ -5,6 +5,7 @@ require "fiber"
 
 $:.unshift(File.dirname(__FILE__))
 require "appdirect_error"
+require "offering_whitelist"
 
 module VCAP
   module Services
@@ -18,6 +19,9 @@ module VCAP
             HEADER = {"Content-Type" => "application/json" , "Accept"=>"application/json"}
             REQ_CONFIG = %w(endpoint key secret).map {|o| o.to_sym}
 
+
+            attr_reader :offering_whitelist, :logger
+
             def initialize(opts, logger)
               @logger = logger
 
@@ -29,7 +33,7 @@ module VCAP
               raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
 
               @appdirect_endpoint = appdirect_config[:endpoint]
-              @whitelist          = opts[:offering_whitelist]
+              @offering_whitelist = OfferingWhitelist.new(opts[:offering_whitelist], logger)
               @test_mode          = opts[:test_mode]
 
               if !@test_mode
@@ -63,29 +67,17 @@ module VCAP
 
             def load_catalog
               url = "#{@appdirect_endpoint}/api/#{OFFERINGS_PATH}"
-              @logger.debug("Getting service listing from: #{url}")
+              logger.debug("Getting service listing from: #{url}")
 
               http_status, response_body = perform_request("get", url, nil, nil)
 
               if http_status == 200
-                data = JSON.parse(response_body) #VCAP::Services::AppDirect::AppDirectCatalogResponse.decode(raw)
-                catalog = []
-                data.each do |service|
-                  label    = service["label"]
-                  provider = service["provider"]
-
-                  service_id = "#{label}_#{provider}"
-                  if (@whitelist.nil? || @whitelist.include?(service_id))
-                    @logger.info("Accepting whitelisted service: #{label} from provider: #{provider}")
-                    catalog << service
-                  else
-                    @logger.warn("Ignoring service Offering:  #{label} from provider: #{provider} since it is not whitelisted")
-                  end
-                end
-                @logger.info("Got #{catalog.size} services from AppDirect")
-                return catalog
+                services = JSON.parse(response_body) #VCAP::Services::AppDirect::AppDirectCatalogResponse.decode(raw)
+                catalog = offering_whitelist.filter(services)
+                logger.info("Got #{catalog.size} services from AppDirect")
+                catalog
               else
-                @logger.error("Failed to get catalog #{http_status}")
+                logger.error("Failed to get catalog #{http_status}")
                 raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_GET_LISTING, http_status)
               end
             end
@@ -95,18 +87,18 @@ module VCAP
               if order
                 body = order.to_json
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}"
-                @logger.info("Posting provision request: #{url}")
+                logger.info("Posting provision request: #{url}")
 
                 http_status, response_body = perform_request("post", url, HEADER, body)
 
                 if http_status >= 200 and http_status < 300
-                  @logger.info("Provision successful")
+                  logger.info("Provision successful")
                   JSON.parse(response_body)
                 else
                   # 400 bad request
                   # 500 if AppDirect has issues
                   # 503 if ISV is down
-                  @logger.error("Failed to provision: #{body} due to: #{http_status} - #{response_body}")
+                  logger.error("Failed to provision: #{body} due to: #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_PURCHASE, http_status)
                 end
               else
@@ -118,15 +110,15 @@ module VCAP
               if order_id
                 body = {}.to_json
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}/bindings"
-                @logger.info("Posting bind request: #{url}")
+                logger.info("Posting bind request: #{url}")
 
                 http_status, response_body = perform_request("post", url, HEADER, body)
 
                 if http_status >= 200 and http_status < 300
-                  @logger.info("Bind successful: #{order_id}")
+                  logger.info("Bind successful: #{order_id}")
                   JSON.parse(response_body)
                 else
-                  @logger.error("Bind request #{body} failed due to: #{http_status} - #{response_body}")
+                  logger.error("Bind request #{body} failed due to: #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_BIND, http_status)
                 end
               else
@@ -137,14 +129,14 @@ module VCAP
             def unbind_service(order_id, binding_id)
               if binding_id and order_id
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}/bindings/#{binding_id}"
-                @logger.info("Unbind request: #{url}")
+                logger.info("Unbind request: #{url}")
 
                 http_status, response_body = perform_request("delete", url, HEADER, nil)
 
                 if http_status >= 200 and http_status < 300
-                  @logger.info("Unbind success for: OrderID: #{order_id}, BindingId: #{binding_id}")
+                  logger.info("Unbind success for: OrderID: #{order_id}, BindingId: #{binding_id}")
                 else
-                  @logger.error("Failed to unbind service (id=#{order_id}): #{http_status} - #{response_body}")
+                  logger.error("Failed to unbind service (id=#{order_id}): #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_UNBIND, http_status)
                 end
               else
@@ -155,14 +147,14 @@ module VCAP
             def cancel_service(order_id)
               if order_id
                 url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}"
-                @logger.info("Unprovision request: #{url}")
+                logger.info("Unprovision request: #{url}")
 
                 http_status, response_body = perform_request("delete", url, HEADER, nil)
 
                 if http_status >= 200 and http_status < 300
-                  @logger.info("Unprovision success for order id: #{order_id}")
+                  logger.info("Unprovision success for order id: #{order_id}")
                 else
-                  @logger.error("Failed to unprovision service (id=#{order_id}): #{http_status} - #{response_body}")
+                  logger.error("Failed to unprovision service (id=#{order_id}): #{http_status} - #{response_body}")
                   raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_CANCEL, http_status)
                 end
               else
@@ -180,7 +172,7 @@ module VCAP
 
             def get_catalog_response
               url = "#{@appdirect_endpoint}/api/#{OFFERINGS_PATH}"
-              @logger.debug("About to get service listing from #{url}")
+              logger.debug("About to get service listing from #{url}")
               f = Fiber.current
               conn = EventMachine::HttpRequest.new(url)
 
@@ -196,7 +188,7 @@ module VCAP
 
             def post_order(body)
               url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}"
-              @logger.info("About to post #{url}")
+              logger.info("About to post #{url}")
               f = Fiber.current
               conn = EventMachine::HttpRequest.new(url)
 
@@ -212,7 +204,7 @@ module VCAP
 
             def delete_order(order_id)
               url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}"
-              @logger.info("About to delete #{url}")
+              logger.info("About to delete #{url}")
               f = Fiber.current
               conn = EventMachine::HttpRequest.new(url)
 
@@ -228,7 +220,7 @@ module VCAP
 
             def post_bind_service(body, order_id)
               url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}/bindings"
-              @logger.info("About to post #{url}")
+              logger.info("About to post #{url}")
               f = Fiber.current
               conn = EventMachine::HttpRequest.new(url)
 
@@ -244,7 +236,7 @@ module VCAP
 
             def delete_bind_service(order_id, binding_id)
               url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}/#{order_id}/bindings/#{binding_id}"
-              @logger.info("About to delete binding #{url}")
+              logger.info("About to delete binding #{url}")
               f = Fiber.current
               conn = EventMachine::HttpRequest.new(url)
 

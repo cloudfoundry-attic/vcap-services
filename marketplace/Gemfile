@@ -1,5 +1,3 @@
-source :rubygems
-
 gem 'eventmachine', :git => 'git://github.com/cloudfoundry/eventmachine.git', :branch => 'release-0.12.11-cf'
 gem "em-http-request"
 gem "ruby-hmac"

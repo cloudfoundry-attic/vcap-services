@@ -16,10 +16,6 @@ module VCAP
 
         REQ_OPTS = %w(cc_api_version mbus external_uri cloud_controller_uri service_auth_tokens).map {|o| o.to_sym}
 
-        def initialize(opts)
-          super(opts)
-        end
-
         def load_marketplace(opts)
           marketplace_lib_path = File.join(File.dirname(__FILE__), '..', 'marketplaces', opts[:marketplace])
           @logger.info("Loading marketplace: #{opts[:marketplace]} from: #{marketplace_lib_path}")

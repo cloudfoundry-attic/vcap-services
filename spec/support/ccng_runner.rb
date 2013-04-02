@@ -1,6 +1,6 @@
 require_relative 'component_runner'
 
-class CcngRunner< ComponentRunner
+class CcngRunner < ComponentRunner
   attr_reader :org_guid, :space_guid
 
   def start_nats
