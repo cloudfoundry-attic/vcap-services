@@ -1,12 +1,12 @@
 #!/bin/bash
-set -e -x
+set -e -x -u
 sudo mkdir -p /var/vcap/packages
 sudo mkdir -p /var/vcap/store
 sudo chown -R $USER /var/vcap
 
 echo $FOLDER_NAME
-echo $WARDENIZED_SERVICE
-echo $REQUIRE_PACKAGE
+echo ${WARDENIZED_SERVICE:=}  # default to empty
+echo ${REQUIRE_PACKAGE:=}
 
 if [ $WARDENIZED_SERVICE ]
 then
@@ -16,7 +16,8 @@ if [ $REQUIRE_PACKAGE ]
 then
   echo 'Downloading required packages'
   # Cloudfront is linked to vcap-services-binaries.s3.amazonaws.com in Lobot AWS account
-  time curl -Ss http://d28jy99omrpiak.cloudfront.net/$REQUIRE_PACKAGE -o $REQUIRE_PACKAGE
+  # time curl -Ss http://d28jy99omrpiak.cloudfront.net/$REQUIRE_PACKAGE -o $REQUIRE_PACKAGE
+  time curl -Ss http://vcap-services-binaries.s3.amazonaws.com/$REQUIRE_PACKAGE -o $REQUIRE_PACKAGE
   echo 'Installing required packages'
   tar xf $REQUIRE_PACKAGE -C /
   rm -f $REQUIRE_PACKAGE
