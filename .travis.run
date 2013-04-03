@@ -1,12 +1,12 @@
 #!/bin/bash
-set -e -x
+set -e -x -u
 sudo mkdir -p /var/vcap/packages
 sudo mkdir -p /var/vcap/store
 sudo chown -R $USER /var/vcap
 
 echo $FOLDER_NAME
-echo $WARDENIZED_SERVICE
-echo $REQUIRE_PACKAGE
+echo ${WARDENIZED_SERVICE:=}  # default to empty
+echo ${REQUIRE_PACKAGE:=}
 
 if [ $WARDENIZED_SERVICE ]
 then
