@@ -2,8 +2,8 @@
 # cloud_controller_uri: api.vcap.me
 service:
   name: postgresql
-  version: "9.0"
-  description: 'PostgreSQL database (vFabric)'
+  version: "9.2"
+  description: 'PostgreSQL database'
   plans: ['free']
   default_plan: free
   tags: ['relational']
