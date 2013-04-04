@@ -2,7 +2,7 @@ require_relative 'component_runner'
 
 class MysqlRunner < ComponentRunner
   def start_redis
-    add_pid Process.spawn 'redis-server --port 5454', log_options(:redis)
+    add_pid Process.spawn "redis-server #{asset "redis.conf"}", log_options(:redis)
     wait_for_tcp_ready("Redis", 5454)
   end
 

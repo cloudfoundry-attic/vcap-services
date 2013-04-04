@@ -22,9 +22,9 @@ migration_nfs: /mnt/migration
 mysql:
   '5.5':
     host: localhost
-    port: 3307
+    port: 3306
     user: root
-    pass: password
+    pass:
     mysqldump_bin: /var/vcap/packages/mysql55/bin/mysqldump
     mysql_bin: /var/vcap/packages/mysql55/bin/mysql
 connection_pool_size:
