@@ -22,6 +22,7 @@ class ComponentRunner < Struct.new(:tmp_dir)
   end
 
   def log_options(name)
+    FileUtils.mkdir_p("#{tmp_dir}/log")
     {
       :out => "#{tmp_dir}/log/#{name}.out",
       :err => "#{tmp_dir}/log/#{name}.err"
