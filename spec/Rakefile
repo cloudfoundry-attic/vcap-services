@@ -1,0 +1,6 @@
+require 'rspec'
+require 'rspec/core/rake_task'
+RSpec::Core::RakeTask.new(:spec) do |t|
+  t.pattern = "#{Rake.application.original_dir}/integration/**/*_spec.rb"
+  t.rspec_opts = ["--format", "documentation", "--colour"]
+end

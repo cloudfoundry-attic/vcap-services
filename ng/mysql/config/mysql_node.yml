@@ -40,7 +40,6 @@ warden:
     last:  45000
   service_log_dir: /var/vcap/services/mysql/log
   service_bin_dir:
-    '5.1': /var/vcap/packages/mysql
     '5.5': /var/vcap/packages/mysql55
   service_common_dir: /var/vcap/store/mysql_common
   image_dir: /var/vcap/services/mysql/image

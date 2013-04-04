@@ -9,5 +9,6 @@ gem "sinatra"
 gem "vcr"
 gem "webmock"
 gem "httpclient"
+gem "rake"
 
 gem "debugger", group: :test
