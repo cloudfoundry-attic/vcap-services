@@ -24,4 +24,8 @@ then
 fi
 
 cd $FOLDER_NAME
-rvmsudo bundle install --local && rvmsudo bundle exec rake spec --trace
+failure=0
+rvmsudo bundle install --local && rvmsudo bundle exec rake spec --trace || failure=$?
+sudo pkill -f ruby || true
+exit $failure
+
