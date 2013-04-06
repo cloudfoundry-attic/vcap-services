@@ -17,8 +17,8 @@ max_long_tx: 30
 max_db_conns: 20
 enable_xlog_enforcer: true
 xlog_enforce_tolerance: 5
-db_connect_timeout: 3
-db_query_timeout: 10
+db_connect_timeout: 7
+db_query_timeout: 15
 db_use_async_query: true
 use_warden: true
 warden:
