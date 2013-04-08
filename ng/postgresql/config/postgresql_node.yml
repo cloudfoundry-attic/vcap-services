@@ -30,7 +30,7 @@ warden:
     '9.2': /var/vcap/packages/postgresql92
   service_common_dir: /var/vcap/store/postgresql_common
   image_dir: /var/vcap/services/postgresql/image
-  service_start_timeout: 3
+  service_start_timeout: 10
   filesystem_quota: false
 postgresql:
   '9.2':
