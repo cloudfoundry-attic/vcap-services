@@ -19,6 +19,7 @@ GEM
     httpclient (2.3.3)
     json_pure (1.7.7)
     multi_json (1.3.6)
+    mysql2 (0.3.11)
     nats (0.4.24)
       daemons (>= 1.1.5)
       eventmachine (>= 0.12.10)
@@ -36,6 +37,7 @@ GEM
     rspec-expectations (2.13.0)
       diff-lcs (>= 1.1.3, < 2.0)
     rspec-mocks (2.13.0)
+    sequel (3.45.0)
     sinatra (1.4.2)
       rack (~> 1.5, >= 1.5.2)
       rack-protection (~> 1.4)
@@ -58,9 +60,11 @@ DEPENDENCIES
   cf-uaa-lib
   debugger
   httpclient
+  mysql2
   nats
   rake
   rspec
+  sequel
   sinatra
   vcr
   webmock

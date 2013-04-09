@@ -10,5 +10,7 @@ gem "vcr"
 gem "webmock"
 gem "httpclient"
 gem "rake"
+gem "sequel"
+gem "mysql2"
 
 gem "debugger", group: :test

@@ -10,7 +10,9 @@ module IntegrationExampleGroup
 
   def self.included(base)
     base.instance_eval do
+      let(:mysql_root_connection) { Sequel.connect("mysql2://root@localhost/mysql") }
       before :each do |example|
+        cleanup_mysql_dbs
         (example.example.metadata[:components] || []).each do |component|
           component(component).start
         end
@@ -55,6 +57,18 @@ module IntegrationExampleGroup
     ccng_post("/v2/service_auth_tokens",
               {label: label, provider:'core', token: service_token}
              )
+  end
+
+  def cleanup_mysql_dbs
+    mysql_root_connection["SHOW DATABASES"].each do |row|
+      dbname = row[:Database]
+      if dbname.match(/^d[0-9a-f]{32}$/) || dbname == "mgmt"
+        mysql_root_connection.run "DROP DATABASE #{dbname}"
+      end
+    end
+    mysql_root_connection.run "DELETE FROM mysql.user WHERE host='%' OR host='localhost' and user LIKE 'u%'"
+    mysql_root_connection.run "DELETE FROM mysql.db WHERE host='%' OR host='localhost' and user LIKE 'u%' AND db LIKE 'd%'"
+    mysql_root_connection.run "CREATE DATABASE mgmt"
   end
 
   def plan_guid(service_name, plan_name)  # ignored for now, hoping the first one is correct

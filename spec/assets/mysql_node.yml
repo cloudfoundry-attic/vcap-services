@@ -1,7 +1,7 @@
 ---
 capacity: 200
 plan: '100'
-local_db: sqlite3:/tmp/mysql_node.db
+local_db: mysql://root@localhost/mgmt
 base_dir: /tmp/mysql_data
 gzip_bin: gzip
 # ip_route: 127.0.0.1
