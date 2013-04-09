@@ -27,10 +27,12 @@ cd $FOLDER_NAME
 failure=0
 rvmsudo bundle install --local && rvmsudo bundle exec rake spec --trace || failure=$?
 sudo pkill -f ruby || true
-if $failure; then
+if [[ $failure ]]; then
   if [[ -d tmp/log ]]; then
     for file in $(ls tmp/log/*); do
-      echo "\n<====== $file ======>\n"
+      echo ""
+      echo "<====== $file ======>"
+      echo ""
       cat $file
     done
   fi
