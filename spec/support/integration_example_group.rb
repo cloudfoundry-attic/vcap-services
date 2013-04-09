@@ -6,7 +6,7 @@ end
 module IntegrationExampleGroup
   include CcngClient
 
-  TMP_DIR = File.expand_path('../tmp', SPEC_ROOT)
+  TMP_DIR = File.expand_path('tmp', SPEC_ROOT)
 
   def self.included(base)
     base.instance_eval do
