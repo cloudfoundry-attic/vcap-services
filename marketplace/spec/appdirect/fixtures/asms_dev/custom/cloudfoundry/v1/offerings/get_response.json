@@ -29,7 +29,7 @@
     },
     {
         "label":"asms_dev",
-        "version":"1.0",
+        "version":"2.0",
         "provider":"asms_dev_provider",
         "description":"Activity Streams Engine",
         "plans":[

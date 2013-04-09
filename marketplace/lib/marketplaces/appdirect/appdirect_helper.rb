@@ -68,7 +68,7 @@ module VCAP
 
 
           def load_catalog
-              app_direct_catalog.current_offerings(offering_whitelist)
+            app_direct_catalog.current_offerings(offering_whitelist)
           end
 
           def purchase_service(order)

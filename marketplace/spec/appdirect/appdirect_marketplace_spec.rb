@@ -40,7 +40,7 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
 
     @config[:test_mode] = true # this way we'll use Net::Http rather than OAuthConsumer
 
-    @appdirect = VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace.new(@config)
+    @appdirect = VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace.new(@config.merge(logger: Logger.new('/dev/null')))
   end
 
   it "get_catalog should get Activity Streams in the catalog" do
@@ -52,7 +52,14 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
           @catalog = @appdirect.get_catalog
           @catalog.should_not be_nil
           @catalog.should have(4).keys
-          @catalog["asms_dev-1.0"]["description"].should == "Activity Streams Engine"
+
+          asms_service = @catalog["asms_dev-2.0"]
+          asms_service["id"].should == "asms_dev"
+          asms_service["version"].should == "2.0"
+          asms_service["description"].should == "Activity Streams Engine"
+          asms_service["info_url"].should == "http://appdirect.com/asms_dev"
+          asms_service["plans"].should_not be_empty
+          asms_service["provider"].should == "asms_dev_provider"
         end
         f.resume
       }
@@ -78,26 +85,22 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
         })
 
         f = Fiber.new do
-          puts "Posting: #{provision_req.inspect}"
           receipt = @appdirect.provision_service(provision_req)
           receipt.should_not be_nil
           receipt[:configuration][:name].should == fixture["configuration"]["name"]
           receipt[:service_id].should_not be_nil
           @order_id = receipt[:service_id]
 
-          puts "Now binding the service"
           receipt = @appdirect.bind_service_instance(@order_id, {})
           receipt.should_not be_nil
           receipt[:service_id].should_not be_nil
           @binding_id = receipt[:service_id]
           receipt[:credentials].should_not be_nil
 
-          puts "Now unbinding service - binding_id: #{@binding_id}"
 
           unbind_receipt = @appdirect.unbind_service(@order_id, @binding_id)
           unbind_receipt.should be_true
 
-          puts "Now cancelling the service"
           @cancel_receipt = @appdirect.unprovision_service(@order_id)
           @cancel_receipt.should be_true
         end

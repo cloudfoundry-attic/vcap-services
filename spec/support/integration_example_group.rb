@@ -16,7 +16,7 @@ module IntegrationExampleGroup
         end
       end
       after :each do |example|
-        (example.example.metadata[:components] || []).each do |component|
+        (example.example.metadata[:components] || []).reverse.each do |component|
           component(component).stop
         end
       end

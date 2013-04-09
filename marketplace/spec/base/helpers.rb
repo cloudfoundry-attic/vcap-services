@@ -81,12 +81,10 @@ class MarketplaceGatewayHelper
       post "/services/v1/offerings" do
         svc = JSON.parse(request.body.read)
         @offerings[svc["label"]] = svc
-        puts "\n*#*#*#*#* Registered #{svc["active"] == true ? "*ACTIVE*" : "*INACTIVE*"} offering: #{svc["label"]}\n\n"
         "{}"
       end
 
       get "/proxied_services/v1/offerings" do
-        puts "*#*#*#*#* CC::GET(/proxied_services/v1/offerings): #{request.body.read}"
         Yajl::Encoder.encode({
           :proxied_services => @offerings.values
         })
@@ -126,7 +124,6 @@ class MarketplaceGatewayHelper
         offering["entity"]["service_plans_url"] = "/v2/services/#{svc_uuid}/service_plans"
         @offerings[svc_uuid] = offering
 
-        puts "\n*#*#*#*#* CCNG::Registered #{offering["entity"]["active"] == true ? "*ACTIVE*" : "*INACTIVE*"} offering: #{offering.inspect}\n\n"
         Yajl::Encoder.encode(offering)
       end
 
@@ -140,7 +137,6 @@ class MarketplaceGatewayHelper
         svc_plan["entity"]["service_instances_url"] = "/v2/service_plans/#{svc_plan_uuid}/service_instance"
         svc_plan["entity"]["service_url"] = "/v2/services/#{svc_plan["entity"]["service_guid"]}"
 
-        puts "\n*#*#*#*#* CCNG::Registered Plan: #{svc_plan.inspect}\n\n"
 
         svc_uuid = svc_plan["entity"]["service_guid"]
 
@@ -153,7 +149,6 @@ class MarketplaceGatewayHelper
       end
 
       get "/v2/services" do
-        puts "*#*#*#*#* CCNG::GET(/v2/services):"
         Yajl::Encoder.encode({
           "total_results" => @offerings.size,
           "total_pages"   => 1,
@@ -164,7 +159,6 @@ class MarketplaceGatewayHelper
       end
 
       get "/v2/services/:service_guid/service_plans" do
-        puts "*#*#*#*#* CCNG::GET service plans for service: #{params[:service_guid]}:"
         entries = @offerings[params[:service_guid]]["entity"]["service_plans"]
 
         Yajl::Encoder.encode({
@@ -182,7 +176,7 @@ class MarketplaceGatewayHelper
 
     def initialize(cfg)
       @config = cfg
-      @mpgw = VCAP::Services::Marketplace::MarketplaceServiceGateway.new(@config)
+      @mpgw = VCAP::Services::Marketplace::MarketplaceServiceGateway.new(@config.merge(logger: Logger.new('/dev/null')))
       @server = Thin::Server.new(@config[:host], @config[:port], @mpgw)
     end
 
@@ -229,7 +223,6 @@ class MarketplaceGatewayHelper
     end
 
     def set_last_result(http)
-      puts "Received response: #{http.response_header.status}  - #{http.response.inspect}"
       @last_http_code = http.response_header.status
       @last_response = http.response
     end
@@ -247,7 +240,6 @@ class MarketplaceGatewayHelper
     end
 
     def send_get_request(url, body = nil)
-      puts "Sending request to: #{@base_url}#{url}"
       http = EM::HttpRequest.new("#{@base_url}#{url}").get(gen_req(body))
       http.callback { set_last_result(http) }
       http.errback { set_last_result(http) }
@@ -255,7 +247,6 @@ class MarketplaceGatewayHelper
 
     def set_config(key, value)
       url = "#{@base_url}/marketplace/set/#{key}/#{value}"
-      puts "Sending request to: #{url}"
       http = EM::HttpRequest.new("#{url}").post(gen_req)
       http.callback { set_last_result(http) }
       http.errback { set_last_result(http) }

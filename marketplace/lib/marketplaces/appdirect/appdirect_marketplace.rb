@@ -43,7 +43,7 @@ module VCAP
           def get_catalog
             appdirect_catalog = @helper.load_catalog
             catalog = {}
-            appdirect_catalog.each { |s|
+            appdirect_catalog.map(&:to_hash).each { |s|
               key = "#{s["label"]}_#{s["provider"]}".to_sym
               raise "Mapping missing for whitelisted offering - label: #{s["label"]} / provider: #{s["provider"]}" unless @mapping.keys.include?(key)
 
@@ -57,7 +57,6 @@ module VCAP
               # Setup acls
               # TODO: Use per service offering acls
               acls = @acls
-
               # Setup plans
               plans = {}
               if s["plans"] and s["plans"].count > 0

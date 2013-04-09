@@ -13,14 +13,13 @@ class Mocks
   end
 
   def self.load_fixture(filename, resp = '{}')
-    puts "Loading fixture: #{File.dirname(__FILE__)}/fixtures/#{filename}"
     File.read("#{File.dirname(__FILE__)}/fixtures/#{filename}") rescue resp
   end
 
   class MockEndpoint
     def initialize(scenario)
-      Thin::Logging.debug = true
-      
+      Thin::Logging.silent = true
+
       @server = Thin::Server.new("#{HOST}", PORT, Handler.new(scenario))
     end
 
@@ -43,7 +42,6 @@ class Mocks
 
       get "/*" do
         path = params[:splat]
-        puts "\n*_*_*- Get: #{path[0]}\n"
 
         load_fixture("get", path[0])
       end
@@ -51,7 +49,6 @@ class Mocks
       post "/*" do
         path = params[:splat]
         data = JSON.parse(request.body.read)
-        puts "\n#_#_#- POST: #{path}\n#{data}\n"
 
         load_fixture("post", path[0])
       end
@@ -59,7 +56,6 @@ class Mocks
       delete "/*" do
         path = params[:splat]
         data = JSON.parse(request.body.read)
-        puts "\n^_^_^- DELETE: #{path}\n#{data}\n"
 
         load_fixture("post", path[0])
       end
@@ -72,9 +68,7 @@ class Mocks
 
           fixture = "#{File.dirname(__FILE__)}/fixtures/#{@scenario}#{path}/#{verb}_response.json"
 
-          puts "LOAD Fixture: #{fixture}"
           r = File.read(fixture) rescue resp
-          puts "Fixture loaded: #{r.inspect}"
           r
         end
       end
