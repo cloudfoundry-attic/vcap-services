@@ -20,6 +20,10 @@
    fi
  }
 
+ echo "- Install prequisites..."
+ sudo apt-get install -y build-essential wget realpath
+ handle_error
+
  BASE_DIR=`dirname $0 | xargs realpath`
  source $BASE_DIR/config
 
@@ -29,10 +33,6 @@
  BUILD_LOG=$BASE_DIR/logs/build.log
  mkdir -p $BASE_DIR/tmp
  rm -rf $BASE_DIR/tmp/*
-
- echo "- Install prequisites..."
- sudo apt-get install -y build-essential wget realpath 1>> $BUILD_LOG 2>&1
- handle_error
 
  DIST_DIR=$BASE_DIR/dist/$DIST_NAME
 
