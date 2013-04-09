@@ -1,5 +1,4 @@
 require_relative 'appdirect_error'
-require_relative 'extra_information_fetcher'
 module VCAP
   module Services
     module Marketplace
