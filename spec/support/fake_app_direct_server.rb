@@ -3,16 +3,17 @@ require 'thin'
 require 'httpclient'
 
 class FakeAppDirectServer < Sinatra::Base
-  get '/*' do
-    client = HTTPClient.new
-    response = client.get(['https://dev3cloudfoundry.appdirect.com', *params[:splat]].join('/'))
+  get '/api/custom/cloudfoundry/v1/offerings' do
+    response = File.read File.expand_path(File.join('assets', 'fake_app_direct', 'custom_api_listing.json'))
+    puts "Fake response: #{response}"
 
-    puts "params: #{params.inspect}"
-    puts "response: #{response.inspect}"
-
-    status  response.status
+    status  200
     headers 'Content-Type' => 'application/json'
-    body    response.body
+    body response
+  end
+
+  get '/*' do
+    raise "Requesting a path that is not defined #{params[:splat].join('/')}"
   end
 
 end

@@ -8,7 +8,7 @@ class ComponentRunner < Struct.new(:tmp_dir)
   end
 
   def stop
-    pids.each do |pid|
+    pids.reverse.each do |pid|
       Process.kill "TERM", pid if pid
     end
   end

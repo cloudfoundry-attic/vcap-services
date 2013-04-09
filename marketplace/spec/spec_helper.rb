@@ -74,3 +74,7 @@ def make_logger()
   logger.level = Logger::DEBUG
   logger
 end
+
+def null_object
+  double('null object').as_null_object
+end

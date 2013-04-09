@@ -55,8 +55,6 @@ module VCAP
             "#{label}-#{version}"
           end
         end
-
-
       end
     end
   end
