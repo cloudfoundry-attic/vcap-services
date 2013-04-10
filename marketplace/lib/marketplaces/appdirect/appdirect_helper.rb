@@ -5,7 +5,6 @@ require "fiber"
 
 require_relative "appdirect_error"
 require_relative "offering_whitelist"
-require_relative "app_direct_catalog"
 
 module VCAP
   module Services
