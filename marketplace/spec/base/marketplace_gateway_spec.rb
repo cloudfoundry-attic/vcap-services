@@ -2,9 +2,8 @@
 
 require 'eventmachine'
 
-$:.unshift(File.dirname(__FILE__))
 require_relative '../spec_helper'
-require 'helpers'
+require_relative './helpers'
 require_relative '../do'
 require_relative '../../lib/base/marketplace_gateway'
 require_relative '../../lib/marketplaces/test/test_marketplace'

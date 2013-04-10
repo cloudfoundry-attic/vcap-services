@@ -1,4 +1,3 @@
-$:.unshift(File.dirname(__FILE__))
 require_relative "../spec_helper"
 require_relative "mocks"
 require_relative "../do"
