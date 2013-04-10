@@ -51,13 +51,14 @@ module VCAP::Services::Marketplace::Appdirect
           offerings.first.provider.should == "mongolab-dev"
         end
 
-      it "integrates extra data" do
-        ExtraInformationFetcher.stub(:new).and_return(fetcher)
+        it "integrates extra data" do
+          ExtraInformationFetcher.stub(:new).and_return(fetcher)
 
-        offerings_with_extra_info = double('offerings with extra info')
-        fetcher.should_receive(:fetch_extra_information).and_return(offerings_with_extra_info)
+          offerings_with_extra_info = double('offerings with extra info')
+          fetcher.should_receive(:fetch_extra_information).and_return(offerings_with_extra_info)
 
-        catalog.current_offerings(filter).should == offerings_with_extra_info
+          catalog.current_offerings(filter).should == offerings_with_extra_info
+        end
       end
     end
   end
