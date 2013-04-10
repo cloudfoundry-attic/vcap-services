@@ -104,6 +104,9 @@ GEM
       dm-core (~> 1.1.0)
     dm-migrations (1.1.0)
       dm-core (~> 1.1.0)
+    dm-mysql-adapter (1.1.0)
+      dm-do-adapter (~> 1.1.0)
+      do_mysql (~> 0.10.2)
     dm-serializer (1.1.0)
       dm-core (~> 1.1.0)
       fastercsv (~> 1.5.4)
@@ -124,6 +127,8 @@ GEM
       uuidtools (~> 2.1.2)
     dm-validations (1.1.0)
       dm-core (~> 1.1.0)
+    do_mysql (0.10.12)
+      data_objects (= 0.10.12)
     do_sqlite3 (0.10.12)
       data_objects (= 0.10.12)
     em-http-request (1.0.0.beta.3)
@@ -212,6 +217,7 @@ DEPENDENCIES
   ci_reporter
   curb
   datamapper (>= 0.10.2)
+  dm-mysql-adapter
   dm-sqlite-adapter
   do_sqlite3
   em-http-request
