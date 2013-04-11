@@ -90,7 +90,7 @@ describe "Mysql server node" do
 
   it "should connect to mysql database" do
     EM.run do
-      expect {@node.fetch_pool(@db['name']).with_connection{|connection| connection.query("SELECT 1")}}.should_not raise_error
+      expect {@node.fetch_pool(@db['name']).with_connection{|connection| connection.query("SELECT 1")}}.to_not raise_error
       EM.stop
     end
   end
@@ -111,7 +111,7 @@ describe "Mysql server node" do
     EM.run do
       @db.should be_instance_of Hash
       conn = connect_to_mysql(@db)
-      expect {conn.query("SELECT 1")}.should_not raise_error
+      expect {conn.query("SELECT 1")}.to_not raise_error
       EM.stop
     end
   end
@@ -157,42 +157,42 @@ describe "Mysql server node" do
         end
 
         EM.add_timer(3) do
-          expect {conn.query('SELECT 1')}.should raise_error
+          expect {conn.query('SELECT 1')}.to raise_error
           conn.close
           conn = connect_to_mysql(binding)
           # write privilege should be rovoked.
-          expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
+          expect{ conn.query("insert into test value('test')")}.to raise_error(Mysql2::Error)
           conn = connect_to_mysql(@db)
-          expect{ conn.query("insert into test value('test')")}.should raise_error(Mysql2::Error)
+          expect{ conn.query("insert into test value('test')")}.to raise_error(Mysql2::Error)
           # new binding's write privilege should also be revoked.
           new_binding = node.bind(@db['name'], @default_opts)
           @test_dbs[@db] << new_binding
           new_conn = connect_to_mysql(new_binding)
-          expect { new_conn.query("insert into test value('new_test')")}.should raise_error(Mysql2::Error)
+          expect { new_conn.query("insert into test value('new_test')")}.to raise_error(Mysql2::Error)
           EM.add_timer(3) do
-            expect {conn.query('SELECT 1')}.should raise_error
+            expect {conn.query('SELECT 1')}.to raise_error
             conn.close
             conn = connect_to_mysql(binding)
             conn.query("truncate table test")
             # write privilege should restore
             EM.add_timer(2) do
               conn = connect_to_mysql(binding)
-              expect{ conn.query("insert into test value('test')")}.should_not raise_error
+              expect{ conn.query("insert into test value('test')")}.to_not raise_error
               256.times do
                 content = (0..1022).map{ c[rand(c.size)] }.join
                 conn.query("insert into test value('#{content}')")
               end
 
               EM.add_timer(3) do
-                expect { conn.query('SELECT 1') }.should raise_error
+                expect { conn.query('SELECT 1') }.to raise_error
                 conn.close
                 conn = connect_to_mysql(binding)
-                expect{ conn.query("insert into test value('test')") }.should raise_error(Mysql2::Error)
+                expect{ conn.query("insert into test value('test')") }.to raise_error(Mysql2::Error)
                 conn.query("drop table test")
                 EM.add_timer(2) do
                   conn = connect_to_mysql(binding)
-                  expect { conn.query("create table test(data text)") }.should_not raise_error
-                  expect { conn.query("insert into test value('test')") }.should_not raise_error
+                  expect { conn.query("create table test(data text)") }.to_not raise_error
+                  expect { conn.query("insert into test value('test')") }.to_not raise_error
                   EM.stop
                 end
               end
@@ -218,7 +218,7 @@ describe "Mysql server node" do
         raise "Failed to forge orphan instance: #{service.errors.inspect}"
       end
       EM.run do
-        expect { @node.enforce_storage_quota }.should_not raise_error
+        expect { @node.enforce_storage_quota }.to_not raise_error
         EM.stop
       end
     ensure
@@ -258,7 +258,7 @@ describe "Mysql server node" do
         db = nil
         expect {
           db = @node.provision(mal_plan, nil, @default_version)
-        }.should raise_error(VCAP::Services::Mysql::MysqlError, /Invalid plan .*/)
+        }.to raise_error(VCAP::Services::Mysql::MysqlError, /Invalid plan .*/)
         db.should == nil
         db_num.should == connection.query("show databases;").count
       end
@@ -276,7 +276,7 @@ describe "Mysql server node" do
         expect {
           db = node.provision(@default_plan, nil, @default_version)
           @test_dbs[db] = []
-        }.should_not raise_error
+        }.to_not raise_error
         EM.stop
       end
     end
@@ -285,10 +285,10 @@ describe "Mysql server node" do
   it "should not allow old credential to connect if service is unprovisioned" do
     EM.run do
       conn = connect_to_mysql(@db)
-      expect {conn.query("SELECT 1")}.should_not raise_error
+      expect {conn.query("SELECT 1")}.to_not raise_error
       msg = Yajl::Encoder.encode(@db)
       @node.unprovision(@db["name"], [])
-      expect {connect_to_mysql(@db)}.should raise_error
+      expect {connect_to_mysql(@db)}.to raise_error
       error = nil
       EM.stop
     end
@@ -298,7 +298,7 @@ describe "Mysql server node" do
     EM.run do
       expect {
         @node.unprovision("not-existing", [])
-      }.should raise_error(VCAP::Services::Mysql::MysqlError, /Mysql configuration .* not found/)
+      }.to raise_error(VCAP::Services::Mysql::MysqlError, /Mysql configuration .* not found/)
       # nil input handle
       @node.unprovision(nil, []).should == nil
       EM.stop
@@ -349,7 +349,7 @@ describe "Mysql server node" do
       # try to login using root account
       fake_creds[2]["user"] = "root"
       fake_creds.each do |creds|
-        expect{connect_to_mysql(creds)}.should raise_error
+        expect{connect_to_mysql(creds)}.to raise_error
       end
       EM.stop
     end
@@ -371,7 +371,7 @@ describe "Mysql server node" do
           conn.query("select * from a for update")
           old_killed = node.varz_details[:long_transactions_killed]
           EM.add_timer(opts[:max_long_tx] * 5) {
-            expect {conn.query("select * from a for update")}.should raise_error(Mysql2::Error)
+            expect {conn.query("select * from a for update")}.to raise_error(Mysql2::Error)
             conn.close
             node.varz_details[:long_transactions_killed].should > old_killed
 
@@ -382,7 +382,7 @@ describe "Mysql server node" do
             conn.query("select * from a for update")
             old_counter = node.varz_details[:long_transactions_count]
             EM.add_timer(opts[:max_long_tx] * 5) {
-              expect {conn.query("select * from a for update")}.should_not raise_error(Mysql2::Error)
+              expect {conn.query("select * from a for update")}.to_not raise_error(Mysql2::Error)
               node.varz_details[:long_transactions_count].should > old_counter
               old_counter = node.varz_details[:long_transactions_count]
               EM.add_timer(opts[:max_long_tx] * 5) {
@@ -452,7 +452,7 @@ describe "Mysql server node" do
       binding["password"].should be
       @test_dbs[@db] << binding
       conn = connect_to_mysql(binding)
-      expect {conn.query("Select 1")}.should_not raise_error
+      expect {conn.query("Select 1")}.to_not raise_error
       EM.stop
     end
   end
@@ -473,12 +473,12 @@ describe "Mysql server node" do
       binding = @node.bind(@db["name"], @default_opts)
       @test_dbs[@db] << binding
       conn = nil
-      expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      expect {conn = connect_to_mysql(binding)}.to_not raise_error
       res = @node.unbind(binding)
       res.should be true
-      expect {connect_to_mysql(binding)}.should raise_error
+      expect {connect_to_mysql(binding)}.to raise_error
       # old session should be killed
-      expect {conn.query("SELECT 1")}.should raise_error(Mysql2::Error)
+      expect {conn.query("SELECT 1")}.to raise_error(Mysql2::Error)
       EM.stop
     end
   end
@@ -487,10 +487,10 @@ describe "Mysql server node" do
     EM.run do
       # Crafting an ancient binding credential which is the same as provision credential
       ancient_binding = @db.dup
-      expect { connect_to_mysql(ancient_binding) }.should_not raise_error
+      expect { connect_to_mysql(ancient_binding) }.to_not raise_error
       @node.unbind(ancient_binding)
       # ancient_binding is still valid after unbind
-      expect { connect_to_mysql(ancient_binding) }.should_not raise_error
+      expect { connect_to_mysql(ancient_binding) }.to_not raise_error
       EM.stop
     end
   end
@@ -503,7 +503,7 @@ describe "Mysql server node" do
       @test_dbs[@db] = bindings
       conn = nil
       @node.unprovision(@db["name"], bindings)
-      bindings.each { |binding| expect {connect_to_mysql(binding)}.should raise_error }
+      bindings.each { |binding| expect {connect_to_mysql(binding)}.to raise_error }
       EM.stop
     end
   end
@@ -599,10 +599,10 @@ describe "Mysql server node" do
       @test_dbs[@db] << bind_cred
       @node.disable_instance(@db, [bind_cred])
       # kill existing session
-      expect { conn.query('SELECT 1')}.should raise_error
-      expect { conn2.query('SELECT 1')}.should raise_error
+      expect { conn.query('SELECT 1')}.to raise_error
+      expect { conn2.query('SELECT 1')}.to raise_error
       # delete user
-      expect { connect_to_mysql(bind_cred)}.should raise_error
+      expect { connect_to_mysql(bind_cred)}.to raise_error
       EM.stop
     end
   end
@@ -632,7 +632,7 @@ describe "Mysql server node" do
       sleep 1 if @node.use_warden
       @node.import_instance(db, {}, '/tmp', @default_plan).should == true
       conn = connect_to_mysql(db)
-      expect { conn.query('SELECT 1')}.should_not raise_error
+      expect { conn.query('SELECT 1')}.to_not raise_error
       @tmpfiles << File.join("/tmp", "#{db['name']}.sql")
       @tmpfiles << File.join("/tmp", "#{db['name']}.service")
       EM.stop
@@ -647,7 +647,7 @@ describe "Mysql server node" do
       @test_dbs[db] << binding
       conn = connect_to_mysql(binding)
       @node.disable_instance(db, [binding])
-      expect {conn = connect_to_mysql(binding)}.should raise_error
+      expect {conn = connect_to_mysql(binding)}.to raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
@@ -655,7 +655,7 @@ describe "Mysql server node" do
         }
       }
       @node.enable_instance(db, value).should be_true
-      expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      expect {conn = connect_to_mysql(binding)}.to_not raise_error
       EM.stop
     end
   end
@@ -668,7 +668,7 @@ describe "Mysql server node" do
       @test_dbs[db] << binding
       conn = connect_to_mysql(binding)
       @node.disable_instance(db, [binding])
-      expect {conn = connect_to_mysql(binding)}.should raise_error
+      expect {conn = connect_to_mysql(binding)}.to raise_error
       value = {
         "fake_service_id" => {
           "credentials" => binding,
@@ -677,7 +677,7 @@ describe "Mysql server node" do
       }
       result = @node.update_instance(db, value)
       result.should be_instance_of Array
-      expect {conn = connect_to_mysql(binding)}.should_not raise_error
+      expect {conn = connect_to_mysql(binding)}.to_not raise_error
       EM.stop
     end
   end
@@ -733,7 +733,7 @@ describe "Mysql server node" do
         # drop mysql connection
         node.pool.close
         varz = nil
-        expect {varz = node.varz_details}.should_not raise_error
+        expect {varz = node.varz_details}.to_not raise_error
         varz.should == {}
         EM.stop
       end
@@ -849,8 +849,8 @@ describe "Mysql server node" do
         db = node.provision(@default_plan, nil, @default_version)
         binding = node.bind(db["name"],  @default_opts)
         @test_dbs[db] = [binding]
-        expect { conn = connect_to_mysql(db) }.should_not raise_error
-        expect { conn = connect_to_mysql(binding) }.should_not raise_error
+        expect { conn = connect_to_mysql(db) }.to_not raise_error
+        expect { conn = connect_to_mysql(binding) }.to_not raise_error
         EM.stop
       end
     end
@@ -870,13 +870,13 @@ describe "Mysql server node" do
           node.fetch_pool(@db['name']).with_connection do |conn|
             # simulate connection idle
             sleep (timeout * 5)
-            expect{ conn.query("select 1") }.should raise_error(Mysql2::Error, /MySQL server has gone away/)
+            expect{ conn.query("select 1") }.to raise_error(Mysql2::Error, /MySQL server has gone away/)
           end
           # client side timeout
           node.fetch_pool(@db['name']).with_connection do |conn|
             # override server side timeout
             conn.query("set @@wait_timeout=10")
-            expect{ conn.query("select sleep(5)") }.should raise_error(Mysql2::Error, /Timeout/)
+            expect{ conn.query("select sleep(5)") }.to raise_error(Mysql2::Error, /Timeout/)
           end
         ensure
           # restore original timeout
@@ -899,11 +899,11 @@ describe "Mysql server node" do
           # server side timeout
           node.fetch_pool(@db['name']).with_connection do |conn|
             sleep (5)
-            expect{ conn.query("select 1") }.should_not raise_error
+            expect{ conn.query("select 1") }.to_not raise_error
           end
           # client side timeout
           node.fetch_pool(@db['name']).with_connection do |conn|
-            expect{ conn.query("select sleep(5)") }.should_not raise_error
+            expect{ conn.query("select sleep(5)") }.to_not raise_error
           end
         ensure
           # restore original timeout

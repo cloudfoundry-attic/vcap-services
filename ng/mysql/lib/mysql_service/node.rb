@@ -760,6 +760,15 @@ class VCAP::Services::Mysql::Node
     }
   end
 
+  def get_host
+    host = @mysql_configs.values.first['host']
+    if ['localhost', '127.0.0.1'].include?(host)
+      super
+    else
+      host
+    end
+  end
+
   def each_connection
     each_connection_with_identifier { |conn, identifier| yield conn }
   end

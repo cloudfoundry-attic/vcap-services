@@ -59,7 +59,7 @@ describe 'Mysql Provisioner Test' do
 
   it "should define score node method" do
     @provisioner.respond_to?("node_score").should be true
-    lambda {@provisioner.node_score(nil)}.should_not raise_error
+    expect {@provisioner.node_score(nil)}.to_not raise_error
     res = @provisioner.node_score({'available_capacity' => 5})
     res.should == 5
   end

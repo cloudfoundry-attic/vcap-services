@@ -33,7 +33,7 @@ describe 'Mysql Connection Pool Test' do
 
   it "should provide mysql connections" do
     @pool.with_connection do |conn|
-      expect {conn.query("select 1")}.should_not raise_error
+      expect {conn.query("select 1")}.to_not raise_error
     end
   end
 
@@ -71,7 +71,7 @@ describe 'Mysql Connection Pool Test' do
     end
 
     pool.with_connection do |conn|
-      expect{conn.query("select 1")}.should_not raise_error
+      expect{conn.query("select 1")}.to_not raise_error
     end
   end
 
@@ -116,12 +116,12 @@ describe 'Mysql Connection Pool Test' do
     error = Mysql2::Error.new("Can't connect to mysql")
     Mysql2::Client.should_receive(:new).and_raise(error)
 
-    expect{ pool.with_connection{|conn| conn.query("select 1")} }.should raise_error(Mysql2::Error, /Can't connect to mysql/)
+    expect{ pool.with_connection{|conn| conn.query("select 1")} }.to raise_error(Mysql2::Error, /Can't connect to mysql/)
 
     # Ensure that we can still checkout from the pool
     mock_client.should_receive(:ping).and_return(true)
     mock_client.should_receive(:query).with("select 1").and_return(true)
-    expect{ pool.with_connection{|conn| conn.query("select 1")} }.should_not raise_error
+    expect{ pool.with_connection{|conn| conn.query("select 1")} }.to_not raise_error
   end
 
   it "should raise error when pool is still empty after timeout second" do
