@@ -37,7 +37,7 @@ module VCAP
                 blurb:    extra_attributes.fetch('listing').fetch('blurb'),
               }
             }
-            instance_variable_set(:@extra, Yajl::Encoder.encode(extra))
+            @extra = Yajl::Encoder.encode(extra)
           end
         end
       end
