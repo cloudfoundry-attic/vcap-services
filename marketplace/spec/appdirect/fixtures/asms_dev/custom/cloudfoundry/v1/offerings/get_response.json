@@ -11,6 +11,7 @@
                 "free": true
             }
         ],
+        "external_id": 1,
         "info_url":"http://appdirect.com/mongolab_dev"
     },
     {
@@ -25,6 +26,7 @@
                 "free":true
             }
         ],
+        "external_id": 2,
         "info_url":"http://appdirect.com/mongolab"
     },
     {
@@ -39,6 +41,7 @@
                 "free":true
             }
         ],
+        "external_id": 3,
         "info_url":"http://appdirect.com/asms_dev"
     },
     {
@@ -53,6 +56,7 @@
                 "free":true
             }
         ],
+        "external_id": 4,
         "info_url":"http://appdirect.com/james_dev"
     }
 ]

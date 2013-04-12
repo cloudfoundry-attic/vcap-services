@@ -4,6 +4,7 @@ require "json"
 require "fiber"
 
 require_relative "appdirect_error"
+require_relative "app_direct_catalog"
 require_relative "offering_whitelist"
 
 module VCAP

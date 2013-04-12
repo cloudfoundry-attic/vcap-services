@@ -14,6 +14,8 @@ require "json"
 require "logger"
 require "yaml"
 require "fileutils"
+require "webmock"
+require "webmock/rspec"
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "..", "..")
 
@@ -78,4 +80,8 @@ end
 
 def null_object
   double('null object').as_null_object
+end
+
+RSpec.configure do |config|
+  WebMock.disable_net_connect!(:allow_localhost => true)
 end

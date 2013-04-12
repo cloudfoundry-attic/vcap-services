@@ -4,8 +4,8 @@
 }, "listing":{
     "myAppLogoIconUrl":"https://d1nhas6nmo4088.cloudfront.net/app_resources/8/myAppIcon/img8023142038710253794.png",
     "imageUrl":"https://d1nhas6nmo4088.cloudfront.net/app_resources/8/thumbs_64/img5812856031129637219.png",
-    "profileImageUrl":"https://d1nhas6nmo4088.cloudfront.net/app_resources/8/thumbs_112/img2994250744718675120.png",
-    "blurb":"Cloud hosted and managed MongoDB",
+    "profileImageUrl":"https://example.com/profileImageUrl",
+    "blurb":"MongoDB is WEB SCALE",
     "overview":"MongoLab is the cloud-hosted MongoDB solution you've been looking for! MongoLab provides everything you need to make managing your databases and data remarkably easy.",
     "rating":null,
     "reviewCount":0

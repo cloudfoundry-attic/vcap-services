@@ -12,6 +12,14 @@ class FakeAppDirectServer < Sinatra::Base
     body response
   end
 
+  get '/api/marketplace/v1/products/8' do
+    response = File.read File.expand_path(File.join('assets', 'fake_app_direct', 'public_mongo_details.json'))
+    puts "Fake response: #{response}"
+    status  200
+    headers 'Content-Type' => 'application/json'
+    body response
+  end
+
   get '/*' do
     raise "Requesting a path that is not defined #{params[:splat].join('/')}"
   end

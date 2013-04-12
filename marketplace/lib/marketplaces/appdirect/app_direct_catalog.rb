@@ -6,13 +6,13 @@ module VCAP
     module Marketplace
       module Appdirect
 
-        class AppDirectCatalog < Struct.new(:api_host, :client, :logger)
+        class AppDirectCatalog < Struct.new(:api_host, :authenticated_client, :logger)
           OFFERINGS_PATH = "api/custom/cloudfoundry/v1/offerings"
 
           def current_offerings(filter)
             url = "#{api_host}/#{OFFERINGS_PATH}"
             logger.debug("Getting service listing from: #{url}")
-            http_status, response_body = client.call("get", url, nil, nil)
+            http_status, response_body = authenticated_client.call("get", url, nil, nil)
 
             if http_status == 200
               service_attributes = JSON.parse(response_body)

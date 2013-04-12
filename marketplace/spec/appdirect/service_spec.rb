@@ -1,8 +1,5 @@
 require_relative "../spec_helper"
 require "marketplaces/appdirect/service"
-require "webmock"
-require 'webmock/rspec'
-
 
 module VCAP::Services::Marketplace::Appdirect
   describe Service do
@@ -63,16 +60,17 @@ module VCAP::Services::Marketplace::Appdirect
         end
 
         it "returns Services with the given attributes" do
-          Service.with_extra_info(all_attributes, json_client, api_host).should have(1).items
+          services = Service.with_extra_info(all_attributes, api_host, json_client)
+          services.should have(1).items
         end
 
         it "gets extra information from the AppDirect catalog API" do
           json_client.should_receive(:get).with("#{api_host}/api/marketplace/v1/products/#{service_external_id}")
-          Service.with_extra_info(all_attributes, json_client, api_host)
+          Service.with_extra_info(all_attributes, api_host, json_client)
         end
 
         it "merges the extra information to the service attributes" do
-          services = Service.with_extra_info(all_attributes, json_client, api_host)
+          services = Service.with_extra_info(all_attributes, api_host, json_client)
           extra = Yajl::Parser.parse(services.first.extra)
 
           extra.fetch('provider').fetch('name').should == 'mongolab'

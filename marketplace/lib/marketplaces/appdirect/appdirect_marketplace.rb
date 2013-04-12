@@ -10,14 +10,15 @@ module VCAP
   module Services
     module Marketplace
       module Appdirect
-        class AppdirectMarketplace < VCAP::Services::Marketplace::Base
 
+        class AppdirectMarketplace < VCAP::Services::Marketplace::Base
           include VCAP::Services::Base::Error
           include VCAP::Services::Marketplace::Appdirect
 
+          attr_reader :helper, :name_and_provider_resolver
+
           def initialize(opts)
             super(opts)
-
             @logger       = opts[:logger]
             @external_uri = opts[:external_uri]
             @node_timeout = opts[:node_timeout]
@@ -26,6 +27,8 @@ module VCAP
             @mapping      = opts[:offering_mapping] || {}
 
             @cc_api_version = opts[:cc_api_version]
+
+            @name_and_provider_resolver = NameAndProviderResolver.new(@mapping)
 
             # Maintain a reverse mapping since we'll be changing the service name for CC advertisement
             # A provision request will require the actual service name rather than the one in CCDB
@@ -40,23 +43,14 @@ module VCAP
             "AppDirect"
           end
 
+
           def get_catalog
-            appdirect_catalog = @helper.load_catalog
+            appdirect_catalog = helper.load_catalog
             catalog = {}
             appdirect_catalog.map(&:to_hash).each { |s|
-              key = "#{s["label"]}_#{s["provider"]}".to_sym
-              raise "Mapping missing for whitelisted offering - label: #{s["label"]} / provider: #{s["provider"]}" unless @mapping.keys.include?(key)
-
-              mapping  = @mapping[key]
-              name     = mapping[:cc_name]
-              provider = mapping[:cc_provider]
-
+              name, provider = name_and_provider_resolver.resolve(s['label'], s['provider'])
               version = s["version"] || "1.0" # UNTIL AD fixes this...
               key = key_for_service(name, version, provider)
-
-              # Setup acls
-              # TODO: Use per service offering acls
-              acls = @acls
               # Setup plans
               plans = {}
               if s["plans"] and s["plans"].count > 0
@@ -73,9 +67,10 @@ module VCAP
                 "info_url"    => s["info_url"],
                 "plans"       => plans,
                 "provider"    => provider,
-                "acls"        => acls,
+                "acls"        => @acls,
                 "url"         => @external_uri,
                 "timeout"     => @node_timeout,
+                "extra"       => s['extra'],
                 "tags"        => [], # unused in ccng, in cc a non-null value to allow tags clone during bind
               }
             }

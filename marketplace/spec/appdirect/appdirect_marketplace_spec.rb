@@ -5,10 +5,71 @@ require_relative "../../lib/marketplaces/appdirect/appdirect_marketplace"
 require_relative "../../lib/marketplaces/appdirect/appdirect_helper"
 require_relative "../../lib/marketplaces/appdirect/appdirect_error"
 
-require "fiber"
-
 describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
 
+  let(:mock_helper) { double("helper", load_catalog: services) }
+  let(:services) { [asms_service] }
+
+  let(:asms_service) {
+    VCAP::Services::Marketplace::Appdirect::Service.new(
+     'description' => "Activity Streams Engine",
+     'external_id' => "asms_dev",
+     'label'       => 'label',
+     'provider'    => 'asms_provider',
+     'plans'       => [],
+     'version'     => '2.0',
+     'info_url'    => 'http://example.com/asms_dev'
+    )
+   }
+
+  before do
+    VCAP::Services::Marketplace::Appdirect::AppdirectHelper.stub(new: mock_helper)
+    VCAP::Services::Marketplace::Appdirect::NameAndProviderResolver.stub(new: name_and_provider_resolver)
+  end
+
+  let(:name_and_provider_resolver) do
+    double('resolver', resolve: ['asms', 'asms_provider'])
+  end
+
+  subject(:appdirect_marketplace) do
+    options = {
+      appdirect: {
+        endpoint: 'endpoint',
+        key: 'k',
+        secret: 's',
+      },
+    }
+    described_class.new(options)
+  end
+
+  it "creates a AppdirectHelper with options" do
+    VCAP::Services::Marketplace::Appdirect::AppdirectHelper.should_receive(:new).with(kind_of(Hash), anything)
+    appdirect_marketplace
+  end
+
+  it "creates a NameAndProviderResolver" do
+    VCAP::Services::Marketplace::Appdirect::NameAndProviderResolver.should_receive(:new).with(kind_of(Hash))
+    appdirect_marketplace
+  end
+
+  describe "#get_catalog" do
+    it "does something useful" do
+      catalog = appdirect_marketplace.get_catalog
+      catalog.should_not be_nil
+      catalog.should have(1).keys
+
+      asms_service = catalog["asms-2.0"]
+      asms_service["id"].should == "asms"
+      asms_service["version"].should == "2.0"
+      asms_service["description"].should == "Activity Streams Engine"
+      asms_service["info_url"].should == "http://example.com/asms_dev"
+      asms_service["plans"].should be_empty
+      asms_service["provider"].should == "asms_provider"
+    end
+  end
+end
+
+describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
   include Do
 
   before :all do
@@ -40,30 +101,6 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
     @config[:test_mode] = true # this way we'll use Net::Http rather than OAuthConsumer
 
     @appdirect = VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace.new(@config.merge(logger: Logger.new('/dev/null')))
-  end
-
-  it "get_catalog should get Activity Streams in the catalog" do
-    EM.run do
-      mep = nil
-      Do.at(0) { mep = Mocks.create_mock_endpoint("asms_dev/") }
-      Do.at(1) {
-        f = Fiber.new do
-          @catalog = @appdirect.get_catalog
-          @catalog.should_not be_nil
-          @catalog.should have(4).keys
-
-          asms_service = @catalog["asms_dev-2.0"]
-          asms_service["id"].should == "asms_dev"
-          asms_service["version"].should == "2.0"
-          asms_service["description"].should == "Activity Streams Engine"
-          asms_service["info_url"].should == "http://appdirect.com/asms_dev"
-          asms_service["plans"].should_not be_empty
-          asms_service["provider"].should == "asms_dev_provider"
-        end
-        f.resume
-      }
-      Do.at(2) { mep.stop; EM.stop }
-    end
   end
 
   it "should be able to purchase, bind, unbind and cancel service" do

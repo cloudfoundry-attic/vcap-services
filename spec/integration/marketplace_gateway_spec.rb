@@ -8,6 +8,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
   end
 
   it "the market gateways populate CC only with whitelisted services"
+
   it 'populates CC with AppDirect services', components: [:ccng, :marketplace]  do
     services_response = nil
     # retry a few times, since the service may not advertise offerings immediately
@@ -16,6 +17,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
       break if services_response.fetch('resources').any?
       sleep 0.5
     end
+
     services_response.fetch('resources').should have(1).entry
     entity = services_response.fetch('resources').first.fetch('entity')
     entity.fetch('label').should == 'mongodb'
