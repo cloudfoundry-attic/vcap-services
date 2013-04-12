@@ -50,18 +50,6 @@
                 "description":"Small",
                 "free":false,
                 "external_id":"addonOffering_99"
-            },
-            {
-                "id":"medium",
-                "description":"Medium",
-                "free":false,
-                "external_id":"addonOffering_100"
-            },
-            {
-                "id":"large",
-                "description":"Large",
-                "free":false,
-                "external_id":"addonOffering_101"
             }
         ],
         "external_id":"8",
