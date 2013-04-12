@@ -11,12 +11,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
 
   it 'populates CC with AppDirect services', components: [:ccng, :marketplace]  do
     services_response = nil
-    # retry a few times, since the service may not advertise offerings immediately
-    20.times do
-      services_response = ccng_get('/v2/services')
-      break if services_response.fetch('resources').any?
-      sleep 0.5
-    end
+    services_response = get_contents('/v2/services')
 
     services_response.fetch('resources').should have(1).entry
     service = services_response.fetch('resources').first.fetch('entity')
@@ -32,12 +27,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
 
     plans_url = service.fetch("service_plans_url")
 
-    plans = nil
-    10.times do
-      plans = ccng_get(plans_url)
-      break if plans.fetch('resources').any?
-      sleep 0.5
-    end
+    plans = get_contents(plans_url)
 
     plans.fetch("total_results").should eq(2)
     plan_names = plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
@@ -45,5 +35,14 @@ describe 'Marketplace Gateway - AppDirect integration' do
       "free",
       "small",
     ])
+  end
+
+  def get_contents(ccng_path)
+    10.times do
+      content = ccng_get(ccng_path)
+      return content if content.fetch('resources').any?
+      sleep 0.5
+    end
+    raise 'Did not have the contents'
   end
 end
