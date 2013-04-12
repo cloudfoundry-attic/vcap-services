@@ -13,14 +13,7 @@ module VCAP
             services = attributes.collect { |attrs| new(attrs) }
             services.each do |service|
               service_details = json_client.get("#{api_host}/api/marketplace/v1/products/#{service.external_id}")
-              extra = {
-                provider: { name: service.provider },
-                listing: {
-                  imageUrl: service_details.fetch('listing').fetch('profileImageUrl'),
-                  blurb:    service_details.fetch('listing').fetch('blurb'),
-                }
-              }
-              service.instance_variable_set(:@extra, Yajl::Encoder.encode(extra))
+              service.assign_extra_information(service_details)
             end
           end
 
@@ -34,6 +27,17 @@ module VCAP
             (INITIAL_FIELDS+PUBLIC_API_FIELDS).each.with_object({}) do |field, hash|
               hash[field] = public_send(field)
             end
+          end
+
+          def assign_extra_information(extra_attributes)
+            extra = {
+              provider: { name: provider },
+              listing: {
+                imageUrl: extra_attributes.fetch('listing').fetch('profileImageUrl'),
+                blurb:    extra_attributes.fetch('listing').fetch('blurb'),
+              }
+            }
+            instance_variable_set(:@extra, Yajl::Encoder.encode(extra))
           end
         end
       end
