@@ -11,7 +11,9 @@ module VCAP
   module Services
     module Marketplace
       module Appdirect
+
         class AppdirectHelper
+          include VCAP::Services::Base::Error
 
           SERVICES_PATH = "custom/cloudfoundry/v1/services"
 

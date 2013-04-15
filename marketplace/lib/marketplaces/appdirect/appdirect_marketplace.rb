@@ -2,6 +2,8 @@
 require 'fiber'
 require 'service_error'
 require_relative 'appdirect_helper'
+require_relative 'name_and_provider_resolver'
+require_relative 'appdirect_error'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', '..', '..')
 require 'base/marketplace_base'
@@ -29,14 +31,6 @@ module VCAP
             @cc_api_version = opts[:cc_api_version]
 
             @name_and_provider_resolver = NameAndProviderResolver.new(@mapping)
-
-            # Maintain a reverse mapping since we'll be changing the service name for CC advertisement
-            # A provision request will require the actual service name rather than the one in CCDB
-            @service_id_map = {}
-            @mapping.keys.each { |ad_key|
-              cc_key = "#{@mapping[ad_key][:cc_name]}_#{@mapping[ad_key][:cc_provider]}".to_sym
-              @service_id_map[cc_key] = ad_key
-            }
           end
 
           def name
@@ -48,7 +42,7 @@ module VCAP
             appdirect_catalog = helper.load_catalog
             catalog = {}
             appdirect_catalog.map(&:to_hash).each { |s|
-              name, provider = name_and_provider_resolver.resolve(s['label'], s['provider'])
+              name, provider = name_and_provider_resolver.resolve_from_appdirect_to_cc(s['label'], s['provider'])
               version = s["version"] || "1.0" # UNTIL AD fixes this...
               key = key_for_service(name, version, provider)
               # Setup plans
@@ -82,38 +76,30 @@ module VCAP
           def provision_service(request_body)
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
             id,version = request.label.split("-")
-
-            cc_key = "#{id}_#{request.provider}".to_sym
-            raise "Mapping does not exist for: #{cc_key.to_s}" unless @service_id_map.keys.include?(cc_key)
-
-            ad_key = @service_id_map[cc_key]
-            raise "Requested mapping for unknown label: #{name} / provider: #{provider}" unless @mapping.keys.include?(ad_key)
-
-            mapping  = @mapping[ad_key]
-            name     = mapping[:ad_name]
-            provider = mapping[:ad_provider]
-
             @logger.debug("Provision request for offering: #{request.label} (id=#{id}) provider=#{request.provider}, plan=#{request.plan}, version=#{request.version}")
 
+            name, provider = name_and_provider_resolver.resolve_from_cc_to_appdirect(id, request.provider)
             email = "#{request.space_guid}@cloudfoundry.com" # Generate fake email to allow AD to create accounts in ISV website
-            order = {
+
+            receipt = @helper.purchase_service(
               "space" => {
                 "uuid"  => request.space_guid,
                 "organization" => {
-                  "uuid" => request.organization_guid
+                  "uuid" => request.organization_guid,
                 },
-                "email" => email
+                "email" => email,
               },
               "offering" => {
                 "label"    => name,
-                "provider" => provider
+                "provider" => provider,
               },
               "configuration" => {
-                "plan" => request.plan,
+                "plan" => {
+                  "id" => request.plan,
+                },
                 "name" => request.name,
               }
-            }
-            receipt = @helper.purchase_service(order)
+            )
 
             @logger.debug("AppDirect service provisioned #{receipt.inspect}")
             credentials = receipt["credentials"] || {}

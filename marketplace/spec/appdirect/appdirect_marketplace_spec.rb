@@ -27,19 +27,24 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
     VCAP::Services::Marketplace::Appdirect::NameAndProviderResolver.stub(new: name_and_provider_resolver)
   end
 
+  let(:ad_provider) { 'asms_provider' }
+  let(:ad_label)    { 'asms' }
   let(:name_and_provider_resolver) do
-    double('resolver', resolve: ['asms', 'asms_provider'])
+    double('resolver',
+           resolve_from_appdirect_to_cc: ['asms', 'asms_provider'],
+           resolve_from_cc_to_appdirect: [ad_label, ad_provider]
+          )
   end
 
   subject(:appdirect_marketplace) do
-    options = {
+    described_class.new(
       appdirect: {
         endpoint: 'endpoint',
         key: 'k',
         secret: 's',
       },
-    }
-    described_class.new(options)
+      logger: null_object
+    )
   end
 
   it "creates a AppdirectHelper with options" do
@@ -66,6 +71,40 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
       asms_service["plans"].should be_empty
       asms_service["provider"].should == "asms_provider"
     end
+  end
+
+  describe "#provision_service" do
+    let(:request) do
+      VCAP::Services::Api::GatewayProvisionRequest.new(
+        label: 'mongo-dev',
+        name: 'mongo name',
+        plan: 'free',
+        email: '',
+        version: '',
+        space_guid: 'space-guid',
+        organization_guid: 'organization-guid'
+      )
+    end
+    let(:request_body) { request.encode }
+
+    it "sends correct messages to the helper" do
+      mock_helper.should_receive(:purchase_service).
+        with do |opts|
+          opts['space']['uuid'].should == request.space_guid
+          opts['space']['organization']['uuid'].should == request.organization_guid
+          opts['space']['email'].should ==  "#{request.space_guid}@cloudfoundry.com"
+          opts['offering']['label'].should ==  ad_label
+          opts['offering']['provider'].should ==  ad_provider
+          opts['configuration']['plan']['id'].should == request.plan
+          opts['configuration']['name'].should == request.name
+        end.
+        and_return(
+          'credentials' => {},
+          'id'          => 'receipt_id'
+        )
+      appdirect_marketplace.provision_service(request_body)
+    end
+
   end
 end
 
