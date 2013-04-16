@@ -20,10 +20,8 @@ module VCAP
           marketplace_lib_path = File.join(File.dirname(__FILE__), '..', 'marketplaces', opts[:marketplace])
           @logger.info("Loading marketplace: #{opts[:marketplace]} from: #{marketplace_lib_path}")
 
-          $LOAD_PATH.unshift(marketplace_lib_path)
           Dir[marketplace_lib_path + '/*.rb'].each do |file|
-            f = File.basename(file, File.extname(file))
-            require f
+            require File.join(marketplace_lib_path, File.basename(file, File.extname(file)))
           end
 
           # To minimize the amount of marketplace-specific code, the config file specifies the class that
