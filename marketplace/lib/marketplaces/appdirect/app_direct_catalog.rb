@@ -6,7 +6,7 @@ module VCAP
     module Marketplace
       module Appdirect
 
-        class AppDirectCatalog < Struct.new(:api_host, :authenticated_client, :logger)
+        AppDirectCatalog = Struct.new(:api_host, :authenticated_client, :logger) do
           OFFERINGS_PATH = "api/custom/cloudfoundry/v1/offerings"
 
           def current_offerings(filter)
