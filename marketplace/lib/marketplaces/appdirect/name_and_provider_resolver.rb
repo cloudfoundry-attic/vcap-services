@@ -1,5 +1,5 @@
 module VCAP::Services::Marketplace::Appdirect
-  class NameAndProviderResolver < Struct.new(:offering_mappings)
+  NameAndProviderResolver = Struct.new(:offering_mappings) do
     def resolve_from_appdirect_to_cc(ad_label, ad_provider)
       mapping  = offering_mappings.fetch(build_key(ad_label, ad_provider))
       return mapping[:cc_name],  mapping[:cc_provider]
