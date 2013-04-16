@@ -28,6 +28,7 @@ module VCAP::Services::Marketplace::Appdirect
       end
 
       it "passes the filtered results to Service to have more information" do
+        pending "Until we can properly fetch extra information from the catalog"
         services_with_extra_info = double('services with extra info')
         Service.should_receive(:with_extra_info).with(filter_response, api_host).and_return(services_with_extra_info)
         catalog.current_offerings(filter).should == services_with_extra_info
