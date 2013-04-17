@@ -2,16 +2,10 @@
 
 require 'eventmachine'
 
-require_relative '../spec_helper'
-require_relative './helpers'
-require_relative '../do'
-require_relative '../../lib/base/marketplace_gateway'
-require_relative '../../lib/marketplaces/test/test_marketplace'
+require_relative '../../spec_helper'
+require 'base/marketplace_gateway'
 
 describe "MarketplaceGateway" do
-
-  include Do
-
   it "should add service offerings from marketplace" do
     EM.run do
       cc = nil

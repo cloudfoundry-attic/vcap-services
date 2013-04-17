@@ -1,4 +1,4 @@
-require_relative '../spec_helper'
+require_relative '../../../spec_helper'
 require 'marketplaces/appdirect/json_http_client'
 
 module VCAP::Services::Marketplace::Appdirect

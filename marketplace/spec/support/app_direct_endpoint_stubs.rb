@@ -1,4 +1,4 @@
-class Mocks
+class AppDirectEndpointStubs
   HOST = "127.0.0.1"
   PORT = 15000
 
@@ -13,7 +13,7 @@ class Mocks
   end
 
   def self.load_fixture(filename, resp = '{}')
-    File.read("#{File.dirname(__FILE__)}/fixtures/#{filename}") rescue resp
+    File.read("#{File.dirname(__FILE__)}/app_direct_endpoint_fixtures/#{filename}") rescue resp
   end
 
   class MockEndpoint
@@ -65,11 +65,7 @@ class Mocks
         def load_fixture(verb, path, resp = '{}')
           # Remove api/ from path
           path = path[4, path.size-4]
-
-          fixture = "#{File.dirname(__FILE__)}/fixtures/#{@scenario}#{path}/#{verb}_response.json"
-
-          r = File.read(fixture) rescue resp
-          r
+          AppDirectEndpointStubs.load_fixture("#{@scenario}#{path}/#{verb}_response.json", resp)
         end
       end
 

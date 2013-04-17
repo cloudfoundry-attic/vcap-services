@@ -1,4 +1,4 @@
-require_relative "../spec_helper"
+require_relative "../../../spec_helper"
 require "marketplaces/appdirect/app_direct_catalog"
 
 module VCAP::Services::Marketplace::Appdirect

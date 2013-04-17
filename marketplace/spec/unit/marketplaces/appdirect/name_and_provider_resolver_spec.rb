@@ -1,4 +1,4 @@
-require_relative "../spec_helper"
+require_relative "../../../spec_helper"
 require "marketplaces/appdirect/name_and_provider_resolver"
 
 describe VCAP::Services::Marketplace::Appdirect::NameAndProviderResolver do

@@ -17,6 +17,10 @@ require "fileutils"
 require "webmock"
 require "webmock/rspec"
 
+Dir.glob(File.expand_path('../support/*.rb', __FILE__)) do |file|
+  require file.gsub(/\.rb$/, '')
+end
+
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), "..", "..", "..")
 
 module VCAP
