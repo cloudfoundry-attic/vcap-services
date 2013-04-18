@@ -35,7 +35,20 @@ module VCAP::Services::Marketplace::Appdirect
         result.should == parsed_json
       end
 
-      it "propagates the error when connection fails"
+      it "logs failure" do
+        stub_request(:any, url).to_return(body: 'Go home!', status: 401)
+        fake_logger = double
+        subject.instance_variable_set(:@logger, fake_logger)
+
+        fake_logger.should_receive(:warn).with(/#{url}.*401.*Go home!/)
+
+        EventMachine.run_block do
+          Fiber.new do
+            json_http_client.get(url)
+          end.resume
+        end
+
+      end
     end
   end
 end

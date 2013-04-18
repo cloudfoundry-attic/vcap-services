@@ -17,7 +17,7 @@ module VCAP
             if http_status == 200
               service_attributes = JSON.parse(response_body)
               service_attributes = filter.filter(service_attributes)
-              service_attributes.map {|attrs| Service.new(attrs) }
+              Service.with_extra_info(service_attributes, api_host)
             else
               logger.error("Failed to get catalog #{http_status}")
               raise AppdirectError.new(AppdirectError::APPDIRECT_ERROR_GET_LISTING, http_status)
