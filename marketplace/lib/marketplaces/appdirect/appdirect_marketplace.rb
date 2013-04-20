@@ -49,7 +49,11 @@ module VCAP
               plans = {}
               if s["plans"] and s["plans"].count > 0
                 s["plans"].each do |plan|
-                  plans[plan["id"]] = { :description => plan["description"], :free => plan["free"] }
+                  plans[plan["id"]] = {
+                    :description => plan["description"],
+                    :free => plan["free"],
+                    :extra => plan["extra"].to_json
+                  }
                 end
               end
 

@@ -1,13 +1,15 @@
+require_relative 'plan'
 module VCAP
   module Services
     module Marketplace
       module Appdirect
         class Service
-          INITIAL_FIELDS      = %w(label provider description plans version info_url external_id)
+          INITIAL_FIELDS      = %w(label provider description version info_url external_id)
           PUBLIC_API_FIELDS   = %w(extra)
 
           attr_reader *INITIAL_FIELDS
           attr_reader *PUBLIC_API_FIELDS
+          attr_reader :plans
 
           def self.with_extra_info(attributes, api_host, json_client=JsonHttpClient.new)
             services = attributes.collect { |attrs| new(attrs) }
@@ -18,6 +20,8 @@ module VCAP
           end
 
           def initialize(attributes)
+            plans_attrs = attributes.delete('plans')
+            @plans = plans_attrs.collect {|plan_attrs| Plan.new(plan_attrs)}
             INITIAL_FIELDS.each do |field|
               instance_variable_set("@#{field}", attributes.fetch(field))
             end
@@ -26,7 +30,7 @@ module VCAP
           def to_hash
             (INITIAL_FIELDS+PUBLIC_API_FIELDS).each.with_object({}) do |field, hash|
               hash[field] = public_send(field)
-            end
+            end.merge('plans' => plans.collect(&:to_hash))
           end
 
           def assign_extra_information(extra_attributes)
@@ -38,6 +42,9 @@ module VCAP
               }
             }
             @extra = Yajl::Encoder.encode(extra)
+            plans.each do |plan|
+              plan.assign_extra_information(extra_attributes.fetch('addonOfferings'))
+            end
           end
         end
       end

@@ -35,6 +35,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
       "free",
       "small",
     ])
+    plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
   def get_contents(ccng_path)

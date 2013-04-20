@@ -24,7 +24,8 @@
     "phone":null,
     "knowledgebaseUrl":null,
     "description":null
-}, "privacyUrl":null, "termsUrl":null, "resources":[], "screenshots":[], "addonOfferings":[
+}, "privacyUrl":null, "termsUrl":null, "resources":[], "screenshots":[], 
+"addonOfferings":[
     {
         "id":98,
         "name":"Free",

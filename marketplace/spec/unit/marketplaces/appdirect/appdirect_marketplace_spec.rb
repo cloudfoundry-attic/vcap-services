@@ -5,17 +5,23 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
   let(:mock_helper) { double("helper", load_catalog: services) }
   let(:services) { [asms_service] }
 
-  let(:asms_service) {
-    VCAP::Services::Marketplace::Appdirect::Service.new(
-     'description' => "Activity Streams Engine",
-     'external_id' => "asms_dev",
-     'label'       => 'label',
-     'provider'    => 'asms_provider',
-     'plans'       => [],
-     'version'     => '2.0',
-     'info_url'    => 'http://example.com/asms_dev'
-    )
-   }
+  let(:asms_service) do
+    stub('Service', to_hash: {
+      'description' => "Activity Streams Engine",
+      'external_id' => "asms_dev",
+      'label'       => 'label',
+      'provider'    => 'asms_provider',
+      'plans'       => [{
+        "id" => "free",
+        "description" => "Free",
+        "free" => true,
+        'extra' => 'extra information',
+        "external_id" => "addonOffering_98",
+      }],
+      'version'     => '2.0',
+      'info_url'    => 'http://example.com/asms_dev'
+    })
+  end
 
   before do
     VCAP::Services::Marketplace::Appdirect::AppdirectHelper.stub(new: mock_helper)
@@ -53,8 +59,9 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
   end
 
   describe "#get_catalog" do
-    it "does something useful" do
-      catalog = appdirect_marketplace.get_catalog
+    let(:catalog) { appdirect_marketplace.get_catalog }
+
+    it "does the mapping from objects to primitives" do
       catalog.should_not be_nil
       catalog.should have(1).keys
 
@@ -63,8 +70,14 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
       asms_service["version"].should == "2.0"
       asms_service["description"].should == "Activity Streams Engine"
       asms_service["info_url"].should == "http://example.com/asms_dev"
-      asms_service["plans"].should be_empty
       asms_service["provider"].should == "asms_provider"
+    end
+
+    it "contains plans information" do
+      asms_service = catalog["asms-2.0"]
+      asms_service['plans'].should == {"free" => {:description=>"Free",
+                                                  :free=>true,
+                                                  :extra=>"extra information".to_json}}
     end
   end
 

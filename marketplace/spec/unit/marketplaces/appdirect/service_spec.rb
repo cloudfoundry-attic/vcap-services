@@ -23,14 +23,8 @@ module VCAP::Services::Marketplace::Appdirect
               "id" => "free",
               "description" => "Free",
               "free" => true,
-              "external_id" => "addonOffering_1",
+              "external_id" => "addonOffering_98",
             },
-            {
-              "id" => "large",
-              "description" => "Large",
-              "free" => false,
-              "external_id" => "addonOffering_4",
-            }
           ],
         }
       end
@@ -45,18 +39,72 @@ module VCAP::Services::Marketplace::Appdirect
         end
       end
 
-      context 'fetching extra information' do
-        let(:json_attributes) do
-          {
-            'listing' => {
-              'profileImageUrl' => 'https://example.com/mongo-stuff.png',
-              'blurb' => 'WEBSCALE!!!!11!'
+      let(:public_api_service_attributes) do
+        {
+          'listing' => {
+            'profileImageUrl' => 'https://example.com/mongo-stuff.png',
+            'blurb' => 'WEBSCALE!!!!11!'
+          },
+          "addonOfferings" => [
+            {
+              "id" => 98,
+              "name" => "Free",
+              "code" => "mongodb => mongolab:free",
+              "description" => "Free",
+              "descriptionHtml" => "Free",
+              "status" => "ACTIVE",
+              "stacked" => true,
+              "paymentPlans" => [
+                {
+                  "id" => 190,
+                  "frequency" => "MONTHLY",
+                  "contract" => {
+                    "blockSwitchToShorterContract" => false,
+                    "blockContractDowngrades" => false,
+                    "blockContractUpgrades" => false,
+                  },
+                  "allowCustomUsage" => false,
+                  "keepBillDateOnUsageChange" => false,
+                  "separatePrepaid" => false,
+                  "costs" => [
+                    {
+                      "unit" => "NOT_APPLICABLE",
+                      "minUnits" => 0E-10,
+                      "maxUnits" => nil,
+                      "meteredUsage" => false,
+                      "increment" => nil,
+                      "pricePerIncrement" => false,
+                      "amounts" => [
+                        {
+                          "currency" => "USD",
+                          "value" => 20
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
             }
-          }
+          ]
+        }
+      end
+
+      context 'fetching service extra information' do
+        before do
+          json_client.stub(:get).and_return(public_api_service_attributes)
         end
 
-        before do
-          json_client.stub(:get).and_return(json_attributes)
+        describe "#to_hash" do
+          it "has right keys" do
+            service = Service.with_extra_info(all_attributes, api_host, json_client).first
+            service.to_hash.keys.should =~ %w[label provider extra description external_id version info_url plans]
+          end
+
+          it "expresses plans as an array of hashes" do
+            service = Service.with_extra_info(all_attributes, api_host, json_client).first
+            plan = service.to_hash.fetch('plans').first
+            plan.should be_a Hash
+          end
         end
 
         it "returns Services with the given attributes" do
@@ -76,6 +124,19 @@ module VCAP::Services::Marketplace::Appdirect
           extra.fetch('provider').fetch('name').should == 'mongolab'
           extra.fetch('listing').fetch('imageUrl').should == 'https://example.com/mongo-stuff.png'
           extra.fetch('listing').fetch('blurb').should == 'WEBSCALE!!!!11!'
+        end
+      end
+
+      context 'fetching addon plans extra information' do
+
+        before do
+          json_client.stub(:get).and_return(public_api_service_attributes)
+        end
+
+        it 'populates "extra" correctly' do
+          service = Service.with_extra_info(all_attributes, api_host, json_client).first
+          extra = service.plans.first.extra
+          extra.fetch('cost').should == 20.00
         end
       end
     end
