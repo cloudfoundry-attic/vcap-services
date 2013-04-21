@@ -3,6 +3,10 @@ module CcngClient
     make_ccng_request(:post, resource_path, body_hash)
   end
 
+  def ccng_delete(resource_path)
+    make_ccng_request(:delete, resource_path)
+  end
+
   def ccng_put(resource_path, body_hash)
     make_ccng_request(:put, resource_path, body_hash)
   end
