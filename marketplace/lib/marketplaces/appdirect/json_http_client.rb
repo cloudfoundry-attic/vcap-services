@@ -17,9 +17,11 @@ module VCAP
             Fiber.yield
 
             if SUCCESS_STATUS_RANGE.cover? http.response_header.status
-              return Yajl::Parser.parse(http.response)
+              logger.debug("JsonHttpClient#get(#{url.inspect}) succeeded with status #{http.response_header.status.inspect}, body #{http.response[0..50]} (truncated at 50chars)")
+              Yajl::Parser.parse(http.response)
             else
               logger.warn("JsonHttpClient#get(#{url.inspect}) failed with status #{http.response_header.status.inspect}, body #{http.response.inspect}")
+              http.response_header.status   # returns http status on failure
             end
           end
         end

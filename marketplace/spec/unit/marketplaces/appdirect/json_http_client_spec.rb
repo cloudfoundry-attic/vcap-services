@@ -44,7 +44,7 @@ module VCAP::Services::Marketplace::Appdirect
 
         EventMachine.run_block do
           Fiber.new do
-            json_http_client.get(url)
+            json_http_client.get(url).should == 401
           end.resume
         end
 

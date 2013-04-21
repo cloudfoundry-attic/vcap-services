@@ -125,6 +125,15 @@ module VCAP::Services::Marketplace::Appdirect
           extra.fetch('listing').fetch('imageUrl').should == 'https://example.com/mongo-stuff.png'
           extra.fetch('listing').fetch('blurb').should == 'WEBSCALE!!!!11!'
         end
+
+        it "returns the basic info only when extra information cannot be found" do
+          json_client.stub(:get).and_return(404)
+          services = Service.with_extra_info(all_attributes, api_host, json_client)
+          extra = Yajl::Parser.parse(services.first.extra)
+
+          extra.fetch('provider').fetch('name').should == 'mongolab'
+          extra['listing'].should be_nil
+        end
       end
 
       context 'fetching addon plans extra information' do

@@ -4,8 +4,8 @@ module VCAP
     module Marketplace
       module Appdirect
         class Service
-          INITIAL_FIELDS      = %w(label provider description version info_url external_id)
-          PUBLIC_API_FIELDS   = %w(extra)
+          INITIAL_FIELDS = %w(label provider description version info_url external_id)
+          PUBLIC_API_FIELDS = %w(extra)
 
           attr_reader *INITIAL_FIELDS
           attr_reader *PUBLIC_API_FIELDS
@@ -21,7 +21,8 @@ module VCAP
 
           def initialize(attributes)
             plans_attrs = attributes.delete('plans')
-            @plans = plans_attrs.collect {|plan_attrs| Plan.new(plan_attrs)}
+            @plans = plans_attrs.collect { |plan_attrs| Plan.new(plan_attrs) }
+            @extra = Yajl::Encoder.encode({})
             INITIAL_FIELDS.each do |field|
               instance_variable_set("@#{field}", attributes.fetch(field))
             end
@@ -35,16 +36,22 @@ module VCAP
 
           def assign_extra_information(extra_attributes)
             extra = {
-              provider: { name: provider },
-              listing: {
-                imageUrl: extra_attributes.fetch('listing').fetch('profileImageUrl'),
-                blurb:    extra_attributes.fetch('listing').fetch('blurb'),
-              }
+                provider: {name: provider}
             }
-            @extra = Yajl::Encoder.encode(extra)
-            plans.each do |plan|
-              plan.assign_extra_information(extra_attributes.fetch('addonOfferings'))
+
+            if extra_attributes.respond_to?(:fetch)
+              extra.merge!(
+                  listing: {
+                      imageUrl: extra_attributes.fetch('listing').fetch('profileImageUrl'),
+                      blurb: extra_attributes.fetch('listing').fetch('blurb'),
+                  }
+              )
+
+              plans.each do |plan|
+                plan.assign_extra_information(extra_attributes.fetch('addonOfferings'))
+              end
             end
+            @extra = Yajl::Encoder.encode(extra)
           end
         end
       end
