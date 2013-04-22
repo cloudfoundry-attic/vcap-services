@@ -24,6 +24,8 @@ resque:
   port: 5454
 download_url_template: http://dl.vcap.me/serialized/%{service}/%{name}/snapshots/%{snapshot_id}?token=%{token}
 
+cc_api_version: v2
+
 plan_management:
   plans:
     free:
