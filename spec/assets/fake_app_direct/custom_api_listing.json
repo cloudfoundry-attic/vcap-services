@@ -465,7 +465,7 @@
     },
     {
         "label":"SendGrid",
-        "provider":"christophe.levesque's Company",
+        "provider":"SendGrid",
         "version":"n/a",
         "description":"SMTP service by SendGrid",
         "plans":[

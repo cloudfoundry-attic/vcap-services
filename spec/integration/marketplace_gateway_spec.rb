@@ -10,32 +10,30 @@ describe 'Marketplace Gateway - AppDirect integration' do
   it "the market gateways populate CC only with whitelisted services"
 
   it 'populates CC with AppDirect services', components: [:ccng, :marketplace]  do
-    services_response = nil
     services_response = get_contents('/v2/services')
 
-    services_response.fetch('resources').should have(1).entry
-    service = services_response.fetch('resources').first.fetch('entity')
-    service.fetch('label').should == 'mongodb'
-    service.fetch('provider').should == 'mongolab'
+    services_response.fetch('resources').should have(2).entry
+    mongo_service = services_response.fetch('resources').find {|resource| resource.fetch('entity').fetch('label') == 'mongodb'}.fetch('entity')
+    mongo_service.fetch('provider').should == 'mongolab'
 
-    service.fetch('extra').should_not be_nil
-    extra_information = JSON.parse(service.fetch('extra'))
+    mongo_service.fetch('extra').should_not be_nil
+    extra_information = JSON.parse(mongo_service.fetch('extra'))
 
     extra_information.fetch('provider').fetch('name').should == 'mongolab'
     extra_information.fetch('listing').fetch('imageUrl').should == "https://example.com/profileImageUrl"
     extra_information.fetch('listing').fetch('blurb').should == "MongoDB is WEB SCALE"
 
-    plans_url = service.fetch("service_plans_url")
+    plans_url = mongo_service.fetch("service_plans_url")
 
-    plans = get_contents(plans_url)
+    mongo_plans = get_contents(plans_url)
 
-    plans.fetch("total_results").should eq(2)
-    plan_names = plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
-    plan_names.should match_array([
+    mongo_plans.fetch("total_results").should eq(2)
+    mongo_plan_names = mongo_plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
+    mongo_plan_names.should match_array([
       "free",
       "small",
     ])
-    plans.fetch('resources').first.fetch('entity').fetch('extra').should be
+    mongo_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
   def get_contents(ccng_path)

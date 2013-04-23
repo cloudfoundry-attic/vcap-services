@@ -1,4 +1,4 @@
-require_relative 'plan'
+require_relative 'plan_factory'
 module VCAP
   module Services
     module Marketplace
@@ -21,7 +21,7 @@ module VCAP
 
           def initialize(attributes)
             plans_attrs = attributes.delete('plans')
-            @plans = plans_attrs.collect { |plan_attrs| Plan.new(plan_attrs) }
+            @plans = plans_attrs.collect { |plan_attrs| PlanFactory.build(plan_attrs) }
             @extra = Yajl::Encoder.encode({})
             INITIAL_FIELDS.each do |field|
               instance_variable_set("@#{field}", attributes.fetch(field))
@@ -41,14 +41,14 @@ module VCAP
 
             if extra_attributes.respond_to?(:fetch)
               extra.merge!(
-                  listing: {
-                      imageUrl: extra_attributes.fetch('listing').fetch('profileImageUrl'),
-                      blurb: extra_attributes.fetch('listing').fetch('blurb'),
-                  }
+                listing: {
+                  imageUrl: extra_attributes.fetch('listing').fetch('profileImageUrl'),
+                  blurb: extra_attributes.fetch('listing').fetch('blurb'),
+                }
               )
 
               plans.each do |plan|
-                plan.assign_extra_information(extra_attributes.fetch('addonOfferings'))
+                plan.assign_extra_information(extra_attributes)
               end
             end
             @extra = Yajl::Encoder.encode(extra)

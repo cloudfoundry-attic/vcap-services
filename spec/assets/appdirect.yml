@@ -10,7 +10,7 @@ appdirect:
   key:    "k"
   secret: "s"
 
-offering_whitelist: [ "mongodb_mongolab" ]
+offering_whitelist: [ "mongodb_mongolab", "SendGrid_SendGrid" ]
 
 offering_mapping:
   mongodb_mongolab:
@@ -18,3 +18,9 @@ offering_mapping:
     cc_provider: mongolab
     ad_name: mongodb
     ad_provider: mongolab
+  SendGrid_SendGrid:
+    cc_name: SendGrid
+    cc_provider: SendGrid
+    ad_name: SendGrid
+    ad_provider: SendGrid
+

@@ -24,21 +24,10 @@ module VCAP::Services::Marketplace::Appdirect
               "description" => "Free",
               "free" => true,
               "external_id" => "addonOffering_98",
-            },
-          ],
+            }
+          ]
         }
       end
-
-      let(:api_host){ 'http://example.com' }
-      let(:json_client) { double('http client') }
-
-      describe "#external_id" do
-        it "returns correctly" do
-          service = Service.new(attributes)
-          service.external_id.should == service_external_id
-        end
-      end
-
       let(:public_api_service_attributes) do
         {
           'listing' => {
@@ -89,6 +78,18 @@ module VCAP::Services::Marketplace::Appdirect
         }
       end
 
+      let(:api_host){ 'http://example.com' }
+      let(:json_client) { double('http client') }
+
+      describe "#external_id" do
+        it "returns correctly" do
+          service = Service.new(attributes)
+          service.external_id.should == service_external_id
+        end
+      end
+
+
+
       context 'fetching service extra information' do
         before do
           json_client.stub(:get).and_return(public_api_service_attributes)
@@ -137,7 +138,6 @@ module VCAP::Services::Marketplace::Appdirect
       end
 
       context 'fetching addon plans extra information' do
-
         before do
           json_client.stub(:get).and_return(public_api_service_attributes)
         end
