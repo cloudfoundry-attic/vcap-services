@@ -23,6 +23,31 @@ module VCAP::Services::Marketplace::Appdirect
     end
 
     describe "fetching extra information from public service description" do
+      let(:extra_information_without_usd_pricing) do
+        {
+          'addonOfferings' => [
+            {
+              'id'  => 18,
+              'paymentPlans' => [
+                {
+                  'id' => 190,
+                  'frequency' => 'MONTHLY',
+                  'costs' => [
+                    {
+                      'amounts' => [
+                        {
+                          'currency' => 'AUD',
+                          'value' => 30
+                        },
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      end
       let(:extra_information) do
         {
           'addonOfferings' => [
@@ -56,6 +81,10 @@ module VCAP::Services::Marketplace::Appdirect
                       'pricePerIncrement' => false,
                       'amounts' => [
                         {
+                          'currency' => 'AUD',
+                          'value' => 30
+                        },
+                        {
                           'currency' => 'USD',
                           'value' => 20
                         }
@@ -84,8 +113,14 @@ module VCAP::Services::Marketplace::Appdirect
           subject.to_hash.fetch('extra').keys.should =~ %w(cost bullets)
         end
 
-        it "fetches the cost and bullets from addon attributes" do
+        it "fetches the cost in USD from addon attributes" do
           subject.extra.fetch('cost').should == 20.00
+        end
+
+        it "raises error when no USD pricing info is available" do
+          expect {
+            subject.assign_extra_information(extra_information_without_usd_pricing)
+          }.to raise_error /A USD pricing is required/
         end
 
         it "uses the descriptionHtml as the bullets" do

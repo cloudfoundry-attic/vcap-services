@@ -30,9 +30,11 @@ module VCAP::Services::Marketplace::Appdirect
       addons_attr_list = extra_information.fetch('addonOfferings')
       addon_attrs = addon_attrs(addons_attr_list)
       payment_plan = addon_attrs.fetch('paymentPlans').first
-      extra['cost'] = payment_plan.fetch('costs').first.
-        fetch('amounts').first.
-        fetch('value').to_f
+      pricing_in_usd = payment_plan.fetch('costs').first.
+        fetch('amounts').find {|cost| cost.fetch('currency') == 'USD'}
+
+      raise ArgumentError, "A USD pricing is required" unless pricing_in_usd
+      extra['cost'] = pricing_in_usd.fetch('value').to_f
 
       extra['bullets'] = [addon_attrs.fetch('descriptionHtml')]
     end
