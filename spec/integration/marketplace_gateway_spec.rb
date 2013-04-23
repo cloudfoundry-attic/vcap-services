@@ -10,9 +10,9 @@ describe 'Marketplace Gateway - AppDirect integration' do
   it "the market gateways populate CC only with whitelisted services"
 
   it 'populates CC with AppDirect services', components: [:ccng, :marketplace]  do
-    services_response = get_contents('/v2/services')
-
-    services_response.fetch('resources').should have(2).entry
+    services_response = wait_for('/v2/services') do |response|
+      response.fetch('resources').size == 2
+    end
 
     mongo_service = find_service_from_response(services_response, 'mongodb')
     mongo_service.fetch('provider').should == 'mongolab'
@@ -29,10 +29,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
     mongo_plans = get_contents(plans_url)
     mongo_plans.fetch("total_results").should eq(2)
     mongo_plan_names = mongo_plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
-    mongo_plan_names.should match_array([
-      "free",
-      "small",
-    ])
+    mongo_plan_names.should match_array([ "free", "small"])
     mongo_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
 
     sendgrid_service = find_service_from_response(services_response, 'SendGrid')
@@ -40,6 +37,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
     sendgrid_plans.fetch("total_results").should eq(1)
     sendgrid_plan_names = sendgrid_plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
     sendgrid_plan_names.should == ["SENDGRID"]
+    sendgrid_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
   def find_service_from_response(response, service_label)
@@ -55,5 +53,16 @@ describe 'Marketplace Gateway - AppDirect integration' do
       sleep 0.5
     end
     raise 'Did not have the contents after a while'
+  end
+
+  def wait_for(path, &predicate)
+    10.times do
+      content = ccng_get(path)
+      if predicate.yield(content)
+        return content
+      end
+      sleep 0.5
+    end
+    raise "predicate never satisfied"
   end
 end
