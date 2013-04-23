@@ -470,7 +470,7 @@
         "description":"SMTP service by SendGrid",
         "plans":[
             {
-                "id":"FREE",
+                "id":"SENDGRID",
                 "description":"Free Package",
                 "free":true,
                 "external_id":"edition_85"

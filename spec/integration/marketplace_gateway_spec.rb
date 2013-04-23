@@ -13,7 +13,8 @@ describe 'Marketplace Gateway - AppDirect integration' do
     services_response = get_contents('/v2/services')
 
     services_response.fetch('resources').should have(2).entry
-    mongo_service = services_response.fetch('resources').find {|resource| resource.fetch('entity').fetch('label') == 'mongodb'}.fetch('entity')
+
+    mongo_service = find_service_from_response(services_response, 'mongodb')
     mongo_service.fetch('provider').should == 'mongolab'
 
     mongo_service.fetch('extra').should_not be_nil
@@ -26,7 +27,6 @@ describe 'Marketplace Gateway - AppDirect integration' do
     plans_url = mongo_service.fetch("service_plans_url")
 
     mongo_plans = get_contents(plans_url)
-
     mongo_plans.fetch("total_results").should eq(2)
     mongo_plan_names = mongo_plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
     mongo_plan_names.should match_array([
@@ -34,6 +34,18 @@ describe 'Marketplace Gateway - AppDirect integration' do
       "small",
     ])
     mongo_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
+
+    sendgrid_service = find_service_from_response(services_response, 'SendGrid')
+    sendgrid_plans = get_contents(sendgrid_service.fetch('service_plans_url'))
+    sendgrid_plans.fetch("total_results").should eq(1)
+    sendgrid_plan_names = sendgrid_plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
+    sendgrid_plan_names.should == ["SENDGRID"]
+  end
+
+  def find_service_from_response(response, service_label)
+    response.fetch('resources').
+      map {|resource| resource.fetch("entity")}.
+      find {|entity| entity.fetch('label') == service_label } || raise("Not found service with specified label #{service_label}")
   end
 
   def get_contents(ccng_path)
