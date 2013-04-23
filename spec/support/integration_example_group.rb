@@ -55,8 +55,8 @@ module IntegrationExampleGroup
 
   def create_service_auth_token(label, service_token)
     ccng_post("/v2/service_auth_tokens",
-              {label: label, provider:'core', token: service_token}
-             )
+      {label: label, provider:'core', token: service_token}
+    )
   end
 
   def cleanup_mysql_dbs
