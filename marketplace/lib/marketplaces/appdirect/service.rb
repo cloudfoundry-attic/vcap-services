@@ -1,4 +1,6 @@
 require_relative 'plan_factory'
+require_relative 'json_http_client'
+
 module VCAP
   module Services
     module Marketplace
