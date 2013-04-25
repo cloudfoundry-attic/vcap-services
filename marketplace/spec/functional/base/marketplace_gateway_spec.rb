@@ -3,7 +3,7 @@
 require 'eventmachine'
 
 require_relative '../../spec_helper'
-require 'base/marketplace_gateway'
+require 'base/marketplace_service_gateway'
 
 describe "MarketplaceGateway" do
   it "should add service offerings from marketplace" do

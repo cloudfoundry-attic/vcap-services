@@ -9,7 +9,7 @@ require 'vcap_services_base'
 require 'optparse'
 
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
-require 'base/marketplace_gateway'
+require 'base/marketplace_service_gateway'
 
 class VCAP::Services::Marketplace::Gateway < VCAP::Services::Base::Gateway
 
