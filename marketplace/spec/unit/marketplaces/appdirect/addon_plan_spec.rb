@@ -51,14 +51,11 @@ module VCAP::Services::Marketplace::Appdirect
       let(:extra_information) do
         {
           'addonOfferings' => [
-            {
-              'id'  => 19,
-            },
-
+            { 'id'  => 19, },
             {
               'id'  => 18,
               'code' => 'this is not the real code',
-              'descriptionHtml'  => 'description HTML',
+              'descriptionHtml'  => description_html,
               'paymentPlans' => [
                 {
                   'id' => 190,
@@ -98,6 +95,8 @@ module VCAP::Services::Marketplace::Appdirect
         }
       end
 
+      let(:description_html) { 'description HTML' }
+
       it "correctly selects the one with matching id" do
         addon_attrs = subject.addon_attrs(extra_information["addonOfferings"])
         addon_attrs.fetch('id').should == 18
@@ -123,8 +122,22 @@ module VCAP::Services::Marketplace::Appdirect
           }.to raise_error /A USD pricing is required/
         end
 
-        it "uses the descriptionHtml as the bullets" do
-          subject.extra.fetch('bullets').should == ['description HTML']
+        describe "the bullets key" do
+          context "when there is a descriptionHtml value in the AppDirect catalog" do
+            let(:description_html) { 'description HTML' }
+
+            it "uses the descriptionHtml" do
+              subject.extra.fetch('bullets').should == ['description HTML']
+            end
+          end
+
+          context "when the descriptionHtml value is null" do
+            let(:description_html) { nil }
+
+            it "makes bullets an empty array" do
+              subject.extra.fetch('bullets').should == []
+            end
+          end
         end
       end
     end

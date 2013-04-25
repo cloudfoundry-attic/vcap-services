@@ -34,7 +34,7 @@ module VCAP::Services::Marketplace::Appdirect
       raise ArgumentError, "A USD pricing is required" unless pricing_in_usd
       @extra = {
         'cost'    => pricing_in_usd.fetch('value').to_f,
-        'bullets' => [addon_attrs.fetch('descriptionHtml')],
+        'bullets' => Array( addon_attrs.fetch('descriptionHtml') ),
       }
     end
   end
