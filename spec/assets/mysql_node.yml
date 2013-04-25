@@ -13,7 +13,7 @@ pid: /tmp/mysql_node.pid
 node_id: mysql_node_100_1
 supported_versions: ['5.5']
 default_version: '5.5'
-max_db_size: 20
+max_db_size: 1  # 1mb
 max_long_query: 3
 max_long_tx: 30
 kill_long_tx: true
