@@ -34,6 +34,9 @@ module VCAP::Services::Marketplace::Appdirect
             'profileImageUrl' => 'https://example.com/mongo-stuff.png',
             'blurb' => 'WEBSCALE!!!!11!'
           },
+          "provider" => {
+            "name" => "ObjectLabs"
+          },
           "addonOfferings" => [
             {
               "id" => 98,
@@ -92,7 +95,9 @@ module VCAP::Services::Marketplace::Appdirect
 
       context 'fetching service extra information' do
         before do
-          json_client.stub(:get).and_return(public_api_service_attributes)
+          json_client.stub(:get).and_return(
+            double(:response, body: public_api_service_attributes, successful?: true)
+          )
         end
 
         describe "#to_hash" do
@@ -120,26 +125,33 @@ module VCAP::Services::Marketplace::Appdirect
 
         it "merges the extra information to the service attributes" do
           services = Service.with_extra_info(all_attributes, api_host, json_client)
-          extra = Yajl::Parser.parse(services.first.extra)
+          extra = services.first.extra
 
-          extra.fetch('provider').fetch('name').should == 'mongolab'
+          extra.fetch('provider').fetch('name').should == 'ObjectLabs'
           extra.fetch('listing').fetch('imageUrl').should == 'https://example.com/mongo-stuff.png'
           extra.fetch('listing').fetch('blurb').should == 'WEBSCALE!!!!11!'
         end
 
-        it "returns the basic info only when extra information cannot be found" do
-          json_client.stub(:get).and_return(404)
-          services = Service.with_extra_info(all_attributes, api_host, json_client)
-          extra = Yajl::Parser.parse(services.first.extra)
+        context "when extra information cannot be found" do
+          before do
+            json_client.stub(:get).and_return(
+              double(:response, successful?: false, status: 404)
+            )
+          end
 
-          extra.fetch('provider').fetch('name').should == 'mongolab'
-          extra['listing'].should be_nil
+          it "returns the basic info only" do
+            services = Service.with_extra_info(all_attributes, api_host, json_client)
+
+            services.first.extra.should be_nil
+          end
         end
       end
 
       context 'fetching addon plans extra information' do
         before do
-          json_client.stub(:get).and_return(public_api_service_attributes)
+          json_client.stub(:get).and_return(
+            double(:response, successful?: true, body: public_api_service_attributes)
+          )
         end
 
         it 'populates "extra" correctly' do

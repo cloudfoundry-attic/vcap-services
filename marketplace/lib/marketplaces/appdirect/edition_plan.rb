@@ -3,7 +3,11 @@ module VCAP::Services::Marketplace::Appdirect
     def initialize(attrs)
       whitelist = %w(id description free external_id)
       @attributes = attrs.select {|attr, _| whitelist.include?(attr)}
-      @attributes['extra'] = {}
+      @attributes['extra'] = nil
+    end
+
+    def extra
+      @attributes['extra']
     end
 
     def to_hash
@@ -23,9 +27,10 @@ module VCAP::Services::Marketplace::Appdirect
         fetch('amounts').find {|cost| cost.fetch('currency') == 'USD'}
       raise ArgumentError, "A USD pricing is required" unless pricing_in_usd
 
-      attributes.fetch('extra')['cost'] = pricing_in_usd.fetch('value').to_f
-
-      attributes.fetch('extra')['bullets'] = edition_attrs.fetch('bullets')
+      attributes['extra'] = {
+        'cost'    => pricing_in_usd.fetch('value').to_f,
+        'bullets' => edition_attrs.fetch('bullets'),
+      }
     end
 
     private

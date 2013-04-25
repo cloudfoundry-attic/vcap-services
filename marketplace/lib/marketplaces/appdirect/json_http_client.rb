@@ -3,7 +3,23 @@ module VCAP
     module Marketplace
       module Appdirect
         class JsonHttpClient
-          SUCCESS_STATUS_RANGE = 200..299
+          class Response
+            SUCCESS_STATUS_RANGE = 200..299
+
+            attr_reader :body, :raw_body, :status
+            def initialize(status, raw_body)
+              @status = status
+              @raw_body = raw_body
+
+              if successful?
+                @body = Yajl::Parser.parse(raw_body)
+              end
+            end
+
+            def successful?
+              SUCCESS_STATUS_RANGE.cover? status
+            end
+          end
 
           def logger
             @logger ||= VCAP::Logging.logger(File.basename($0))
@@ -16,14 +32,22 @@ module VCAP
             http.errback { f.resume }
             Fiber.yield
 
-            if SUCCESS_STATUS_RANGE.cover? http.response_header.status
-              logger.debug("JsonHttpClient#get(#{url.inspect}) succeeded with status #{http.response_header.status.inspect}, body #{http.response[0..50]} (truncated at 50chars)")
-              Yajl::Parser.parse(http.response)
+            response = Response.new(http.response_header.status, http.response)
+            log_response(url, response)
+
+            response
+          end
+
+          private
+
+          def log_response(url, response)
+            if response.successful?
+              logger.debug("JsonHttpClient#get(#{url.inspect}) succeeded with status #{response.status.inspect}, body #{response.raw_body[0..50]} (truncated at 50chars)")
             else
-              logger.warn("JsonHttpClient#get(#{url.inspect}) failed with status #{http.response_header.status.inspect}, body #{http.response.inspect}")
-              http.response_header.status   # returns http status on failure
+              logger.warn("JsonHttpClient#get(#{url.inspect}) failed with status #{response.status.inspect}, body #{response.raw_body.inspect}")
             end
           end
+
         end
       end
     end

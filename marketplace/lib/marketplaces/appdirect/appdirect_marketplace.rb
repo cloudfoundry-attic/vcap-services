@@ -68,7 +68,7 @@ module VCAP
                 "acls"        => @acls,
                 "url"         => @external_uri,
                 "timeout"     => @node_timeout,
-                "extra"       => s['extra'],
+                "extra"       => s['extra'].to_json,
                 "tags"        => [], # unused in ccng, in cc a non-null value to allow tags clone during bind
               }
             }

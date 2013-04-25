@@ -42,12 +42,11 @@ module VCAP::Services::Marketplace::Appdirect
               ], api_host)
 
               service = services.fetch(0)
-              Yajl::Parser.parse(service.extra).should == {
-                "provider" => { "name" => "objectlabs" }
-              }
-
-              p service.plans
-              service.plans.first.extra.should == {}
+              service.extra.should be_nil
+              service.plans.should have(2).entries
+              service.plans.each do |plan|
+                plan.extra.should be_nil
+              end
 
               EM.stop
             end.resume

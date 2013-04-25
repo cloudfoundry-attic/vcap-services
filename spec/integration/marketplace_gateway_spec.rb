@@ -20,7 +20,7 @@ describe 'Marketplace Gateway - AppDirect integration' do
     mongo_service.fetch('extra').should_not be_nil
     extra_information = JSON.parse(mongo_service.fetch('extra'))
 
-    extra_information.fetch('provider').fetch('name').should == 'mongolab'
+    extra_information.fetch('provider').fetch('name').should == 'ObjectLabs'
     extra_information.fetch('listing').fetch('imageUrl').should == "https://example.com/profileImageUrl"
     extra_information.fetch('listing').fetch('blurb').should == "MongoDB is WEB SCALE"
 

@@ -16,8 +16,8 @@ module VCAP::Services::Marketplace::Appdirect
       context 'key "extra"' do
         let(:hash) { plan.to_hash.fetch('extra') }
 
-        it "has empty extra be default" do
-          hash.should == {}
+        it "has nil extra be default" do
+          hash.should be_nil
         end
       end
     end

@@ -12,6 +12,12 @@ module VCAP::Services::Marketplace::Appdirect
       )
     }
 
+    describe "#extra" do
+      it "defaults to nil" do
+        plan.extra.should be_nil
+      end
+    end
+
     describe '#to_hash' do
       it 'has the right keys' do
         hash = subject.to_hash
@@ -24,15 +30,15 @@ module VCAP::Services::Marketplace::Appdirect
           'description' => 'an awesome plan',
           'free' => false,
           'external_id' => 'edition_85',
-          'extra' => {}
+          'extra' => nil
         })
       end
 
       context 'key "extra"' do
         let(:hash) { plan.to_hash.fetch('extra') }
 
-        it "has empty extra be default" do
-          hash.should == {}
+        it "has nil extra be default" do
+          hash.should be_nil
         end
       end
     end

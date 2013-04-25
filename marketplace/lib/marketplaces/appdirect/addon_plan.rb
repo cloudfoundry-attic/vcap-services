@@ -2,14 +2,12 @@ module VCAP::Services::Marketplace::Appdirect
   class AddonPlan
     INITIAL_FIELDS = %w(id description free external_id)
     PUBLIC_API_FIELDS = %w(extra)
-    attr_reader *INITIAL_FIELDS
-    attr_reader *PUBLIC_API_FIELDS
+    attr_reader *INITIAL_FIELDS, *PUBLIC_API_FIELDS
 
     def initialize(attrs)
       INITIAL_FIELDS.each do |field|
         instance_variable_set("@#{field}", attrs.fetch(field))
       end
-      @extra = {}
     end
 
     def to_hash
@@ -34,9 +32,10 @@ module VCAP::Services::Marketplace::Appdirect
         fetch('amounts').find {|cost| cost.fetch('currency') == 'USD'}
 
       raise ArgumentError, "A USD pricing is required" unless pricing_in_usd
-      extra['cost'] = pricing_in_usd.fetch('value').to_f
-
-      extra['bullets'] = [addon_attrs.fetch('descriptionHtml')]
+      @extra = {
+        'cost'    => pricing_in_usd.fetch('value').to_f,
+        'bullets' => [addon_attrs.fetch('descriptionHtml')],
+      }
     end
   end
 end
