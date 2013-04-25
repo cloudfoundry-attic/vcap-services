@@ -46,6 +46,7 @@ describe "Shared multi-tenant MySQL", components: [:ccng, :mysql] do
   it "can unbind a service instance" do
     binding_response = bind_service
     ccng_delete("/v2/service_bindings/#{binding_response.fetch("metadata").fetch("guid")}")
+    conn_string = get_creds(binding_response)
     expect {
       Sequel.connect(conn_string) do |conn|
         conn.run("CREATE TABLE ponies(hay INTEGER)")
@@ -60,7 +61,7 @@ describe "Shared multi-tenant MySQL", components: [:ccng, :mysql] do
     ccng_get("/v2/spaces/#{space_guid}/service_instances").fetch("total_results").should == 0
   end
 
-  it "prevents further writes after quota exceeded" do
+  it "prevents further writes after quota exceeded then allows writes after quota obeyed" do
     conn_string = get_creds(bind_service)
     # create table
     # loop
