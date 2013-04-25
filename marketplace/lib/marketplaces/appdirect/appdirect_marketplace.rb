@@ -99,7 +99,7 @@ module VCAP
               },
               "configuration" => {
                 "plan" => {
-                  "id" => request.plan,
+                  "external_id" => request.unique_id,
                 },
                 "name" => request.name,
               }

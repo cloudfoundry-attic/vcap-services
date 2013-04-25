@@ -90,7 +90,8 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
         email: '',
         version: '',
         space_guid: 'space-guid',
-        organization_guid: 'organization-guid'
+        organization_guid: 'organization-guid',
+        unique_id: "snowflake#{rand(1000)}"
       )
     end
     let(:request_body) { request.encode }
@@ -103,7 +104,7 @@ describe VCAP::Services::Marketplace::Appdirect::AppdirectMarketplace do
           opts['space']['email'].should ==  "#{request.space_guid}@cloudfoundry.com"
           opts['offering']['label'].should ==  ad_label
           opts['offering']['provider'].should ==  ad_provider
-          opts['configuration']['plan']['id'].should == request.plan
+          opts['configuration']['plan']['external_id'].should == request.unique_id
           opts['configuration']['name'].should == request.name
         end.
         and_return(
