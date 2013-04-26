@@ -2,7 +2,12 @@ module VCAP::Services::Marketplace::Appdirect
   class EditionPlan
     def initialize(attrs)
       whitelist = %w(id description free external_id)
-      @attributes = attrs.select {|attr, _| whitelist.include?(attr)}
+      @attributes = {}
+      whitelist.each do |field|
+        value = attrs.fetch(field)
+        raise ArgumentError, "Missing value #{field.inspect}" if value.nil?
+        @attributes[field] = value
+      end
       @attributes['extra'] = nil
     end
 

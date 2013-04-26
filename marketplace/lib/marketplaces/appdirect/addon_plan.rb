@@ -6,7 +6,9 @@ module VCAP::Services::Marketplace::Appdirect
 
     def initialize(attrs)
       INITIAL_FIELDS.each do |field|
-        instance_variable_set("@#{field}", attrs.fetch(field))
+        value = attrs.fetch(field)
+        raise ArgumentError, "Missing value #{field.inspect}" if value.nil?
+        instance_variable_set("@#{field}", value)
       end
     end
 

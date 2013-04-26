@@ -41,18 +41,18 @@ module VCAP
           def get_catalog
             appdirect_catalog = helper.load_catalog
             catalog = {}
-            appdirect_catalog.map(&:to_hash).each { |s|
-              name, provider = name_and_provider_resolver.resolve_from_appdirect_to_cc(s['label'], s['provider'])
+            appdirect_catalog.map(&:to_hash).each do |s|
+              name, provider = name_and_provider_resolver.resolve_from_appdirect_to_cc(s.fetch('label'), s.fetch('provider'))
               version = s["version"] || "1.0" # UNTIL AD fixes this...
               key = key_for_service(name, version, provider)
               # Setup plans
               plans = {}
-              if s["plans"] and s["plans"].count > 0
-                s["plans"].each do |plan|
-                  plans[plan["id"]] = {
-                    :description => plan["description"],
-                    :free => plan["free"],
-                    :extra => plan["extra"].to_json
+              if s.fetch("plans") and s.fetch("plans").count > 0
+                s.fetch("plans").each do |plan|
+                  plans[plan.fetch("id")] = {
+                    description: plan.fetch("description"),
+                    free: plan.fetch("free"),
+                    extra: plan.fetch("extra") ? plan["extra"].to_json : nil
                   }
                 end
               end
@@ -61,17 +61,17 @@ module VCAP
               catalog[key] = {
                 "id"          => name,
                 "version"     => version,
-                "description" => s["description"] || "No description",
-                "info_url"    => s["info_url"],
+                "description" => s.fetch("description") || "No description",
+                "info_url"    => s.fetch("info_url"),
                 "plans"       => plans,
                 "provider"    => provider,
                 "acls"        => @acls,
                 "url"         => @external_uri,
                 "timeout"     => @node_timeout,
-                "extra"       => s['extra'].to_json,
+                "extra"       => s.fetch("extra") ? s["extra"].to_json : nil,
                 "tags"        => [], # unused in ccng, in cc a non-null value to allow tags clone during bind
               }
-            }
+            end
             catalog
           end
 
