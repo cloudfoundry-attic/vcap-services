@@ -87,6 +87,22 @@ describe "Shared multi-tenant MySQL", components: [:ccng, :mysql] do
     expect_statement_allowed!(conn_string, "UPDATE table1 SET stuff='ponies'")
   end
 
+  it "kills long running transactions" do
+    conn_string = get_creds(bind_service)
+    max_long_tx_secs = 30
+    Sequel.connect(conn_string) do |conn|
+      conn.run("CREATE TABLE table1(stuff int);")
+      conn.run("BEGIN")
+      conn.run("INSERT INTO table1 VALUES (2);")
+      p Time.now
+      (max_long_tx_secs * 6).times do
+        conn.run("SELECT SLEEP(1)")
+      end
+      p Time.now
+    end
+    # what happens?
+  end
+
   def expect_statement_allowed!(conn_string, sql)
     lastex = nil
     100.times do
