@@ -11,6 +11,17 @@ class ComponentRunner < Struct.new(:tmp_dir)
     pids.reverse.each do |pid|
       Process.kill "TERM", pid if pid
     end
+    threads.reverse.each do |thread|
+      Thread.kill thread if thread
+    end
+  end
+
+  def threads
+    @threads ||= []
+  end
+
+  def add_thread(thread)
+    threads << thread
   end
 
   def pids

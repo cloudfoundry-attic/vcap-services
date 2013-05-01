@@ -14,7 +14,10 @@ module IntegrationExampleGroup
       before :each do |example|
         cleanup_mysql_dbs
         (example.example.metadata[:components] || []).each do |component|
-          component(component).start
+          @component_references = {} unless @component_references
+          instance = component(component)
+          instance.start
+          @component_references[instance.class.to_s] = instance
         end
       end
       after :each do |example|
