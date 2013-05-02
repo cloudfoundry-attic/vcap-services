@@ -4,7 +4,7 @@ service:
   name: mysql
   version: "5.1"
   description: 'MySQL database'
-  plans: ['free','expensive']
+  plans: ['free']
   default_plan: free
   tags: ['relational']
 ip_route: localhost
@@ -29,14 +29,6 @@ plan_management:
     free:
       low_water: 10
       high_water: 180
-      lifecycle:
-        snapshot:
-          quota: 5
-        serialization: enable
-        job: enable
-    expensive:
-      low_water: 1
-      high_water: 20
       lifecycle:
         snapshot:
           quota: 5
