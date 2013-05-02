@@ -50,6 +50,7 @@ module VCAP
               if s.fetch("plans") and s.fetch("plans").count > 0
                 s.fetch("plans").each do |plan|
                   plans[plan.fetch("id")] = {
+                    unique_id: plan.fetch('external_id'),
                     description: plan.fetch("description"),
                     free: plan.fetch("free"),
                     extra: plan.fetch("extra") ? plan["extra"].to_json : nil
@@ -59,9 +60,10 @@ module VCAP
 
               # Finally, generate the catalog entry
               catalog[key] = {
+                "unique_id"   => s.fetch("external_id"),
                 "id"          => name,
                 "version"     => version,
-                "description" => s.fetch("description") || "No description",
+                "description" => s["description"] || "No description",
                 "info_url"    => s.fetch("info_url"),
                 "plans"       => plans,
                 "provider"    => provider,

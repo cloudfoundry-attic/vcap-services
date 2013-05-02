@@ -14,8 +14,10 @@ module VCAP::Services::Marketplace::Appdirect
         "version" => "2.0",
         "extra" => service_extra,
         "info_url" => "http://example.com/asms_dev",
+        "external_id" => "jabba",
         "plans" => [
           {
+            "external_id" => "thehutt",
             "id" => plan_name,
             "description" => "Free",
             "free" => true,
@@ -78,13 +80,19 @@ module VCAP::Services::Marketplace::Appdirect
         asms_service["description"].should == "Activity Streams Engine"
         asms_service["info_url"].should == "http://example.com/asms_dev"
         asms_service["provider"].should == "asms_provider"
+        asms_service["unique_id"].should == "jabba"
       end
 
       it "contains plans information" do
         asms_service = get_catalog["asms_asms_provider"]
-        asms_service['plans'].should == {"free" => {description: "Free",
-                                                    free: true,
-                                                    extra: "extra information".to_json}}
+        asms_service['plans'].should == {
+          "free" => {
+            unique_id: "thehutt",
+            description: "Free",
+            free: true,
+            extra: "extra information".to_json
+          }
+        }
       end
 
       describe "the service's extra field" do

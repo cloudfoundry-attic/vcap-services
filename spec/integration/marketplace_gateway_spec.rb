@@ -2,13 +2,6 @@ require 'spec_helper'
 require 'json'
 
 describe 'Marketplace Gateway - AppDirect integration' do
-  context "some services are already loaded in CC" do
-    it 'does not screw up the existing services'
-    it 'updates existing services as needed'
-  end
-
-  it "the market gateways populate CC only with whitelisted services"
-
   it 'populates CC with AppDirect services', components: [:ccng, :marketplace]  do
     services_response = wait_for('/v2/services') do |response|
       response.fetch('resources').size == 2
@@ -17,7 +10,9 @@ describe 'Marketplace Gateway - AppDirect integration' do
     mongo_service = find_service_from_response(services_response, 'mongodb')
     mongo_service.fetch('provider').should == 'mongolab'
 
+    mongo_service.fetch('unique_id').should == '8'
     mongo_service.fetch('extra').should_not be_nil
+
     extra_information = JSON.parse(mongo_service.fetch('extra'))
 
     extra_information.fetch('provider').fetch('name').should == 'ObjectLabs'
@@ -28,8 +23,15 @@ describe 'Marketplace Gateway - AppDirect integration' do
 
     mongo_plans = get_contents(plans_url)
     mongo_plans.fetch("total_results").should eq(2)
-    mongo_plan_names = mongo_plans.fetch("resources").map {|r| r.fetch("entity").fetch("name")}
-    mongo_plan_names.should match_array([ "free", "small"])
+
+    first_plan = mongo_plans.fetch('resources').first.fetch('entity')
+    first_plan.fetch('unique_id').should == "addonOffering_98"
+    first_plan.fetch('name').should == 'free'
+
+    second_plan = mongo_plans.fetch('resources')[1].fetch('entity')
+    second_plan.fetch('unique_id').should == "addonOffering_99"
+    second_plan.fetch('name').should == "small"
+
     mongo_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
 
     sendgrid_service = find_service_from_response(services_response, 'SendGrid')
