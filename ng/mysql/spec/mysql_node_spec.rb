@@ -715,6 +715,7 @@ describe "Mysql server node" do
         varz[:database_status].should be_instance_of Array
         varz[:max_capacity].should > 0
         varz[:available_capacity].should >= 0
+        varz[:used_capacity].should == (varz[:max_capacity] - varz[:available_capacity] )
         varz[:long_queries_killed].should >= 0
         varz[:long_transactions_killed].should >= 0
         varz[:provision_served].should >= 0

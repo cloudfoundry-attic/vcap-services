@@ -641,6 +641,7 @@ class VCAP::Services::Mysql::Node
     varz[:database_status] = status
     varz[:max_capacity] = @max_capacity
     varz[:available_capacity] = @capacity
+    varz[:used_capacity] = @max_capacity - @capacity
     # how many long queries and long txs are killed.
     varz[:long_queries_killed] = @long_queries_killed
     varz[:long_transactions_killed] = @long_tx_killed
