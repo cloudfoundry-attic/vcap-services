@@ -30,4 +30,30 @@ class VCAP::Services::Mysql::Provisioner < VCAP::Services::Base::Provisioner
     VCAP::Services::Mysql::Serialization::ImportFromURLJob
   end
 
+  def varz_details
+    varz = super
+
+    @plan_mgmt.each do |plan, v|
+      plan_nodes = @nodes.select { |_, node| node["plan"] == plan.to_s }.values
+      available_capacity, max_capacity, used_capacity = compute_availability(plan_nodes)
+      varz.fetch(:plans).each do |plan_detail|
+        if (plan_detail.fetch(:plan) == plan)
+          plan_detail.merge!({available_capacity: available_capacity})
+          plan_detail.merge!({max_capacity: max_capacity})
+          plan_detail.merge!({used_capacity: used_capacity})
+        end
+      end
+    end
+    varz
+  end
+
+  private
+
+  def compute_availability(plan_nodes)
+    max_capacity = plan_nodes.inject(0) { |sum, node| sum + node['max_capacity'] }
+    available_capacity = plan_nodes.inject(0) { |sum, node| sum + node['available_capacity'] }
+    used_capacity = max_capacity - available_capacity
+    return available_capacity, max_capacity, used_capacity
+  end
+
 end
