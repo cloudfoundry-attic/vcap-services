@@ -90,22 +90,24 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
     # what happens?
   end
 
-  it "advertises number of remaining databases in VARZ" do
-    remaining_dbs = []
+  describe "On Linux or on OSX with Gemfile.lock using yajl-ruby 1.1.0" do
+    it "advertises number of remaining databases in VARZ" do
+      remaining_dbs = []
 
-    reaction_blk = lambda do |data|
-      metric = parse(data)
-      if metric[:name] == "services.plans.score" &&
-        metric[:tags][:job] && metric[:tags][:job] == "MyaaS-Provisioner" &&
-        metric[:tags][:plan] && metric[:tags][:plan] == "100"
+      reaction_blk = lambda do |data|
+        metric = parse(data)
+        if metric[:name] == "services.plans.score" &&
+          metric[:tags][:job] && metric[:tags][:job] == "MyaaS-Provisioner" &&
+          metric[:tags][:plan] && metric[:tags][:plan] == "100"
 
-        remaining_dbs << Integer(metric[:value])
+          remaining_dbs << Integer(metric[:value])
+        end
       end
-    end
-    @components.fetch(:collector).reaction_blk = reaction_blk
-    provision_mysql_instance("new_db")
+      @components.fetch(:collector).reaction_blk = reaction_blk
+      provision_mysql_instance("new_db")
 
-    final_db_count(remaining_dbs).should == initial_db_count(remaining_dbs) - 1
+      final_db_count(remaining_dbs).should == initial_db_count(remaining_dbs) - 1
+    end
   end
 
   def initial_db_count(remaining_dbs)
@@ -114,8 +116,10 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
 
   def final_db_count(remaining_dbs)
     collector_poll_frequency_in_seconds = 10
+    print "Waiting up to 60s for our VARZ to report"
     6.times do
       if remaining_dbs.first == remaining_dbs.last
+        print "."
         sleep collector_poll_frequency_in_seconds
       else
         return remaining_dbs.last
