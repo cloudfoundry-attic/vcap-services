@@ -71,7 +71,7 @@ class VCAP::Services::Mysql::Node
     @long_tx_count = 0
     @long_tx_ids = {}
     @statistics_lock = Mutex.new
-    @provision_served =   0
+    @provision_served = 0
     @binding_served = 0
 
     #locks
@@ -99,14 +99,14 @@ class VCAP::Services::Mysql::Node
 
     pre_send_announcement_internal(@options)
 
-    EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) { EM.defer {enforce_storage_quota} }
+    EM.add_periodic_timer(STORAGE_QUOTA_INTERVAL) { EM.defer { enforce_storage_quota } }
 
     keep_alive_interval = KEEP_ALIVE_INTERVAL
     keep_alive_interval = [keep_alive_interval, @connection_wait_timeout.to_f/2].min if @connection_wait_timeout
-    EM.add_periodic_timer(keep_alive_interval) { EM.defer{mysql_keep_alive} }
-    EM.add_periodic_timer(@max_long_query.to_f/2) { EM.defer{kill_long_queries} } if @max_long_query > 0
+    EM.add_periodic_timer(keep_alive_interval) { EM.defer { mysql_keep_alive } }
+    EM.add_periodic_timer(@max_long_query.to_f/2) { EM.defer { kill_long_queries } } if @max_long_query > 0
     if @max_long_tx > 0
-      EM.add_periodic_timer(@max_long_tx.to_f/2) { EM.defer{kill_long_transaction} }
+      EM.add_periodic_timer(@max_long_tx.to_f/2) { EM.defer { kill_long_transaction } }
     else
       @logger.info("long transaction killer is disabled.")
     end
@@ -128,12 +128,12 @@ class VCAP::Services::Mysql::Node
   end
 
   def all_instances_list
-    mysqlProvisionedService.all.map{|s| s.name}
+    mysqlProvisionedService.all.map { |s| s.name }
   end
 
   def all_bindings_list
     res = []
-    all_ins_users = mysqlProvisionedService.all.map{|s| s.user}
+    all_ins_users = mysqlProvisionedService.all.map { |s| s.user }
     each_connection_with_port do |connection, port|
       # we can't query plaintext password from mysql since it's encrypted.
       connection.query('select DISTINCT user.user,db from user, db where user.user = db.user and length(user.user) > 0').each do |entry|
@@ -149,8 +149,9 @@ class VCAP::Services::Mysql::Node
 
   def announcement
     @capacity_lock.synchronize do
-      { :available_capacity => @capacity,
-        :capacity_unit => capacity_unit }
+      {:available_capacity => @capacity,
+        :max_capacity => @max_capacity,
+        :capacity_unit => capacity_unit}
     end
   end
 
@@ -158,7 +159,7 @@ class VCAP::Services::Mysql::Node
     db_list = []
     missing_accounts =[]
     each_connection do |connection|
-      connection.query('select db, user from db').each(:as => :array){|row| db_list.push(row)}
+      connection.query('select db, user from db').each(:as => :array) { |row| db_list.push(row) }
     end
     mysqlProvisionedService.all.each do |service|
       account = service.name, service.user
@@ -175,7 +176,7 @@ class VCAP::Services::Mysql::Node
   end
 
   def mysql_connect(mysql_config, exit_on_fail = true)
-    host, user, password, port, socket =  %w{host user pass port socket}.map { |opt| mysql_config[opt] }
+    host, user, password, port, socket = %w{host user pass port socket}.map { |opt| mysql_config[opt] }
 
     5.times do
       begin
@@ -230,7 +231,7 @@ class VCAP::Services::Mysql::Node
     each_connection do |connection|
       process_list = connection.query("show processlist")
       process_list.each do |proc|
-        thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map{|o| proc[o]}
+        thread_id, user, db, command, time, info, state = %w(Id User db Command Time Info State).map { |o| proc[o] }
         if (time.to_i >= @max_long_query) and (command == 'Query') and (user != 'root') then
           connection.query("KILL QUERY #{thread_id}")
           @logger.warn("Killed long query: user:#{user} db:#{db} time:#{time} state: #{state} info:#{info}")
@@ -248,18 +249,18 @@ class VCAP::Services::Mysql::Node
     acquired = @kill_long_transaction_lock.try_lock
     return unless acquired
     query_str = "SELECT * from ("+
-                "  SELECT trx_started, id, user, db, trx_query, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
-                "  FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p " +
-                "  ON t.trx_mysql_thread_id = p.ID " +
-                "  WHERE trx_state='RUNNING' and user!='root' " +
-                ") as inner_table " +
-                "WHERE inner_table.active_time > #{@max_long_tx}"
+      "  SELECT trx_started, id, user, db, trx_query, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
+      "  FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p " +
+      "  ON t.trx_mysql_thread_id = p.ID " +
+      "  WHERE trx_state='RUNNING' and user!='root' " +
+      ") as inner_table " +
+      "WHERE inner_table.active_time > #{@max_long_tx}"
     each_connection_with_key do |connection, key|
       result = connection.query(query_str)
       current_long_tx_ids = []
       @long_tx_ids[key] = [] if @long_tx_ids[key].nil?
       result.each do |trx|
-        trx_started, id, user, db, trx_query, active_time = %w(trx_started id user db trx_query active_time).map{|o| trx[o]}
+        trx_started, id, user, db, trx_query, active_time = %w(trx_started id user db trx_query active_time).map { |o| trx[o] }
         if @kill_long_tx
           connection.query("KILL #{id}")
           @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}")
@@ -287,7 +288,7 @@ class VCAP::Services::Mysql::Node
     provisioned_service = nil
     begin
       if credential
-        name, user, password = %w(name user password).map{|key| credential[key]}
+        name, user, password = %w(name user password).map { |key| credential[key] }
         provisioned_service = mysqlProvisionedService.create(new_port(credential["port"]), name, user, password, version)
       else
         # mysql database name should start with alphabet character
@@ -318,8 +319,8 @@ class VCAP::Services::Mysql::Node
     raise MysqlError.new(MysqlError::MYSQL_CONFIG_NOT_FOUND, name) if provisioned_service.nil?
     # Delete all bindings, ignore not_found error since we are unprovision
     begin
-      credentials.each{ |credential| unbind(credential)} if credentials
-    rescue =>e
+      credentials.each { |credential| unbind(credential) } if credentials
+    rescue => e
       # ignore error, only log it
       @logger.warn("Error found in unbind operation:#{e}")
     end
@@ -369,12 +370,12 @@ class VCAP::Services::Mysql::Node
   def unbind(credential)
     return if credential.nil?
     @logger.debug("Unbind service: #{credential.inspect}")
-    name, user, bind_opts,passwd = %w(name user bind_opts password).map{|k| credential[k]}
+    name, user, bind_opts, passwd = %w(name user bind_opts password).map { |k| credential[k] }
 
     # Special case for 'ancient' instances that don't have new credentials for each Bind operation.
     # Never delete a user that was created as part of the initial provisioning process.
     @logger.debug("Begin check ancient credentials.")
-    mysqlProvisionedService.all(:name => name, :user => user).each {|record| @logger.info("Find unbind credential in local database: #{record.inspect}. Skip delete account."); return true}
+    mysqlProvisionedService.all(:name => name, :user => user).each { |record| @logger.info("Find unbind credential in local database: #{record.inspect}. Skip delete account."); return true }
     @logger.debug("Ancient credential not found.")
 
     # validate the existence of credential, in case we delete a normal account because of a malformed credential
@@ -417,7 +418,7 @@ class VCAP::Services::Mysql::Node
       connection.query("GRANT ALL ON #{name}.* to #{user}@'%' IDENTIFIED BY '#{password}' WITH MAX_USER_CONNECTIONS #{@max_user_conns}")
       connection.query("GRANT ALL ON #{name}.* to #{user}@'localhost' IDENTIFIED BY '#{password}' WITH MAX_USER_CONNECTIONS #{@max_user_conns}")
       connection.query("FLUSH PRIVILEGES")
-     end
+    end
   end
 
   def delete_database(provisioned_service)
@@ -521,7 +522,7 @@ class VCAP::Services::Mysql::Node
       unbind(cred)
     end
     true
-  rescue  => e
+  rescue => e
     @logger.warn(e)
     nil
   end
@@ -720,7 +721,7 @@ class VCAP::Services::Mysql::Node
     each_connection do |connection|
       all_dbs = []
       result = connection.query('show databases')
-      result.each {|db| all_dbs << db["Database"]}
+      result.each { |db| all_dbs << db["Database"] }
       system_dbs = ['mysql', 'information_schema']
       sizes = connection.query(
         'SELECT table_schema "name",
@@ -740,7 +741,7 @@ class VCAP::Services::Mysql::Node
         result << db
       end
       # handle empty db without table
-      (all_dbs - db_with_tables - system_dbs ).each do |db|
+      (all_dbs - db_with_tables - system_dbs).each do |db|
         result << {:name => db, :size => 0, :max_size => @max_db_size}
       end
       total += result
@@ -803,21 +804,21 @@ end
 
 class VCAP::Services::Mysql::Node::ProvisionedService
   include DataMapper::Resource
-  property :name,       String,   :key => true
-  property :user,       String,   :required => true
-  property :password,   String,   :required => true
-  property :plan,       Integer,  :required => true
-  property :quota_exceeded,  Boolean, :default => false
-  property :version,    String
+  property :name, String, :key => true
+  property :user, String, :required => true
+  property :password, String, :required => true
+  property :plan, Integer, :required => true
+  property :quota_exceeded, Boolean, :default => false
+  property :version, String
 
   class << self
     def create(port, name, user, password, version)
-      provisioned_service          = new
-      provisioned_service.name     = name
-      provisioned_service.user     = user
+      provisioned_service = new
+      provisioned_service.name = name
+      provisioned_service.user = user
       provisioned_service.password = password
-      provisioned_service.plan     = 1
-      provisioned_service.version  = version
+      provisioned_service.plan = 1
+      provisioned_service.version = version
       provisioned_service
     end
 
@@ -839,28 +840,28 @@ class VCAP::Services::Mysql::Node::WardenProvisionedService
   include DataMapper::Resource
   include VCAP::Services::Mysql::Util
 
-  property :name,            String,   :key => true
-  property :port,            Integer,  :unique => true
-  property :user,            String,   :required => true
-  property :password,        String,   :required => true
-  property :plan,            Integer,  :required => true
-  property :quota_exceeded,  Boolean,  :default => false
-  property :container,       String
-  property :ip,              String
-  property :version,         String
+  property :name, String, :key => true
+  property :port, Integer, :unique => true
+  property :user, String, :required => true
+  property :password, String, :required => true
+  property :plan, Integer, :required => true
+  property :quota_exceeded, Boolean, :default => false
+  property :container, String
+  property :ip, String
+  property :version, String
 
   private_class_method :new
 
   class << self
     def create(port, name, user, password, version)
       raise "Parameter missing" unless port
-      provisioned_service          = new
-      provisioned_service.name     = name
-      provisioned_service.port     = port
-      provisioned_service.user     = user
+      provisioned_service = new
+      provisioned_service.name = name
+      provisioned_service.port = port
+      provisioned_service.user = user
       provisioned_service.password = password
-      provisioned_service.plan     = 1
-      provisioned_service.version  = version
+      provisioned_service.plan = 1
+      provisioned_service.version = version
 
       provisioned_service.prepare_filesystem(@max_disk)
       FileUtils.mkdir_p(provisioned_service.tmp_dir)
