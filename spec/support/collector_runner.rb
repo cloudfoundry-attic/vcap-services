@@ -39,7 +39,7 @@ class CollectorRunner < ComponentRunner
           unless `git status -s`.empty?
             raise 'There are outstanding changes in collector. Need to set NO_CHECKOUT env'
           end
-          sh "git fetch && git reset --hard #{ENV['CC_BRANCH']} && git submodule update --init"
+          sh "git fetch && git reset --hard origin/master && git submodule update --init"
         end
 
         Bundler.with_clean_env do
