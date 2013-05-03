@@ -51,15 +51,14 @@ module IntegrationExampleGroup
     inst_data.fetch("metadata").fetch("guid")
   end
 
-  def user_guid
-    12345
+  def provision_service_instance(name, service_name, plan_name)
+    inst_data = ccng_post "/v2/service_instances",
+      {name: name, space_guid: space_guid, service_plan_guid: plan_guid(service_name, plan_name)}
+    inst_data.fetch("metadata").fetch("guid")
   end
 
-
-  def create_service_auth_token(label, service_token)
-    ccng_post("/v2/service_auth_tokens",
-      {label: label, provider:'core', token: service_token}
-    )
+  def user_guid
+    12345
   end
 
   def cleanup_mysql_dbs

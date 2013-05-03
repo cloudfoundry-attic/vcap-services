@@ -79,11 +79,13 @@ module VCAP
               body = order.to_json
               url = "#{@appdirect_endpoint}/api/#{SERVICES_PATH}"
               logger.info("Posting provision request: #{url}")
+              logger.debug("Posted body: #{body}")
 
               http_status, response_body = perform_request("post", url, HEADER, body)
 
               if http_status >= 200 and http_status < 300
                 logger.info("Provision successful")
+                logger.debug("Body: #{response_body}")
                 JSON.parse(response_body)
               else
                 # 400 bad request

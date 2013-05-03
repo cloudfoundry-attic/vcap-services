@@ -4,6 +4,7 @@ ip_route: localhost
 index: 0
 mbus: nats://localhost:4222/
 logging:
+  file: ../spec/tmp/log/marketplace_gateway.log
   level: debug
 port: 8282
 pid: /tmp/marketplace.pid
@@ -18,7 +19,7 @@ acls:
   - "*@example.com"
   users: []
 
-external_uri: "http://test-mpgw.vcap.me"
+external_uri: "http://localhost:8282"
 refresh_interval: 120
 
 cc_api_version: v2
@@ -31,3 +32,5 @@ uaa_client_auth_credentials:
 service_auth_tokens:
   testservice_TestProvider: testservicetoken
   fooservice_FooProvider: fooservicetoken
+  mongodb_mongolab-dev: mongotoken
+  mongodb_mongolab: mongotoken

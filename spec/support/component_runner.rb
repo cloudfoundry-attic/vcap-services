@@ -84,10 +84,8 @@ class ComponentRunner < Struct.new(:tmp_dir)
     end
   end
 
-  def create_service_auth_token(label, service_token)
-    ccng_post("/v2/service_auth_tokens",
-              {label: label, provider:'core', token: service_token}
-             )
+  def create_service_auth_token(label, service_token, provider='core')
+    ccng_post("/v2/service_auth_tokens", {label: label, provider: provider, token: service_token})
   end
 
   def sh(cmd)

@@ -42,6 +42,11 @@ describe 'Marketplace Gateway - AppDirect integration' do
     sendgrid_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
+  it 'can create a service', components: [:ccng, :marketplace]  do
+    pending 'Waiting Appdirect to fix up their stuff'
+    provision_service_instance('awsome mongo', 'mongo', 'free')
+  end
+
   def find_service_from_response(response, service_label)
     response.fetch('resources').
       map {|resource| resource.fetch("entity")}.
