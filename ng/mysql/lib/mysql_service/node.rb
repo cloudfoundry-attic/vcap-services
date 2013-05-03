@@ -9,6 +9,7 @@ require "mysql2"
 require "open3"
 require "thread"
 
+
 module VCAP
   module Services
     module Mysql
@@ -27,6 +28,7 @@ require "mysql_service/mysql2_timeout"
 require "mysql_service/util"
 require "mysql_service/storage_quota"
 require "mysql_service/mysql_error"
+require "mysql_service/transaction_killer"
 
 class VCAP::Services::Mysql::Node
 
@@ -85,6 +87,7 @@ class VCAP::Services::Mysql::Node
     Mysql2::Client.logger = @logger
     @supported_versions = options[:supported_versions]
     mysqlProvisionedService.init(options)
+    @transaction_killer = VCAP::Services::Mysql::TransactionKiller.build(options[:mysql_provider])
   end
 
   def service_instances
@@ -248,13 +251,17 @@ class VCAP::Services::Mysql::Node
   def kill_long_transaction
     acquired = @kill_long_transaction_lock.try_lock
     return unless acquired
-    query_str = "SELECT * from ("+
-      "  SELECT trx_started, id, user, db, trx_query, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time" +
-      "  FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p " +
-      "  ON t.trx_mysql_thread_id = p.ID " +
-      "  WHERE trx_state='RUNNING' and user!='root' " +
-      ") as inner_table " +
-      "WHERE inner_table.active_time > #{@max_long_tx}"
+
+    query_str = <<-QUERY
+      SELECT * from (
+        SELECT trx_started, id, user, db, trx_query, TIME_TO_SEC(TIMEDIFF(NOW() , trx_started )) as active_time
+        FROM information_schema.INNODB_TRX t inner join information_schema.PROCESSLIST p
+        ON t.trx_mysql_thread_id = p.ID
+        WHERE trx_state='RUNNING' and user!='root'
+      ) as inner_table
+      WHERE inner_table.active_time > #{@max_long_tx}
+    QUERY
+
     each_connection_with_key do |connection, key|
       result = connection.query(query_str)
       current_long_tx_ids = []
@@ -262,7 +269,7 @@ class VCAP::Services::Mysql::Node
       result.each do |trx|
         trx_started, id, user, db, trx_query, active_time = %w(trx_started id user db trx_query active_time).map { |o| trx[o] }
         if @kill_long_tx
-          connection.query("KILL #{id}")
+          @transaction_killer.kill(id, connection)
           @logger.warn("Kill long transaction: user:#{user} db:#{db} thread:#{id} trx_query:#{trx_query} active_time:#{active_time}")
           @long_tx_killed += 1
         else

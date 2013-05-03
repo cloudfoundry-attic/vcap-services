@@ -60,13 +60,13 @@ describe "Mysql server node" do
     @default_plan = "free"
     @default_version = @opts[:default_version]
     @default_opts = "default"
+    @tmpfiles = []
 
     # Setup code must be wrapped in EM.run
     EM.run do
       @node = VCAP::Services::Mysql::Node.new(@opts)
       EM.add_timer(1) { EM.stop }
     end
-    @tmpfiles = []
   end
 
   before :each do
