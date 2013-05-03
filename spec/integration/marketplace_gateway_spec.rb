@@ -1,8 +1,8 @@
 require 'spec_helper'
 require 'json'
 
-describe 'Marketplace Gateway - AppDirect integration' do
-  it 'populates CC with AppDirect services', components: [:ccng, :marketplace]  do
+describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :marketplace] do
+  it 'populates CC with AppDirect services' do
     services_response = wait_for('/v2/services') do |response|
       response.fetch('resources').size == 2
     end
@@ -42,9 +42,28 @@ describe 'Marketplace Gateway - AppDirect integration' do
     sendgrid_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
-  it 'can create a service', components: [:ccng, :marketplace]  do
-    pending 'Waiting Appdirect to fix up their stuff'
-    provision_service_instance('awsome mongo', 'mongo', 'free')
+  def get_json(url)
+    client = HTTPClient.new
+    response = client.get(url)
+    JSON.parse(response.body)
+  end
+
+  it 'can create a service' do
+    guid = provision_service_instance('awsome mongo', 'mongodb', 'free')
+
+    guid.should_not be_nil
+    ccng_service_instance_guids = ccng_get('/v2/service_instances').fetch('resources').map { |r|
+      r.fetch('metadata').fetch('guid')
+    }
+    ccng_service_instance_guids.should include(guid)
+
+    app_direct_service_instances = get_json('http://localhost:9999/test/provisioned_services')
+    app_direct_service_instances.should have(1).entry
+    app_direct_service_instances.first.fetch('space').fetch('uuid').should == space_guid
+    app_direct_service_instances.first.fetch('space').fetch('organization').fetch('uuid').should == org_guid
+    app_direct_service_instances.first.fetch('offering').fetch('label').should == 'mongodb'
+    app_direct_service_instances.first.fetch('configuration').fetch('name').should == 'awsome mongo'
+    app_direct_service_instances.first.fetch('configuration').fetch('plan').fetch('external_id').should == 'addonOffering_98' # from fixture
   end
 
   def find_service_from_response(response, service_label)

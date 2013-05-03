@@ -33,7 +33,7 @@ module IntegrationExampleGroup
   end
 
   def org_guid
-    component!(:ccng).space_guid
+    component!(:ccng).org_guid
   end
 
   def component(name)
@@ -47,13 +47,17 @@ module IntegrationExampleGroup
 
   def provision_mysql_instance(name)
     inst_data = ccng_post "/v2/service_instances",
-      {name: name, space_guid: space_guid, service_plan_guid: plan_guid('mysql', '100')}
+      name: name,
+      space_guid: space_guid,
+      service_plan_guid: plan_guid('mysql', '100')
     inst_data.fetch("metadata").fetch("guid")
   end
 
   def provision_service_instance(name, service_name, plan_name)
     inst_data = ccng_post "/v2/service_instances",
-      {name: name, space_guid: space_guid, service_plan_guid: plan_guid(service_name, plan_name)}
+      name: name,
+      space_guid: space_guid,
+      service_plan_guid: plan_guid(service_name, plan_name)
     inst_data.fetch("metadata").fetch("guid")
   end
 
@@ -73,18 +77,40 @@ module IntegrationExampleGroup
     mysql_root_connection.run "CREATE DATABASE mgmt"
   end
 
-  def plan_guid(service_name, plan_name)  # ignored for now, hoping the first one is correct
-    retries = 30
+  def plan_guid(service_name, plan_name)
+    plans_path = service_response(service_name).fetch("entity").fetch("service_plans_url")
+    plan_response(plan_name, plans_path).fetch('metadata').fetch('guid')
+  end
+
+  private
+
+  def service_response(service_name)
+    wait_for_service_advertisement
+    response = client.get "http://localhost:8181/v2/services", header: { "AUTHORIZATION" => ccng_auth_token }
+    json = Yajl::Parser.parse(response.body)
+
+    json.fetch("resources").detect {|service| service.fetch('entity').fetch('label') == service_name } or
+      raise "Could not find service with label #{service_name.inspect}"
+  end
+
+  def plan_response(plan_name, plans_path)
+    response = client.get "http://localhost:8181/#{plans_path}", header: { "AUTHORIZATION" => ccng_auth_token }
+    res = Yajl::Parser.parse(response.body)
+    raise "Could not find any resources: #{response.body}" if res.fetch("resources").empty?
+    res.fetch("resources").detect {|p| p.fetch('entity').fetch('name') == plan_name } or
+      raise "Could not find plan with name #{plan_name.inspect}"
+  end
+
+  def wait_for_service_advertisement
+    with_retries(30) do
+      response = client.get "http://localhost:8181/v2/services", header: { "AUTHORIZATION" => ccng_auth_token }
+      raise "Could not find any resources: #{response.body}" if Yajl::Parser.parse(response.body).fetch("resources").empty?
+    end
+  end
+
+  def with_retries(retries, &block)
     begin
-      response = client.get "http://localhost:8181/v2/services",
-        header: { "AUTHORIZATION" => ccng_auth_token }
-      res = Yajl::Parser.parse(response.body)
-      raise "Could not find any resources: #{response.body}" if res.fetch("resources").empty?
-      plans_path = res.fetch("resources")[0].fetch("entity").fetch("service_plans_url")
-      response = client.get "http://localhost:8181/#{plans_path}",
-        header: { "AUTHORIZATION" => ccng_auth_token }
-      res = Yajl::Parser.parse(response.body)
-      res.fetch("resources")[0].fetch('metadata').fetch('guid')
+      block.call
     rescue
       retries -= 1
       sleep 0.3
