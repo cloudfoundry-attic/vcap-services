@@ -32,6 +32,7 @@ class VCAP::Services::Mysql::NodeBin < VCAP::Services::Base::NodeBin
     options[:connection_pool_size] = parse_property(config, "connection_pool_size", Hash)
     options[:connection_wait_timeout] = parse_property(config, "connection_wait_timeout", Integer, :optional => true)
     options[:use_warden] = parse_property(config, "use_warden", Boolean, :optional => true, :default => false)
+    options[:mysql_provider] = parse_property(config, "mysql_provider", String, :optional => true, :default => 'standard')
     options
   end
 
