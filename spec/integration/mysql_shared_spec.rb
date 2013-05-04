@@ -10,6 +10,11 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
     }
   end
 
+  it "registers an offering" do
+    services = ccng_get("/v2/services")
+    services.fetch("resources").first.fetch("entity").fetch("extra").should include("http://example.com/pretty_pikature.gif")
+  end
+
   it "can provision a service instance" do
     ccng_get("/v2/spaces/#{space_guid}/service_instances").fetch("total_results").should == 0
     expect {

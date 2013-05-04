@@ -9,6 +9,9 @@ service:
       description: 'Shared service instance, 1MB memory, 10MB storage, 10 connections'
       free: true
   default_plan: 'free'
+  provider_name: 'Sun'
+  logo_url: 'http://example.com/pretty_pikature.gif'
+  blurb: 'Sun Defunct MySQL Relational Database Service'
   tags: ['relational']
   timeout: 10
   supported_versions: ['5.5']
