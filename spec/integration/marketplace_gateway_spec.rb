@@ -4,7 +4,7 @@ require 'json'
 describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :marketplace] do
   it 'populates CC with AppDirect services' do
     services_response = wait_for('/v2/services') do |response|
-      response.fetch('resources').size == 2
+      response.fetch('resources').size == 3
     end
 
     mongo_service = find_service_from_response(services_response, 'mongolab')
