@@ -20,6 +20,7 @@ acls:
   users: []
 
 external_uri: "http://localhost:8282"
+notification_email_domain: 'space-me.test.cf-app.com'
 refresh_interval: 120
 
 cc_api_version: v2

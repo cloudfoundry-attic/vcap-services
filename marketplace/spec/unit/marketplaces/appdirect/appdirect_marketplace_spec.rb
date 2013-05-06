@@ -53,6 +53,7 @@ module VCAP::Services::Marketplace::Appdirect
           key: 'k',
           secret: 's',
         },
+        notification_email_domain: 'space-tabasco.cf-app.com',
         logger: null_object
       )
     end
@@ -145,7 +146,7 @@ module VCAP::Services::Marketplace::Appdirect
           with do |opts|
           opts['space']['uuid'].should == request.space_guid
           opts['space']['organization']['uuid'].should == request.organization_guid
-          opts['space']['email'].should ==  "#{request.space_guid}@cloudfoundry.com"
+          opts['space']['email'].should ==  "#{request.space_guid}@space-tabasco.cf-app.com"
           opts['offering']['label'].should ==  ad_label
           opts['offering']['provider'].should ==  ad_provider
           opts['configuration']['plan']['external_id'].should == request.unique_id

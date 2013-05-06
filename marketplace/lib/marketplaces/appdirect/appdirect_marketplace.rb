@@ -29,6 +29,7 @@ module VCAP
             @mapping      = opts[:offering_mapping] || {}
 
             @cc_api_version = opts[:cc_api_version]
+            @notification_email_domain   = opts[:notification_email_domain]
 
             @name_and_provider_resolver = NameAndProviderResolver.new(@mapping)
           end
@@ -85,7 +86,7 @@ module VCAP
             @logger.debug("Provision request for offering: #{request.label} (id=#{id}) provider=#{request.provider}, plan=#{request.plan}, version=#{request.version}")
 
             name, provider = name_and_provider_resolver.resolve_from_cc_to_appdirect(id, request.provider)
-            email = "#{request.space_guid}@cloudfoundry.com" # Generate fake email to allow AD to create accounts in ISV website
+            email = "#{request.space_guid}@#{@notification_email_domain}"
 
             receipt = @helper.purchase_service(
               "space" => {

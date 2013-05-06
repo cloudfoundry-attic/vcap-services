@@ -19,6 +19,7 @@ acls:
   users: []
 
 external_uri: "http://test-mpgw.vcap.me"
+notification_email_domain: 'space-tabasco.cf-app.com'
 refresh_interval: 120
 
 cc_api_version: v1
