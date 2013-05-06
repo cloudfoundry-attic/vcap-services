@@ -21,6 +21,9 @@ class CollectorRunner < ComponentRunner
           end
         rescue EOFError => e
           puts "Stream closed! #{e}"
+        rescue => e
+          p e
+          puts e.backtrace.join("\n  ")
         ensure
           s.close
           #raise "Die, thread die! Now you should work"
@@ -57,7 +60,10 @@ class CollectorRunner < ComponentRunner
     checkout_collector unless $checked_out_collector
     Dir.chdir "#{tmp_dir}/vcap-tools/collector" do
       Bundler.with_clean_env do
-        add_pid Process.spawn "bundle exec ./bin/collector", log_options(:collector)
+        add_pid Process.spawn(
+          {"CONFIG_FILE" => asset("collector.yml")},
+          "bundle exec ./bin/collector", log_options(:collector)
+        )
       end
     end
   end

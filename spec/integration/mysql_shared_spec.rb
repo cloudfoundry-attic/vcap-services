@@ -1,6 +1,7 @@
 require "spec_helper"
 
 describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
+  let(:collector_poll_frequency_in_seconds) { 1 }
   let(:create_app_request) do
     {
       "space_guid" => space_guid,
@@ -96,39 +97,56 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
   end
 
   it "advertises number of remaining databases in VARZ" do
-    remaining_dbs = []
-
+    metrics = {}
     reaction_blk = lambda do |data|
       metric = parse(data)
-      if metric[:name] == "services.plans.score" &&
-        metric[:tags][:job] && metric[:tags][:job] == "MyaaS-Provisioner" &&
+      if metric[:tags][:job] && metric[:tags][:job] == "MyaaS-Provisioner" &&
         metric[:tags][:plan] && metric[:tags][:plan] == "100"
 
-        remaining_dbs << Integer(metric[:value])
+        metrics[metric[:name]] ||= []
+        metrics[metric[:name]] << Integer(metric[:value])
       end
     end
     @components.fetch(:collector).reaction_blk = reaction_blk
+
+    initial_db_count(metrics, "services.plans.available_capacity").should == 200
+    initial_db_count(metrics, "services.plans.used_capacity").should == 0
+
     provision_mysql_instance("new_db")
 
-    final_db_count(remaining_dbs).should == initial_db_count(remaining_dbs) - 1
+    final_db_count(metrics, "services.plans.available_capacity").should == 199
+    final_db_count(metrics, "services.plans.used_capacity").should == 1
+
   end
 
-  def initial_db_count(remaining_dbs)
-    remaining_dbs.first
-  end
-
-  def final_db_count(remaining_dbs)
-    collector_poll_frequency_in_seconds = 10
+  def initial_db_count(metrics, key)
     print "Waiting up to 60s for our VARZ to report"
-    6.times do
-      if remaining_dbs.first == remaining_dbs.last
+    60.times do
+      if metrics[key] && metrics[key].first
+        return metrics[key].first
+      else
         print "."
         sleep collector_poll_frequency_in_seconds
-      else
-        return remaining_dbs.last
       end
     end
-    remaining_dbs.last
+    metrics.keys.should include(key)
+  ensure
+    puts
+  end
+
+  def final_db_count(metrics, key)
+    print "Waiting up to 60s for our VARZ to report"
+    60.times do
+      if metrics[key] && metrics[key].first != metrics[key].last
+        return metrics[key].last
+      else
+        print "."
+        sleep collector_poll_frequency_in_seconds
+      end
+    end
+    metrics.keys.should include(key)
+  ensure
+    puts
   end
 
   def bind_service

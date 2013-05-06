@@ -19,6 +19,7 @@ service:
     'current': '5.5'
 ip_route: localhost
 port: 8383
+z_interval: 1
 #proxy:
 #   host: proxy
 #   port: 8080
