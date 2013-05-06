@@ -1,0 +1,40 @@
+#!/usr/bin/env ruby
+
+require 'fileutils'
+
+projects = %w(
+  marketplace
+  ng/mongodb
+  ng/mysql
+  ng/postgresql
+  ng/rabbit
+  ng/redis
+)
+
+def fail_with(msg)
+  puts msg
+  exit(1)
+end
+
+gem_to_bump = ARGV.fetch(0) { fail_with "Usage: #{$0} GEM_TO_BUMP" }
+
+gem_map = {
+  'vcap_services_base' =>
+    "gem 'vcap_services_base', :git => 'git://github.com/cloudfoundry/vcap-services-base.git'",
+
+  'vcap_common' =>
+    "gem 'vcap_common', :require => ['vcap/common', 'vcap/component'], :git => 'git://github.com/cloudfoundry/vcap-common.git'"
+}
+
+fail_with "Can't bump gem #{gem_to_bump.inspect}. I can bump #{gem_map.keys.join(', ')}" unless gem_map.has_key?(gem_to_bump)
+
+
+projects.each do |dir|
+  FileUtils.cd(dir) do
+    orig_gemfile = File.read('Gemfile')
+    File.write('Gemfile',
+               orig_gemfile.gsub(/^\s*gem ['"]#{gem_to_bump}['"].*$/, gem_map.fetch(gem_to_bump))
+              )
+    system("bundle update #{gem_to_bump}") or fail_with("Could not bundle update #{gem_to_bump}. Command failed with code #{$?}")
+  end
+end
