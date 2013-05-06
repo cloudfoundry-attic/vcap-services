@@ -7,8 +7,8 @@ describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :mar
       response.fetch('resources').size == 2
     end
 
-    mongo_service = find_service_from_response(services_response, 'mongodb')
-    mongo_service.fetch('provider').should == 'mongolab'
+    mongo_service = find_service_from_response(services_response, 'mongolab')
+    mongo_service.fetch('provider').should == 'objectlabs'
 
     mongo_service.fetch('unique_id').should == '8'
     mongo_service.fetch('extra').should_not be_nil
@@ -42,14 +42,8 @@ describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :mar
     sendgrid_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
-  def get_json(url)
-    client = HTTPClient.new
-    response = client.get(url)
-    JSON.parse(response.body)
-  end
-
   it 'can create a service' do
-    guid = provision_service_instance('awsome mongo', 'mongodb', 'free')
+    guid = provision_service_instance('awsome mongo', 'mongolab-dev', 'free')
 
     guid.should_not be_nil
     ccng_service_instance_guids = ccng_get('/v2/service_instances').fetch('resources').map { |r|
@@ -62,9 +56,17 @@ describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :mar
     app_direct_service_instances.first.fetch('space').fetch('uuid').should == space_guid
     app_direct_service_instances.first.fetch('space').fetch('organization').fetch('uuid').should == org_guid
     app_direct_service_instances.first.fetch('offering').fetch('label').should == 'mongodb'
+    app_direct_service_instances.first.fetch('offering').fetch('provider').should == 'mongolab-dev'
     app_direct_service_instances.first.fetch('configuration').fetch('name').should == 'awsome mongo'
-    app_direct_service_instances.first.fetch('configuration').fetch('plan').fetch('external_id').should == 'addonOffering_98' # from fixture
+    app_direct_service_instances.first.fetch('configuration').fetch('plan').fetch('external_id').should == 'addonOffering_1' # from fixture
   end
+
+  def get_json(url)
+    client = HTTPClient.new
+    response = client.get(url)
+    JSON.parse(response.body)
+  end
+
 
   def find_service_from_response(response, service_label)
     response.fetch('resources').

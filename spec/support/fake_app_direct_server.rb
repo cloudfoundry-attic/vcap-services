@@ -11,6 +11,10 @@ class FakeAppDirectServer < Sinatra::Base
     body response
   end
 
+  get '/api/marketplace/v1/products/7' do
+    status  404
+  end
+
   get '/api/marketplace/v1/products/8' do
     response = File.read File.expand_path(File.join('assets', 'fake_app_direct', 'public_mongo_details.json'))
     status  200

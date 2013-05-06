@@ -3,7 +3,7 @@ require "marketplaces/appdirect/appdirect_marketplace"
 
 module VCAP::Services::Marketplace::Appdirect
   describe AppdirectMarketplace do
-    let(:mock_helper) { double("helper", load_catalog: services) }
+    let(:helper) { double("helper", load_catalog: services) }
     let(:services) { [ stub('Service', to_hash: service_hash) ] }
     let(:service_hash) {
       {
@@ -32,7 +32,7 @@ module VCAP::Services::Marketplace::Appdirect
     let(:plan_extra) { "extra information" }
 
     before do
-      VCAP::Services::Marketplace::Appdirect::AppdirectHelper.stub(new: mock_helper)
+      VCAP::Services::Marketplace::Appdirect::AppdirectHelper.stub(new: helper)
       VCAP::Services::Marketplace::Appdirect::NameAndProviderResolver.stub(new: name_and_provider_resolver)
     end
 
@@ -127,7 +127,8 @@ module VCAP::Services::Marketplace::Appdirect
     describe "#provision_service" do
       let(:request) do
         VCAP::Services::Api::GatewayProvisionRequest.new(
-          label: 'mongo-dev',
+          label: 'mongolab-dev-v1.0.9',
+          provider: 'objectlabs',
           name: 'mongo name',
           plan: 'free',
           email: '',
@@ -140,7 +141,7 @@ module VCAP::Services::Marketplace::Appdirect
       let(:request_body) { request.encode }
 
       it "sends correct messages to the helper" do
-        mock_helper.should_receive(:purchase_service).
+        helper.should_receive(:purchase_service).
           with do |opts|
           opts['space']['uuid'].should == request.space_guid
           opts['space']['organization']['uuid'].should == request.organization_guid
@@ -157,6 +158,14 @@ module VCAP::Services::Marketplace::Appdirect
         appdirect_marketplace.provision_service(request_body)
       end
 
+      it "properly provisions services with dashes in their label" do
+        helper.stub(:purchase_service).and_return({})
+        name_and_provider_resolver.should_receive(:resolve_from_cc_to_appdirect).
+          with('mongolab-dev', 'objectlabs').
+          and_return(null_object)
+
+        appdirect_marketplace.provision_service(request_body)
+      end
     end
   end
 end

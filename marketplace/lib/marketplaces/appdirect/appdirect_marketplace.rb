@@ -81,7 +81,7 @@ module VCAP
 
           def provision_service(request_body)
             request =  VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
-            id,version = request.label.split("-")
+            id, _, version = request.label.rpartition("-")
             @logger.debug("Provision request for offering: #{request.label} (id=#{id}) provider=#{request.provider}, plan=#{request.plan}, version=#{request.version}")
 
             name, provider = name_and_provider_resolver.resolve_from_cc_to_appdirect(id, request.provider)

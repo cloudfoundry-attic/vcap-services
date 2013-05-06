@@ -21,7 +21,8 @@ class MarketplaceRunner < ComponentRunner
           log_options(:marketplace)
         )
         wait_for_tcp_ready('Marketplace Gateway', gateway_config_hash.fetch('port'))
-        create_service_auth_token("mongodb", "mongotoken", "mongolab")
+        create_service_auth_token("mongolab", "mongotoken", "objectlabs")
+        create_service_auth_token("mongolab-dev", "mongodevtoken", "objectlabs")
         create_service_auth_token("mongodb", "mongotoken", "mongolab-dev")
       end
     end

@@ -32,5 +32,5 @@ uaa_client_auth_credentials:
 service_auth_tokens:
   testservice_TestProvider: testservicetoken
   fooservice_FooProvider: fooservicetoken
-  mongodb_mongolab-dev: mongotoken
-  mongodb_mongolab: mongotoken
+  mongolab-dev_objectlabs: mongodevtoken
+  mongolab_objectlabs: mongotoken
