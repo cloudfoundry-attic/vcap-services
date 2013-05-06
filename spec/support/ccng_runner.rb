@@ -38,7 +38,7 @@ class CcngRunner < ComponentRunner
         f.write YAML.dump(YAML.load_file("config/cloud_controller.yml").merge({
           "logging" => {
             "file" => "#{tmp_dir}/log/cloud_controller.log",
-            "level" => "debug2"
+            "level" => "debug"
           }
         }))
       end
