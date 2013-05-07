@@ -29,6 +29,8 @@ class MarketplaceRunner < ComponentRunner
   end
 
   def start_app_direct_server
+    puts 'Forcefully kill existing app direct app'
+    `pkill -f 'support/fake_app_direct_server.rb'`
     Bundler.with_clean_env do
       add_pid Process.spawn(
         %q{bundle exec ruby -I. -r support/fake_app_direct_server.rb -e 'FakeAppDirectRunner.start'},
