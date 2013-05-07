@@ -61,6 +61,7 @@ describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :mar
   end
 
   it "can unprovision a service instance" do
+    get_json('http://localhost:9999/test/provisioned_services').should be_empty
     ccng_guid = provision_service_instance('awsome mongo', 'mongolab-dev', 'free')
     provisioned_services = get_json('http://localhost:9999/test/provisioned_services')
     provisioned_services.should have(1).item
