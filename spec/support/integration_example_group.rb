@@ -98,7 +98,7 @@ module IntegrationExampleGroup
     res = Yajl::Parser.parse(response.body)
     raise "Could not find any resources: #{response.body}" if res.fetch("resources").empty?
     res.fetch("resources").detect {|p| p.fetch('entity').fetch('name') == plan_name } or
-      raise "Could not find plan with name #{plan_name.inspect}"
+      raise "Could not find plan with name #{plan_name.inspect} in response #{res.inspect}"
   end
 
   def wait_for_service_advertisement

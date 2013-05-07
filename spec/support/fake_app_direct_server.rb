@@ -2,6 +2,7 @@ require 'sinatra'
 require 'thin'
 require 'httpclient'
 require 'json'
+require 'securerandom'
 
 class FakeAppDirectServer < Sinatra::Base
   get '/api/custom/cloudfoundry/v1/offerings' do
@@ -35,14 +36,15 @@ class FakeAppDirectServer < Sinatra::Base
 
   post '/api/custom/cloudfoundry/v1/services' do
     post_body = JSON.parse(request.body.read)
-    provision_service(post_body)
+    uuid = SecureRandom.uuid
+    provision_service(post_body.merge('uuid' => uuid))
     puts "provisioned with request #{post_body.inspect}"
 
     status  201
     headers 'Content-Type' => 'application/json'
     service_external_id = rand(100)
     body JSON.dump(
-      "uuid"=>"575fd20b-69b7-410b-aba7-2dad5d8f1ffa",
+      "uuid" => uuid,
       "id"=>"706db309-98f2-421a-b9c9-ec42f0699c7f",
       "space" => post_body.fetch('space'),
       "offering" => {
@@ -69,9 +71,19 @@ class FakeAppDirectServer < Sinatra::Base
     )
   end
 
+  delete '/api/custom/cloudfoundry/v1/services/:service_guid' do |service_guid|
+    deprovision_service(service_guid)
+    status 200
+  end
+
   get '/test/provisioned_services' do
     headers 'Content-Type' => 'application/json'
-    body JSON.dump(provisioned_services.tap{|j| puts "json: #{j.inspect}"})
+    body JSON.dump(provisioned_services)
+  end
+
+  get '/test/deprovisioned_services' do
+    headers 'Content-Type' => 'application/json'
+    body JSON.dump(deprovisioned_services)
   end
 
   def provision_service(request_json)
@@ -79,7 +91,15 @@ class FakeAppDirectServer < Sinatra::Base
   end
 
   def provisioned_services
-    @@services ||= []
+    @@provisioned_services ||= []
+  end
+
+  def deprovision_service(instance_guid)
+    deprovisioned_services << instance_guid
+  end
+
+  def deprovisioned_services
+    @@deprovisioned_services ||= []
   end
 
   post '/*' do

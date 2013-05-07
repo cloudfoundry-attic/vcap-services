@@ -2,11 +2,13 @@ require 'spec_helper'
 require 'json'
 
 describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :marketplace] do
-  it 'populates CC with AppDirect services' do
-    services_response = wait_for('/v2/services') do |response|
+  let!(:services_response) do
+    wait_for('/v2/services') do |response|
       response.fetch('resources').size == 3
     end
+  end
 
+  it 'populates CC with AppDirect services' do
     mongo_service = find_service_from_response(services_response, 'mongolab')
     mongo_service.fetch('provider').should == 'objectlabs'
 
@@ -42,14 +44,11 @@ describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :mar
     sendgrid_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
-  it 'can create a service' do
-    guid = provision_service_instance('awsome mongo', 'mongolab-dev', 'free')
+  it "can provision a service instance" do
+    ccng_guid = provision_service_instance('awsome mongo', 'mongolab-dev', 'free')
 
-    guid.should_not be_nil
-    ccng_service_instance_guids = ccng_get('/v2/service_instances').fetch('resources').map { |r|
-      r.fetch('metadata').fetch('guid')
-    }
-    ccng_service_instance_guids.should include(guid)
+    ccng_guid.should_not be_nil
+    ccng_service_instance_guids.should include(ccng_guid)
 
     app_direct_service_instances = get_json('http://localhost:9999/test/provisioned_services')
     app_direct_service_instances.should have(1).entry
@@ -61,12 +60,29 @@ describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :mar
     app_direct_service_instances.first.fetch('configuration').fetch('plan').fetch('external_id').should == 'addonOffering_1' # from fixture
   end
 
+  it "can unprovision a service instance" do
+    ccng_guid = provision_service_instance('awsome mongo', 'mongolab-dev', 'free')
+    app_direct_uuid = get_json('http://localhost:9999/test/provisioned_services').fetch(0).fetch('uuid')
+
+    ccng_delete "/v2/service_instances/#{ccng_guid}"
+
+    ccng_service_instance_guids.should_not include(ccng_guid)
+    app_direct_destroyed_instances = get_json('http://localhost:9999/test/deprovisioned_services')
+    app_direct_destroyed_instances.should have(1).entry
+    app_direct_destroyed_instances.first.should == app_direct_uuid
+  end
+
   def get_json(url)
     client = HTTPClient.new
     response = client.get(url)
     JSON.parse(response.body)
   end
 
+  def ccng_service_instance_guids
+    ccng_get('/v2/service_instances').fetch('resources').map { |r|
+      r.fetch('metadata').fetch('guid')
+    }
+  end
 
   def find_service_from_response(response, service_label)
     response.fetch('resources').

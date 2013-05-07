@@ -33,12 +33,19 @@ class CcngRunner < ComponentRunner
     start_nats
     checkout_ccng unless $checked_out
     FileUtils.mkdir_p("#{tmp_dir}/config")
+    database_file = "/tmp/cloud_controller.db"
+    FileUtils.rm_f(database_file)
     Dir.chdir "#{tmp_dir}/cloud_controller_ng" do
       File.open("#{tmp_dir}/config/cloud_controller.yml", "w") do |f|
         f.write YAML.dump(YAML.load_file("config/cloud_controller.yml").merge({
           "logging" => {
             "file" => "#{tmp_dir}/log/cloud_controller.log",
-            "level" => "debug"
+            "level" => "debug",
+            "db" => {
+              "database" => "sqlite://#{database_file}",
+              "max_connections" => 32,
+              "pool_timeout" => 10,
+            }
           }
         }))
       end
