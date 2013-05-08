@@ -2,11 +2,14 @@
 cloud_controller_uri: http://127.0.0.1:8181
 service:
   name: mysql
+  unique_id: 'mysql_service_unique_id'
   version: "5.5"
   description: 'MySQL database'
   plans:
     '100':
+      unique_id: 'rds_mysql_plan_unique_id'
       description: 'Shared service instance, 1MB memory, 10MB storage, 10 connections'
+      extra: 'extra information for free tier plan'
       free: true
   default_plan: 'free'
   provider_name: 'Sun'

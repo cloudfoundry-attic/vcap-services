@@ -8,7 +8,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: b9c47759e11e1f55b7ad5265b95db3fc17a8c51f
+  revision: f8ee6f69cb32a4e0aaa9eb6dc4f71bee03e3eb9c
   specs:
     vcap_common (2.0.10)
       em-http-request (~> 1.0)
@@ -24,7 +24,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 82f976cb34a4e55904c543cfdf0f98bef95f5ddf
+  revision: 1e174b41d8a6eef1a60149648f12aa59b934a77b
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib

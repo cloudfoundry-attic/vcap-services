@@ -11,9 +11,11 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
     }
   end
 
-  it "registers an offering" do
-    services = ccng_get("/v2/services")
-    services.fetch("resources").first.fetch("entity").fetch("extra").should include("http://example.com/pretty_pikature.gif")
+  it "registers an offering with extra and unique id" do
+    mysql_service = ccng_get("/v2/services").fetch("resources").first.fetch("entity")
+    mysql_service.fetch("extra").should include("http://example.com/pretty_pikature.gif")
+    mysql_service.fetch("unique_id").should include("mysql_service_unique_id")
+    ccng_get("/v2/service_plans").fetch("resources").first.fetch("entity").fetch("unique_id").should == 'rds_mysql_plan_unique_id'
   end
 
   it "can provision a service instance" do
