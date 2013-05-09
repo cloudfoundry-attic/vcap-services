@@ -35,8 +35,8 @@ module VCAP
             @appdirect_endpoint = appdirect_config[:endpoint]
             @offering_whitelist = OfferingWhitelist.new(opts[:offering_whitelist], logger)
             @app_direct_catalog = AppDirectCatalog.new(@appdirect_endpoint,
-                                 method(:perform_request),
-                                 logger)
+                                                       method(:perform_request),
+                                                       logger)
             @test_mode          = opts[:test_mode]
 
             if !@test_mode
@@ -84,9 +84,9 @@ module VCAP
               http_status, response_body = perform_request("post", url, HEADER, body)
 
               if http_status >= 200 and http_status < 300
-                logger.info("Provision successful")
-                logger.debug("Body: #{response_body}")
-                JSON.parse(response_body)
+                result = JSON.parse(response_body)
+                result.merge!('dashboard_url' => [url,result.fetch('uuid'), 'sso'].join('/'))
+                return result
               else
                 # 400 bad request
                 # 500 if AppDirect has issues

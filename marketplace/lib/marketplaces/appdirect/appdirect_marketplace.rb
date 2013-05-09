@@ -115,7 +115,8 @@ module VCAP
             {
               :configuration => {:plan => request.plan, :name => request.name, :options => {} },
               :credentials => credentials,
-              :service_id => receipt["uuid"],
+              :service_id => receipt.fetch("uuid"),
+              :dashboard_url => receipt.fetch('dashboard_url'),
             }
           end
 

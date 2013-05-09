@@ -154,9 +154,18 @@ module VCAP::Services::Marketplace::Appdirect
         end.
         and_return(
           'credentials' => {},
-          'id'          => 'receipt_id'
+          'id'          => 'receipt_id',
+          'uuid'        => 'acbd-efgh',
+          'dashboard_url' => 'http://dashboard.io',
         )
-        appdirect_marketplace.provision_service(request_body)
+        appdirect_marketplace.provision_service(request_body).should ==
+          {
+          :configuration => {
+            :plan=>"free", :name=>"mongo name", :options=>{}},
+            :credentials=>{"name"=>"receipt_id"},
+            :service_id=>"acbd-efgh",
+            :dashboard_url=>"http://dashboard.io"
+        }
       end
 
       it "properly provisions services with dashes in their label" do

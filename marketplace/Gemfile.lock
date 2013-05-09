@@ -8,7 +8,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: b9c47759e11e1f55b7ad5265b95db3fc17a8c51f
+  revision: 129ef520424a81155c097b7a79aa13bb8b736fd7
   specs:
     vcap_common (2.0.10)
       em-http-request (~> 1.0)

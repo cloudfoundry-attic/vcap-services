@@ -44,11 +44,14 @@ describe 'Marketplace Gateway - AppDirect integration', components: [:ccng, :mar
     sendgrid_plans.fetch('resources').first.fetch('entity').fetch('extra').should be
   end
 
-  it "can provision a service instance" do
+  it "can provision a service instance with dashboad_url" do
     ccng_guid = provision_service_instance('awsome mongo', 'mongolab-dev', 'free')
 
     ccng_guid.should_not be_nil
-    ccng_service_instance_guids.should include(ccng_guid)
+    service = ccng_get('/v2/service_instances').fetch('resources').first
+    service.fetch('metadata').fetch('guid').should == ccng_guid
+    service.fetch('entity').fetch('dashboard_url').should =~
+      %r|http://localhost:9999/api/custom/cloudfoundry/v1/services/.*/sso|
 
     app_direct_service_instances = get_json('http://localhost:9999/test/provisioned_services')
     app_direct_service_instances.should have(1).entry
