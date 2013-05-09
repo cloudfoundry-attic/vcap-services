@@ -1,4 +1,6 @@
 module CcngClient
+  UnsuccessfulResponse = Class.new(RuntimeError)
+
   def ccng_post(resource_path, body_hash)
     make_ccng_request(:post, resource_path, body_hash)
   end
@@ -38,7 +40,7 @@ module CcngClient
                                   header: { "AUTHORIZATION" => ccng_auth_token },
                                   body: Yajl::Encoder.encode(body_hash)
                                  )
-    raise "Unexpected response from #{resource_path}: #{response.inspect}" unless response.ok?
+    raise UnsuccessfulResponse.new("Unexpected response from #{resource_path}: #{response.inspect}") unless response.ok?
     Yajl::Parser.parse(response.body)
   end
 

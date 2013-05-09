@@ -118,7 +118,18 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
 
     final_db_count(metrics, "services.plans.available_capacity").should == 199
     final_db_count(metrics, "services.plans.used_capacity").should == 1
+  end
 
+  it "properly updates an existing service" do
+    old_unique_id = service_response("mysql").fetch("entity").fetch("unique_id")
+    ccng_get("/v2/services").fetch("resources").should have(1).item
+    provision_service_instance("before", "mysql", "100")
+    component!(:mysql).stop
+
+    component!(:mysql).start(service_blurb: 'something totally different')
+    extra_json = service_response("mysql").fetch("entity").fetch("extra")
+    JSON.parse(extra_json)['listing']['blurb'].should == 'something totally different'
+    component!(:mysql).stop
   end
 
   def initial_db_count(metrics, key)

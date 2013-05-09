@@ -46,11 +46,7 @@ module IntegrationExampleGroup
   end
 
   def provision_mysql_instance(name)
-    inst_data = ccng_post "/v2/service_instances",
-      name: name,
-      space_guid: space_guid,
-      service_plan_guid: plan_guid('mysql', '100')
-    inst_data.fetch("metadata").fetch("guid")
+    provision_service_instance(name, "mysql", "100")
   end
 
   def provision_service_instance(name, service_name, plan_name)
@@ -84,27 +80,21 @@ module IntegrationExampleGroup
 
   private
 
-  def service_response(service_name)
-    wait_for_service_advertisement
-    response = client.get "http://localhost:8181/v2/services", header: { "AUTHORIZATION" => ccng_auth_token }
-    json = Yajl::Parser.parse(response.body)
-
-    json.fetch("resources").detect {|service| service.fetch('entity').fetch('label') == service_name } or
-      raise "Could not find service with label #{service_name.inspect}"
-  end
-
   def plan_response(plan_name, plans_path)
-    response = client.get "http://localhost:8181/#{plans_path}", header: { "AUTHORIZATION" => ccng_auth_token }
-    res = Yajl::Parser.parse(response.body)
-    raise "Could not find any resources: #{response.body}" if res.fetch("resources").empty?
-    res.fetch("resources").detect {|p| p.fetch('entity').fetch('name') == plan_name } or
-      raise "Could not find plan with name #{plan_name.inspect} in response #{res.inspect}"
+    with_retries(30) do
+      response = client.get "http://localhost:8181/#{plans_path}", header: { "AUTHORIZATION" => ccng_auth_token }
+      res = Yajl::Parser.parse(response.body)
+      res.fetch("resources").detect {|p| p.fetch('entity').fetch('name') == plan_name } or
+        raise "Could not find plan with name #{plan_name.inspect} in response #{response.body}"
+    end
   end
 
-  def wait_for_service_advertisement
+  def service_response(service_name)
     with_retries(30) do
       response = client.get "http://localhost:8181/v2/services", header: { "AUTHORIZATION" => ccng_auth_token }
-      raise "Could not find any resources: #{response.body}" if Yajl::Parser.parse(response.body).fetch("resources").empty?
+      res = Yajl::Parser.parse(response.body)
+      res.fetch("resources").detect {|service| service.fetch('entity').fetch('label') == service_name } or
+        raise "Could not find a service with name #{service_name} in #{response.body}"
     end
   end
 

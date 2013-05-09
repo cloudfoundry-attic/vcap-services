@@ -8,7 +8,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: f8ee6f69cb32a4e0aaa9eb6dc4f71bee03e3eb9c
+  revision: 129ef520424a81155c097b7a79aa13bb8b736fd7
   specs:
     vcap_common (2.0.10)
       em-http-request (~> 1.0)
@@ -24,7 +24,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 1e174b41d8a6eef1a60149648f12aa59b934a77b
+  revision: 31180c5067db54235a5e8c6f099af8249bcb6f78
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -197,7 +197,7 @@ GEM
       daemons (>= 1.0.9)
       eventmachine (>= 0.12.6)
       rack (>= 1.0.0)
-    tilt (1.4.0)
+    tilt (1.4.1)
     uuid (2.3.7)
       macaddr (~> 1.0)
     uuidtools (2.1.4)

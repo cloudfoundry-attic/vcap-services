@@ -24,7 +24,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 82f976cb34a4e55904c543cfdf0f98bef95f5ddf
+  revision: 31180c5067db54235a5e8c6f099af8249bcb6f78
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -140,7 +140,7 @@ GEM
     membrane (0.0.2)
     mime-types (1.23)
     mono_logger (1.0.1)
-    multi_json (1.7.2)
+    multi_json (1.7.3)
     multipart-post (1.2.0)
     nats (0.4.24)
       daemons (>= 1.1.5)
@@ -195,7 +195,7 @@ GEM
       daemons (>= 1.0.9)
       eventmachine (>= 0.12.6)
       rack (>= 1.0.0)
-    tilt (1.4.0)
+    tilt (1.4.1)
     uuid (2.3.7)
       macaddr (~> 1.0)
     uuidtools (2.1.4)

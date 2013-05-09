@@ -18,6 +18,9 @@ class ComponentRunner < Struct.new(:tmp_dir)
     pids.reverse.each do |pid|
       Process.kill("KILL", pid) rescue Errno::ESRCH
     end
+
+    clear_threads
+    clear_pids
   end
 
   def threads
@@ -28,12 +31,20 @@ class ComponentRunner < Struct.new(:tmp_dir)
     threads << thread
   end
 
+  def clear_threads
+    @threads = nil
+  end
+
   def pids
     @pids ||= []
   end
 
   def add_pid(pid)
     pids << pid
+  end
+
+  def clear_pids
+    @pids = nil
   end
 
   def log_options(name)
