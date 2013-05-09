@@ -5,7 +5,6 @@ script: ./.travis.run
 env:
   matrix:
     - FOLDER_NAME=echo
-    - FOLDER_NAME=marketplace
     - FOLDER_NAME=service_broker
     - FOLDER_NAME=tools/servicesmgmt
     - FOLDER_NAME=oauth2
