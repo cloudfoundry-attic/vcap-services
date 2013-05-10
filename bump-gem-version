@@ -3,7 +3,6 @@
 require 'fileutils'
 
 projects = %w(
-  marketplace
   ng/mongodb
   ng/mysql
   ng/postgresql

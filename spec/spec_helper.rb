@@ -3,6 +3,7 @@ require "yaml"
 require "yajl"
 require "httpclient"
 require "sequel"
+require "json"
 
 SPEC_ROOT = File.expand_path(File.dirname(__FILE__))
 ASSETS_DIR = File.join(SPEC_ROOT, "assets")

@@ -11,7 +11,6 @@ require 'rspec/core/rake_task'
 
 NG_SERVICES_DIR = %w(
   echo
-  marketplace
   oauth2
   service_broker
   tools/backup/manager

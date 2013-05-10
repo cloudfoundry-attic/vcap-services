@@ -1,5 +1,0 @@
----
-
-classname: "VCAP::Services::Marketplace::Test::TestMarketplace"
-
-node_timeout: 15
