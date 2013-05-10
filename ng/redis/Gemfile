@@ -13,7 +13,6 @@ gem "thin"
 gem "redis"
 gem "rake"
 gem "curb"
-
 gem 'vcap_common', :require => ['vcap/common', 'vcap/component'], :git => 'git://github.com/cloudfoundry/vcap-common.git'
 gem 'vcap_logging', :require => ['vcap/logging'], :git => 'git://github.com/cloudfoundry/common.git', :ref => 'b96ec1192'
 gem 'vcap_services_base', :git => 'git://github.com/cloudfoundry/vcap-services-base.git'

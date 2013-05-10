@@ -132,6 +132,14 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
     component!(:mysql).stop
   end
 
+  it "gracefully handles gateway restarts" do
+    before_guid = provision_mysql_instance("before")
+    component!(:mysql).stop
+    component!(:mysql).start
+    #sleep 3  # can't easily know when the handles have been updated
+    bind_service(before_guid)
+  end
+
   def initial_db_count(metrics, key)
     print "Waiting up to 60s for our VARZ to report"
     60.times do
@@ -162,8 +170,7 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
     puts
   end
 
-  def bind_service
-    instance_guid = provision_mysql_instance("yoursql")
+  def bind_service(instance_guid = provision_mysql_instance("yoursql"))
     app_guid = ccng_post("/v2/apps", create_app_request).fetch("metadata").fetch("guid")
 
     create_binding_request = {
