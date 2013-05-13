@@ -55,8 +55,8 @@ class ComponentRunner < Struct.new(:tmp_dir)
     }
   end
 
-  def asset(file_name)
-    File.expand_path(File.join(SPEC_ROOT, 'assets', file_name))
+  def asset(file_name, root = SPEC_ROOT)
+    File.expand_path(File.join(root, 'assets', file_name))
   end
 
   def wait_for_http_ready(label, port)

@@ -1,4 +1,5 @@
 require "spec_helper"
+require "sequel"
 
 describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
   let(:collector_poll_frequency_in_seconds) { 1 }
@@ -136,7 +137,6 @@ describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
     before_guid = provision_mysql_instance("before")
     component!(:mysql).stop
     component!(:mysql).start
-    #sleep 3  # can't easily know when the handles have been updated
     bind_service(before_guid)
   end
 

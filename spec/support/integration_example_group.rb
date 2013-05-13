@@ -1,4 +1,5 @@
 require "uaa/token_coder"
+require 'fileutils'
 Dir.glob(File.join(File.dirname(__FILE__), '*')).each do |file|
   require file
 end
@@ -10,14 +11,12 @@ module IntegrationExampleGroup
 
   def self.included(base)
     base.instance_eval do
-      let(:mysql_root_connection) { Sequel.connect("mysql2://root@localhost/mysql") }
+      metadata[:type] = :integration
+      let(:mysql_root_connection) { component!(:mysql).mysql_root_connection }
       before :each do |example|
-        cleanup_mysql_dbs
         (example.example.metadata[:components] || []).each do |component|
-          @component_references = {} unless @component_references
           instance = component(component)
           instance.start
-          @component_references[instance.class.to_s] = instance
         end
       end
       after :each do |example|
@@ -38,6 +37,7 @@ module IntegrationExampleGroup
 
   def component(name)
     @components ||= {}
+    FileUtils.mkdir_p(TMP_DIR)
     @components[name] ||= self.class.const_get("#{name.capitalize}Runner").new(TMP_DIR)
   end
 
@@ -59,18 +59,6 @@ module IntegrationExampleGroup
 
   def user_guid
     12345
-  end
-
-  def cleanup_mysql_dbs
-    mysql_root_connection["SHOW DATABASES"].each do |row|
-      dbname = row[:Database]
-      if dbname.match(/^d[0-9a-f]{32}$/) || dbname == "mgmt"
-        mysql_root_connection.run "DROP DATABASE #{dbname}"
-      end
-    end
-    mysql_root_connection.run "DELETE FROM mysql.user WHERE host='%' OR host='localhost' and user LIKE 'u%'"
-    mysql_root_connection.run "DELETE FROM mysql.db WHERE host='%' OR host='localhost' and user LIKE 'u%' AND db LIKE 'd%'"
-    mysql_root_connection.run "CREATE DATABASE mgmt"
   end
 
   def plan_guid(service_name, plan_name)

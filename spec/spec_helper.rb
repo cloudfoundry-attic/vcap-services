@@ -2,7 +2,6 @@ require "rspec"
 require "yaml"
 require "yajl"
 require "httpclient"
-require "sequel"
 require "json"
 
 SPEC_ROOT = File.expand_path(File.dirname(__FILE__))
@@ -15,7 +14,5 @@ Dir.glob("#{SPEC_ROOT}/support/**/*.rb") do |filename|
 end
 
 RSpec.configure do |c|
-  c.include IntegrationExampleGroup, :example_group => {
-    :file_path => /\/integration\//
-  }
+  c.include IntegrationExampleGroup, :type => :integration, :example_group => {:file_path => /\/integration\//}
 end

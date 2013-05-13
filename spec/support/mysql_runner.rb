@@ -7,6 +7,7 @@ class MysqlRunner < ComponentRunner
   end
 
   def start(opts=nil)
+    cleanup_mysql_dbs
     start_redis
     Dir.chdir("#{SPEC_ROOT}/../ng/mysql") do
       Bundler.with_clean_env do
@@ -36,6 +37,24 @@ class MysqlRunner < ComponentRunner
         sleep 5
       end
     end
+  end
+
+  def mysql_root_connection
+    Sequel.connect("mysql2://root@localhost/mysql")
+  end
+
+  def cleanup_mysql_dbs
+    return if @already_cleaned_up
+    @already_cleaned_up = true
+    mysql_root_connection["SHOW DATABASES"].each do |row|
+      dbname = row[:Database]
+      if dbname.match(/^d[0-9a-f]{32}$/) || dbname == "mgmt"
+        mysql_root_connection.run "DROP DATABASE #{dbname}"
+      end
+    end
+    mysql_root_connection.run "DELETE FROM mysql.user WHERE host='%' OR host='localhost' and user LIKE 'u%'"
+    mysql_root_connection.run "DELETE FROM mysql.db WHERE host='%' OR host='localhost' and user LIKE 'u%' AND db LIKE 'd%'"
+    mysql_root_connection.run "CREATE DATABASE mgmt"
   end
 
   class MysqlConfig

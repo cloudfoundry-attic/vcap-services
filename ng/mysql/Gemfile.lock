@@ -138,7 +138,7 @@ GEM
     http_parser.rb (0.5.3)
     httpclient (2.3.3)
     json (1.4.6)
-    json_pure (1.7.7)
+    json_pure (1.8.0)
     macaddr (1.6.1)
       systemu (~> 2.5.0)
     membrane (0.0.2)
