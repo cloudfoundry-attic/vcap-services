@@ -3,7 +3,7 @@ require 'spec_helper'
 describe 'Snapshot features' do
   let!(:service_instance_guid) { provision_mysql_instance('mysql') }
 
-  it 'can create an empty snapshot', :components => [:ccng, :mysql] do
+  it 'can create an empty snapshot', :components => [:nats, :ccng, :mysql] do
     # curl against CloudController
     create_response = ccng_post("/v2/snapshots", {name: 'my_snapshot', service_instance_guid: service_instance_guid})
     created_snapshot_guid = create_response.fetch('metadata').fetch('guid') or raise 'No Snapshot GUID'
@@ -16,7 +16,7 @@ describe 'Snapshot features' do
     list_response['resources'].first.fetch('entity').fetch('name').should == "my_snapshot"
   end
 
-  it 'can list snapshots when there are none', :components => [:ccng, :mysql] do
+  it 'can list snapshots when there are none', :components => [:nats, :ccng, :mysql] do
     response_body = ccng_get("/v2/service_instances/#{service_instance_guid}/snapshots")
     response_body['resources'].should be_empty
   end

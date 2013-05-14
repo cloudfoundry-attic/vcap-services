@@ -7,7 +7,17 @@ end
 module IntegrationExampleGroup
   include CcngClient
 
-  TMP_DIR = File.expand_path('tmp', SPEC_ROOT)
+  def self.tmp_dir
+    @@tmp_dir ||= File.expand_path('tmp', SPEC_ROOT)
+  end
+
+  def self.tmp_dir=(new_value)
+    @@tmp_dir = new_value
+  end
+
+  def tmp_dir
+    IntegrationExampleGroup.tmp_dir
+  end
 
   def self.included(base)
     base.instance_eval do
@@ -37,8 +47,8 @@ module IntegrationExampleGroup
 
   def component(name)
     @components ||= {}
-    FileUtils.mkdir_p(TMP_DIR)
-    @components[name] ||= self.class.const_get("#{name.capitalize}Runner").new(TMP_DIR)
+    FileUtils.mkdir_p(tmp_dir)
+    @components[name] ||= self.class.const_get("#{name.capitalize}Runner").new(tmp_dir)
   end
 
   def component!(name)

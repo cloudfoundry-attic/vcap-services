@@ -1,7 +1,7 @@
 require "spec_helper"
 require "sequel"
 
-describe "Shared multi-tenant MySQL", components: [:collector, :ccng, :mysql] do
+describe "Shared multi-tenant MySQL", components: [:collector, :nats, :ccng, :mysql] do
   let(:collector_poll_frequency_in_seconds) { 1 }
   let(:create_app_request) do
     {

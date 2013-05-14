@@ -3,11 +3,6 @@ require_relative 'component_runner'
 class CcngRunner < ComponentRunner
   attr_reader :org_guid, :space_guid
 
-  def start_nats
-    add_pid Process.spawn "bundle exec nats-server", log_options(:nats)
-    wait_for_tcp_ready("NATS", 4222)
-  end
-
   def checkout_ccng
     ENV["CC_BRANCH"] ||= "origin/master"
     Dir.chdir tmp_dir do
@@ -30,7 +25,6 @@ class CcngRunner < ComponentRunner
   end
 
   def start
-    start_nats
     checkout_ccng unless $checked_out
     FileUtils.mkdir_p("#{tmp_dir}/config")
     database_file = "/tmp/cloud_controller.db"
