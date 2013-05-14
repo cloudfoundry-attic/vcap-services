@@ -26,8 +26,6 @@ class CollectorRunner < ComponentRunner
           puts e.backtrace.join("\n  ")
         ensure
           s.close
-          #raise "Die, thread die! Now you should work"
-          #puts s.inspect
         end
       end
     }
