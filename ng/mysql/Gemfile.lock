@@ -23,8 +23,17 @@ GIT
       yajl-ruby
 
 GIT
-  remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 31180c5067db54235a5e8c6f099af8249bcb6f78
+  remote: git://github.com/cloudfoundry/warden.git
+  revision: fe6cb5130388fd3117de9b16e830d45844cf05c9
+  ref: fe6cb51
+  specs:
+    warden-client (0.0.7)
+      warden-protocol
+    warden-protocol (0.0.9)
+      beefcake
+
+PATH
+  remote: ../../../vcap-services-base
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -47,16 +56,6 @@ GIT
       vcap_logging (>= 1.0.2)
       warden-client (~> 0.0.7)
       warden-protocol (~> 0.0.9)
-
-GIT
-  remote: git://github.com/cloudfoundry/warden.git
-  revision: fe6cb5130388fd3117de9b16e830d45844cf05c9
-  ref: fe6cb51
-  specs:
-    warden-client (0.0.7)
-      warden-protocol
-    warden-protocol (0.0.9)
-      beefcake
 
 GEM
   remote: http://rubygems.org/
