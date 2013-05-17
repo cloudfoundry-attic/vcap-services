@@ -12,5 +12,6 @@ gem "httpclient"
 gem "rake"
 gem "sequel"
 gem "mysql2"
+gem "activesupport"
 
 gem "debugger", group: :test

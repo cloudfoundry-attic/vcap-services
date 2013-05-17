@@ -1,5 +1,6 @@
 require "uaa/token_coder"
 require 'fileutils'
+require 'active_support/core_ext'
 Dir.glob(File.join(File.dirname(__FILE__), '*')).each do |file|
   require file
 end
@@ -48,7 +49,7 @@ module IntegrationExampleGroup
   def component(name)
     @components ||= {}
     FileUtils.mkdir_p(tmp_dir)
-    @components[name] ||= self.class.const_get("#{name.capitalize}Runner").new(tmp_dir)
+    @components[name] ||= self.class.const_get("#{name.to_s.camelize}Runner").new(tmp_dir)
   end
 
   def component!(name)
