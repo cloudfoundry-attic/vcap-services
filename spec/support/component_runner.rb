@@ -49,10 +49,25 @@ class ComponentRunner < Struct.new(:tmp_dir)
 
   def log_options(name)
     FileUtils.mkdir_p("#{tmp_dir}/log")
-    {
-      :out => "#{tmp_dir}/log/#{name}.out",
-      :err => "#{tmp_dir}/log/#{name}.err"
-    }
+    out = "#{tmp_dir}/log/#{name}.out"
+    err = "#{tmp_dir}/log/#{name}.err"
+
+    File.open(out, 'w') do |f|
+      f.write("\n\n")
+      f.write("="*80)
+      f.write("\nStarting the service...\n")
+      f.write("="*80)
+      f.write("\n\n")
+    end
+    File.open(err, 'w') do |f|
+      f.write("\n\n")
+      f.write("="*80)
+      f.write("\nStarting the service...\n")
+      f.write("="*80)
+      f.write("\n\n")
+    end
+
+    {:out => out, :err => err}
   end
 
   def asset(file_name, root = SPEC_ROOT)
