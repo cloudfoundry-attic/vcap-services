@@ -24,7 +24,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: 660cba0b01be02ba3e403900e690c7dc4f3adcd3
+  revision: a304b1cd71918f2d2c7d2072b9bd01894ddf9bb8
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -62,7 +62,7 @@ GEM
   remote: http://rubygems.org/
   specs:
     addressable (2.2.8)
-    backports (3.3.0)
+    backports (3.3.1)
     bcrypt-ruby (2.1.4)
     beefcake (0.3.7)
     builder (3.0.0)
@@ -143,7 +143,7 @@ GEM
       systemu (~> 2.5.0)
     membrane (0.0.2)
     mime-types (1.23)
-    mono_logger (1.0.1)
+    mono_logger (1.1.0)
     multi_json (1.0.4)
     multipart-post (1.2.0)
     mysql2 (0.3.11)

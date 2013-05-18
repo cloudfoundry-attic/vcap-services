@@ -125,7 +125,7 @@ describe "Shared multi-tenant MySQL", components: [:collector, :nats, :ccng, :my
     final_db_count(metrics, "services.plans.used_capacity").should == 1
   end
 
-  it "properly updates an existing service" do
+  it "properly updates the label and provider of an existing service" do
     old_unique_id = service_response("mysql").fetch("entity").fetch("unique_id")
     ccng_get("/v2/services").fetch("resources").should have(1).item
     provision_service_instance("before", "mysql", "100")
@@ -135,6 +135,16 @@ describe "Shared multi-tenant MySQL", components: [:collector, :nats, :ccng, :my
     extra_json = service_response("mysql").fetch("entity").fetch("extra")
     JSON.parse(extra_json)['listing']['blurb'].should == 'something totally different'
     component!(:mysql).stop
+
+    component!(:mysql).start(
+     service_name: 'different-mysql',
+     service_provider: 'someoneelse',
+     plan_name: 'expensive',
+    )
+    provision_service_instance("after", "different-mysql", "expensive")
+    service_response("different-mysql").fetch("entity").fetch("provider").should == "someoneelse"
+    service_response("different-mysql").fetch("entity").fetch("unique_id").should == old_unique_id
+    ccng_get("/v2/services").fetch("resources").should have(1).item
   end
 
   it "gracefully handles gateway restarts" do

@@ -14,26 +14,28 @@ class MysqlRunner < ComponentRunner
         sh "bundle install >> #{tmp_dir}/log/bundle.out"
         config = MysqlConfig.new(self, opts)
         add_pid Process.spawn(
-          {"AUTHORIZATION_TOKEN" => ccng_auth_token},
-          "bundle exec bin/mysql_gateway -c #{config.file_location}",
-          log_options(:mysql_gateway)
-        )
-        wait_for_tcp_ready('Mysql Gateway', config.config_hash.fetch('port'))
+                  {"AUTHORIZATION_TOKEN" => ccng_auth_token},
+                  "bundle exec bin/mysql_gateway -c #{config.gateway_file_location}",
+                  log_options(:mysql_gateway)
+                )
+        wait_for_tcp_ready('Mysql Gateway', config.gateway_config_hash.fetch('port'))
 
         begin
+          service_name = config.gateway_config_hash["service"]["name"]
+          service_provider = config.gateway_config_hash["service"]["provider"] || "core"
           create_service_auth_token(
-            config.config_hash["service"]["name"],
+            service_name,
             'mysql-token',
-            config.config_hash["service"]["provider"] || "core"
+            service_provider
           )
         rescue CcngClient::UnsuccessfulResponse
           # Failed to add auth token, likely due to duplicate
         end
 
         add_pid Process.spawn(
-          "bundle exec bin/mysql_node -c #{asset 'mysql_node.yml'}",
-          log_options(:mysql_node)
-        )
+                  "bundle exec bin/mysql_node -c #{config.node_file_location}",
+                  log_options(:mysql_node)
+                )
         sleep 5
       end
     end
@@ -65,33 +67,53 @@ class MysqlRunner < ComponentRunner
       write_custom_config(opts)
     end
 
-    def file_location
+    def gateway_file_location
       "#{runner.tmp_dir}/config/mysql_gateway.yml"
     end
 
-    def config_hash
-      YAML.load_file(file_location)
+    def node_file_location
+      "#{runner.tmp_dir}/config/mysql_node.yml"
+    end
+
+    def gateway_config_hash
+      YAML.load_file(gateway_file_location)
+    end
+
+    def node_config_hash
+      YAML.load_file(node_file_location)
     end
 
     private
 
-    def base_config_hash
+    def base_gateway_config_hash
       YAML.load_file(runner.asset("mysql_gateway.yml"))
     end
 
+    def base_node_config_hash
+      YAML.load_file(runner.asset("mysql_node.yml"))
+    end
+
+
     def write_custom_config(opts)
       FileUtils.mkdir_p("#{runner.tmp_dir}/config")
-      config_hash = base_config_hash
+      gateway_config_hash = base_gateway_config_hash
+      node_config_hash = base_node_config_hash
       if opts
-        config_hash['service']['name']     = opts[:service_name]     if opts.has_key?(:service_name)
-        config_hash['service']['provider'] = opts[:service_provider] if opts.has_key?(:service_provider)
-        config_hash['service']['blurb']    = opts[:service_blurb]    if opts.has_key?(:service_blurb)
+        gateway_config_hash['service']['name'] = opts[:service_name] if opts.has_key?(:service_name)
+        gateway_config_hash['service']['provider'] = opts[:service_provider] if opts.has_key?(:service_provider)
+        gateway_config_hash['service']['blurb'] = opts[:service_blurb] if opts.has_key?(:service_blurb)
         if opts.has_key?(:plan_name)
-          config_hash['plans'] = { opts.fetch(:plan_name) => base_config_hash.fetch('service').fetch('plans').values.first }
+          gateway_config_hash['service']['plans'] = {opts.fetch(:plan_name) => base_gateway_config_hash.fetch('service').fetch('plans').values.first}
+          node_config_hash['plan'] = opts.fetch(:plan_name)
         end
+        # ensure that the gateway has a key for the service
+        gateway_config_hash['service_auth_tokens'] = {
+          "#{gateway_config_hash['service']['name']}_#{gateway_config_hash['service']['provider'] || 'core'}" => 'mysql-token'
+        }
       end
 
-      File.write(file_location, YAML.dump(config_hash))
+      File.write(gateway_file_location, YAML.dump(gateway_config_hash))
+      File.write(node_file_location, YAML.dump(node_config_hash))
     end
   end
 end
