@@ -3,6 +3,10 @@ require_relative 'component_runner'
 class CcngRunner < ComponentRunner
   attr_reader :org_guid, :space_guid
 
+  def stop
+    kill_listening_on_port(8181)
+  end
+
   def checkout_ccng
     ENV["CC_BRANCH"] ||= "origin/master"
     Dir.chdir tmp_dir do

@@ -15,11 +15,11 @@ class ComponentRunner < Struct.new(:tmp_dir)
     threads.reverse.each do |thread|
       Thread.kill thread if thread
     end
+    clear_threads
+
     pids.reverse.each do |pid|
       Process.kill("KILL", pid) rescue Errno::ESRCH
     end
-
-    clear_threads
     clear_pids
   end
 
@@ -59,6 +59,10 @@ class ComponentRunner < Struct.new(:tmp_dir)
     File.expand_path(File.join(root, 'assets', file_name))
   end
 
+  def kill_listening_on_port(port)
+    `lsof -t -i:#{port} -sTCP:LISTEN | sort -rn | xargs kill`
+  end
+
   def wait_for_http_ready(label, port)
     print "Waiting for #{label}..."
     retries = 30
@@ -79,9 +83,8 @@ class ComponentRunner < Struct.new(:tmp_dir)
     end
   end
 
-  def wait_for_tcp_ready(label, port)
+  def wait_for_tcp_ready(label, port, retries=30)
     print "Waiting for #{label}..."
-    retries = 30
     begin
       sock = TCPSocket.new("localhost", port)
       sock.close
