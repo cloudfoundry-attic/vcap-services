@@ -20,6 +20,10 @@ module IntegrationExampleGroup
     IntegrationExampleGroup.tmp_dir
   end
 
+  def login_to_ccng_as(user_guid, email)
+    @login_info = {user_id: user_guid, email: email}
+  end
+
   def self.included(base)
     base.instance_eval do
       metadata[:type] = :integration
@@ -91,6 +95,7 @@ module IntegrationExampleGroup
   def service_response(service_name)
     with_retries(30) do
       response = client.get "http://localhost:8181/v2/services", header: { "AUTHORIZATION" => ccng_auth_token }
+
       res = Yajl::Parser.parse(response.body)
       res.fetch("resources").detect {|service| service.fetch('entity').fetch('label') == service_name } or
         raise "Could not find a service with name #{service_name} in #{response.body}"

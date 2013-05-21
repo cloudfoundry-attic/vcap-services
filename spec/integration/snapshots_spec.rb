@@ -1,6 +1,11 @@
 require 'spec_helper'
+require "sequel"
 
 describe 'Snapshot features' do
+  before do
+    login_to_ccng_as('12345', 'sre@vmware.com')
+  end
+
   let!(:service_instance_guid) { provision_mysql_instance('mysql') }
 
   it 'can create an empty snapshot', :components => [:nats, :ccng, :mysql] do

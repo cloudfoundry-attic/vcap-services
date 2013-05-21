@@ -12,6 +12,10 @@ describe "Shared multi-tenant MySQL", components: [:collector, :nats, :ccng, :my
     }
   end
 
+  before do
+    login_to_ccng_as('12345', 'sre@vmware.com')
+  end
+
   it "registers an offering with extra and unique id" do
     mysql_service = ccng_get("/v2/services").fetch("resources").first.fetch("entity")
     mysql_service.fetch("extra").should include("http://example.com/pretty_pikature.gif")

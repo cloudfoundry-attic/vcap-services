@@ -60,9 +60,10 @@ class CcngRunner < ComponentRunner
   end
 
   def setup_ccng_orgs_and_spaces
+    user_guid = '12345'
     @org_guid = ccng_post(
       "/v2/organizations",
-      {name: 'test_org', user_guids: [user_guid.to_s]}
+      {name: 'test_org', user_guids: [user_guid]}
     ).fetch("metadata").fetch("guid")
 
     @space_guid = ccng_post(
@@ -72,5 +73,4 @@ class CcngRunner < ComponentRunner
 
     ccng_put("/v2/spaces/#{@space_guid}/developers/#{user_guid}", {})
   end
-
 end

@@ -110,9 +110,7 @@ class ComponentRunner < Struct.new(:tmp_dir)
     raise "Unable to run #{cmd} in #{Dir.pwd}" unless system(cmd)
   end
 
-  def user_guid
-    12345
-  end
+
 
   def client
     HTTPClient.new

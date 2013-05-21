@@ -21,13 +21,12 @@ module CcngClient
     token_coder = CF::UAA::TokenCoder.new(:audience_ids => "cloud_controller",
                                           :skey => "tokensecret", :pkey => nil)
 
-    user_token = token_coder.encode(
-      :user_id => user_guid,
+    options = {
       :client_id => "vmc",
-      :email => "sre@vmware.com",
       :scope => %w[cloud_controller.admin]
-    )
-
+    }
+    options.merge!(@login_info) if defined? @login_info
+    user_token = token_coder.encode(options)
     "bearer #{user_token}"
   end
 
