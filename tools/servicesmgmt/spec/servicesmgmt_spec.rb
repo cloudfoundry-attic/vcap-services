@@ -110,5 +110,13 @@ describe "ServicesMgmt" do
         last_response.status.should == 404
       end
     end
+
+    it "should response for healthz & varz" do
+      res = get '/healthz'
+      res.body.should == "ok"
+
+      res = get '/varz'
+      expect{JSON.parse(res.body)}.to_not raise_error
+    end
   end
 end
