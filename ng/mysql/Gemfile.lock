@@ -61,6 +61,9 @@ GIT
 GEM
   remote: http://rubygems.org/
   specs:
+    activesupport (3.2.13)
+      i18n (= 0.6.1)
+      multi_json (~> 1.0)
     addressable (2.2.8)
     backports (3.3.1)
     bcrypt-ruby (2.1.4)
@@ -137,6 +140,7 @@ GEM
     fastercsv (1.5.5)
     http_parser.rb (0.5.3)
     httpclient (2.3.3)
+    i18n (0.6.1)
     json (1.4.6)
     json_pure (1.8.0)
     macaddr (1.6.1)
@@ -144,7 +148,7 @@ GEM
     membrane (0.0.2)
     mime-types (1.23)
     mono_logger (1.1.0)
-    multi_json (1.0.4)
+    multi_json (1.7.3)
     multipart-post (1.2.0)
     mysql2 (0.3.11)
     nats (0.4.24)
@@ -181,12 +185,7 @@ GEM
     rspec-mocks (2.13.1)
     ruby-hmac (0.4.0)
     rubyzip (0.9.9)
-    simplecov (0.5.4)
-      multi_json (~> 1.0.3)
-      simplecov-html (~> 0.5.3)
-    simplecov-html (0.5.3)
-    simplecov-rcov (0.2.3)
-      simplecov (>= 0.4.1)
+    sequel (3.45.0)
     sinatra (1.2.9)
       backports
       rack (~> 1.1, < 1.5)
@@ -209,6 +208,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  activesupport
   ci_reporter
   curb
   datamapper (>= 0.10.2)
@@ -223,8 +223,7 @@ DEPENDENCIES
   rake
   rspec
   ruby-hmac
-  simplecov
-  simplecov-rcov
+  sequel
   sinatra
   thin
   uuidtools
