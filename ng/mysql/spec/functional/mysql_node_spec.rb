@@ -1,5 +1,4 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-$:.unshift(File.dirname(__FILE__))
 require 'spec_helper'
 require 'mysql_service/node'
 require 'mysql_service/mysql_error'
@@ -51,10 +50,10 @@ module VCAP
   end
 end
 
-describe "Mysql server node" do
+describe "Mysql server node", components: [:nats] do
   include VCAP::Services::Mysql
 
-  before :all do
+  before :each do
     @opts = getNodeTestConfig
     @opts.freeze
     @default_plan = "free"

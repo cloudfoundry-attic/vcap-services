@@ -2,7 +2,7 @@
 $:.unshift File.join(File.dirname(__FILE__), '..')
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
-
+# Bundler.require(:test)
 
 SPEC_ROOT = File.expand_path(File.dirname(__FILE__))
 def require_dir(dir_pattern)
@@ -21,6 +21,7 @@ IntegrationExampleGroup.tmp_dir = tmp_dir
 
 RSpec.configure do |c|
   c.include IntegrationExampleGroup, :type => :integration, :example_group => {:file_path => /\/integration\//}
+  c.include IntegrationExampleGroup, :type => :integration, :example_group => {:file_path => /\/functional\//}
 end
 
 require 'rubygems'

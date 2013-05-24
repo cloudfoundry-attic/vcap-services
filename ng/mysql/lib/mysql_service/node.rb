@@ -44,11 +44,13 @@ class VCAP::Services::Mysql::Node
     @use_warden = options[:use_warden]
     @use_warden = false unless @use_warden === true
     if @use_warden
+      @logger.debug('using warden')
       require "mysql_service/with_warden"
       self.class.send(:include, VCAP::Services::Mysql::WithWarden)
       self.class.send(:include, VCAP::Services::Base::Utils)
       self.class.send(:include, VCAP::Services::Base::Warden::NodeUtils)
     else
+      @logger.debug('not using warden')
       require "mysql_service/without_warden"
       self.class.send(:include, VCAP::Services::Mysql::WithoutWarden)
     end

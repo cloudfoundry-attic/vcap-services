@@ -1,5 +1,4 @@
 # Copyright (c) 2009-2011 VMware, Inc.
-$:.unshift(File.dirname(__FILE__))
 require 'spec_helper'
 require 'logger'
 require 'yajl'
@@ -15,7 +14,7 @@ class VCAP::Services::Mysql::Gateway
   end
 end
 
-describe 'Mysql Provisioner Test' do
+describe 'Mysql Provisioner Test', components: [:nats]  do
 
   before :each do
     @nodeopts = getNodeTestConfig
