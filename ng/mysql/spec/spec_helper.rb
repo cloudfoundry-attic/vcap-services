@@ -2,7 +2,7 @@
 $:.unshift File.join(File.dirname(__FILE__), '..')
 $:.unshift File.join(File.dirname(__FILE__), '..', 'lib')
 
-Bundler.require(:test)
+
 
 SPEC_ROOT = File.expand_path(File.dirname(__FILE__))
 def require_dir(dir_pattern)
@@ -30,6 +30,7 @@ require 'vcap_services_base'
 require "mysql_service/util"
 require 'mysql_service/provisioner'
 require 'mysql_service/node'
+require 'sequel'
 
 require 'mysql_service/with_warden'
 # monkey patch of wardenized node
