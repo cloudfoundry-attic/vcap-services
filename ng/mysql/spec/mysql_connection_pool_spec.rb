@@ -200,7 +200,7 @@ describe 'Mysql Connection Pool Test' do
       pool.with_connection do |conn|
         conn.query("select 1")
       end
-    end.should raise_error(StandardError, /shutting down/)
+    end.to raise_error(StandardError, /shutting down/)
 
     sleep(2)
     pool.connections.size.should == 0  #connections should have been closed and removed
