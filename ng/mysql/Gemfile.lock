@@ -8,7 +8,7 @@ GIT
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-common.git
-  revision: 129ef520424a81155c097b7a79aa13bb8b736fd7
+  revision: 3a0127e77d6cd7590916b0d0ca0d4bdfc1a115a3
   specs:
     vcap_common (2.0.10)
       em-http-request (~> 1.0)
@@ -20,11 +20,12 @@ GIT
       nats (~> 0.4.24)
       posix-spawn (~> 0.3.6)
       thin
+      vmstat (~> 2.0)
       yajl-ruby
 
 GIT
   remote: git://github.com/cloudfoundry/vcap-services-base.git
-  revision: a304b1cd71918f2d2c7d2072b9bd01894ddf9bb8
+  revision: ff993291861ad2657b47f4804bed62bdcbf15908
   specs:
     vcap_services_base (0.1.17)
       cf-uaa-lib
@@ -35,12 +36,12 @@ GIT
       eventmachine (~> 1.0)
       eventmachine_httpserver (~> 0.2.1)
       json (~> 1.4.6)
-      nats (~> 0.4.22.beta.8, < 0.4.28)
+      nats (>= 0.4.22.beta.8, < 0.4.28)
       resque (~> 1.20)
       resque-status (~> 0.3.2)
       ruby-hmac (~> 0.4.0)
       rubyzip (~> 0.9.8)
-      sinatra (~> 1.2.3)
+      sinatra (>= 1.2.3)
       thin (~> 1.3.1)
       uuidtools (~> 2.1.2)
       vcap_common (>= 1.0.8)
@@ -65,7 +66,6 @@ GEM
       i18n (= 0.6.1)
       multi_json (~> 1.0)
     addressable (2.2.8)
-    backports (3.3.1)
     bcrypt-ruby (2.1.4)
     beefcake (0.3.7)
     builder (3.0.0)
@@ -148,7 +148,7 @@ GEM
     membrane (0.0.2)
     mime-types (1.23)
     mono_logger (1.1.0)
-    multi_json (1.7.3)
+    multi_json (1.7.6)
     multipart-post (1.2.0)
     mysql2 (0.3.11)
     nats (0.4.24)
@@ -157,7 +157,9 @@ GEM
       json_pure (>= 1.7.3)
       thin (>= 1.3.1)
     posix-spawn (0.3.6)
-    rack (1.4.5)
+    rack (1.5.2)
+    rack-protection (1.5.0)
+      rack
     rake (10.0.4)
     redis (3.0.4)
     redis-namespace (1.3.0)
@@ -186,10 +188,10 @@ GEM
     ruby-hmac (0.4.0)
     rubyzip (0.9.9)
     sequel (3.45.0)
-    sinatra (1.2.9)
-      backports
-      rack (~> 1.1, < 1.5)
-      tilt (>= 1.2.2, < 2.0)
+    sinatra (1.4.2)
+      rack (~> 1.5, >= 1.5.2)
+      rack-protection (~> 1.4)
+      tilt (~> 1.3, >= 1.3.4)
     stringex (1.2.2)
     systemu (2.5.2)
     thin (1.3.1)
@@ -202,6 +204,7 @@ GEM
     uuidtools (2.1.4)
     vegas (0.1.11)
       rack (>= 1.0.0)
+    vmstat (2.0.0)
     yajl-ruby (1.1.0)
 
 PLATFORMS
