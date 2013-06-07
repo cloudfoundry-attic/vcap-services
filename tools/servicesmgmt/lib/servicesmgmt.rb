@@ -25,7 +25,7 @@ class ServicesMgmt < Sinatra::Base
   end
 
   before do
-    unprotected = ["/auth/cloudfoundry/callback"]
+    unprotected = ["/auth/cloudfoundry/callback", "/healthz", "/varz"]
     unless unprotected.include?(request.path_info) then
       redirect "/auth/cloudfoundry" if need_token?(session[:auth])
     end
@@ -117,6 +117,14 @@ class ServicesMgmt < Sinatra::Base
     name = info["name"]
     session[:auth] = {:name => name, :token => token}
     redirect "/"
+  end
+
+  get "/healthz" do
+    "ok"
+  end
+
+  get "/varz" do
+    "{}"
   end
 end
 
