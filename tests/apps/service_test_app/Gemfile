@@ -1,8 +1,0 @@
-source :rubygems
-
-gem "thin"
-gem "sinatra"
-gem "datamapper"
-gem "yajl-ruby"
-gem "dm-mysql-adapter"
-gem "dm-sqlite-adapter"

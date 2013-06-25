@@ -1,2 +1,0 @@
-This code is DEPRECATED.  Only criticial bugs will be fixed.  Please
-migrate to the new version in "../ng".

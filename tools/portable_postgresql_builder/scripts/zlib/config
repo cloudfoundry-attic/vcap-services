@@ -1,3 +1,0 @@
-SRC_URL=http://zlib.net/zlib-1.2.7.tar.gz
-PKG_NAME=zlib-1.2.7
-PKG_FILE=lib/libz.so

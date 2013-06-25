@@ -1,3 +1,0 @@
-FORCE_CLEAN=0
-PKGS="zlib libxml2 libxslt openssl openldap libedit postgresql"
-DIST_NAME=postgresql-9.2-x86_64
